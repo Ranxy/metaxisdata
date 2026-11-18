@@ -20,8 +20,7 @@ const maxSessionEventsPerHour = 20
 // agent session covering the target. Each session is checked against its own agent's
 // configuration and scope; failures are logged and never fail the batch.
 func (r *Runner) intakeAgentEvents(ctx context.Context, workspaceID string, executions []*ruleExecution) {
-	settings := r.currentSettings()
-	if !settings.AgentRunnerEnabled || !settings.AgentRunnerAutoInvestigateFailures {
+	if !r.currentSettings().AgentRunnerEnabled {
 		return
 	}
 	now := time.Now().UTC()
@@ -51,8 +50,8 @@ func (r *Runner) intakeAgentEvent(ctx context.Context, workspaceID string, execu
 	if !sessionAcceptsAgentEvents(session) {
 		return
 	}
-	config, err := r.stores.GetQualityAgentConfig(ctx, session.AgentID)
-	if err != nil || config == nil || config.State != store.QualityAgentStateActive {
+	agent, err := r.stores.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil || agent == nil || agent.State != store.QualityAgentStateActive {
 		return
 	}
 	databases, err := r.stores.ListQualityAgentDatabases(ctx, session.AgentID)
@@ -115,8 +114,8 @@ func executionEventContent(execution *ruleExecution) string {
 
 // sessionAcceptsAgentEvents reports whether a failure should be appended to this session.
 // An enabled session always accepts one; a session parked on a transient block (a budget
-// window, autonomy off, an internal error) still records the event so the agent sees the
-// failure once it resumes. A paused, archived or needs-human session does not.
+// window, an internal error) still records the event so the agent sees the failure once
+// it resumes. An archived or needs-human session does not.
 func sessionAcceptsAgentEvents(session *store.QualityAgentSessionMessage) bool {
 	if session == nil {
 		return false

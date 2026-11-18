@@ -38,6 +38,9 @@ type FindUserMessage struct {
 	Limit       *int
 	Offset      *int
 	Filter      *ListResourceFilter
+	// ExcludeQualityAgents drops principals that back a built-in quality agent:
+	// they are internal IAM/audit actors, not people an operator manages.
+	ExcludeQualityAgents bool
 }
 
 // IDPBinding identifies the identity provider subject an account may sign in
@@ -272,6 +275,9 @@ func listUserImpl(ctx context.Context, q Queryer, find *FindUserMessage) ([]*Use
 	}
 	if !find.ShowDeleted {
 		where, args = append(where, fmt.Sprintf("principal.deleted = $%d", len(args)+1)), append(args, false)
+	}
+	if find.ExcludeQualityAgents {
+		where = append(where, "NOT EXISTS (SELECT 1 FROM quality_agent qa WHERE qa.principal_id = principal.id)")
 	}
 
 	// Join the user_group table to find groups for each user.

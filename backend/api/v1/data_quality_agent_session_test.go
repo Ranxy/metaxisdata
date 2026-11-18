@@ -36,7 +36,7 @@ func TestConvertQualityAgentSessionDerivesRunningFromTheLease(t *testing.T) {
 	stale := now.Add(-time.Minute)
 	message = convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
 		ResourceID: "s1",
-		State:      storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED,
+		State:      storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
 		LeaseUntil: &stale,
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -129,15 +129,4 @@ func TestSlicesReverseKeepsChronologicalOrder(t *testing.T) {
 	messages := []*store.QualityAgentTranscriptMessage{third, second, first}
 	slicesReverse(messages)
 	require.Equal(t, []int64{1, 2, 3}, []int64{messages[0].Seq, messages[1].Seq, messages[2].Seq})
-}
-
-func TestDatabaseRefOfTargetReadsTheGUIDPrefix(t *testing.T) {
-	t.Parallel()
-
-	reference, err := databaseRefOfTarget("i1;d1;s1;t1")
-	require.NoError(t, err)
-	require.Equal(t, "instances/i1/databases/d1", reference)
-
-	_, err = databaseRefOfTarget("t1")
-	require.Error(t, err)
 }

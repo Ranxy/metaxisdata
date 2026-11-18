@@ -68,13 +68,14 @@ const (
 	// the workspace does not name one.
 	DefaultTimeZone = "UTC"
 
-	// DefaultAgentRunnerTokensPerHour is the workspace's hourly token ceiling for
-	// runner goals when the setting does not say. A goal has no individual cap.
+	// DefaultAgentRunnerTokensPerHour is the fallback hourly token ceiling of one
+	// agent whose own budget does not say.
 	DefaultAgentRunnerTokensPerHour int64 = 100_000_000
-	// DefaultAgentRunnerWakesPerHour is how many session wakes a workspace may
-	// start per hour.
+	// DefaultAgentRunnerWakesPerHour is the fallback hourly wake budget of one
+	// agent whose own budget does not say.
 	DefaultAgentRunnerWakesPerHour = 20
-	// DefaultAgentRunnerMaxConcurrentSessions is how many sessions may run at once.
+	// DefaultAgentRunnerMaxConcurrentSessions is the fallback concurrent session
+	// budget of one agent whose own budget does not say.
 	DefaultAgentRunnerMaxConcurrentSessions = 2
 	// MaxAgentRunnerConcurrentSessions is the hard concurrency ceiling.
 	MaxAgentRunnerConcurrentSessions = 16
@@ -83,46 +84,33 @@ const (
 	// MaxAgentRunnerWakesPerHour is the hard ceiling of the hourly wake budget.
 	MaxAgentRunnerWakesPerHour = 1000
 	// DefaultAgentRunnerCompactionTriggerTokens is the context size that triggers
-	// compaction of a session's older messages.
+	// compaction of a session's older messages. It is a package constant, not a
+	// workspace setting.
 	DefaultAgentRunnerCompactionTriggerTokens = 262_144
-	// MinAgentRunnerCompactionTriggerTokens keeps a compaction threshold large
-	// enough for a session to make progress between compactions.
-	MinAgentRunnerCompactionTriggerTokens = 16_384
-	// MaxAgentRunnerCompactionTriggerTokens is the hard ceiling of the threshold.
-	MaxAgentRunnerCompactionTriggerTokens = 4_194_304
 	// DefaultAgentRunnerIdleWakeSeconds is how long a session sleeps between wakes
 	// when no event or person wakes it sooner.
 	DefaultAgentRunnerIdleWakeSeconds = 86_400
-	// MinAgentRunnerIdleWakeSeconds keeps a session from waking in a hot loop.
-	MinAgentRunnerIdleWakeSeconds = 60
-	// MaxAgentRunnerIdleWakeSeconds is the hard ceiling of the idle interval.
-	MaxAgentRunnerIdleWakeSeconds = 604_800
 
-	// DefaultAgentRunnerMaxNewSessionsPerHour is how many automatic sessions the
-	// admission path may create per hour when the setting does not say.
+	// DefaultAgentRunnerMaxNewSessionsPerHour is the fallback hourly admission rate
+	// of one agent whose own budget does not say.
 	DefaultAgentRunnerMaxNewSessionsPerHour = 10
 	// MaxAgentRunnerNewSessionsPerHour is the hard ceiling of that rate.
 	MaxAgentRunnerNewSessionsPerHour = 1000
-	// DefaultAgentRunnerMaxActiveSessions is how many enrollments may be active
-	// (triaging or monitoring) at once when the setting does not say.
+	// DefaultAgentRunnerMaxActiveSessions is the fallback active-enrollment budget
+	// of one agent whose own budget does not say.
 	DefaultAgentRunnerMaxActiveSessions = 100
 	// MaxAgentRunnerActiveSessions is the hard ceiling of the active set.
 	MaxAgentRunnerActiveSessions = 10000
+	// MaxAgentRunnerConversationMessagesPerHour is the hard ceiling of an agent's
+	// owner-conversation message budget.
+	MaxAgentRunnerConversationMessagesPerHour = 10_000
 	// DefaultAgentRunnerDormantReviewDays is how long a triaged target sleeps
-	// before it is reviewed again when the setting does not say.
+	// before it is reviewed again.
 	DefaultAgentRunnerDormantReviewDays = 30
-	// MinAgentRunnerDormantReviewDays keeps a dormant target from waking too soon.
-	MinAgentRunnerDormantReviewDays = 1
-	// MaxAgentRunnerDormantReviewDays is the hard ceiling of the review interval.
-	MaxAgentRunnerDormantReviewDays = 365
-	// DefaultAgentRunnerEventBudgetPercent is the share of the hourly wake budget
-	// reserved for failed checks and people, leaving the rest to automated
-	// admission, when the setting does not say.
+	// DefaultAgentRunnerEventBudgetPercent is the share of an agent's hourly wake
+	// budget reserved for failed checks and people, leaving the rest to automated
+	// admission.
 	DefaultAgentRunnerEventBudgetPercent = 50
-	// MinAgentRunnerEventBudgetPercent and MaxAgentRunnerEventBudgetPercent bound
-	// the reservation so neither events nor automation can starve the other.
-	MinAgentRunnerEventBudgetPercent = 10
-	MaxAgentRunnerEventBudgetPercent = 90
 
 	// DefaultCheckTimeout is how long one check's query may run when its config
 	// does not say.
@@ -163,75 +151,28 @@ type Settings struct {
 	// TimeZone is the IANA name the time variables of a check's filter and custom
 	// SQL are resolved in. Always populated: DefaultTimeZone when unset.
 	TimeZone string
-	// AgentAutonomyEnabled is the workspace kill switch for agent writes. Off by
-	// default: an agent principal can still read, and no agent write applies.
-	AgentAutonomyEnabled bool
-
 	// AgentRunnerEnabled is the workspace switch for the built-in quality agent
-	// runner. Off by default.
+	// runner. Off by default: turning it off stops agent wakes, reports and
+	// failure events. Per-agent budgets and scope live on the agent.
 	AgentRunnerEnabled bool
-	// AgentRunnerDatabases is the set of database resource names the runner may see
-	// and work on. Empty means none.
-	AgentRunnerDatabases []string
-	// AgentRunnerTokensPerHour is the workspace's hourly token ceiling for runner
-	// goals. Never zero after resolution.
-	AgentRunnerTokensPerHour int64
-	// AgentRunnerWakesPerHour is how many session wakes the workspace may start per
-	// hour.
-	AgentRunnerWakesPerHour int
-	// AgentRunnerMaxConcurrentSessions is how many sessions may run at once.
-	AgentRunnerMaxConcurrentSessions int
-	// AgentRunnerCompactionTriggerTokens is the context size that triggers
-	// compaction of the session's older messages.
-	AgentRunnerCompactionTriggerTokens int
-	// AgentRunnerIdleWakeSeconds is how long an idle session sleeps between wakes.
-	AgentRunnerIdleWakeSeconds int
-	// AgentRunnerAutoInvestigateFailures appends a failed execution as an event to
-	// the target's session and wakes it.
-	AgentRunnerAutoInvestigateFailures bool
-	// AgentRunnerAutoEnroll turns the database scope into a discovered queue: every
-	// monitorable object in scope is enrolled and admitted by priority. Off by
-	// default.
-	AgentRunnerAutoEnroll bool
-	// AgentRunnerMaxNewSessionsPerHour bounds how many automatic sessions admission
-	// may create per hour. Never zero after resolution.
-	AgentRunnerMaxNewSessionsPerHour int
-	// AgentRunnerMaxActiveSessions bounds how many enrollments may be active at once.
-	AgentRunnerMaxActiveSessions int
-	// AgentRunnerDormantReviewDays is how long a triaged target sleeps before it is
-	// reviewed again.
-	AgentRunnerDormantReviewDays int
-	// AgentRunnerEventBudgetPercent is the share of the hourly wake budget reserved for
-	// events and people; automated admission only spends the remainder.
-	AgentRunnerEventBudgetPercent int
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
 func DefaultSettings() Settings {
 	return Settings{
-		EnableLLMAnalysis:                  false,
-		LLMProviderProfile:                 "",
-		StoreFailureSamples:                true,
-		FailureSampleLimit:                 DefaultFailureSampleLimit,
-		DefaultScheduleInterval:            DefaultScheduleInterval,
-		DailyExecutionLimit:                DefaultDailyExecutionLimit,
-		DailyColumnAnalysisLimit:           DefaultDailyColumnAnalysisLimit,
-		DailyLLMAnalysisLimit:              DefaultDailyLLMAnalysisLimit,
-		LLMConcurrencyLimit:                DefaultLLMConcurrencyLimit,
-		MaxColumnsPerAnalysis:              DefaultMaxColumnsPerAnalysis,
-		SendSampleValuesToLLM:              false,
-		Digest:                             defaultDigestSchedule(),
-		TimeZone:                           DefaultTimeZone,
-		AgentRunnerTokensPerHour:           DefaultAgentRunnerTokensPerHour,
-		AgentRunnerWakesPerHour:            DefaultAgentRunnerWakesPerHour,
-		AgentRunnerMaxConcurrentSessions:   DefaultAgentRunnerMaxConcurrentSessions,
-		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
-		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
-		AgentRunnerAutoInvestigateFailures: true,
-		AgentRunnerMaxNewSessionsPerHour:   DefaultAgentRunnerMaxNewSessionsPerHour,
-		AgentRunnerMaxActiveSessions:       DefaultAgentRunnerMaxActiveSessions,
-		AgentRunnerDormantReviewDays:       DefaultAgentRunnerDormantReviewDays,
-		AgentRunnerEventBudgetPercent:      DefaultAgentRunnerEventBudgetPercent,
+		EnableLLMAnalysis:        false,
+		LLMProviderProfile:       "",
+		StoreFailureSamples:      true,
+		FailureSampleLimit:       DefaultFailureSampleLimit,
+		DefaultScheduleInterval:  DefaultScheduleInterval,
+		DailyExecutionLimit:      DefaultDailyExecutionLimit,
+		DailyColumnAnalysisLimit: DefaultDailyColumnAnalysisLimit,
+		DailyLLMAnalysisLimit:    DefaultDailyLLMAnalysisLimit,
+		LLMConcurrencyLimit:      DefaultLLMConcurrencyLimit,
+		MaxColumnsPerAnalysis:    DefaultMaxColumnsPerAnalysis,
+		SendSampleValuesToLLM:    false,
+		Digest:                   defaultDigestSchedule(),
+		TimeZone:                 DefaultTimeZone,
 	}
 }
 
@@ -264,27 +205,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.MaxColumnsPerAnalysis = positiveOrDefault(dataQuality.GetMaxColumnsPerAnalysis(), DefaultMaxColumnsPerAnalysis)
 	settings.Digest = DigestScheduleFromStore(dataQuality.GetWeeklyDigest())
 	settings.TimeZone = timeZoneFromStore(dataQuality.GetTimeZone())
-	settings.AgentAutonomyEnabled = dataQuality.GetAgentAutonomyEnabled()
 	settings.AgentRunnerEnabled = dataQuality.GetAgentRunnerEnabled()
-	settings.AgentRunnerDatabases = normalizeDatabaseRefs(dataQuality.GetAgentRunnerDatabases())
-	settings.AgentRunnerTokensPerHour = positiveInt64OrDefault(dataQuality.GetAgentRunnerTokensPerHour(), DefaultAgentRunnerTokensPerHour)
-	settings.AgentRunnerWakesPerHour = boundedLimit(int(dataQuality.GetAgentRunnerWakesPerHour()), DefaultAgentRunnerWakesPerHour, MaxAgentRunnerWakesPerHour)
-	settings.AgentRunnerMaxConcurrentSessions = boundedLimit(int(dataQuality.GetAgentRunnerMaxConcurrentSessions()), DefaultAgentRunnerMaxConcurrentSessions, MaxAgentRunnerConcurrentSessions)
-	settings.AgentRunnerCompactionTriggerTokens = boundedMinMax(int(dataQuality.GetAgentRunnerCompactionTriggerTokens()), DefaultAgentRunnerCompactionTriggerTokens, MinAgentRunnerCompactionTriggerTokens, MaxAgentRunnerCompactionTriggerTokens)
-	settings.AgentRunnerIdleWakeSeconds = boundedMinMax(int(dataQuality.GetAgentRunnerIdleWakeSeconds()), DefaultAgentRunnerIdleWakeSeconds, MinAgentRunnerIdleWakeSeconds, MaxAgentRunnerIdleWakeSeconds)
-	// The event switch defaults on: a session that is enabled should react to a
-	// failed check without someone flipping a second switch. A stored explicit false
-	// still turns it off.
-	if autoInvestigate := dataQuality.AgentRunnerAutoInvestigateFailures; autoInvestigate != nil {
-		settings.AgentRunnerAutoInvestigateFailures = *autoInvestigate
-	} else {
-		settings.AgentRunnerAutoInvestigateFailures = true
-	}
-	settings.AgentRunnerAutoEnroll = dataQuality.GetAgentRunnerAutoEnroll()
-	settings.AgentRunnerMaxNewSessionsPerHour = boundedMinMax(int(dataQuality.GetAgentRunnerMaxNewSessionsPerHour()), DefaultAgentRunnerMaxNewSessionsPerHour, 1, MaxAgentRunnerNewSessionsPerHour)
-	settings.AgentRunnerMaxActiveSessions = boundedLimit(int(dataQuality.GetAgentRunnerMaxActiveSessions()), DefaultAgentRunnerMaxActiveSessions, MaxAgentRunnerActiveSessions)
-	settings.AgentRunnerDormantReviewDays = boundedMinMax(int(dataQuality.GetAgentRunnerDormantReviewDays()), DefaultAgentRunnerDormantReviewDays, MinAgentRunnerDormantReviewDays, MaxAgentRunnerDormantReviewDays)
-	settings.AgentRunnerEventBudgetPercent = boundedMinMax(int(dataQuality.GetAgentRunnerEventBudgetPercent()), DefaultAgentRunnerEventBudgetPercent, MinAgentRunnerEventBudgetPercent, MaxAgentRunnerEventBudgetPercent)
 	return settings
 }
 
@@ -360,21 +281,6 @@ func boundedLimit(value, fallback, maximum int) int {
 	switch {
 	case value <= 0:
 		return fallback
-	case value > maximum:
-		return maximum
-	default:
-		return value
-	}
-}
-
-// boundedMinMax resolves an integer setting with both a floor and a ceiling: zero
-// and negative values fall back to the default, and an out-of-range value is clamped.
-func boundedMinMax(value, fallback, minimum, maximum int) int {
-	switch {
-	case value <= 0:
-		return fallback
-	case value < minimum:
-		return minimum
 	case value > maximum:
 		return maximum
 	default:
@@ -543,41 +449,4 @@ func DigestDayOfWeek(day time.Weekday) storepb.DayOfWeek {
 	default:
 		return storepb.DayOfWeek_DAY_OF_WEEK_UNSPECIFIED
 	}
-}
-
-// normalizeDatabaseRefs trims and de-duplicates the runner's database allowlist.
-func normalizeDatabaseRefs(refs []string) []string {
-	if len(refs) == 0 {
-		return nil
-	}
-	seen := make(map[string]bool, len(refs))
-	out := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		ref = strings.TrimSpace(ref)
-		if ref == "" || seen[ref] {
-			continue
-		}
-		seen[ref] = true
-		out = append(out, ref)
-	}
-	return out
-}
-
-// positiveInt64OrDefault resolves a proto3 integer setting: zero and negative values
-// fall back to the default.
-func positiveInt64OrDefault(value, fallback int64) int64 {
-	if value <= 0 {
-		return fallback
-	}
-	return value
-}
-
-// AgentRunnerDatabaseEnabled reports whether one database is in the runner's scope.
-func (s Settings) AgentRunnerDatabaseEnabled(databaseRef string) bool {
-	for _, ref := range s.AgentRunnerDatabases {
-		if ref == databaseRef {
-			return true
-		}
-	}
-	return false
 }

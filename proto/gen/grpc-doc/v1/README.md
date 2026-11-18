@@ -253,7 +253,6 @@
     - [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest)
     - [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
-    - [ArchiveQualityAgentSessionRequest](#metaxisdata-v1-ArchiveQualityAgentSessionRequest)
     - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
     - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
     - [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse)
@@ -268,23 +267,16 @@
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
-    - [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest)
     - [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest)
     - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
-    - [CreateQualityAgentSessionRequest](#metaxisdata-v1-CreateQualityAgentSessionRequest)
-    - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
-    - [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest)
-    - [CreateQualityMemoryRequest](#metaxisdata-v1-CreateQualityMemoryRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CrossTableReference](#metaxisdata-v1-CrossTableReference)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
-    - [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest)
     - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
-    - [DeleteQualityMemoryRequest](#metaxisdata-v1-DeleteQualityMemoryRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
     - [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest)
@@ -299,14 +291,7 @@
     - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
-    - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
-    - [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest)
-    - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
-    - [GetQualityAgentReportRequest](#metaxisdata-v1-GetQualityAgentReportRequest)
     - [GetQualityAgentRequest](#metaxisdata-v1-GetQualityAgentRequest)
-    - [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest)
-    - [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest)
-    - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
     - [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse)
@@ -314,7 +299,6 @@
     - [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest)
     - [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse)
     - [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest)
-    - [GetQualityInvestigationRequest](#metaxisdata-v1-GetQualityInvestigationRequest)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
@@ -337,8 +321,6 @@
     - [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse)
     - [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest)
     - [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse)
-    - [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest)
-    - [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse)
     - [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest)
     - [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse)
     - [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest)
@@ -347,8 +329,6 @@
     - [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse)
     - [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest)
     - [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse)
-    - [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest)
-    - [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse)
     - [ListQualityCodeTablesRequest](#metaxisdata-v1-ListQualityCodeTablesRequest)
     - [ListQualityCodeTablesResponse](#metaxisdata-v1-ListQualityCodeTablesResponse)
     - [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest)
@@ -357,12 +337,8 @@
     - [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse)
     - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
-    - [ListQualityInvestigationsRequest](#metaxisdata-v1-ListQualityInvestigationsRequest)
-    - [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
-    - [ListQualityMemoriesRequest](#metaxisdata-v1-ListQualityMemoriesRequest)
-    - [ListQualityMemoriesResponse](#metaxisdata-v1-ListQualityMemoriesResponse)
     - [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest)
     - [ListQualityPlansResponse](#metaxisdata-v1-ListQualityPlansResponse)
     - [ListQualityRuleTemplatesRequest](#metaxisdata-v1-ListQualityRuleTemplatesRequest)
@@ -377,7 +353,6 @@
     - [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
     - [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest)
-    - [PauseQualityAgentSessionRequest](#metaxisdata-v1-PauseQualityAgentSessionRequest)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
     - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
@@ -385,27 +360,14 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
-    - [QualityAction](#metaxisdata-v1-QualityAction)
-    - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting)
     - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
-    - [QualityAgentDatabaseEnrollmentSummary](#metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary)
-    - [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment)
-    - [QualityAgentEnrollmentStateCount](#metaxisdata-v1-QualityAgentEnrollmentStateCount)
-    - [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary)
-    - [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics)
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
     - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
-    - [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus)
     - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
     - [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage)
-    - [QualityAgentSessionStateCount](#metaxisdata-v1-QualityAgentSessionStateCount)
-    - [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost)
-    - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
-    - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
-    - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
     - [QualityCodeTable](#metaxisdata-v1-QualityCodeTable)
     - [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap)
     - [QualityContract](#metaxisdata-v1-QualityContract)
@@ -426,12 +388,8 @@
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityImpactAsset](#metaxisdata-v1-QualityImpactAsset)
-    - [QualityInvestigation](#metaxisdata-v1-QualityInvestigation)
-    - [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence)
-    - [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
-    - [QualityMemory](#metaxisdata-v1-QualityMemory)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
     - [QualityPlan](#metaxisdata-v1-QualityPlan)
@@ -469,9 +427,6 @@
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
     - [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest)
     - [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest)
-    - [RetryQualityAgentEnrollmentRequest](#metaxisdata-v1-RetryQualityAgentEnrollmentRequest)
-    - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
-    - [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
     - [RowCountConfig](#metaxisdata-v1-RowCountConfig)
     - [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest)
@@ -485,7 +440,6 @@
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
     - [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest)
     - [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest)
-    - [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest)
     - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
     - [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
@@ -497,7 +451,6 @@
     - [UniqueConfig](#metaxisdata-v1-UniqueConfig)
     - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
     - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
-    - [UpdateQualityAgentEnrollmentRequest](#metaxisdata-v1-UpdateQualityAgentEnrollmentRequest)
     - [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest)
     - [UpdateQualityCodeTableRequest](#metaxisdata-v1-UpdateQualityCodeTableRequest)
     - [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest)
@@ -506,32 +459,20 @@
     - [UpdateQualityRuleTemplateRequest](#metaxisdata-v1-UpdateQualityRuleTemplateRequest)
     - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
     - [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest)
-    - [WakeQualityAgentSessionRequest](#metaxisdata-v1-WakeQualityAgentSessionRequest)
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
-    - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
-    - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
     - [QualityAgentAdoptionMode](#metaxisdata-v1-QualityAgentAdoptionMode)
     - [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind)
     - [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus)
-    - [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState)
     - [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole)
     - [QualityAgentReportFrequency](#metaxisdata-v1-QualityAgentReportFrequency)
     - [QualityAgentReportPeriod](#metaxisdata-v1-QualityAgentReportPeriod)
-    - [QualityAgentReportState](#metaxisdata-v1-QualityAgentReportState)
-    - [QualityAgentReportTrigger](#metaxisdata-v1-QualityAgentReportTrigger)
     - [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode)
-    - [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource)
     - [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState)
     - [QualityAgentState](#metaxisdata-v1-QualityAgentState)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
-    - [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason)
-    - [QualityChangeRequestItemKind](#metaxisdata-v1-QualityChangeRequestItemKind)
-    - [QualityChangeRequestItemResult.Status](#metaxisdata-v1-QualityChangeRequestItemResult-Status)
-    - [QualityChangeRequestSource](#metaxisdata-v1-QualityChangeRequestSource)
-    - [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
     - [QualityContractChangeKind](#metaxisdata-v1-QualityContractChangeKind)
@@ -544,15 +485,9 @@
     - [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator)
     - [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier)
-    - [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus)
-    - [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger)
-    - [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict)
     - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
-    - [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind)
-    - [QualityMemorySource](#metaxisdata-v1-QualityMemorySource)
-    - [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
     - [QualityPlanChange.Kind](#metaxisdata-v1-QualityPlanChange-Kind)
     - [QualityPlanState](#metaxisdata-v1-QualityPlanState)
@@ -4300,20 +4235,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
 | weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
 | time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
-| agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
-| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default: turning it off stops new wakes; recorded proposals stay for review. |
-| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no session. |
-| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions; 0 means the server default (100000000). A session has no individual token cap. |
-| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour; 0 means the server default (20). |
-| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once; 0 means the server default (2). |
-| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages; 0 means the server default (262144). |
-| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds; 0 means the server default (86400). |
-| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
-| agent_runner_auto_enroll | [bool](#bool) |  | Whether the runner enrolls every monitorable object in its database scope into its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic triage and monitoring. Every write stays a proposal a person approves. |
-| agent_runner_max_new_sessions_per_hour | [int32](#int32) |  | How many automatic sessions the admission path may create per hour; 0 means the server default (10), accepted range 1-1000. |
-| agent_runner_max_active_sessions | [int32](#int32) |  | How many enrollments may be active (triaging or monitoring) at once; 0 means the server default (100), accepted range 1-10000. |
-| agent_runner_dormant_review_days | [int32](#int32) |  | How many days a triaged target sleeps before it is reviewed again; 0 means the server default (30), accepted range 1-365. |
-| agent_runner_event_budget_percent | [int32](#int32) |  | The percentage of the hourly wake budget reserved for failed checks and people; automated admission only spends the remainder. 0 means the server default (50), accepted range 10-90. |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default: turning it off stops agent wakes, reports and failure events. Per-agent budgets and scope live on the agent. |
 
 
 
@@ -4789,22 +4711,6 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
-<a name="metaxisdata-v1-ArchiveQualityAgentSessionRequest"></a>
-
-### ArchiveQualityAgentSessionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| expected_revision | [int32](#int32) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-BatchCreateQualityRuleResult"></a>
 
 ### BatchCreateQualityRuleResult
@@ -5063,22 +4969,6 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
-<a name="metaxisdata-v1-ConfirmQualityMemoryRequest"></a>
-
-### ConfirmQualityMemoryRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
-| decision | [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-CreateQualityAgentRequest"></a>
 
 ### CreateQualityAgentRequest
@@ -5112,45 +5002,6 @@ they are returned, so a wide text column cannot bloat the response.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| token | [string](#string) |  | The bearer token, returned exactly once. It authenticates as the agent principal and cannot be retrieved again; rotate it if lost. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-CreateQualityAgentSessionRequest"></a>
-
-### CreateQualityAgentSessionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| objective | [string](#string) |  | Empty means &#34;keep this target trustworthy&#34;. |
-| agent | [string](#string) |  | Format: users/{user}. Empty uses the first enabled quality agent. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-CreateQualityChangeRequestRequest"></a>
-
-### CreateQualityChangeRequestRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| base_version | [int32](#int32) |  | The newest published version the request is written against. Required, but 0 is a valid value for a target that has never been published. |
-| items | [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem) | repeated | At most 20 items. |
 
 
 
@@ -5167,59 +5018,6 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | quality_code_table | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) |  | The table to create. Its name is assigned by the server. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-CreateQualityInvestigationRequest"></a>
-
-### CreateQualityInvestigationRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
-| trigger_reference | [string](#string) |  | The triggering object&#39;s resource name or value. |
-| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
-| verdict | [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict) |  |  |
-| summary | [string](#string) |  |  |
-| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis) | repeated |  |
-| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
-| action_refs | [string](#string) | repeated |  |
-| provider | [string](#string) |  |  |
-| model | [string](#string) |  |  |
-| prompt_version | [string](#string) |  |  |
-| prompt_tokens | [int64](#int64) |  |  |
-| completion_tokens | [int64](#int64) |  |  |
-| failure_reason | [string](#string) |  |  |
-| request_fingerprint | [string](#string) |  | An idempotency key from the agent&#39;s run; a retry with the same key returns the recorded investigation instead of writing a second one. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-CreateQualityMemoryRequest"></a>
-
-### CreateQualityMemoryRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
-| subject | [string](#string) |  |  |
-| statement | [string](#string) |  |  |
-| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
-| domain_ref | [string](#string) |  |  |
-| expires_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -5344,24 +5142,6 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
-<a name="metaxisdata-v1-DecideQualityChangeRequestRequest"></a>
-
-### DecideQualityChangeRequestRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
-| decision | [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision) |  |  |
-| rejection_reasons | [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason) | repeated | Why the request was rejected; required for REJECT. |
-| decision_note | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-DeleteQualityCodeTableRequest"></a>
 
 ### DeleteQualityCodeTableRequest
@@ -5371,21 +5151,6 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DeleteQualityMemoryRequest"></a>
-
-### DeleteQualityMemoryRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
 
 
 
@@ -5654,66 +5419,6 @@ timestamp follows on_empty.
 
 
 
-<a name="metaxisdata-v1-GetQualityActionPolicyRequest"></a>
-
-### GetQualityActionPolicyRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest"></a>
-
-### GetQualityAgentEnrollmentSummaryRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityAgentMetricsRequest"></a>
-
-### GetQualityAgentMetricsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityAgentReportRequest"></a>
-
-### GetQualityAgentReportRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report} |
-
-
-
-
-
-
 <a name="metaxisdata-v1-GetQualityAgentRequest"></a>
 
 ### GetQualityAgentRequest
@@ -5723,51 +5428,6 @@ GetQualityAgentRequest reads one agent with its configuration.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityAgentRunnerStatusRequest"></a>
-
-### GetQualityAgentRunnerStatusRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityAgentSessionRequest"></a>
-
-### GetQualityAgentSessionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
-
-### GetQualityChangeRequestRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
 
 
 
@@ -5883,21 +5543,6 @@ GetQualityAgentRequest reads one agent with its configuration.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualityInvestigationRequest"></a>
-
-### GetQualityInvestigationRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} |
 
 
 
@@ -6283,44 +5928,6 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 
 
 
-<a name="metaxisdata-v1-ListQualityAgentEnrollmentsRequest"></a>
-
-### ListQualityAgentEnrollmentsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| page_size | [int32](#int32) |  | The maximum number of enrollments to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
-| page_token | [string](#string) |  |  |
-| database | [string](#string) |  | Exact database resource name. Empty keeps every database in scope. |
-| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  | UNSPECIFIED keeps every state. |
-| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both modes. |
-| search | [string](#string) |  | A case-insensitive substring over the target GUID. The display path is encoded in the GUID&#39;s semicolon-separated segments, so a path fragment matches too. |
-| agent | [string](#string) |  | Administrator diagnostics filter: keep only this agent&#39;s queue rows. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityAgentEnrollmentsResponse"></a>
-
-### ListQualityAgentEnrollmentsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_agent_enrollments | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ListQualityAgentReportsRequest"></a>
 
 ### ListQualityAgentReportsRequest
@@ -6402,7 +6009,6 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | target_guid | [string](#string) |  |  |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
-| source | [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource) |  | UNSPECIFIED keeps both manual and automatic sessions. |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both monitor and triage sessions. |
 | agent | [string](#string) |  | Administrator diagnostics filter: keep only this agent&#39;s sessions. |
 
@@ -6453,41 +6059,6 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agents | [QualityAgent](#metaxisdata-v1-QualityAgent) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityChangeRequestsRequest"></a>
-
-### ListQualityChangeRequestsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| state | [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState) |  |  |
-| page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityChangeRequestsResponse"></a>
-
-### ListQualityChangeRequestsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_change_requests | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -6645,42 +6216,6 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 
 
 
-<a name="metaxisdata-v1-ListQualityInvestigationsRequest"></a>
-
-### ListQualityInvestigationsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
-| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
-| page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityInvestigationsResponse"></a>
-
-### ListQualityInvestigationsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_investigations | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ListQualityIssuesRequest"></a>
 
 ### ListQualityIssuesRequest
@@ -6714,42 +6249,6 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityMemoriesRequest"></a>
-
-### ListQualityMemoriesRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
-| status | [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus) |  |  |
-| subject | [string](#string) |  | An exact subject. |
-| page_size | [int32](#int32) |  | The page size; 0 uses the default (50), and the maximum is 1000. |
-| page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityMemoriesResponse"></a>
-
-### ListQualityMemoriesResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_memories | [QualityMemory](#metaxisdata-v1-QualityMemory) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -7036,22 +6535,6 @@ PauseQualityAgentRequest pauses an active agent without disabling its identity.
 
 
 
-<a name="metaxisdata-v1-PauseQualityAgentSessionRequest"></a>
-
-### PauseQualityAgentSessionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-PreviewQualityRuleRequest"></a>
 
 ### PreviewQualityRuleRequest
@@ -7171,53 +6654,12 @@ ProfileValue is one frequent value of a low-cardinality column.
 
 
 
-<a name="metaxisdata-v1-QualityAction"></a>
-
-### QualityAction
-QualityAction is one card of the WS2 action catalog with its live policy verdict.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [string](#string) |  | The stable catalog id, e.g. &#34;A0-4&#34; or &#34;A3-1&#34;. |
-| title | [string](#string) |  | A short developer-facing title; the UI owns the localized copy. |
-| autonomy_level | [string](#string) |  | A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3 (changes promises, responsibility or irreversible state). |
-| actor | [string](#string) |  | AGENT or HUMAN: who may ever perform it. |
-| red_line | [bool](#bool) |  | A red line never accepts a pure model proposal, even with autonomy on. |
-| implemented | [bool](#bool) |  | False when this codebase has no write path for the action yet; such an action is refused with its own reason instead of pretending to work. |
-| agent_reachable | [bool](#bool) |  | Whether the shipped agent role and handlers actually expose the action to an agent. It differs from implemented on purpose: a person may author a check while an agent can only propose it through a change request. |
-| agent_allowed | [bool](#bool) |  | Whether an enabled agent would be allowed to do it under the current policy. |
-| requires_approval | [bool](#bool) |  | Whether a person must still approve the action after the policy allows it. |
-| decision_code | [string](#string) |  | The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY, DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL, DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person must still approve). |
-| reason | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityActionPolicy"></a>
-
-### QualityActionPolicy
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_autonomy_enabled | [bool](#bool) |  | The workspace kill switch the agent verdicts were computed with. |
-| actions | [QualityAction](#metaxisdata-v1-QualityAction) | repeated |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualityAgent"></a>
 
 ### QualityAgent
-QualityAgent is one agent principal: an independent identity an administrator
-creates for autonomous quality work. Its token is issued once, and disabling the
-agent ends every token it holds.
+QualityAgent is one built-in quality agent: a service-account identity that exists
+only as the in-process runner&#39;s IAM and audit actor, plus the runtime configuration
+an administrator edits. There is no token or external API surface.
 
 
 | Field | Type | Label | Description |
@@ -7225,14 +6667,12 @@ agent ends every token it holds.
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
 | display_name | [string](#string) |  |  |
 | description | [string](#string) |  |  |
-| enabled | [bool](#bool) |  |  |
 | created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| state | [QualityAgentState](#metaxisdata-v1-QualityAgentState) |  | Runtime state; DISABLED is permanent and enabled is false. |
+| state | [QualityAgentState](#metaxisdata-v1-QualityAgentState) |  | Runtime state; DISABLED is permanent. |
 | owner | [string](#string) |  | Format: users/{user}. The owner is the only caller who may talk to the agent. |
 | databases | [string](#string) | repeated | Database resource names in scope: instances/{instance}/databases/{database}. |
 | capabilities | [string](#string) | repeated | Capability ids: &#34;suggest&#34;, &#34;adopt&#34;, &#34;patrol&#34;; extensible server-side. |
-| provider_profile | [string](#string) |  | LLM provider profile; empty means the workspace default. |
 | report_schedule | [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule) |  |  |
 | adoption | [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting) |  |  |
 | budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
@@ -7276,7 +6716,6 @@ QualityAgentAttention is one owner escalation inside an agent.
 | kind | [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind) |  |  |
 | status | [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus) |  |  |
 | session | [string](#string) |  | The target session to resume when the owner answers; empty for an agent event. |
-| reference | [string](#string) |  | The resource the owner should open, e.g. a report or a proposal. |
 | title | [string](#string) |  |  |
 | question | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
@@ -7309,124 +6748,6 @@ default; the workspace hard caps still apply.
 
 
 
-<a name="metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary"></a>
-
-### QualityAgentDatabaseEnrollmentSummary
-QualityAgentDatabaseEnrollmentSummary is one database&#39;s slice of the queue.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| database | [string](#string) |  | instances/{instance}/databases/{database} |
-| pending | [int32](#int32) |  |  |
-| active | [int32](#int32) |  |  |
-| dormant | [int32](#int32) |  |  |
-| excluded | [int32](#int32) |  |  |
-| out_of_scope | [int32](#int32) |  |  |
-| gone | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentEnrollment"></a>
-
-### QualityAgentEnrollment
-QualityAgentEnrollment is one target&#39;s place in the runner&#39;s queue: the desired
-state derived from the database scope, plus the priority and admission hints a
-person sees. The session row remains the execution state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentEnrollments/{id} |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target this enrollment covers. Its path is reconstructed from the GUID. |
-| database | [string](#string) |  | The database the target lives in: instances/{instance}/databases/{database}. |
-| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  |  |
-| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | MONITOR once the target has coverage; TRIAGE while it has none. |
-| priority | [int32](#int32) |  | 0..1000; larger is admitted first. |
-| priority_reason | [string](#string) |  | Human-readable signals behind the priority, for example &#34;rules,failing&#34;. |
-| blocked_reason | [string](#string) |  | Why the row is not progressing, for example &#34;budget&#34; or &#34;no-model&#34;. |
-| session | [string](#string) |  | The target&#39;s session, or empty before admission. |
-| triage_count | [int32](#int32) |  |  |
-| last_triaged_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| next_review_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| discovered_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| last_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| revision | [int32](#int32) |  | Incremented by every mutation; human mutations carry the revision they saw. |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentEnrollmentStateCount"></a>
-
-### QualityAgentEnrollmentStateCount
-QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  |  |
-| count | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentEnrollmentSummary"></a>
-
-### QualityAgentEnrollmentSummary
-QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
-by database, and when discovery last scanned a database (process-local).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| states | [QualityAgentEnrollmentStateCount](#metaxisdata-v1-QualityAgentEnrollmentStateCount) | repeated |  |
-| databases | [QualityAgentDatabaseEnrollmentSummary](#metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary) | repeated |  |
-| last_scan_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentMetrics"></a>
-
-### QualityAgentMetrics
-QualityAgentMetrics is the runner&#39;s evaluation: what it did, what it spent and
-how the proposals it made were decided. All of it is derived from existing rows.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| sessions | [QualityAgentSessionStateCount](#metaxisdata-v1-QualityAgentSessionStateCount) | repeated |  |
-| tokens_total | [int64](#int64) |  |  |
-| tokens_last_hour | [int64](#int64) |  |  |
-| agent_change_requests_total | [int32](#int32) |  | Change requests proposed by an agent, by lifecycle state. Acceptance is applied / (applied &#43; rejected); pending and expired are not decisions. |
-| agent_change_requests_applied | [int32](#int32) |  |  |
-| agent_change_requests_rejected | [int32](#int32) |  |  |
-| agent_change_requests_pending | [int32](#int32) |  |  |
-| agent_change_requests_approved | [int32](#int32) |  |  |
-| agent_change_requests_expired | [int32](#int32) |  |  |
-| investigations_total | [int32](#int32) |  | Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows carry no verdict, so the buckets do not have to sum to the total. |
-| investigations_inconclusive | [int32](#int32) |  |  |
-| investigations_root_cause | [int32](#int32) |  |  |
-| investigations_contributing_factor | [int32](#int32) |  |  |
-| investigations_unrelated | [int32](#int32) |  |  |
-| top_targets | [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost) | repeated |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualityAgentReport"></a>
 
 ### QualityAgentReport
@@ -7437,12 +6758,10 @@ QualityAgentReport is one deterministic patrol report over an agent&#39;s scope.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report} |
 | agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| trigger | [QualityAgentReportTrigger](#metaxisdata-v1-QualityAgentReportTrigger) |  |  |
 | period_kind | [QualityAgentReportPeriod](#metaxisdata-v1-QualityAgentReportPeriod) |  |  |
 | period_key | [string](#string) |  | Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly. |
 | period_start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | period_end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| state | [QualityAgentReportState](#metaxisdata-v1-QualityAgentReportState) |  |  |
 | databases | [string](#string) | repeated | Database resource names the report covers. |
 | target_count | [int32](#int32) |  |  |
 | covered_target_count | [int32](#int32) |  |  |
@@ -7455,9 +6774,7 @@ QualityAgentReport is one deterministic patrol report over an agent&#39;s scope.
 | new_issue_count | [int32](#int32) |  |  |
 | open_issue_count | [int32](#int32) |  |  |
 | pending_proposal_count | [int32](#int32) |  |  |
-| tokens_used | [int64](#int64) |  |  |
 | body_markdown | [string](#string) |  |  |
-| failure_reason | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | generate_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
@@ -7484,45 +6801,6 @@ QualityAgentReportSchedule is the agent&#39;s patrol report cadence.
 
 
 
-<a name="metaxisdata-v1-QualityAgentRunnerStatus"></a>
-
-### QualityAgentRunnerStatus
-QualityAgentRunnerStatus is the runner&#39;s live state at one instant. The budgets
-and counters are durable; runner_last_tick_time is process-local and reset by a
-restart, so it is a liveness hint, not durable state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  |  |
-| autonomy_enabled | [bool](#bool) |  |  |
-| llm_configured | [bool](#bool) |  |  |
-| running_sessions | [int32](#int32) |  |  |
-| idle_sessions | [int32](#int32) |  |  |
-| blocked_sessions | [int32](#int32) |  |  |
-| tokens_last_hour | [int64](#int64) |  |  |
-| tokens_per_hour_limit | [int64](#int64) |  |  |
-| wakes_last_hour | [int32](#int32) |  |  |
-| wakes_per_hour_limit | [int32](#int32) |  |  |
-| max_concurrent_sessions | [int32](#int32) |  |  |
-| compaction_trigger_tokens | [int32](#int32) |  |  |
-| idle_wake_seconds | [int32](#int32) |  |  |
-| last_activity_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| runner_last_tick_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| pending_enrollments | [int32](#int32) |  | Enrollment queue counts. A queue row is the desired state of one target in scope; a session is created lazily when the row is admitted. |
-| active_enrollments | [int32](#int32) |  |  |
-| dormant_enrollments | [int32](#int32) |  |  |
-| excluded_enrollments | [int32](#int32) |  |  |
-| enrollment_last_scan_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The last discovery scan of any database. Process-local: a restart resets it. |
-| max_new_sessions_per_hour | [int32](#int32) |  | The effective admission limits so the queue page can explain a stalled row. |
-| max_active_sessions | [int32](#int32) |  |  |
-| auto_enroll_enabled | [bool](#bool) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualityAgentSession"></a>
 
 ### QualityAgentSession
@@ -7536,14 +6814,11 @@ schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
 | database | [string](#string) |  | The database allowlist entry this session is scoped to. |
 | agent | [string](#string) |  | Format: users/{user}. The agent principal that runs the session. |
-| objective | [string](#string) |  |  |
 | state | [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState) |  |  |
 | blocked_code | [string](#string) |  | Stable blocked code and its explanation; empty unless blocked. |
 | blocked_reason | [string](#string) |  |  |
 | revision | [int32](#int32) |  | Incremented by every mutation; human mutations carry the revision they saw. |
 | wake_count | [int32](#int32) |  |  |
-| tokens_used | [int64](#int64) |  | Lifetime token spend, so an archived session still counts. |
-| context_tokens | [int32](#int32) |  | The largest real prompt_tokens of the last wake. |
 | next_wake_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_activity_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The newest transcript entry, used as a heartbeat. |
 | lease_expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
@@ -7552,7 +6827,6 @@ schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | archive_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| source | [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource) |  | Who created the session: a person or the enrollment queue. |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | MONITOR reviews a covered target; TRIAGE analyses an uncovered one. |
 
 
@@ -7585,106 +6859,6 @@ after the session so a message always carries its parent in the name.)
 | error | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | reference | [string](#string) |  | The object an event or wake is about (for example a quality execution resource name); empty for model and runner messages. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentSessionStateCount"></a>
-
-### QualityAgentSessionStateCount
-QualityAgentSessionStateCount is how many sessions stand in one state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| state | [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState) |  |  |
-| count | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentTargetCost"></a>
-
-### QualityAgentTargetCost
-QualityAgentTargetCost is one target&#39;s share of the runner&#39;s token spend.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
-| tokens_used | [int64](#int64) |  |  |
-| session_count | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequest"></a>
-
-### QualityChangeRequest
-QualityChangeRequest is one approve-or-reject batch of typed changes against one
-target. Approving applies each item independently and returns a result per item.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
-| state | [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState) |  |  |
-| base_version | [int32](#int32) |  | The published version the request was written against; a decision on a stale base expires the request instead of rebasing it. |
-| source | [QualityChangeRequestSource](#metaxisdata-v1-QualityChangeRequestSource) |  |  |
-| items | [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem) | repeated |  |
-| item_results | [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult) | repeated |  |
-| rejection_reasons | [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason) | repeated |  |
-| decision_note | [string](#string) |  |  |
-| created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| decided_by | [string](#string) |  |  |
-| decided_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestItem"></a>
-
-### QualityChangeRequestItem
-QualityChangeRequestItem is one typed change.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| kind | [QualityChangeRequestItemKind](#metaxisdata-v1-QualityChangeRequestItemKind) |  |  |
-| suggestion | [string](#string) |  | SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id} |
-| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
-| column | [string](#string) |  |  |
-| min_checks | [int32](#int32) |  |  |
-| remove | [bool](#bool) |  | COVERAGE_CHANGE: remove the declaration instead of adding or changing it. |
-| dimension | [QualityDimension](#metaxisdata-v1-QualityDimension) |  | SUGGESTION_REF: the dimension the created rule carries; required because a rule draft has no dimension and a rule needs one. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestItemResult"></a>
-
-### QualityChangeRequestItemResult
-QualityChangeRequestItemResult is one item&#39;s outcome.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| index | [int32](#int32) |  |  |
-| status | [QualityChangeRequestItemResult.Status](#metaxisdata-v1-QualityChangeRequestItemResult-Status) |  |  |
-| detail | [string](#string) |  |  |
-| applied_resource_id | [string](#string) |  |  |
 
 
 
@@ -8123,73 +7297,6 @@ state.
 
 
 
-<a name="metaxisdata-v1-QualityInvestigation"></a>
-
-### QualityInvestigation
-QualityInvestigation is one agent&#39;s work product on one event. It is read-only
-after creation in this slice: it never changes a check&#39;s verdict or an issue.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
-| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
-| trigger_reference | [string](#string) |  |  |
-| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
-| verdict | [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict) |  |  |
-| summary | [string](#string) |  |  |
-| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis) | repeated |  |
-| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
-| action_refs | [string](#string) | repeated | Names of change requests the investigation proposed. |
-| provider | [string](#string) |  |  |
-| model | [string](#string) |  |  |
-| prompt_version | [string](#string) |  |  |
-| prompt_tokens | [int64](#int64) |  |  |
-| completion_tokens | [int64](#int64) |  |  |
-| failure_reason | [string](#string) |  |  |
-| created_by | [string](#string) |  | Format: users/{user}. The agent principal that wrote it, when recorded. |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityInvestigationEvidence"></a>
-
-### QualityInvestigationEvidence
-QualityInvestigationEvidence is one deterministic reference behind an
-investigation. It is a reference, never a copy of samples.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| kind | [string](#string) |  | EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST. |
-| reference | [string](#string) |  |  |
-| note | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityInvestigationHypothesis"></a>
-
-### QualityInvestigationHypothesis
-QualityInvestigationHypothesis is one candidate explanation.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| statement | [string](#string) |  |  |
-| status | [string](#string) |  | CONFIRMED, REJECTED or OPEN. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualityIssue"></a>
 
 ### QualityIssue
@@ -8239,35 +7346,6 @@ analyses. A restart resets the counters.
 | in_flight | [int32](#int32) |  |  |
 | concurrency_limit | [int32](#int32) |  |  |
 | resets_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the daily counters roll over (the next 00:00 UTC). |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityMemory"></a>
-
-### QualityMemory
-QualityMemory is one durable piece of knowledge with its evidence and its
-correction path. It never replaces the engine&#39;s verdict; it explains the past.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
-| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
-| subject | [string](#string) |  | What the memory is about: a target GUID, a rule resource id, a column, an issue. |
-| statement | [string](#string) |  |  |
-| source | [QualityMemorySource](#metaxisdata-v1-QualityMemorySource) |  |  |
-| status | [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus) |  |  |
-| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated | Deterministic evidence references; a memory without evidence is not recorded. |
-| domain_ref | [string](#string) |  | Reserved for domain-scoped memory; stored, not resolved. |
-| expires_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| confirmed_by | [string](#string) |  | Format: users/{user}. Set when a person confirmed or rejected it. |
-| confirmed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| superseded_by | [string](#string) |  | Resource name of the memory that replaced this one. |
-| created_by | [string](#string) |  |  |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -9104,53 +8182,6 @@ engine&#39;s own regex operator.
 
 
 
-<a name="metaxisdata-v1-RetryQualityAgentEnrollmentRequest"></a>
-
-### RetryQualityAgentEnrollmentRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment} |
-| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected with Aborted. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-RotateQualityAgentTokenRequest"></a>
-
-### RotateQualityAgentTokenRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-RotateQualityAgentTokenResponse"></a>
-
-### RotateQualityAgentTokenResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| token | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-RowCountChangeConfig"></a>
 
 ### RowCountChangeConfig
@@ -9395,25 +8426,6 @@ SendQualityAgentMessageRequest appends the owner&#39;s message and wakes the age
 
 
 
-<a name="metaxisdata-v1-StageQualityPlanRequest"></a>
-
-### StageQualityPlanRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| target_guid | [string](#string) |  |  |
-| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| base_version | [int32](#int32) |  | The newest published version the declaration is written against. 0 is a valid base for a target that has never been published. |
-| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The complete declaration: coverage only, like UpdateQualityContract&#39;s draft. The list has no presence: an omitted or empty coverage clears the target&#39;s declaration and returns it to the projection derived from the intent and the live checks. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-StandardCodeConfig"></a>
 
 ### StandardCodeConfig
@@ -9620,23 +8632,6 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
-<a name="metaxisdata-v1-UpdateQualityAgentEnrollmentRequest"></a>
-
-### UpdateQualityAgentEnrollmentRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enrollment | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) |  | The enrollment to change. Only state and mode in update_mask are accepted. |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Supported paths: &#34;state&#34; (only PENDING and EXCLUDED are accepted) and &#34;mode&#34; (MONITOR and TRIAGE). The server rejects any other path. |
-| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected with Aborted. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-UpdateQualityAgentRequest"></a>
 
 ### UpdateQualityAgentRequest
@@ -9646,7 +8641,7 @@ UpdateQualityAgentRequest replaces the masked configuration fields.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, databases, capabilities, provider_profile, report_schedule, adoption, budget. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, databases, capabilities, report_schedule, adoption, budget. |
 
 
 
@@ -9774,23 +8769,6 @@ UpdateQualityAgentRequest replaces the masked configuration fields.
 
 
 
-
-<a name="metaxisdata-v1-WakeQualityAgentSessionRequest"></a>
-
-### WakeQualityAgentSessionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| content | [string](#string) |  | The person&#39;s question or instruction; it becomes a user message in the session. |
-| request_id | [string](#string) |  | A client-generated idempotency id for this message. Repeating the same id returns the session without appending a second message; empty means the server generates a random one (a repeat is then a new message, which is what a person asking the same question twice means). |
-
-
-
-
-
  
 
 
@@ -9804,32 +8782,6 @@ ColumnLabelAction is what UpdateColumnLabel does with one column&#39;s label.
 | COLUMN_LABEL_ACTION_UNSPECIFIED | 0 |  |
 | COLUMN_LABEL_ACTION_ACCEPT | 1 | Store the given semantic label as a manually accepted one. |
 | COLUMN_LABEL_ACTION_CLEAR | 2 | Remove the column&#39;s label. |
-
-
-
-<a name="metaxisdata-v1-ConfirmQualityMemoryRequest-Decision"></a>
-
-### ConfirmQualityMemoryRequest.Decision
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| DECISION_UNSPECIFIED | 0 |  |
-| DECISION_CONFIRM | 1 |  |
-| DECISION_REJECT | 2 |  |
-
-
-
-<a name="metaxisdata-v1-DecideQualityChangeRequestRequest-Decision"></a>
-
-### DecideQualityChangeRequestRequest.Decision
-APPROVE applies the request&#39;s items; REJECT records the refusal.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| DECISION_UNSPECIFIED | 0 |  |
-| DECISION_APPROVE | 1 |  |
-| DECISION_REJECT | 2 |  |
 
 
 
@@ -9874,25 +8826,6 @@ QualityAgentAttentionStatus is the to-do&#39;s lifecycle.
 | QUALITY_AGENT_ATTENTION_STATUS_OPEN | 1 |  |
 | QUALITY_AGENT_ATTENTION_STATUS_RESOLVED | 2 |  |
 | QUALITY_AGENT_ATTENTION_STATUS_DISMISSED | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityAgentEnrollmentState"></a>
-
-### QualityAgentEnrollmentState
-QualityAgentEnrollmentState is the queue state of one target in the runner&#39;s
-scope. The enrollment row is the desired state; a session is created lazily when
-the row is admitted.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_ENROLLMENT_STATE_PENDING | 1 | Discovered and waiting for admission (a budget, a person or a dependency). |
-| QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE | 2 | Admitted: a session exists and is triaging or monitoring the target. |
-| QUALITY_AGENT_ENROLLMENT_STATE_DORMANT | 3 | Triaged with nothing left to do; waits for its next review or an approval. |
-| QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED | 4 | A person opted the target out; discovery never re-admits it. |
-| QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE | 5 | The target&#39;s database left the runner&#39;s scope. Reversible. |
-| QUALITY_AGENT_ENROLLMENT_STATE_GONE | 6 | The registry object no longer exists. The row is kept for history. |
 
 
 
@@ -9954,34 +8887,6 @@ QualityAgentReportPeriod is the report&#39;s period shape.
 | QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED | 0 |  |
 | QUALITY_AGENT_REPORT_PERIOD_DAILY | 1 |  |
 | QUALITY_AGENT_REPORT_PERIOD_WEEKLY | 2 |  |
-| QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityAgentReportState"></a>
-
-### QualityAgentReportState
-QualityAgentReportState is the asynchronous report generation state.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_REPORT_STATE_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_REPORT_STATE_PENDING | 1 |  |
-| QUALITY_AGENT_REPORT_STATE_READY | 2 |  |
-| QUALITY_AGENT_REPORT_STATE_FAILED | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityAgentReportTrigger"></a>
-
-### QualityAgentReportTrigger
-QualityAgentReportTrigger says what produced a report.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED | 1 |  |
-| QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND | 2 |  |
 
 
 
@@ -10000,20 +8905,6 @@ proposes a plan and checks for a person to approve.
 
 
 
-<a name="metaxisdata-v1-QualityAgentSessionSource"></a>
-
-### QualityAgentSessionSource
-QualityAgentSessionSource says who created a session: a person or the
-enrollment queue.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_SESSION_SOURCE_MANUAL | 1 |  |
-| QUALITY_AGENT_SESSION_SOURCE_AUTO | 2 |  |
-
-
-
 <a name="metaxisdata-v1-QualityAgentSessionState"></a>
 
 ### QualityAgentSessionState
@@ -10023,7 +8914,6 @@ QualityAgentSessionState is the durable lifecycle of one target&#39;s agent sess
 | ---- | ------ | ----------- |
 | QUALITY_AGENT_SESSION_STATE_UNSPECIFIED | 0 |  |
 | QUALITY_AGENT_SESSION_STATE_ENABLED | 1 |  |
-| QUALITY_AGENT_SESSION_STATE_PAUSED | 2 |  |
 | QUALITY_AGENT_SESSION_STATE_BLOCKED | 3 |  |
 | QUALITY_AGENT_SESSION_STATE_ARCHIVED | 4 |  |
 
@@ -10067,7 +8957,8 @@ PERCENTILE only for an aggregate rule.
 <a name="metaxisdata-v1-QualityAssetCriticality"></a>
 
 ### QualityAssetCriticality
-QualityAssetCriticality ranks a target for the autonomy policy. Derived
+QualityAssetCriticality ranks a target for the plan&#39;s criticality and the
+adoption guardrail. Derived
 criticality is a display/policy input, never written back to the contract.
 
 | Name | Number | Description |
@@ -10076,81 +8967,6 @@ criticality is a display/policy input, never written back to the contract.
 | QUALITY_ASSET_CRITICALITY_EXPERIMENTAL | 1 |  |
 | QUALITY_ASSET_CRITICALITY_IMPORTANT | 2 |  |
 | QUALITY_ASSET_CRITICALITY_CRITICAL | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityChangeRejectionReason"></a>
-
-### QualityChangeRejectionReason
-QualityChangeRejectionReason is the structured reason a person rejected a
-request.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED | 0 |  |
-| QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT | 1 |  |
-| QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT | 2 |  |
-| QUALITY_CHANGE_REJECTION_REASON_NOISE | 3 |  |
-| QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM | 4 |  |
-| QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN | 5 |  |
-| QUALITY_CHANGE_REJECTION_REASON_DEFER | 6 |  |
-| QUALITY_CHANGE_REJECTION_REASON_OTHER | 7 |  |
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestItemKind"></a>
-
-### QualityChangeRequestItemKind
-QualityChangeRequestItemKind is one typed change a request carries.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED | 0 |  |
-| QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF | 1 |  |
-| QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE | 2 |  |
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestItemResult-Status"></a>
-
-### QualityChangeRequestItemResult.Status
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| STATUS_UNSPECIFIED | 0 |  |
-| STATUS_APPLIED | 1 |  |
-| STATUS_FAILED | 2 |  |
-| STATUS_SKIPPED | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestSource"></a>
-
-### QualityChangeRequestSource
-QualityChangeRequestSource records who wrote the request.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED | 0 |  |
-| QUALITY_CHANGE_REQUEST_SOURCE_HUMAN | 1 |  |
-| QUALITY_CHANGE_REQUEST_SOURCE_AGENT | 2 |  |
-
-
-
-<a name="metaxisdata-v1-QualityChangeRequestState"></a>
-
-### QualityChangeRequestState
-QualityChangeRequestState is the lifecycle of one change request.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED | 0 |  |
-| QUALITY_CHANGE_REQUEST_STATE_PROPOSED | 1 |  |
-| QUALITY_CHANGE_REQUEST_STATE_APPROVED | 2 |  |
-| QUALITY_CHANGE_REQUEST_STATE_APPLIED | 3 |  |
-| QUALITY_CHANGE_REQUEST_STATE_REJECTED | 4 |  |
-| QUALITY_CHANGE_REQUEST_STATE_EXPIRED | 5 |  |
 
 
 
@@ -10352,53 +9168,6 @@ scheduled runs only; a manual run always runs the check.
 
 
 
-<a name="metaxisdata-v1-QualityInvestigationStatus"></a>
-
-### QualityInvestigationStatus
-QualityInvestigationStatus is where one investigation stands.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_INVESTIGATION_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_INVESTIGATION_STATUS_CONCLUDED | 1 |  |
-| QUALITY_INVESTIGATION_STATUS_FAILED | 2 |  |
-| QUALITY_INVESTIGATION_STATUS_INTERRUPTED | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityInvestigationTrigger"></a>
-
-### QualityInvestigationTrigger
-QualityInvestigationTrigger says what started the investigation.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED | 0 |  |
-| QUALITY_INVESTIGATION_TRIGGER_EXECUTION | 1 |  |
-| QUALITY_INVESTIGATION_TRIGGER_ISSUE | 2 |  |
-| QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE | 3 |  |
-| QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP | 4 |  |
-| QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT | 5 |  |
-| QUALITY_INVESTIGATION_TRIGGER_MANUAL | 6 |  |
-
-
-
-<a name="metaxisdata-v1-QualityInvestigationVerdict"></a>
-
-### QualityInvestigationVerdict
-QualityInvestigationVerdict is the investigation&#39;s classification of the event. It
-never replaces the engine&#39;s verdict.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED | 0 |  |
-| QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE | 1 |  |
-| QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR | 2 |  |
-| QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE | 3 |  |
-| QUALITY_INVESTIGATION_VERDICT_UNRELATED | 4 |  |
-
-
-
 <a name="metaxisdata-v1-QualityIssueStatus"></a>
 
 ### QualityIssueStatus
@@ -10439,50 +9208,6 @@ QualityLabelStatus is whether a semantic label is in effect.
 | QUALITY_LABEL_STATUS_SUGGESTED | 1 |  |
 | QUALITY_LABEL_STATUS_ACCEPTED | 2 |  |
 | QUALITY_LABEL_STATUS_REJECTED | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityMemoryKind"></a>
-
-### QualityMemoryKind
-QualityMemoryKind is what a memory records.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_MEMORY_KIND_UNSPECIFIED | 0 |  |
-| QUALITY_MEMORY_KIND_ASSET_FACT | 1 |  |
-| QUALITY_MEMORY_KIND_DECISION | 2 |  |
-| QUALITY_MEMORY_KIND_EVENT | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityMemorySource"></a>
-
-### QualityMemorySource
-QualityMemorySource records who wrote the memory.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_MEMORY_SOURCE_UNSPECIFIED | 0 |  |
-| QUALITY_MEMORY_SOURCE_AGENT | 1 |  |
-| QUALITY_MEMORY_SOURCE_HUMAN | 2 |  |
-| QUALITY_MEMORY_SOURCE_SYSTEM | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityMemoryStatus"></a>
-
-### QualityMemoryStatus
-QualityMemoryStatus is where one memory stands.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_MEMORY_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_MEMORY_STATUS_PROPOSED | 1 |  |
-| QUALITY_MEMORY_STATUS_CONFIRMED | 2 |  |
-| QUALITY_MEMORY_STATUS_REJECTED | 3 |  |
-| QUALITY_MEMORY_STATUS_SUPERSEDED | 4 |  |
-| QUALITY_MEMORY_STATUS_EXPIRED | 5 |  |
 
 
 
@@ -10905,46 +9630,26 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
-| CreateQualityInvestigation | [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest) | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | Record one investigation: an agent&#39;s hypotheses, deterministic evidence references, verdict and cost on one event. It never changes the check&#39;s verdict or an issue&#39;s state. The agent needs autonomy enabled. |
-| GetQualityInvestigation | [GetQualityInvestigationRequest](#metaxisdata-v1-GetQualityInvestigationRequest) | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | Read one investigation. |
-| ListQualityInvestigations | [ListQualityInvestigationsRequest](#metaxisdata-v1-ListQualityInvestigationsRequest) | [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse) | List investigations, newest first. |
-| GetQualityActionPolicy | [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest) | [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy) | Read the WS2 action catalog and how the autonomy policy would decide each action for an agent right now. Read-only: it exposes the policy, it does not change it. |
-| CreateQualityMemory | [CreateQualityMemoryRequest](#metaxisdata-v1-CreateQualityMemoryRequest) | [QualityMemory](#metaxisdata-v1-QualityMemory) | Record one memory: an asset fact, a decision with its structured reason, or an event. An agent may write asset facts directly; a decision or an event it writes stays PROPOSED until a person confirms it. |
-| ListQualityMemories | [ListQualityMemoriesRequest](#metaxisdata-v1-ListQualityMemoriesRequest) | [ListQualityMemoriesResponse](#metaxisdata-v1-ListQualityMemoriesResponse) | List memories. Expired confirmations read as EXPIRED; superseded ones stay visible for the correction path. |
-| ConfirmQualityMemory | [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest) | [QualityMemory](#metaxisdata-v1-QualityMemory) | Confirm or reject a PROPOSED memory. A person&#39;s judgment is what turns it into knowledge; nothing else confirms it. |
-| DeleteQualityMemory | [DeleteQualityMemoryRequest](#metaxisdata-v1-DeleteQualityMemoryRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a memory. Administrator cleanup; the row is kept out of reads, and the audit row records who removed it. |
-| StageQualityPlan | [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Write the target&#39;s plan declaration without touching its settings. This is the one write an agent principal may make; an agent call is refused while the workspace kill switch or the agent itself is disabled. |
-| CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. An agent principal may only create PROPOSED requests, and only while autonomy is enabled. |
-| GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |
-| ListQualityChangeRequests | [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest) | [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse) | List change requests, newest first. |
-| CreateQualityAgent | [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest) | [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse) | Create an agent principal and return its bearer token once. The agent is an independent principal whose only workspace role is the quality agent role; its token is a normal access token for that principal, so disabling the agent makes every token it issued unusable. Administrator only. |
+| CreateQualityAgent | [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest) | [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse) | Create an internal quality agent with its runtime configuration. The agent&#39;s service-account principal exists only as the IAM/audit actor for the in-process runner; there is no external bearer-token surface. Administrator only. |
 | GetQualityAgent | [GetQualityAgentRequest](#metaxisdata-v1-GetQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Read one agent with its runtime configuration. |
 | SendQualityAgentMessage | [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest) | [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage) | Append the owner&#39;s message to the agent&#39;s conversation and wake it. Only the agent&#39;s owner may send; administrators may read but not talk. |
 | ListQualityAgentConversationMessages | [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest) | [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse) | Read the agent&#39;s front-office conversation. The owner and administrators may read; only the owner may send. |
 | ListQualityAgentReports | [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest) | [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse) | List one agent&#39;s patrol reports, newest period first. |
-| GetQualityAgentReport | [GetQualityAgentReportRequest](#metaxisdata-v1-GetQualityAgentReportRequest) | [QualityAgentReport](#metaxisdata-v1-QualityAgentReport) | Read one report with its rendered body. |
 | ListQualityAgentAttentions | [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest) | [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse) | List one agent&#39;s escalations. The owner and administrators may read. |
 | ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
 | DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
 | SetQualityAgentAdoption | [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Let the owner turn automatic adoption off or back to paused; administrators may also set ACTIVE. The rest of the configuration stays administrator-managed. |
 | UpdateQualityAgent | [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Replace the masked configuration of one agent. Administrator only. |
-| StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. Administrator only. |
+| StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. The owner or an administrator may start it. |
 | PauseQualityAgent | [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Pause an ACTIVE agent. The owner and administrators may pause; only an administrator may edit the configuration. |
 | ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agents. Administrators see every agent; other members see the agents they own. |
-| DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent principal. Its tokens stop authenticating immediately; the agent row stays for the audit trail. |
-| RotateQualityAgentToken | [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest) | [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse) | Rotate an agent&#39;s bearer token: mint a new one and invalidate every token minted before this call. The token is returned once. |
-| DecideQualityChangeRequest | [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Approve or reject a change request. Approving applies each item through its existing path and returns a result per item; rejecting records the structured reasons. A stale base version expires the request instead of rebasing it. |
+| DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent permanently. The row stays for the audit trail; a disabled agent is never re-enabled (create a new one instead). |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
 | ListQualityAgentSessions | [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest) | [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse) | List the workspace&#39;s sessions by newest activity first. |
-| GetQualityAgentSession | [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Read one session. |
 | ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a stuck session. Administrator-only recovery, used from diagnostics after a restart-limit/internal-error block; it is not a product action. |
 | ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. |
-| GetQualityAgentRunnerStatus | [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest) | [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus) | Read the runner&#39;s live state: what is running, what is due and how much of the budgets is spent. runner_last_tick_time is process-local and resets on restart. |
-| GetQualityAgentMetrics | [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest) | [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics) | Read the runner&#39;s evaluation: session states, token spend, the acceptance of the change requests it proposed, and investigation verdicts. Read-only. |
-| ListQualityAgentEnrollments | [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest) | [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse) | List the runner&#39;s enrollment queue: one row per monitorable object in the runner&#39;s database scope, with its queue state, priority and session link. |
-| GetQualityAgentEnrollmentSummary | [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest) | [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary) | Read enrollment counts by state and by database. Read-only. |
 
  
 

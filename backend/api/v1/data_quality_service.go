@@ -22,7 +22,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
-	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -108,19 +107,9 @@ type DataQualityService struct {
 	// metrics records execution, query and LLM outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
-	// secret and profile let the agent-management RPCs mint a bearer token for an
-	// agent principal with the same signing key the auth interceptor verifies.
-	secret  string
-	profile *config.Profile
 	// iam checks the permission of a caller when a handler must decide between
 	// owner/admin access, which a proto annotation cannot express.
 	iam PermissionChecker
-	// agentRunner is the session runner's process-local liveness signal, used by the
-	// runner status read. Nil means the status reports no tick yet (tests).
-	agentRunner AgentRunnerStatusProvider
-	// enrollmentRunner is the enrollment runner's process-local scan signal. Nil means
-	// the queue summary reports no scan yet (tests).
-	enrollmentRunner AgentEnrollmentStatusProvider
 	// notifier sends the owner's inbox row when an agent escalates. Nil disables
 	// notification while keeping the attention to-do (tests).
 	notifier *notification.Service
@@ -135,7 +124,7 @@ type DataQualityService struct {
 // NewDataQualityService creates the service. executionScheduler may be nil.
 // suggester and quota are created once by the server and shared with the
 // background suggestion runner, so a job spends the same budget a request does.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics, secret string, profile *config.Profile, agentRunner AgentRunnerStatusProvider, enrollmentRunner AgentEnrollmentStatusProvider, iamChecker PermissionChecker, notifier *notification.Service) *DataQualityService {
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics, iamChecker PermissionChecker, notifier *notification.Service) *DataQualityService {
 	return &DataQualityService{
 		store:              s,
 		dbFactory:          dbFactory,
@@ -145,10 +134,6 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, execu
 		stateCfg:           stateCfg,
 		metrics:            m,
 		exportSlots:        make(chan struct{}, qualityExportConcurrency),
-		secret:             secret,
-		profile:            profile,
-		agentRunner:        agentRunner,
-		enrollmentRunner:   enrollmentRunner,
 		iam:                iamChecker,
 		notifier:           notifier,
 	}

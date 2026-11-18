@@ -28,7 +28,8 @@ const (
 	CoverageRange
 )
 
-// AssetCriticality ranks a target for the autonomy policy. It is derived for
+// AssetCriticality ranks a target for the plan's criticality and the adoption
+// guardrail. It is derived for
 // display and policy input only; it is never written back to the contract.
 type AssetCriticality int
 

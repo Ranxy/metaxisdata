@@ -327,7 +327,7 @@
 | O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开（只读规则点名的 group，走 `GetGroup` 缓存）；路由表或 group 读取失败**fail open** 回到订阅 fan-out（`routed_only` 渠道此时不投递，等管理员修复） | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
 | O-20 | 路由目标渠道仍要满足自身 `enabled` + `event_types` + `min_severity` 过滤；`routed_only` 渠道未被任何规则选中则完全跳过 | 规则表达"谁的事发到哪个渠道"，渠道自己的过滤仍是第二道闸；避免配置矛盾时意外群发 |
 | O-21 | "未确认 N 小时升级到第二渠道"**不做** | 产品反馈并非所有部署喜欢自动升级（会重复打扰值班）；等有明确需求再评估，避免做成默认行为 |
-| O-23 | **质量 Agent 升级是 per-owner 的站内信，不是广播**：`qualitysessionrunner` 只在会话被人工类 block code 阻塞时写 attention 并向 `quality_agent_config.owner` 发 `DATA_QUALITY_AGENT`；detail 只带 agent/attention 资源名与 bounded 的 title/question，正文由前端 i18n 渲染；重复 block 由 attention 的 open dedupe 与通知 dedupe 双保险。owner 回复走 `ReplyQualityAgentAttention`，管理员只读。 | 升级的语义是"这个 Agent 的 owner 需要做决定"，发给管理员池会让真正能决策的人被噪音淹没；通知文本不落库以保持双语与前向兼容。 |
+| O-23 | **质量 Agent 升级是 per-owner 的站内信，不是广播**：`qualitysessionrunner` 只在会话被人工类 block code 阻塞时写 attention 并向 `quality_agent.owner_principal_id` 发 `DATA_QUALITY_AGENT`；detail 只带 agent/attention 资源名与 bounded 的 title/question，正文由前端 i18n 渲染；重复 block 由 attention 的 open dedupe 与通知 dedupe 双保险。owner 回复走 `ReplyQualityAgentAttention`，管理员只读。 | 升级的语义是"这个 Agent 的 owner 需要做决定"，发给管理员池会让真正能决策的人被噪音淹没；通知文本不落库以保持双语与前向兼容。 |
 | O-22 | **数据质量周报 digest 是"仅投递"事件**：没有站内信、没有 audience，由 `qualitydigestrunner` 每周按 DQ 设置生成一次，用确定性 `event_id=dqdigest:<ISO 周>` 入队到**显式**订阅 `DATA_QUALITY_DIGEST` 的启用渠道；`routed_only` 渠道跳过、`notification_route` 不参与、无固定地址的 EMAIL 渠道跳过（digest 的 audience 为空，`include_audience` 解析不出人）；其余投递语义（outbox、重试、静默窗口、指标）完全复用 | 新周期消息必须是 opt-in，否则所有"空=全部"的存量渠道会突然收到周报；digest 无 audience，路由规则和 audience 邮件都失去意义；确定性事件 id 让重复 tick/重启/部分成功重试都不重复投递 |
 
 ### 失败模式

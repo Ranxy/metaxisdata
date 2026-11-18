@@ -26,17 +26,15 @@ type fakeStore struct {
 	nextWakes            []*time.Time
 	releasedWakes        []*time.Time
 	claimedLimit         int
-	config               *store.QualityAgentConfigMessage
 	databases            []string
-	tokensSpentAll       int64
-	wakesSpentAll        int64
 	enrollment           *store.QualityAgentEnrollmentMessage
 	parkedEnrollment     string
 	enrollmentNextReview time.Time
+	blockedSessions      []*store.QualityAgentSessionMessage
 }
 
-func (*fakeStore) ListQualityAgentSessionsByBlockedCode(context.Context, string, int) ([]*store.QualityAgentSessionMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityAgentSessionsByBlockedCode(context.Context, string, int) ([]*store.QualityAgentSessionMessage, error) {
+	return f.blockedSessions, nil
 }
 
 func (*fakeStore) ResetStaleQualityAgentSessionLeases(context.Context, time.Time, int32) (int64, error) {
@@ -75,26 +73,6 @@ func (f *fakeStore) SumQualityAgentSessionTokensSince(context.Context, string, i
 
 func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, int64, time.Time) (int64, error) {
 	return f.wakesSpent, nil
-}
-
-func (f *fakeStore) SumQualityAgentSessionTokensSinceAll(context.Context, string, time.Time) (int64, error) {
-	return f.tokensSpentAll, nil
-}
-
-func (f *fakeStore) CountQualityAgentSessionWakesSinceAll(context.Context, string, time.Time) (int64, error) {
-	return f.wakesSpentAll, nil
-}
-
-func (*fakeStore) CountQualityAgentSessionsByLease(context.Context, string, int64, time.Time) (int32, error) {
-	return 0, nil
-}
-
-func (*fakeStore) CountQualityAgentSessionsByLeaseAll(context.Context, string, time.Time) (int32, error) {
-	return 0, nil
-}
-
-func (f *fakeStore) GetQualityAgentConfig(context.Context, int64) (*store.QualityAgentConfigMessage, error) {
-	return f.config, nil
 }
 
 func (f *fakeStore) ListQualityAgentDatabases(context.Context, int64) ([]string, error) {
@@ -145,16 +123,7 @@ func testSession() *store.QualityAgentSessionMessage {
 }
 
 func testSettings() dataquality.Settings {
-	return dataquality.Settings{
-		AgentRunnerEnabled:                 true,
-		AgentAutonomyEnabled:               true,
-		AgentRunnerDatabases:               []string{"instances/i1/databases/d1"},
-		AgentRunnerTokensPerHour:           1_000_000,
-		AgentRunnerWakesPerHour:            100,
-		AgentRunnerMaxConcurrentSessions:   2,
-		AgentRunnerIdleWakeSeconds:         3_600,
-		AgentRunnerCompactionTriggerTokens: dataquality.DefaultAgentRunnerCompactionTriggerTokens,
-	}
+	return dataquality.Settings{AgentRunnerEnabled: true}
 }
 
 func testRunner(stores *fakeStore, engine Waker) *Runner {
@@ -165,8 +134,13 @@ func testRunner(stores *fakeStore, engine Waker) *Runner {
 		now:          func() time.Time { return time.Unix(10_000, 0).UTC() },
 		tick:         time.Second,
 	}
-	stores.agent = &store.QualityAgentMessage{ID: 3, Enabled: true}
-	stores.config = &store.QualityAgentConfigMessage{AgentID: 3, State: store.QualityAgentStateActive}
+	stores.agent = &store.QualityAgentMessage{
+		ID:                    3,
+		State:                 store.QualityAgentStateActive,
+		TokensPerHour:         1_000_000,
+		WakesPerHour:          100,
+		MaxConcurrentSessions: 2,
+	}
 	stores.databases = []string{"instances/i1/databases/d1"}
 	return runner
 }
@@ -179,36 +153,32 @@ func TestHostParksTheEnrollmentAfterTriage(t *testing.T) {
 	stores := &fakeStore{enrollment: &store.QualityAgentEnrollmentMessage{ResourceID: "enr-1"}}
 	engine := &fakeEngine{outcome: agentrunner.Outcome{TriageComplete: true}}
 	runner := testRunner(stores, engine)
-	settings := testSettings()
-	settings.AgentRunnerDormantReviewDays = 30
 	session := testSession()
 	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
 
-	runner.host(context.Background(), settings, session)
+	runner.host(context.Background(), session)
 
 	require.Equal(t, "enr-1", stores.parkedEnrollment)
 	require.WithinDuration(t,
-		time.Unix(10_000, 0).Add(30*24*time.Hour), stores.enrollmentNextReview, time.Second)
+		time.Unix(10_000, 0).Add(dataquality.DefaultAgentRunnerDormantReviewDays*24*time.Hour),
+		stores.enrollmentNextReview, time.Second)
 }
 
-// An admin who turns autonomy off does not spend model tokens: the session parks on a
-// retryable blocker instead of waking.
-func TestHostBlocksWhenAgentAutonomyIsOff(t *testing.T) {
+// A session whose agent is no longer active parks without spending model tokens.
+func TestHostBlocksWhenTheAgentIsNotActive(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{}
 	engine := &fakeEngine{}
 	runner := testRunner(stores, engine)
-	settings := testSettings()
-	settings.AgentAutonomyEnabled = false
+	stores.agent.State = store.QualityAgentStatePaused
 
-	runner.host(context.Background(), settings, testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Zero(t, engine.called)
 	require.Equal(t, []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED}, stores.states)
-	require.Equal(t, []string{"autonomy-off"}, stores.blockedCodes)
-	require.NotNil(t, stores.nextWakes[0])
-	require.WithinDuration(t, time.Unix(10_000, 0).Add(5*time.Minute), *stores.nextWakes[0], time.Second)
+	require.Equal(t, []string{"agent-disabled"}, stores.blockedCodes)
+	require.Nil(t, stores.nextWakes[0])
 }
 
 // The hourly token budget stops model spend before the wake starts.
@@ -219,7 +189,7 @@ func TestHostBlocksOnTheTokenBudget(t *testing.T) {
 	engine := &fakeEngine{}
 	runner := testRunner(stores, engine)
 
-	runner.host(context.Background(), testSettings(), testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Zero(t, engine.called)
 	require.Equal(t, []string{"token-budget"}, stores.blockedCodes)
@@ -231,18 +201,19 @@ func TestHostSchedulesTheIdleWake(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{}
-	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, TokensUsed: 120, ContextTokens: 500, EngineState: &storepb.QualityAgentSessionEngineState{}}}
+	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
 	runner := testRunner(stores, engine)
 
-	runner.host(context.Background(), testSettings(), testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Equal(t, 1, engine.called)
 	require.Len(t, stores.progress, 1)
 	require.Equal(t, int32(1), stores.progress[0].WakeCountIncrement)
-	require.Equal(t, int64(120), stores.progress[0].TokensUsed)
 	require.Empty(t, stores.states)
 	require.Len(t, stores.releasedWakes, 1)
-	require.WithinDuration(t, time.Unix(10_000, 0).Add(time.Hour), *stores.releasedWakes[0], time.Second)
+	require.WithinDuration(t,
+		time.Unix(10_000, 0).Add(dataquality.DefaultAgentRunnerIdleWakeSeconds*time.Second),
+		*stores.releasedWakes[0], time.Second)
 }
 
 // An event that arrived while the wake ran is visible as a newer message seq, so the
@@ -254,7 +225,7 @@ func TestHostWakesAgainWhenAnEventArrived(t *testing.T) {
 	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
 	runner := testRunner(stores, engine)
 
-	runner.host(context.Background(), testSettings(), testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Len(t, stores.releasedWakes, 1)
 	require.WithinDuration(t, time.Unix(10_000, 0), *stores.releasedWakes[0], time.Second)
@@ -274,7 +245,7 @@ func TestHostParksABlockedSession(t *testing.T) {
 	}}
 	runner := testRunner(stores, engine)
 
-	runner.host(context.Background(), testSettings(), testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Equal(t, []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED}, stores.states)
 	require.Equal(t, []string{"model-reported"}, stores.blockedCodes)
@@ -290,11 +261,53 @@ func TestHostBlocksASessionOutsideTheAllowlist(t *testing.T) {
 	engine := &fakeEngine{}
 	runner := testRunner(stores, engine)
 	stores.databases = []string{"instances/other/databases/d9"}
-	settings := testSettings()
 
-	runner.host(context.Background(), settings, testSession())
+	runner.host(context.Background(), testSession())
 
 	require.Zero(t, engine.called)
 	require.Equal(t, []string{"out-of-scope"}, stores.blockedCodes)
 	require.Nil(t, stores.nextWakes[0])
+}
+
+// The lease sweep's restart-limit parks are escalated to one owner attention per
+// session through the existing sink.
+func TestRunOnceEscalatesRestartLimitSessions(t *testing.T) {
+	t.Parallel()
+
+	blocked := &store.QualityAgentSessionMessage{
+		ID:            2,
+		ResourceID:    "session-2",
+		BlockedCode:   "restart-limit",
+		BlockedReason: "the process restarted while this session was running too many times",
+	}
+	stores := &fakeStore{blockedSessions: []*store.QualityAgentSessionMessage{blocked}}
+	runner := testRunner(stores, &fakeEngine{})
+	var escalated []string
+	runner.SetAttentionSink(func(_ context.Context, session *store.QualityAgentSessionMessage, code, _ string) {
+		escalated = append(escalated, session.ResourceID+":"+code)
+	})
+
+	runner.runOnce(context.Background())
+
+	require.Equal(t, []string{"session-2:restart-limit"}, escalated)
+}
+
+// A session skipped because its agent is at the concurrent-session budget is handed
+// back to the queue instead of being parked, so a claim batch larger than the budget
+// cannot livelock every session in the batch.
+func TestHostRequeuesASessionOverTheAgentConcurrencyBudget(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{}
+	engine := &fakeEngine{}
+	runner := testRunner(stores, engine)
+	stores.agent.MaxConcurrentSessions = 1
+	runner.agentSlots = map[int64]int{stores.agent.ID: 1}
+
+	runner.host(context.Background(), testSession())
+
+	require.Empty(t, stores.blockedCodes)
+	require.Zero(t, engine.called)
+	require.Len(t, stores.releasedWakes, 1)
+	require.NotNil(t, stores.releasedWakes[0])
 }

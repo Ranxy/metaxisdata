@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sync/atomic"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentreport"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
@@ -28,33 +28,34 @@ const (
 // Store is the slice of *store.Store the report runner needs.
 type Store interface {
 	GetWorkspaceID(ctx context.Context) (string, error)
-	ListQualityAgentConfigs(ctx context.Context) ([]*store.QualityAgentConfigMessage, error)
 	ListQualityAgents(ctx context.Context) ([]*store.QualityAgentMessage, error)
 	ListQualityAgentDatabasesByAgent(ctx context.Context) (map[int64][]string, error)
-	GetQualityAgentReportByPeriod(ctx context.Context, agentID int64, trigger store.QualityAgentReportTrigger, periodKey string) (*store.QualityAgentReportMessage, error)
+	GetQualityAgentReportByPeriod(ctx context.Context, agentID int64, periodKey string) (*store.QualityAgentReportMessage, error)
 	CreateQualityAgentReport(ctx context.Context, message *store.QualityAgentReportMessage) (*store.QualityAgentReportMessage, bool, error)
 	BuildQualityAgentReportSnapshot(ctx context.Context, agentID int64, databases []string, since, until time.Time) (*store.QualityAgentReportSnapshot, error)
 	EnsureQualityAgentConversation(ctx context.Context, workspaceID string, agentID int64) (*store.QualityAgentSessionMessage, error)
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
-	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	CreateQualityAgentAttention(ctx context.Context, message *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error)
 }
 
 // Runner generates the agents' scheduled reports.
 type Runner struct {
-	store    Store
-	notifier *notification.Service
-	now      func() time.Time
-	tick     time.Duration
-	lastTick atomic.Int64
+	store        Store
+	loadSettings func(ctx context.Context) (dataquality.Settings, error)
+	notifier     *notification.Service
+	now          func() time.Time
+	tick         time.Duration
 }
 
 // NewRunner creates the report runner.
 func NewRunner(stores *store.Store, notifier *notification.Service) *Runner {
 	return &Runner{
-		store:    stores,
+		store: stores,
+		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
+			return dataquality.LoadSettings(ctx, stores)
+		},
 		notifier: notifier,
 		now:      func() time.Time { return time.Now().UTC() },
 		tick:     tickInterval,
@@ -63,15 +64,6 @@ func NewRunner(stores *store.Store, notifier *notification.Service) *Runner {
 
 // Name identifies the runner in logs.
 func (*Runner) Name() string { return "qualityagent" }
-
-// LastTick is the process-local liveness signal for the status read.
-func (r *Runner) LastTick() time.Time {
-	millis := r.lastTick.Load()
-	if millis == 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, millis).UTC()
-}
 
 // Run drives the loop until ctx is cancelled.
 func (r *Runner) Run(ctx context.Context) {
@@ -89,17 +81,19 @@ func (r *Runner) Run(ctx context.Context) {
 
 func (r *Runner) runOnce(ctx context.Context) {
 	now := r.now()
-	r.lastTick.Store(now.UnixNano())
 	ctx, cancel := context.WithTimeout(ctx, passTimeout)
 	defer cancel()
+	settings, err := r.loadSettings(ctx)
+	if err != nil {
+		slog.Error("failed to load data quality settings for the agent report runner", log.WithError(err))
+		return
+	}
+	if !settings.AgentRunnerEnabled {
+		return
+	}
 	workspaceID, err := r.store.GetWorkspaceID(ctx)
 	if err != nil {
 		slog.Error("failed to resolve the workspace for the agent report runner", log.WithError(err))
-		return
-	}
-	configs, err := r.store.ListQualityAgentConfigs(ctx)
-	if err != nil {
-		slog.Error("failed to read the agent configs for reports", log.WithError(err))
 		return
 	}
 	agents, err := r.store.ListQualityAgents(ctx)
@@ -107,60 +101,52 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Error("failed to read the agents for reports", log.WithError(err))
 		return
 	}
-	enabled := make(map[int64]bool, len(agents))
-	for _, agent := range agents {
-		enabled[agent.ID] = agent.Enabled
-	}
 	scopes, err := r.store.ListQualityAgentDatabasesByAgent(ctx)
 	if err != nil {
 		slog.Error("failed to read the agent scopes for reports", log.WithError(err))
 		return
 	}
-	for _, config := range configs {
-		if !enabled[config.AgentID] || config.State != store.QualityAgentStateActive ||
-			!slices.Contains(config.Capabilities, "patrol") {
+	for _, agent := range agents {
+		if agent.State != store.QualityAgentStateActive || !slices.Contains(agent.Capabilities, "patrol") {
 			continue
 		}
-		databases := scopes[config.AgentID]
+		databases := scopes[agent.ID]
 		if len(databases) == 0 {
 			continue
 		}
-		if err := r.reportAgent(ctx, workspaceID, config, databases, now); err != nil {
+		if err := r.reportAgent(ctx, workspaceID, agent, databases, now); err != nil {
 			slog.Warn("failed to generate an agent report",
-				slog.Int64("agent", config.AgentID), log.WithError(err))
+				slog.Int64("agent", agent.ID), log.WithError(err))
 		}
 	}
 }
 
-func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *store.QualityAgentConfigMessage, databases []string, now time.Time) error {
-	schedule, ok, err := dueReport(config, now)
+func (r *Runner) reportAgent(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, databases []string, now time.Time) error {
+	schedule, ok, err := dueReport(agent, now)
 	if err != nil || !ok {
 		return err
 	}
-	existing, err := r.store.GetQualityAgentReportByPeriod(ctx, config.AgentID,
-		store.QualityAgentReportTriggerScheduled, schedule.periodKey)
+	existing, err := r.store.GetQualityAgentReportByPeriod(ctx, agent.ID, schedule.periodKey)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return nil
 	}
-	snapshot, err := r.store.BuildQualityAgentReportSnapshot(ctx, config.AgentID, databases,
+	snapshot, err := r.store.BuildQualityAgentReportSnapshot(ctx, agent.ID, databases,
 		schedule.periodStart, schedule.periodEnd)
 	if err != nil {
 		return err
 	}
-	language := r.ownerLanguage(ctx, config)
+	language := r.ownerLanguage(ctx, agent)
 	body := agentreport.Render(snapshot, schedule.periodStart, schedule.periodEnd, schedule.location, language)
 	report, created, err := r.store.CreateQualityAgentReport(ctx, &store.QualityAgentReportMessage{
 		WorkspaceID:          workspaceID,
-		AgentID:              config.AgentID,
-		Trigger:              store.QualityAgentReportTriggerScheduled,
+		AgentID:              agent.ID,
 		PeriodKind:           schedule.periodKind,
 		PeriodKey:            schedule.periodKey,
 		PeriodStart:          schedule.periodStart,
 		PeriodEnd:            schedule.periodEnd,
-		State:                store.QualityAgentReportStateReady,
 		Scope:                databases,
 		TargetCount:          snapshot.TargetCount,
 		CoveredTargetCount:   snapshot.CoveredTargetCount,
@@ -179,7 +165,7 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 	if err != nil || !created {
 		return err
 	}
-	conversation, err := r.store.EnsureQualityAgentConversation(ctx, workspaceID, config.AgentID)
+	conversation, err := r.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
 	if err != nil {
 		return err
 	}
@@ -201,17 +187,17 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 	if _, err := r.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, now); err != nil {
 		return err
 	}
-	r.escalateAnomaly(ctx, workspaceID, config, report, snapshot)
+	r.escalateAnomaly(ctx, workspaceID, agent, report, snapshot)
 	return nil
 }
 
 // ownerLanguage reads the owner's chosen server-prose language; an absent owner or
 // profile falls back to English.
-func (r *Runner) ownerLanguage(ctx context.Context, config *store.QualityAgentConfigMessage) string {
-	if config == nil || config.OwnerPrincipalID == nil {
+func (r *Runner) ownerLanguage(ctx context.Context, agent *store.QualityAgentMessage) string {
+	if agent == nil || agent.OwnerPrincipalID == nil {
 		return agentlang.English
 	}
-	owner, err := r.store.GetUserByID(ctx, int(*config.OwnerPrincipalID))
+	owner, err := r.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	if err != nil {
 		return agentlang.English
 	}
@@ -219,24 +205,22 @@ func (r *Runner) ownerLanguage(ctx context.Context, config *store.QualityAgentCo
 }
 
 // escalateAnomaly opens one owner attention when a report has failures or new
-// issues. The report itself is the reference; the notification is the doorbell.
-func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config *store.QualityAgentConfigMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot) {
+// issues; the notification is the doorbell.
+func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot) {
 	if r.notifier == nil {
 		return
 	}
 	if snapshot.FailedCount == 0 && snapshot.NewIssueCount == 0 {
 		return
 	}
-	agent, err := r.store.GetQualityAgentByID(ctx, config.AgentID)
-	if err != nil || agent == nil {
+	if agent == nil {
 		return
 	}
-	language := r.ownerLanguage(ctx, config)
+	language := r.ownerLanguage(ctx, agent)
 	attention, created, err := r.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 		WorkspaceID: workspaceID,
-		AgentID:     config.AgentID,
+		AgentID:     agent.ID,
 		Kind:        store.QualityAgentAttentionKindReportAnomaly,
-		Reference:   "qualityAgentReports/" + report.ResourceID,
 		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindReportAnomaly),
 		Question:    agentlang.ReportQuestion(language, snapshot.FailedCount, snapshot.NewIssueCount),
 		DedupeKey:   "report:" + report.ResourceID,
@@ -253,8 +237,8 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config
 		Question:  attention.Question,
 	}
 	dedupeKey := "dqagent:" + attention.ResourceID
-	if config.OwnerPrincipalID != nil {
-		if sendErr := r.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+	if agent.OwnerPrincipalID != nil {
+		if sendErr := r.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
 			slog.Warn("failed to send a report anomaly notification", log.WithError(sendErr))
 		}
 	} else if sendErr := r.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
@@ -270,21 +254,21 @@ type reportSchedule struct {
 	location    *time.Location
 }
 
-func dueReport(config *store.QualityAgentConfigMessage, now time.Time) (reportSchedule, bool, error) {
-	if config.ReportFrequency != store.QualityAgentReportFrequencyDaily &&
-		config.ReportFrequency != store.QualityAgentReportFrequencyWeekly {
+func dueReport(agent *store.QualityAgentMessage, now time.Time) (reportSchedule, bool, error) {
+	if agent.ReportFrequency != store.QualityAgentReportFrequencyDaily &&
+		agent.ReportFrequency != store.QualityAgentReportFrequencyWeekly {
 		return reportSchedule{}, false, nil
 	}
-	location, err := time.LoadLocation(config.ReportTimezone)
+	location, err := time.LoadLocation(agent.ReportTimezone)
 	if err != nil {
-		return reportSchedule{}, false, fmt.Errorf("invalid report timezone %q: %w", config.ReportTimezone, err)
+		return reportSchedule{}, false, fmt.Errorf("invalid report timezone %q: %w", agent.ReportTimezone, err)
 	}
-	hour, minute, err := parseClock(config.ReportTime)
+	hour, minute, err := parseClock(agent.ReportTime)
 	if err != nil {
 		return reportSchedule{}, false, err
 	}
 	localNow := now.In(location)
-	switch config.ReportFrequency {
+	switch agent.ReportFrequency {
 	case store.QualityAgentReportFrequencyDaily:
 		scheduled := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), hour, minute, 0, 0, location)
 		if localNow.Before(scheduled) {
@@ -298,7 +282,7 @@ func dueReport(config *store.QualityAgentConfigMessage, now time.Time) (reportSc
 			location:    location,
 		}, true, nil
 	case store.QualityAgentReportFrequencyWeekly:
-		weekday := time.Weekday(int(config.ReportWeekday) % 7)
+		weekday := time.Weekday(int(agent.ReportWeekday) % 7)
 		scheduled := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), hour, minute, 0, 0, location)
 		for scheduled.Weekday() != weekday {
 			scheduled = scheduled.AddDate(0, 0, -1)

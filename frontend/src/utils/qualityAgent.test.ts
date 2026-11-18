@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  qualityAgentDiagnosticsRoute,
   qualityAgentName,
   qualityAgentPath,
   qualityAgentRoute,
@@ -19,10 +18,6 @@ describe("quality agent route helpers", () => {
       name: "QualityAgent",
       params: { workspace: "ws-1", agentId: "agent-1" },
     });
-    expect(qualityAgentDiagnosticsRoute(name)).toEqual({
-      name: "QualityAgentDiagnostics",
-      params: { workspace: "ws-1", agentId: "agent-1" },
-    });
   });
 
   it("builds the resource name and product path", () => {
@@ -33,9 +28,6 @@ describe("quality agent route helpers", () => {
   it("falls back to the agent list for a malformed name", () => {
     expect(qualityAgentRouteParams("qualityAgents/agent-1")).toBeUndefined();
     expect(qualityAgentRoute("qualityAgents/agent-1")).toEqual({
-      name: "QualityAgents",
-    });
-    expect(qualityAgentDiagnosticsRoute("qualityAgents/agent-1")).toEqual({
       name: "QualityAgents",
     });
     expect(qualityAgentPath("qualityAgents/agent-1")).toBe(

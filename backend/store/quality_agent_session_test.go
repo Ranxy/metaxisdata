@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"reflect"
 	"testing"
@@ -41,7 +40,7 @@ func TestRetryableSessionBlockedCodes(t *testing.T) {
 	t.Parallel()
 
 	codes := retryableSessionBlockedCodes()
-	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "autonomy-off", "internal-error", "concurrency-limit"}, codes)
+	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "internal-error", "concurrency-limit"}, codes)
 	require.NotContains(t, codes, "needs-human")
 	require.NotContains(t, codes, "restart-limit")
 	require.NotContains(t, codes, "model-reported")
@@ -121,11 +120,10 @@ func (f *fakeScanner) Scan(dest ...any) error {
 func sessionScanValues(engineState []byte) []any {
 	return []any{
 		int64(7), "res", "ws", "target-guid", int16(1), "instances/i/databases/d", int64(3),
-		int32(42), "objective", int16(1), "", "", int32(4), int32(9), int64(1234),
-		int32(5000), "summary text", int64(11), int64(12), engineState,
-		(*time.Time)(nil), (*time.Time)(nil), int32(0), (*int32)(nil),
+		int32(42), int16(1), "", "", int32(4), int32(9), "summary text", int64(11),
+		int64(12), engineState, (*time.Time)(nil), (*time.Time)(nil), int32(0),
 		time.Unix(1000, 0).UTC(), time.Unix(2000, 0).UTC(), (*time.Time)(nil),
-		int16(1), int16(1), int16(1),
+		int16(1), int16(1),
 	}
 }
 
@@ -161,7 +159,7 @@ func messageScanValues(toolCalls []byte) []any {
 		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT),
 		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL),
 		"the answer", toolCalls, "call-1", "get_target_summary", "", int32(120),
-		int32(100), int32(20), "", false, "wake:2:turn:1", sql.NullInt32{}, time.Unix(4000, 0).UTC(),
+		"", false, "wake:2:turn:1", time.Unix(4000, 0).UTC(),
 	}
 }
 

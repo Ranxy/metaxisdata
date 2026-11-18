@@ -8,10 +8,10 @@ import "github.com/Ranxy/metaxisdata/backend/common/permission"
 const (
 	WorkspaceAdminRole  = "workspaceAdmin"
 	WorkspaceMemberRole = "workspaceMember"
-	// QualityAgentRole is the minimum an autonomous quality agent needs: read the
-	// plans, checks and published versions it reasons about, and write plan
-	// declarations and proposed change requests. It deliberately cannot publish,
-	// decide, edit rules or touch settings.
+	// QualityAgentRole is the IAM actor of the built-in quality agent. It is the
+	// minimum the internal agent needs: read the plans and checks it reasons about,
+	// and write the suggestions and plan declarations the agent proposes. It
+	// deliberately cannot publish, approve, edit rules or touch settings.
 	QualityAgentRole = "qualityAgent"
 )
 
@@ -105,7 +105,7 @@ var PredefinedRoles = []*RoleMessage{
 	{
 		ResourceID:  QualityAgentRole,
 		Name:        "Quality agent",
-		Description: "Autonomous quality work: read quality plans and checks, write plan declarations, proposed change requests, evidence-backed investigations and check drafts. It cannot publish, approve or edit rules.",
+		Description: "The built-in quality agent's internal IAM actor: read quality plans and checks, write suggested checks and plan declarations. It cannot publish, approve or edit rules.",
 		Permissions: qualityAgentPermissions,
 	},
 }

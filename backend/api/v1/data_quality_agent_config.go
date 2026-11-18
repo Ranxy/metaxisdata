@@ -11,6 +11,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -50,26 +51,19 @@ func (s *DataQualityService) UpdateQualityAgent(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
-	if err != nil {
-		return nil, err
-	}
-	if current == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the agent is not a built-in agent; it has no runtime configuration"))
-	}
 	databases, err := s.store.ListQualityAgentDatabases(ctx, agent.ID)
 	if err != nil {
 		return nil, err
 	}
-	next, nextDatabases, err := applyQualityAgentUpdate(req.Msg.GetQualityAgent(), current, databases, req.Msg.GetUpdateMask().GetPaths())
+	next, nextDatabases, err := applyQualityAgentUpdate(req.Msg.GetQualityAgent(), agent, databases, req.Msg.GetUpdateMask().GetPaths())
 	if err != nil {
 		return nil, err
 	}
 	if err := s.validateQualityAgentOwner(ctx, next.OwnerPrincipalID); err != nil {
 		return nil, err
 	}
-	if _, err := s.store.UpdateQualityAgentConfig(ctx, next); err != nil {
+	updated, err := s.store.UpdateQualityAgentConfig(ctx, next)
+	if err != nil {
 		return nil, err
 	}
 	if err := s.store.ReplaceQualityAgentDatabases(ctx, agent.ID, nextDatabases); err != nil {
@@ -87,23 +81,23 @@ func (s *DataQualityService) UpdateQualityAgent(ctx context.Context, req *connec
 		}
 	}
 	if updateName || updateDescription {
-		name := agent.DisplayName
+		name := updated.DisplayName
 		if updateName {
 			name = req.Msg.GetQualityAgent().GetDisplayName()
 		}
-		description := agent.Description
+		description := updated.Description
 		if updateDescription {
 			description = req.Msg.GetQualityAgent().GetDescription()
 		}
-		updated, err := s.store.UpdateQualityAgentIdentity(ctx, resourceID, name, description)
+		identityUpdated, err := s.store.UpdateQualityAgentIdentity(ctx, resourceID, name, description)
 		if err != nil {
 			return nil, err
 		}
-		if updated != nil {
-			agent = updated
+		if identityUpdated != nil {
+			updated = identityUpdated
 		}
 	}
-	view, err := s.qualityAgentView(ctx, workspaceID, agent)
+	view, err := s.qualityAgentView(ctx, workspaceID, updated)
 	if err != nil {
 		return nil, err
 	}
@@ -129,35 +123,47 @@ func (s *DataQualityService) transitionQualityAgentState(ctx context.Context, na
 	if err != nil {
 		return nil, err
 	}
-	config, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
-	if err != nil {
-		return nil, err
-	}
-	if config == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the agent is not a built-in agent; it has no runtime configuration"))
-	}
-	if !s.qualityAgentOwnerOrAdmin(ctx, config) {
+	if !s.qualityAgentOwnerOrAdmin(ctx, agent) {
 		return nil, connect.NewError(connect.CodePermissionDenied,
 			errors.New("only the agent's owner or an administrator may start or pause it"))
 	}
-	if !agent.Enabled || config.State == store.QualityAgentStateDisabled {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the agent is disabled and cannot be started"))
-	}
-	next := store.QualityAgentStatePaused
 	if start {
-		next = store.QualityAgentStateActive
-	}
-	if config.State == next {
-		view, err := s.qualityAgentView(ctx, workspaceID, agent)
-		if err != nil {
-			return nil, err
+		switch agent.State {
+		case store.QualityAgentStateDraft, store.QualityAgentStatePaused:
+			updated, err := s.store.UpdateQualityAgentState(ctx, agent.ID, store.QualityAgentStateActive)
+			if err != nil {
+				return nil, err
+			}
+			agent = updated
+		case store.QualityAgentStateActive:
+			// Idempotent: an already active agent stays active.
+		case store.QualityAgentStateDisabled:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the agent is disabled and cannot be started"))
+		default:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the agent state does not allow starting"))
 		}
-		return connect.NewResponse(view), nil
-	}
-	if _, err := s.store.UpdateQualityAgentState(ctx, agent.ID, next); err != nil {
-		return nil, err
+	} else {
+		switch agent.State {
+		case store.QualityAgentStateActive:
+			updated, err := s.store.UpdateQualityAgentState(ctx, agent.ID, store.QualityAgentStatePaused)
+			if err != nil {
+				return nil, err
+			}
+			agent = updated
+		case store.QualityAgentStatePaused:
+			// Idempotent: an already paused agent stays paused.
+		case store.QualityAgentStateDraft:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("a draft agent is not running; nothing to pause"))
+		case store.QualityAgentStateDisabled:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the agent is disabled and cannot be paused"))
+		default:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the agent state does not allow pausing"))
+		}
 	}
 	view, err := s.qualityAgentView(ctx, workspaceID, agent)
 	if err != nil {
@@ -180,11 +186,7 @@ func (s *DataQualityService) fetchQualityAgentForCaller(ctx context.Context, res
 	if admin {
 		return agent
 	}
-	config, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
-	if err != nil || config == nil || config.OwnerPrincipalID == nil {
-		return nil
-	}
-	if int32(currentUserID(ctx)) != *config.OwnerPrincipalID {
+	if agent.OwnerPrincipalID == nil || int32(currentUserID(ctx)) != *agent.OwnerPrincipalID {
 		return nil
 	}
 	return agent
@@ -205,31 +207,22 @@ func (s *DataQualityService) callerIsQualityAgentAdmin(ctx context.Context) (boo
 
 // qualityAgentView renders the identity plus configuration and scope.
 func (s *DataQualityService) qualityAgentView(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage) (*v1pb.QualityAgent, error) {
-	config, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
+	databases, err := s.store.ListQualityAgentDatabases(ctx, agent.ID)
 	if err != nil {
 		return nil, err
 	}
-	var databases []string
-	if config != nil {
-		databases, err = s.store.ListQualityAgentDatabases(ctx, agent.ID)
-		if err != nil {
-			return nil, err
-		}
+	view := convertQualityAgentToV1(workspaceID, agent, databases)
+	conversation, err := s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
+	if err != nil {
+		return nil, err
 	}
-	view := convertQualityAgentToV1(workspaceID, agent, config, databases)
-	if config != nil {
-		conversation, err := s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
-		if err != nil {
-			return nil, err
-		}
-		view.Conversation = qualityAgentConversationName(workspaceID, conversation)
-	}
+	view.Conversation = qualityAgentConversationName(workspaceID, conversation)
 	return view, nil
 }
 
 // parseQualityAgentConfig validates and converts the runtime fields of a create
 // or update request. The identity fields are handled by the caller.
-func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentConfigMessage, []string, error) {
+func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessage, []string, error) {
 	if agent == nil {
 		return nil, nil, connectErrorInvalid("an agent is required")
 	}
@@ -245,10 +238,10 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentConfi
 	if err := agentcapability.Validate(capabilities); err != nil {
 		return nil, nil, connectErrorInvalid("%v", err)
 	}
-	config := &store.QualityAgentConfigMessage{
+	config := &store.QualityAgentMessage{
 		OwnerPrincipalID:            principalIDPointer(owner),
 		Capabilities:                capabilities,
-		ProviderProfile:             strings.TrimSpace(agent.GetProviderProfile()),
+		AdoptionMode:                store.QualityAgentAdoptionModePaused,
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
@@ -302,10 +295,8 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentConfi
 		config.AdoptionAllowCritical = adoption.GetAllowCritical()
 	}
 	if budget := agent.GetBudget(); budget != nil {
-		if budget.GetTokensPerHour() < 0 || budget.GetWakesPerHour() < 0 ||
-			budget.GetMaxConcurrentSessions() < 0 || budget.GetMaxNewSessionsPerHour() < 0 ||
-			budget.GetMaxActiveSessions() < 0 || budget.GetConversationMessagesPerHour() < 0 {
-			return nil, nil, connectErrorInvalid("an agent budget cannot be negative")
+		if err := validateQualityAgentBudget(budget); err != nil {
+			return nil, nil, err
 		}
 		config.TokensPerHour = budget.GetTokensPerHour()
 		config.WakesPerHour = budget.GetWakesPerHour()
@@ -317,10 +308,34 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentConfi
 	return config, databases, nil
 }
 
-// applyQualityAgentUpdate merges the masked fields into the current config, then
+// validateQualityAgentBudget keeps a per-agent budget inside the same bounds the
+// former workspace settings enforced; zero keeps meaning "use the server default".
+func validateQualityAgentBudget(budget *v1pb.QualityAgentBudget) error {
+	if budget.GetTokensPerHour() < 0 || budget.GetTokensPerHour() > dataquality.MaxAgentRunnerTokensPerHour {
+		return connectErrorInvalid("the hourly token budget must be between 0 and %d", dataquality.MaxAgentRunnerTokensPerHour)
+	}
+	if budget.GetWakesPerHour() < 0 || budget.GetWakesPerHour() > dataquality.MaxAgentRunnerWakesPerHour {
+		return connectErrorInvalid("the hourly wake budget must be between 0 and %d", dataquality.MaxAgentRunnerWakesPerHour)
+	}
+	if budget.GetMaxConcurrentSessions() < 0 || budget.GetMaxConcurrentSessions() > dataquality.MaxAgentRunnerConcurrentSessions {
+		return connectErrorInvalid("the concurrent session budget must be between 0 and %d", dataquality.MaxAgentRunnerConcurrentSessions)
+	}
+	if budget.GetMaxNewSessionsPerHour() < 0 || budget.GetMaxNewSessionsPerHour() > dataquality.MaxAgentRunnerNewSessionsPerHour {
+		return connectErrorInvalid("the new sessions per hour budget must be between 0 and %d", dataquality.MaxAgentRunnerNewSessionsPerHour)
+	}
+	if budget.GetMaxActiveSessions() < 0 || budget.GetMaxActiveSessions() > dataquality.MaxAgentRunnerActiveSessions {
+		return connectErrorInvalid("the active sessions budget must be between 0 and %d", dataquality.MaxAgentRunnerActiveSessions)
+	}
+	if budget.GetConversationMessagesPerHour() < 0 || budget.GetConversationMessagesPerHour() > dataquality.MaxAgentRunnerConversationMessagesPerHour {
+		return connectErrorInvalid("the conversation messages per hour budget must be between 0 and %d", dataquality.MaxAgentRunnerConversationMessagesPerHour)
+	}
+	return nil
+}
+
+// applyQualityAgentUpdate merges the masked fields into the current agent, then
 // runs the same validation as create. The mask names a field of QualityAgent
 // (snake_case proto field names).
-func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAgentConfigMessage, databases []string, paths []string) (*store.QualityAgentConfigMessage, []string, error) {
+func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAgentMessage, databases []string, paths []string) (*store.QualityAgentMessage, []string, error) {
 	if patch == nil {
 		return nil, nil, connectErrorInvalid("an agent is required")
 	}
@@ -338,8 +353,6 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 				merged.Databases = patch.GetDatabases()
 			case "capabilities":
 				merged.Capabilities = patch.GetCapabilities()
-			case "provider_profile":
-				merged.ProviderProfile = patch.GetProviderProfile()
 			case "report_schedule":
 				merged.ReportSchedule = patch.GetReportSchedule()
 			case "adoption":
@@ -355,16 +368,17 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 	if err != nil {
 		return nil, nil, err
 	}
+	config.ID = current.ID
 	return config, nextDatabases, nil
 }
 
 // qualityAgentOwnerOrAdmin is the caller check shared by the owner-manageable
 // operations (start/pause). ACL alone cannot express "owner of this row".
-func (s *DataQualityService) qualityAgentOwnerOrAdmin(ctx context.Context, config *store.QualityAgentConfigMessage) bool {
-	if config == nil {
+func (s *DataQualityService) qualityAgentOwnerOrAdmin(ctx context.Context, agent *store.QualityAgentMessage) bool {
+	if agent == nil {
 		return false
 	}
-	if config.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *config.OwnerPrincipalID {
+	if agent.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *agent.OwnerPrincipalID {
 		return true
 	}
 	admin, err := s.callerIsQualityAgentAdmin(ctx)
@@ -388,37 +402,36 @@ func (s *DataQualityService) validateQualityAgentOwner(ctx context.Context, owne
 	return nil
 }
 
-// qualityAgentConfigFields renders the editable fields of a stored config as the
+// qualityAgentConfigFields renders the editable fields of a stored agent as the
 // v1 shape parseQualityAgentConfig consumes.
-func qualityAgentConfigFields(config *store.QualityAgentConfigMessage, databases []string) *v1pb.QualityAgent {
-	if config == nil {
+func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []string) *v1pb.QualityAgent {
+	if agent == nil {
 		return &v1pb.QualityAgent{}
 	}
 	return &v1pb.QualityAgent{
-		Owner:           formatQualityAgentOwner(config.OwnerPrincipalID),
-		Databases:       databases,
-		Capabilities:    config.Capabilities,
-		ProviderProfile: config.ProviderProfile,
+		Owner:        formatQualityAgentOwner(agent.OwnerPrincipalID),
+		Databases:    databases,
+		Capabilities: agent.Capabilities,
 		ReportSchedule: &v1pb.QualityAgentReportSchedule{
-			Frequency: qualityAgentReportFrequencyToV1(config.ReportFrequency),
-			Time:      config.ReportTime,
-			Timezone:  config.ReportTimezone,
-			DayOfWeek: v1pb.DayOfWeek(config.ReportWeekday),
+			Frequency: qualityAgentReportFrequencyToV1(agent.ReportFrequency),
+			Time:      agent.ReportTime,
+			Timezone:  agent.ReportTimezone,
+			DayOfWeek: v1pb.DayOfWeek(agent.ReportWeekday),
 		},
 		Adoption: &v1pb.QualityAgentAdoptionSetting{
-			Mode:                qualityAgentAdoptionModeToV1(config.AdoptionMode),
-			RuleTypes:           qualityAgentRuleTypesToV1(config.AdoptionRuleTypes),
-			ConfidenceThreshold: config.AdoptionConfidenceThreshold,
-			MaxPerDay:           config.AdoptionMaxPerDay,
-			AllowCritical:       config.AdoptionAllowCritical,
+			Mode:                qualityAgentAdoptionModeToV1(agent.AdoptionMode),
+			RuleTypes:           qualityAgentRuleTypesToV1(agent.AdoptionRuleTypes),
+			ConfidenceThreshold: agent.AdoptionConfidenceThreshold,
+			MaxPerDay:           agent.AdoptionMaxPerDay,
+			AllowCritical:       agent.AdoptionAllowCritical,
 		},
 		Budget: &v1pb.QualityAgentBudget{
-			TokensPerHour:               config.TokensPerHour,
-			WakesPerHour:                config.WakesPerHour,
-			MaxConcurrentSessions:       config.MaxConcurrentSessions,
-			MaxNewSessionsPerHour:       config.MaxNewSessionsPerHour,
-			MaxActiveSessions:           config.MaxActiveSessions,
-			ConversationMessagesPerHour: config.ConversationMessagesPerHour,
+			TokensPerHour:               agent.TokensPerHour,
+			WakesPerHour:                agent.WakesPerHour,
+			MaxConcurrentSessions:       agent.MaxConcurrentSessions,
+			MaxNewSessionsPerHour:       agent.MaxNewSessionsPerHour,
+			MaxActiveSessions:           agent.MaxActiveSessions,
+			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
 		},
 	}
 }
@@ -478,25 +491,25 @@ func containsCapability(values []string, target string) bool {
 	return false
 }
 
-func validateQualityAgentReportSchedule(config *store.QualityAgentConfigMessage) error {
-	switch config.ReportFrequency {
+func validateQualityAgentReportSchedule(agent *store.QualityAgentMessage) error {
+	switch agent.ReportFrequency {
 	case store.QualityAgentReportFrequencyUnspecified, store.QualityAgentReportFrequencyOff:
 		return nil
 	case store.QualityAgentReportFrequencyDaily, store.QualityAgentReportFrequencyWeekly:
 	default:
 		return connectErrorInvalid("unknown report frequency")
 	}
-	if _, err := time.Parse("15:04", config.ReportTime); err != nil {
+	if _, err := time.Parse("15:04", agent.ReportTime); err != nil {
 		return connectErrorInvalid("report time must be HH:MM")
 	}
-	if config.ReportTimezone == "" {
+	if agent.ReportTimezone == "" {
 		return connectErrorInvalid("report timezone is required while reporting is enabled")
 	}
-	if _, err := time.LoadLocation(config.ReportTimezone); err != nil {
-		return connectErrorInvalid("invalid report timezone %q", config.ReportTimezone)
+	if _, err := time.LoadLocation(agent.ReportTimezone); err != nil {
+		return connectErrorInvalid("invalid report timezone %q", agent.ReportTimezone)
 	}
-	if config.ReportFrequency == store.QualityAgentReportFrequencyWeekly &&
-		(config.ReportWeekday < 1 || config.ReportWeekday > 7) {
+	if agent.ReportFrequency == store.QualityAgentReportFrequencyWeekly &&
+		(agent.ReportWeekday < 1 || agent.ReportWeekday > 7) {
 		return connectErrorInvalid("a weekly report needs a weekday")
 	}
 	return nil
@@ -549,50 +562,44 @@ func formatQualityAgentOwner(owner *int32) string {
 	return common.FormatUserUID(int(*owner))
 }
 
-// convertQualityAgentToV1 renders one agent. The token is never part of this shape.
-func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessage, config *store.QualityAgentConfigMessage, databases []string) *v1pb.QualityAgent {
+// convertQualityAgentToV1 renders one agent. State is the only lifecycle truth.
+func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessage, databases []string) *v1pb.QualityAgent {
 	if agent == nil {
 		return nil
 	}
-	view := &v1pb.QualityAgent{
-		Name:        common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
-		DisplayName: agent.DisplayName,
-		Description: agent.Description,
-		Enabled:     agent.Enabled,
-		CreatedBy:   formatQualityContractPublisher(agent.CreatedBy),
-		CreateTime:  timestamppb.New(agent.CreatedAt),
-		UpdateTime:  timestamppb.New(agent.UpdatedAt),
-		Databases:   databases,
+	return &v1pb.QualityAgent{
+		Name:         common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
+		DisplayName:  agent.DisplayName,
+		Description:  agent.Description,
+		CreatedBy:    formatQualityContractPublisher(agent.CreatedBy),
+		CreateTime:   timestamppb.New(agent.CreatedAt),
+		UpdateTime:   timestamppb.New(agent.UpdatedAt),
+		State:        qualityAgentStateToV1(agent.State),
+		Owner:        formatQualityAgentOwner(agent.OwnerPrincipalID),
+		Databases:    databases,
+		Capabilities: agent.Capabilities,
+		ReportSchedule: &v1pb.QualityAgentReportSchedule{
+			Frequency: qualityAgentReportFrequencyToV1(agent.ReportFrequency),
+			Time:      agent.ReportTime,
+			Timezone:  agent.ReportTimezone,
+			DayOfWeek: v1pb.DayOfWeek(agent.ReportWeekday),
+		},
+		Adoption: &v1pb.QualityAgentAdoptionSetting{
+			Mode:                qualityAgentAdoptionModeToV1(agent.AdoptionMode),
+			RuleTypes:           qualityAgentRuleTypesToV1(agent.AdoptionRuleTypes),
+			ConfidenceThreshold: agent.AdoptionConfidenceThreshold,
+			MaxPerDay:           agent.AdoptionMaxPerDay,
+			AllowCritical:       agent.AdoptionAllowCritical,
+		},
+		Budget: &v1pb.QualityAgentBudget{
+			TokensPerHour:               agent.TokensPerHour,
+			WakesPerHour:                agent.WakesPerHour,
+			MaxConcurrentSessions:       agent.MaxConcurrentSessions,
+			MaxNewSessionsPerHour:       agent.MaxNewSessionsPerHour,
+			MaxActiveSessions:           agent.MaxActiveSessions,
+			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
+		},
 	}
-	if config == nil {
-		return view
-	}
-	view.State = qualityAgentStateToV1(config.State)
-	view.Owner = formatQualityAgentOwner(config.OwnerPrincipalID)
-	view.Capabilities = config.Capabilities
-	view.ProviderProfile = config.ProviderProfile
-	view.ReportSchedule = &v1pb.QualityAgentReportSchedule{
-		Frequency: qualityAgentReportFrequencyToV1(config.ReportFrequency),
-		Time:      config.ReportTime,
-		Timezone:  config.ReportTimezone,
-		DayOfWeek: v1pb.DayOfWeek(config.ReportWeekday),
-	}
-	view.Adoption = &v1pb.QualityAgentAdoptionSetting{
-		Mode:                qualityAgentAdoptionModeToV1(config.AdoptionMode),
-		RuleTypes:           qualityAgentRuleTypesToV1(config.AdoptionRuleTypes),
-		ConfidenceThreshold: config.AdoptionConfidenceThreshold,
-		MaxPerDay:           config.AdoptionMaxPerDay,
-		AllowCritical:       config.AdoptionAllowCritical,
-	}
-	view.Budget = &v1pb.QualityAgentBudget{
-		TokensPerHour:               config.TokensPerHour,
-		WakesPerHour:                config.WakesPerHour,
-		MaxConcurrentSessions:       config.MaxConcurrentSessions,
-		MaxNewSessionsPerHour:       config.MaxNewSessionsPerHour,
-		MaxActiveSessions:           config.MaxActiveSessions,
-		ConversationMessagesPerHour: config.ConversationMessagesPerHour,
-	}
-	return view
 }
 
 func qualityAgentStateToV1(state store.QualityAgentState) v1pb.QualityAgentState {
@@ -642,45 +649,4 @@ func qualityAgentRuleTypesToV1(values []int16) []v1pb.QualityRuleType {
 		out = append(out, v1pb.QualityRuleType(value))
 	}
 	return out
-}
-
-// SetQualityAgentAdoption changes the adoption mode without exposing the rest of
-// the configuration. An owner may turn it off or return it to PAUSED; ACTIVE stays
-// an administrator decision.
-func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *connect.Request[v1pb.SetQualityAgentAdoptionRequest]) (*connect.Response[v1pb.QualityAgent], error) {
-	workspaceID, resourceID, err := s.qualityAgentResourceID(ctx, req.Msg.GetName())
-	if err != nil {
-		return nil, err
-	}
-	agent, config, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
-	if err != nil {
-		return nil, err
-	}
-	if req.Msg.GetAdoption() == nil {
-		return nil, connectErrorInvalid("an adoption setting is required")
-	}
-	mode, err := qualityAgentAdoptionModeFromV1(req.Msg.GetAdoption().GetMode())
-	if err != nil {
-		return nil, err
-	}
-	admin, err := s.callerIsQualityAgentAdmin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if mode == store.QualityAgentAdoptionModeActive && !admin {
-		return nil, connect.NewError(connect.CodePermissionDenied,
-			errors.New("only an administrator may enable automatic adoption"))
-	}
-	config.AdoptionMode = mode
-	if mode == store.QualityAgentAdoptionModeOff || mode == store.QualityAgentAdoptionModeUnspecified {
-		config.AdoptionMode = store.QualityAgentAdoptionModeOff
-	}
-	if _, err := s.store.UpdateQualityAgentConfig(ctx, config); err != nil {
-		return nil, err
-	}
-	view, err := s.qualityAgentView(ctx, workspaceID, agent)
-	if err != nil {
-		return nil, err
-	}
-	return connect.NewResponse(view), nil
 }

@@ -28,9 +28,13 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 	if err != nil {
 		return nil, err
 	}
-	agent, config, err := s.qualityAgentConversationAccess(ctx, resourceID, true)
+	agent, err := s.qualityAgentConversationAccess(ctx, resourceID, true)
 	if err != nil {
 		return nil, err
+	}
+	if agent.State == store.QualityAgentStateDisabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the agent is disabled; it can no longer answer"))
 	}
 	content := strings.TrimSpace(req.Msg.GetMessageBody())
 	if content == "" {
@@ -39,7 +43,7 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 	if len(content) > maxQualityAgentConversationText {
 		return nil, connectErrorInvalid("the message is too long (max %d bytes)", maxQualityAgentConversationText)
 	}
-	limit := config.ConversationMessagesPerHour
+	limit := agent.ConversationMessagesPerHour
 	if limit <= 0 {
 		limit = defaultConversationMessagesHour
 	}
@@ -77,7 +81,6 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			Content:        content,
-			CreatedBy:      principalIDPointer(currentUserID(ctx)),
 			IdempotencyKey: key,
 		})
 		if err != nil {
@@ -103,7 +106,7 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
-	agent, _, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
+	agent, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -170,53 +173,52 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 	return connect.NewResponse(response), nil
 }
 
-// qualityAgentConversationAccess loads the agent and its configuration and enforces
-// the owner/admin rule. requireOwner rejects administrators who are not the owner.
-func (s *DataQualityService) qualityAgentConversationAccess(ctx context.Context, resourceID string, requireOwner bool) (*store.QualityAgentMessage, *store.QualityAgentConfigMessage, error) {
+// qualityAgentConversationAccess loads the agent and enforces the owner/admin
+// rule. requireOwner rejects administrators who are not the owner.
+func (s *DataQualityService) qualityAgentConversationAccess(ctx context.Context, resourceID string, requireOwner bool) (*store.QualityAgentMessage, error) {
 	agent, err := s.store.GetQualityAgentByResourceID(ctx, resourceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if agent == nil {
-		return nil, nil, connect.NewError(connect.CodeNotFound,
+		return nil, connect.NewError(connect.CodeNotFound,
 			errors.Errorf("quality agent %q not found", resourceID))
 	}
-	config, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
-	if err != nil {
-		return nil, nil, err
+	owner, ownerActive := false, false
+	if agent.OwnerPrincipalID != nil {
+		if ownerUser, ownerErr := s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID)); ownerErr == nil &&
+			ownerUser != nil && !ownerUser.MemberDeleted {
+			ownerActive = true
+			owner = int32(currentUserID(ctx)) == *agent.OwnerPrincipalID
+		}
 	}
-	if config == nil {
-		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the agent has no configuration"))
-	}
-	owner := config.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *config.OwnerPrincipalID
 	if requireOwner {
 		if owner {
-			return agent, config, nil
+			return agent, nil
 		}
 		// An ownerless agent (the owner was deleted) falls back to the workspace
 		// administrators so its escalations are not permanently stuck.
-		if config.OwnerPrincipalID == nil {
+		if !ownerActive {
 			admin, adminErr := s.callerIsQualityAgentAdmin(ctx)
 			if adminErr == nil && admin {
-				return agent, config, nil
+				return agent, nil
 			}
 		}
-		return nil, nil, connect.NewError(connect.CodePermissionDenied,
+		return nil, connect.NewError(connect.CodePermissionDenied,
 			errors.New("only the agent's owner may talk to it"))
 	}
 	if owner {
-		return agent, config, nil
+		return agent, nil
 	}
 	admin, err := s.callerIsQualityAgentAdmin(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if !admin {
-		return nil, nil, connect.NewError(connect.CodePermissionDenied,
+		return nil, connect.NewError(connect.CodePermissionDenied,
 			errors.New("only the owner or an administrator may read this conversation"))
 	}
-	return agent, config, nil
+	return agent, nil
 }
 
 // qualityAgentConversationName renders the conversation's resource name for an agent

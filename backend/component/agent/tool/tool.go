@@ -45,9 +45,6 @@ const (
 	// instead (the DQ agent does), in which case the declaration states the
 	// capability the product's role must hold rather than the exact RPC that runs.
 	AuthzPermission AuthzMode = iota
-	// AuthzAction is a tool that calls a domain component with no RPC of its own;
-	// the autonomy action policy is its gate.
-	AuthzAction
 	// AuthzInternal is agent bookkeeping or wake control. It is scoped by session
 	// ownership, not by workspace permission, and may only be registered as a
 	// product-only tool.
@@ -86,9 +83,6 @@ type Meta struct {
 	// Permission is the IAM permission of the RPC the tool wraps. Required for
 	// AuthzPermission.
 	Permission string
-	// Action is the autonomy action-catalog id (for example "A0-3"). Required for
-	// AuthzAction; declarative for an RPC-backed proposal.
-	Action string
 	// Timeout bounds one execution. Zero inherits the caller's deadline.
 	Timeout time.Duration
 	// MaxResultBytes bounds the model-visible result. Zero means no cap.
@@ -147,10 +141,6 @@ type Invocation struct {
 	// Observer records one execution's outcome, duration and result size. A product
 	// wires it to its metrics; nil records nothing.
 	Observer Observer
-	// Policy decides the autonomy question for a tool that declares Meta.Action:
-	// may this agent do this now? Nil skips the check (tests, a deployment without
-	// an autonomy model).
-	Policy ActionPolicy
 	// Audit records the call in the deployment's ledger. A product wires it to the
 	// same ledger the RPC path writes; nil records nothing.
 	Audit AuditSink
@@ -160,8 +150,6 @@ type Invocation struct {
 type AuditEntry struct {
 	// Tool is the model-facing tool name.
 	Tool string
-	// Action is the autonomy action id, when the tool declares one.
-	Action string
 	// Principal is the caller the call ran as.
 	Principal *store.UserMessage
 	// Workspace is the workspace the call ran in.
@@ -184,24 +172,6 @@ type AuditSink interface {
 // (its product name); the pipeline supplies the tool, outcome and measurement.
 type Observer interface {
 	ObserveToolCall(tool, outcome string, duration time.Duration, resultBytes int)
-}
-
-// ActionDecision is one autonomy verdict for a gated tool.
-type ActionDecision struct {
-	// Allowed reports whether the agent may act.
-	Allowed bool
-	// RequiresApproval marks an allowed action a person must still approve; no
-	// write may run on it.
-	RequiresApproval bool
-	// Reason is the human-readable explanation a refusal carries.
-	Reason string
-}
-
-// ActionPolicy decides whether an agent may perform one action now. The product
-// supplies the domain rules (the DQ action catalog, its autonomy switches and the
-// target's criticality); the pipeline only enforces the verdict.
-type ActionPolicy interface {
-	Decide(ctx context.Context, action string) (ActionDecision, error)
 }
 
 // PermissionChecker resolves whether a principal holds a workspace permission.
@@ -253,7 +223,6 @@ const (
 	CodeResourceExhausted ErrorCode = "resource_exhausted"
 	CodeTimeout           ErrorCode = "tool_timeout"
 	CodeUnavailable       ErrorCode = "unavailable"
-	CodeActionDenied      ErrorCode = "action_denied"
 	CodeInternal          ErrorCode = "internal"
 )
 

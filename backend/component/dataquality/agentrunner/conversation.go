@@ -48,26 +48,25 @@ func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSe
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the agent scope summary")
 	}
-	total, pending, active, dormant, excluded, outOfScope, gone := 0, 0, 0, 0, 0, 0, 0
+	total, pending, active, dormant, outOfScope, gone := 0, 0, 0, 0, 0, 0
 	for _, row := range rows {
-		total += row.Pending + row.Active + row.Dormant + row.Excluded + row.OutOfScope + row.Gone
+		total += row.Pending + row.Active + row.Dormant + row.OutOfScope + row.Gone
 		pending += row.Pending
 		active += row.Active
 		dormant += row.Dormant
-		excluded += row.Excluded
 		outOfScope += row.OutOfScope
 		gone += row.Gone
 	}
-	return agentlang.ScopeSummary(language, total, pending, active, dormant, excluded, outOfScope, gone), nil
+	return agentlang.ScopeSummary(language, total, pending, active, dormant, outOfScope, gone), nil
 }
 
 // ownerLanguage reads the agent owner's server-prose language, defaulting to English.
 func (e *Engine) ownerLanguage(ctx context.Context, session *store.QualityAgentSessionMessage) string {
-	config, err := e.store.GetQualityAgentConfig(ctx, session.AgentID)
-	if err != nil || config == nil || config.OwnerPrincipalID == nil {
+	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil || agent == nil || agent.OwnerPrincipalID == nil {
 		return agentlang.English
 	}
-	owner, err := e.store.GetUserByID(ctx, int(*config.OwnerPrincipalID))
+	owner, err := e.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	if err != nil {
 		return agentlang.English
 	}

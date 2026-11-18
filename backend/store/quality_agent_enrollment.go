@@ -37,8 +37,6 @@ type QualityAgentEnrollmentMessage struct {
 	NextReviewAt   *time.Time
 	DiscoveredAt   time.Time
 	LastSeenAt     time.Time
-	ExcludedBy     *int32
-	ExcludedAt     *time.Time
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -47,7 +45,7 @@ type QualityAgentEnrollmentMessage struct {
 const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, target_guid, target_type,
 	database_ref, state, mode, priority, priority_reason, blocked_reason, session_id,
 	triage_count, last_triaged_at, next_review_at, discovered_at, last_seen_at,
-	excluded_by, excluded_at, revision, created_at, updated_at`
+	revision, created_at, updated_at`
 
 // qualityAgentEnrollmentColumnsQualified is qualityAgentEnrollmentColumns qualified with
 // the enrollment alias. The qualification is load-bearing: a read that aliases the queue
@@ -58,7 +56,7 @@ const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, 
 const qualityAgentEnrollmentColumnsQualified = `e.id, e.resource_id, e.workspace_id,
 	e.agent_id, e.target_guid, e.target_type, e.database_ref, e.state, e.mode, e.priority,
 	e.priority_reason, e.blocked_reason, e.session_id, e.triage_count, e.last_triaged_at,
-	e.next_review_at, e.discovered_at, e.last_seen_at, e.excluded_by, e.excluded_at,
+	e.next_review_at, e.discovered_at, e.last_seen_at,
 	e.revision, e.created_at, e.updated_at`
 
 // QualityAgentEnrollmentUpsert is one discovered object. The store mints a resource id
@@ -72,8 +70,8 @@ type QualityAgentEnrollmentUpsert struct {
 
 // UpsertQualityAgentEnrollments records discovered objects. A new row is PENDING; an
 // existing row only refreshes last_seen_at and database_ref, while OUT_OF_SCOPE and
-// GONE rows come back as PENDING. ACTIVE, DORMANT and EXCLUDED rows are never reset by
-// discovery: a person's exclusion and the queue's own progress outrank a rescan.
+// GONE rows come back as PENDING. ACTIVE and DORMANT rows are never reset by
+// discovery: the queue's own progress outranks a rescan.
 func (s *Store) UpsertQualityAgentEnrollments(ctx context.Context, workspaceID string, updates []*QualityAgentEnrollmentUpsert) (int64, error) {
 	if len(updates) == 0 {
 		return 0, nil
@@ -132,8 +130,8 @@ func (s *Store) UpsertQualityAgentEnrollments(ctx context.Context, workspaceID s
 }
 
 // MarkQualityAgentEnrollmentsGone records the objects a completed database scan did
-// not see and archives the sessions the queue created for them. A row a person
-// excluded is never touched: the exclusion is a decision, not a discovery result.
+// not see and archives the sessions the queue created for them. A row already GONE is
+// never touched again.
 func (s *Store) MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID string, agentID int64, databaseRef string, scanStartedAt time.Time) (int64, error) {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -145,10 +143,9 @@ func (s *Store) MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID
 		SET state = $5, next_review_at = NULL, blocked_reason = '',
 			revision = revision + 1, updated_at = NOW()
 		WHERE workspace_id = $1 AND agent_id = $2 AND database_ref = $3 AND last_seen_at < $4
-			AND state NOT IN ($6, $5)`,
+			AND state <> $5`,
 		workspaceID, agentID, databaseRef, scanStartedAt,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED))
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE))
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to mark the enrollments gone")
 	}
@@ -177,19 +174,18 @@ func (s *Store) MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID
 	return affected, nil
 }
 
-// reconcileOutOfScopeEnrollmentsQuery marks the rows whose database left the scope. A
-// person's EXCLUDED row is left alone: the exclusion outranks a scope change.
+// reconcileOutOfScopeEnrollmentsQuery marks the rows whose database left the scope.
 const reconcileOutOfScopeEnrollmentsQuery = `
 		UPDATE quality_agent_enrollment
 		SET state = $4, blocked_reason = '', next_review_at = NULL,
 			revision = revision + 1, updated_at = NOW()
-		WHERE workspace_id = $1 AND agent_id = $2 AND state <> $5 AND NOT (database_ref = ANY($3))`
+		WHERE workspace_id = $1 AND agent_id = $2 AND state <> $4 AND NOT (database_ref = ANY($3))`
 
-// blockOutOfScopeSessionsQuery blocks only sessions the queue may safely park: a human
-// pause and a needs-human block keep their state, so re-adding the database cannot undo
-// them. It takes no database list: the enrollment rows were already marked OUT_OF_SCOPE
-// by the preceding statement, and a parameter that the statement never references would
-// be rejected by PostgreSQL as an untyped parameter (SQLSTATE 42P18).
+// blockOutOfScopeSessionsQuery blocks only sessions the queue may safely park: a
+// needs-human block keeps its state, so re-adding the database cannot undo it. It
+// takes no database list: the enrollment rows were already marked OUT_OF_SCOPE by the
+// preceding statement, and a parameter that the statement never references would be
+// rejected by PostgreSQL as an untyped parameter (SQLSTATE 42P18).
 const blockOutOfScopeSessionsQuery = `
 		UPDATE quality_agent_session s
 		SET state = $3, blocked_code = 'out-of-scope',
@@ -197,11 +193,10 @@ const blockOutOfScopeSessionsQuery = `
 			next_wake_at = NULL, lease_until = NULL,
 			revision = revision + 1, updated_at = NOW()
 		WHERE s.workspace_id = $1 AND s.archived_at IS NULL
-			AND s.state <> $4
 			AND (s.state <> $3 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))
 			AND s.id IN (
 				SELECT e.session_id FROM quality_agent_enrollment e
-				WHERE e.workspace_id = $1 AND e.agent_id = $5 AND e.state = $2
+				WHERE e.workspace_id = $1 AND e.agent_id = $4 AND e.state = $2
 					AND e.session_id IS NOT NULL
 			)`
 
@@ -234,8 +229,7 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 	keep := scopeDatabaseArray(keepDatabases)
 	outResult, err := tx.ExecContext(ctx, reconcileOutOfScopeEnrollmentsQuery,
 		workspaceID, agentID, keep,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED))
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE))
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to mark the enrollments out of scope")
 	}
@@ -247,7 +241,6 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 		workspaceID,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
-		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED),
 		agentID); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to block the out-of-scope sessions")
 	}
@@ -340,19 +333,6 @@ func (s *Store) ListQualityAgentEnrollments(ctx context.Context, find *FindQuali
 		return nil, errors.Wrap(err, "failed to iterate the quality agent enrollments")
 	}
 	return enrollments, nil
-}
-
-// GetQualityAgentEnrollment reads one enrollment by resource id; nil means absent.
-func (s *Store) GetQualityAgentEnrollment(ctx context.Context, resourceID string) (*QualityAgentEnrollmentMessage, error) {
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx,
-		`SELECT `+qualityAgentEnrollmentColumns+` FROM quality_agent_enrollment WHERE resource_id = $1`, resourceID))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "failed to read the quality agent enrollment")
-	}
-	return enrollment, nil
 }
 
 // GetQualityAgentEnrollmentByTarget reads a target's enrollment; nil means absent.
@@ -506,40 +486,12 @@ func (s *Store) CountActiveQualityAgentEnrollments(ctx context.Context, workspac
 	return count, nil
 }
 
-// QualityAgentEnrollmentStateCounts is one count per non-empty state.
-type QualityAgentEnrollmentStateCounts map[storepb.QualityAgentEnrollmentState]int
-
-// CountQualityAgentEnrollmentsByState counts the queue by state.
-func (s *Store) CountQualityAgentEnrollmentsByState(ctx context.Context, workspaceID string, agentID int64) (QualityAgentEnrollmentStateCounts, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT state, COUNT(*) FROM quality_agent_enrollment
-		WHERE workspace_id = $1 AND agent_id = $2 GROUP BY state`, workspaceID, agentID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to count the enrollments by state")
-	}
-	defer rows.Close()
-	counts := QualityAgentEnrollmentStateCounts{}
-	for rows.Next() {
-		var state int16
-		var count int
-		if err := rows.Scan(&state, &count); err != nil {
-			return nil, errors.Wrap(err, "failed to scan an enrollment state count")
-		}
-		counts[storepb.QualityAgentEnrollmentState(state)] = count
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the enrollment state counts")
-	}
-	return counts, nil
-}
-
 // QualityAgentDatabaseEnrollmentSummary is one database's slice of the queue.
 type QualityAgentDatabaseEnrollmentSummary struct {
 	DatabaseRef string
 	Pending     int
 	Active      int
 	Dormant     int
-	Excluded    int
 	OutOfScope  int
 	Gone        int
 }
@@ -548,7 +500,6 @@ type QualityAgentDatabaseEnrollmentSummary struct {
 func (s *Store) QualityAgentEnrollmentSummary(ctx context.Context, workspaceID string, agentID int64) ([]*QualityAgentDatabaseEnrollmentSummary, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT database_ref,
-			COUNT(*) FILTER (WHERE state = $2)::INT,
 			COUNT(*) FILTER (WHERE state = $3)::INT,
 			COUNT(*) FILTER (WHERE state = $4)::INT,
 			COUNT(*) FILTER (WHERE state = $5)::INT,
@@ -562,7 +513,6 @@ func (s *Store) QualityAgentEnrollmentSummary(ctx context.Context, workspaceID s
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED),
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE))
 	if err != nil {
@@ -573,7 +523,7 @@ func (s *Store) QualityAgentEnrollmentSummary(ctx context.Context, workspaceID s
 	for rows.Next() {
 		var summary QualityAgentDatabaseEnrollmentSummary
 		if err := rows.Scan(&summary.DatabaseRef, &summary.Pending, &summary.Active,
-			&summary.Dormant, &summary.Excluded, &summary.OutOfScope, &summary.Gone); err != nil {
+			&summary.Dormant, &summary.OutOfScope, &summary.Gone); err != nil {
 			return nil, errors.Wrap(err, "failed to scan an enrollment summary")
 		}
 		summaries = append(summaries, &summary)
@@ -743,91 +693,6 @@ func (s *Store) RequeueQualityAgentEnrollments(ctx context.Context, resourceIDs 
 	return affected, nil
 }
 
-// ExcludeQualityAgentEnrollment opts a target out of automatic admission. The scan
-// never re-admits an excluded row.
-func (s *Store) ExcludeQualityAgentEnrollment(ctx context.Context, resourceID string, expectedRevision int32, excludedBy int32) (*QualityAgentEnrollmentMessage, bool, error) {
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_agent_enrollment
-		SET state = $2, excluded_by = $3, excluded_at = NOW(), next_review_at = NULL,
-			blocked_reason = '', revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND revision = $4 AND state <> $5
-		RETURNING `+qualityAgentEnrollmentColumns,
-		resourceID,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED),
-		excludedBy, expectedRevision,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE)))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, errors.Wrap(err, "failed to exclude the enrollment")
-	}
-	return enrollment, true, nil
-}
-
-// IncludeQualityAgentEnrollment puts an excluded or out-of-scope target back into the
-// queue.
-func (s *Store) IncludeQualityAgentEnrollment(ctx context.Context, resourceID string, expectedRevision int32) (*QualityAgentEnrollmentMessage, bool, error) {
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_agent_enrollment
-		SET state = $2, excluded_by = NULL, excluded_at = NULL, next_review_at = NULL,
-			blocked_reason = '', revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND revision = $3
-			AND state IN ($4, $5, $6)
-		RETURNING `+qualityAgentEnrollmentColumns,
-		resourceID,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
-		expectedRevision,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE)))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, errors.Wrap(err, "failed to include the enrollment")
-	}
-	return enrollment, true, nil
-}
-
-// RetryQualityAgentEnrollment requeues one row now with a priority bump.
-func (s *Store) RetryQualityAgentEnrollment(ctx context.Context, resourceID string, expectedRevision int32) (*QualityAgentEnrollmentMessage, bool, error) {
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_agent_enrollment
-		SET state = $2, next_review_at = NULL, blocked_reason = '',
-			priority = LEAST(1000, priority + 100),
-			revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND revision = $3
-		RETURNING `+qualityAgentEnrollmentColumns,
-		resourceID,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
-		expectedRevision))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, errors.Wrap(err, "failed to retry the enrollment")
-	}
-	return enrollment, true, nil
-}
-
-// SetQualityAgentEnrollmentMode switches how admission will treat the target.
-func (s *Store) SetQualityAgentEnrollmentMode(ctx context.Context, resourceID string, expectedRevision int32, mode storepb.QualityAgentSessionMode) (*QualityAgentEnrollmentMessage, bool, error) {
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_agent_enrollment
-		SET mode = $2, revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND revision = $3
-		RETURNING `+qualityAgentEnrollmentColumns,
-		resourceID, int16(mode), expectedRevision))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, errors.Wrap(err, "failed to set the enrollment mode")
-	}
-	return enrollment, true, nil
-}
-
 // scanQualityAgentEnrollment scans one enrollment row.
 func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*QualityAgentEnrollmentMessage, error) {
 	var (
@@ -842,8 +707,7 @@ func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*
 		&enrollment.Priority, &enrollment.PriorityReason, &enrollment.BlockedReason,
 		&enrollment.SessionID, &enrollment.TriageCount, &enrollment.LastTriagedAt,
 		&enrollment.NextReviewAt, &enrollment.DiscoveredAt, &enrollment.LastSeenAt,
-		&enrollment.ExcludedBy, &enrollment.ExcludedAt, &enrollment.Revision,
-		&enrollment.CreatedAt, &enrollment.UpdatedAt,
+		&enrollment.Revision, &enrollment.CreatedAt, &enrollment.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -851,57 +715,6 @@ func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*
 	enrollment.State = storepb.QualityAgentEnrollmentState(state)
 	enrollment.Mode = storepb.QualityAgentSessionMode(mode)
 	return &enrollment, nil
-}
-
-// AdoptQualityAgentSession records an external (manual or resumed) session as the
-// active enrollment of its target. The unique target key makes it idempotent; a person
-// creating a session explicitly also lifts a previous exclusion, because the session
-// is a stronger statement than the queue row.
-func (s *Store) AdoptQualityAgentSession(ctx context.Context, workspaceID string, agentID int64, targetGUID string, targetType storepb.MetaType, databaseRef string, sessionID int64, mode storepb.QualityAgentSessionMode) (*QualityAgentEnrollmentMessage, error) {
-	resourceID, err := common.RandomString(12)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate an enrollment id")
-	}
-	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
-		INSERT INTO quality_agent_enrollment
-			(resource_id, workspace_id, agent_id, target_guid, target_type, database_ref, state, mode,
-			 session_id, excluded_by, excluded_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-		ON CONFLICT (agent_id, target_guid) DO UPDATE SET
-			target_type = EXCLUDED.target_type,
-			database_ref = EXCLUDED.database_ref,
-			state = EXCLUDED.state,
-			mode = EXCLUDED.mode,
-			session_id = EXCLUDED.session_id,
-			excluded_by = NULL,
-			excluded_at = NULL,
-			next_review_at = NULL,
-			blocked_reason = '',
-			revision = quality_agent_enrollment.revision + 1,
-			updated_at = NOW()
-		RETURNING `+qualityAgentEnrollmentColumns,
-		resourceID, workspaceID, agentID, targetGUID, int16(targetType), databaseRef,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
-		int16(mode), sessionID))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to adopt the quality agent session")
-	}
-	return enrollment, nil
-}
-
-// MarkQualityAgentEnrollmentArchived excludes a target's enrollment after a person
-// archived its session, so discovery does not create a new one on the next scan.
-func (s *Store) MarkQualityAgentEnrollmentArchived(ctx context.Context, workspaceID string, agentID int64, targetGUID string) error {
-	if _, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_agent_enrollment
-		SET state = $3, excluded_at = NOW(), next_review_at = NULL,
-			blocked_reason = '', revision = revision + 1, updated_at = NOW()
-		WHERE workspace_id = $1 AND agent_id = $2 AND target_guid = $3 AND state <> $4`,
-		workspaceID, agentID, targetGUID,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED)); err != nil {
-		return errors.Wrap(err, "failed to mark the enrollment archived")
-	}
-	return nil
 }
 
 // ListQualityAgentSessionResourceIDs maps session ids to their API-facing resource
@@ -985,69 +798,4 @@ func (s *Store) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
 		return time.Time{}, errors.Wrap(err, "failed to read the database time")
 	}
 	return now.UTC(), nil
-}
-
-// CountQualityAgentEnrollmentsByStateAll counts the whole workspace's queue by
-// state; the administrator status read uses it.
-func (s *Store) CountQualityAgentEnrollmentsByStateAll(ctx context.Context, workspaceID string) (QualityAgentEnrollmentStateCounts, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT state, COUNT(*) FROM quality_agent_enrollment
-		WHERE workspace_id = $1 GROUP BY state`, workspaceID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to count the enrollments by state")
-	}
-	defer rows.Close()
-	counts := QualityAgentEnrollmentStateCounts{}
-	for rows.Next() {
-		var state int16
-		var count int
-		if err := rows.Scan(&state, &count); err != nil {
-			return nil, errors.Wrap(err, "failed to scan an enrollment state count")
-		}
-		counts[storepb.QualityAgentEnrollmentState(state)] = count
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the enrollment state counts")
-	}
-	return counts, nil
-}
-
-// QualityAgentEnrollmentSummaryAll counts the workspace's queue per database.
-func (s *Store) QualityAgentEnrollmentSummaryAll(ctx context.Context, workspaceID string) ([]*QualityAgentDatabaseEnrollmentSummary, error) {
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT database_ref,
-			COUNT(*) FILTER (WHERE state = $2)::INT,
-			COUNT(*) FILTER (WHERE state = $3)::INT,
-			COUNT(*) FILTER (WHERE state = $4)::INT,
-			COUNT(*) FILTER (WHERE state = $5)::INT,
-			COUNT(*) FILTER (WHERE state = $6)::INT,
-			COUNT(*) FILTER (WHERE state = $7)::INT
-		FROM quality_agent_enrollment
-		WHERE workspace_id = $1
-		GROUP BY database_ref
-		ORDER BY database_ref`,
-		workspaceID,
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to summarize the enrollments")
-	}
-	defer rows.Close()
-	var summaries []*QualityAgentDatabaseEnrollmentSummary
-	for rows.Next() {
-		var summary QualityAgentDatabaseEnrollmentSummary
-		if err := rows.Scan(&summary.DatabaseRef, &summary.Pending, &summary.Active,
-			&summary.Dormant, &summary.Excluded, &summary.OutOfScope, &summary.Gone); err != nil {
-			return nil, errors.Wrap(err, "failed to scan an enrollment summary")
-		}
-		summaries = append(summaries, &summary)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the enrollment summaries")
-	}
-	return summaries, nil
 }

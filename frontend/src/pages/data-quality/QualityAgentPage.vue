@@ -42,15 +42,6 @@
             {{ t("qualityAgent.openDiagnostics") }}
           </RouterLink>
         </Button>
-        <Button
-          v-if="canManage"
-          size="sm"
-          variant="outline"
-          :disabled="busy"
-          @click="rotateToken"
-        >
-          {{ t("qualityAgents.rotateToken") }}
-        </Button>
       </template>
     </PageHeader>
 
@@ -199,20 +190,6 @@
                   {{ adoptionEnabled ? t("qualityAgent.adoptionDisable") : t("qualityAgent.adoptionEnable") }}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader class="border-b">
-              <CardTitle class="text-base">{{ t("qualityAgent.tokenTitle") }}</CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-2 pt-4 text-sm text-muted-foreground">
-              <p>{{ t("qualityAgent.tokenHint") }}</p>
-              <p
-                v-if="issuedToken"
-                class="break-all rounded-md bg-muted px-2 py-1 text-xs text-foreground"
-              >
-                {{ issuedToken }}
-              </p>
             </CardContent>
           </Card>
         </div>
@@ -387,7 +364,6 @@ import {
   listQualityAgentReports,
   pauseQualityAgent,
   replyQualityAgentAttention,
-  rotateQualityAgentToken,
   sendQualityAgentMessage,
   setQualityAgentAdoption,
   startQualityAgent,
@@ -436,7 +412,6 @@ const agent = ref<QualityAgent>();
 const loading = ref(true);
 const error = ref("");
 const busy = ref(false);
-const issuedToken = ref("");
 
 const attentions = ref<QualityAgentAttention[]>([]);
 const replyOpen = ref(false);
@@ -725,20 +700,6 @@ async function start() {
   try {
     agent.value = await startQualityAgent(agentName.value);
     notify.success(t("qualityAgents.started"));
-  } catch (err) {
-    notify.error(formatError(err));
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function rotateToken() {
-  busy.value = true;
-  try {
-    const response = await rotateQualityAgentToken(agentName.value);
-    issuedToken.value = response.token;
-    await navigator.clipboard.writeText(response.token);
-    notify.success(t("qualityAgents.tokenCopied"));
   } catch (err) {
     notify.error(formatError(err));
   } finally {

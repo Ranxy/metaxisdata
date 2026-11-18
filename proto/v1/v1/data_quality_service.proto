@@ -604,115 +604,9 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
   }
 
-  // Record one investigation: an agent's hypotheses, deterministic evidence
-  // references, verdict and cost on one event. It never changes the check's verdict
-  // or an issue's state. The agent needs autonomy enabled.
-  rpc CreateQualityInvestigation(CreateQualityInvestigationRequest) returns (QualityInvestigation) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityInvestigations"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
-  }
-
-  // Read one investigation.
-  rpc GetQualityInvestigation(GetQualityInvestigationRequest) returns (QualityInvestigation) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityInvestigations/*}"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // List investigations, newest first.
-  rpc ListQualityInvestigations(ListQualityInvestigationsRequest) returns (ListQualityInvestigationsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityInvestigations"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Read the WS2 action catalog and how the autonomy policy would decide each action
-  // for an agent right now. Read-only: it exposes the policy, it does not change it.
-  rpc GetQualityActionPolicy(GetQualityActionPolicyRequest) returns (QualityActionPolicy) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityActionPolicy"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Record one memory: an asset fact, a decision with its structured reason, or an
-  // event. An agent may write asset facts directly; a decision or an event it writes
-  // stays PROPOSED until a person confirms it.
-  rpc CreateQualityMemory(CreateQualityMemoryRequest) returns (QualityMemory) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityMemories"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
-  }
-
-  // List memories. Expired confirmations read as EXPIRED; superseded ones stay
-  // visible for the correction path.
-  rpc ListQualityMemories(ListQualityMemoriesRequest) returns (ListQualityMemoriesResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityMemories"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
-  // knowledge; nothing else confirms it.
-  rpc ConfirmQualityMemory(ConfirmQualityMemoryRequest) returns (QualityMemory) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityMemories/*}:confirm"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Delete a memory. Administrator cleanup; the row is kept out of reads, and the
-  // audit row records who removed it.
-  rpc DeleteQualityMemory(DeleteQualityMemoryRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityMemories/*}"};
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
-  }
-
-  // Write the target's plan declaration without touching its settings. This is the
-  // one write an agent principal may make; an agent call is refused while the
-  // workspace kill switch or the agent itself is disabled.
-  rpc StageQualityPlan(StageQualityPlanRequest) returns (QualityContract) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityContracts:stagePlan"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
-  }
-
-  // Create a batch of typed changes against one target. It stays PROPOSED until a
-  // person decides; creating it changes nothing on the target. An agent principal
-  // may only create PROPOSED requests, and only while autonomy is enabled.
-  rpc CreateQualityChangeRequest(CreateQualityChangeRequestRequest) returns (QualityChangeRequest) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityChangeRequests"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
-  }
-
-  // Read one change request, with its items and per-item results.
-  rpc GetQualityChangeRequest(GetQualityChangeRequestRequest) returns (QualityChangeRequest) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityChangeRequests/*}"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // List change requests, newest first.
-  rpc ListQualityChangeRequests(ListQualityChangeRequestsRequest) returns (ListQualityChangeRequestsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityChangeRequests"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Create an agent principal and return its bearer token once. The agent is an
-  // independent principal whose only workspace role is the quality agent role; its
-  // token is a normal access token for that principal, so disabling the agent makes
-  // every token it issued unusable. Administrator only.
+  // Create an internal quality agent with its runtime configuration. The agent's
+  // service-account principal exists only as the IAM/audit actor for the in-process
+  // runner; there is no external bearer-token surface. Administrator only.
   rpc CreateQualityAgent(CreateQualityAgentRequest) returns (CreateQualityAgentResponse) {
     option (google.api.http) = {
       post: "/v1/{parent=workspaces/*}/qualityAgents"
@@ -748,12 +642,6 @@ service DataQualityService {
   // List one agent's patrol reports, newest period first.
   rpc ListQualityAgentReports(ListQualityAgentReportsRequest) returns (ListQualityAgentReportsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/reports"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
-  }
-
-  // Read one report with its rendered body.
-  rpc GetQualityAgentReport(GetQualityAgentReportRequest) returns (QualityAgentReport) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentReports/*}"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
@@ -806,7 +694,7 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
-  // Activate a DRAFT or PAUSED agent. Administrator only.
+  // Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
   rpc StartQualityAgent(StartQualityAgentRequest) returns (QualityAgent) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgents/*}:start"
@@ -834,8 +722,8 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.list";
   }
 
-  // Disable an agent principal. Its tokens stop authenticating immediately; the
-  // agent row stays for the audit trail.
+  // Disable an agent permanently. The row stays for the audit trail; a disabled
+  // agent is never re-enabled (create a new one instead).
   rpc DisableQualityAgent(DisableQualityAgentRequest) returns (QualityAgent) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgents/*}:disable"
@@ -843,29 +731,6 @@ service DataQualityService {
     };
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Rotate an agent's bearer token: mint a new one and invalidate every token
-  // minted before this call. The token is returned once.
-  rpc RotateQualityAgentToken(RotateQualityAgentTokenRequest) returns (RotateQualityAgentTokenResponse) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgents/*}:rotateToken"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Approve or reject a change request. Approving applies each item through its
-  // existing path and returns a result per item; rejecting records the structured
-  // reasons. A stale base version expires the request instead of rebasing it.
-  rpc DecideQualityChangeRequest(DecideQualityChangeRequestRequest) returns (QualityChangeRequest) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityChangeRequests/*}:decide"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.changeRequests.decide";
   }
 
   // List the target's published contract versions, newest first.
@@ -895,12 +760,6 @@ service DataQualityService {
   // List the workspace's sessions by newest activity first.
   rpc ListQualityAgentSessions(ListQualityAgentSessionsRequest) returns (ListQualityAgentSessionsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentSessions"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Read one session.
-  rpc GetQualityAgentSession(GetQualityAgentSessionRequest) returns (QualityAgentSession) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
@@ -920,35 +779,6 @@ service DataQualityService {
   rpc ListQualityAgentSessionMessages(ListQualityAgentSessionMessagesRequest) returns (ListQualityAgentSessionMessagesResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages"};
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Read the runner's live state: what is running, what is due and how much of the
-  // budgets is spent. runner_last_tick_time is process-local and resets on restart.
-  rpc GetQualityAgentRunnerStatus(GetQualityAgentRunnerStatusRequest) returns (QualityAgentRunnerStatus) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentRunnerStatus"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Read the runner's evaluation: session states, token spend, the acceptance of the
-  // change requests it proposed, and investigation verdicts. Read-only.
-  rpc GetQualityAgentMetrics(GetQualityAgentMetricsRequest) returns (QualityAgentMetrics) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentMetrics"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // ---- Quality agent enrollments ----
-
-  // List the runner's enrollment queue: one row per monitorable object in the
-  // runner's database scope, with its queue state, priority and session link.
-  rpc ListQualityAgentEnrollments(ListQualityAgentEnrollmentsRequest) returns (ListQualityAgentEnrollmentsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentEnrollments"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
-  }
-
-  // Read enrollment counts by state and by database. Read-only.
-  rpc GetQualityAgentEnrollmentSummary(GetQualityAgentEnrollmentSummaryRequest) returns (QualityAgentEnrollmentSummary) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentEnrollments:summary"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 }
@@ -3783,7 +3613,8 @@ enum QualityPlanState {
   QUALITY_PLAN_STATE_UNPLANNED = 2;
 }
 
-// QualityAssetCriticality ranks a target for the autonomy policy. Derived
+// QualityAssetCriticality ranks a target for the plan's criticality and the
+// adoption guardrail. Derived
 // criticality is a display/policy input, never written back to the contract.
 enum QualityAssetCriticality {
   QUALITY_ASSET_CRITICALITY_UNSPECIFIED = 0;
@@ -3885,409 +3716,6 @@ message ListQualityPlansResponse {
   int32 total_size = 3;
 }
 
-// QualityChangeRequestState is the lifecycle of one change request.
-enum QualityChangeRequestState {
-  QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REQUEST_STATE_PROPOSED = 1;
-  QUALITY_CHANGE_REQUEST_STATE_APPROVED = 2;
-  QUALITY_CHANGE_REQUEST_STATE_APPLIED = 3;
-  QUALITY_CHANGE_REQUEST_STATE_REJECTED = 4;
-  QUALITY_CHANGE_REQUEST_STATE_EXPIRED = 5;
-}
-
-// QualityChangeRequestSource records who wrote the request.
-enum QualityChangeRequestSource {
-  QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REQUEST_SOURCE_HUMAN = 1;
-  QUALITY_CHANGE_REQUEST_SOURCE_AGENT = 2;
-}
-
-// QualityChangeRequestItemKind is one typed change a request carries.
-enum QualityChangeRequestItemKind {
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF = 1;
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE = 2;
-}
-
-// QualityChangeRejectionReason is the structured reason a person rejected a
-// request.
-enum QualityChangeRejectionReason {
-  QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT = 1;
-  QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT = 2;
-  QUALITY_CHANGE_REJECTION_REASON_NOISE = 3;
-  QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM = 4;
-  QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN = 5;
-  QUALITY_CHANGE_REJECTION_REASON_DEFER = 6;
-  QUALITY_CHANGE_REJECTION_REASON_OTHER = 7;
-}
-
-// QualityChangeRequestItem is one typed change.
-message QualityChangeRequestItem {
-  QualityChangeRequestItemKind kind = 1;
-  // SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id}
-  string suggestion = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}];
-  QualityCoverageProperty property = 3;
-  string column = 4;
-  int32 min_checks = 5;
-  // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
-  bool remove = 6;
-  // SUGGESTION_REF: the dimension the created rule carries; required because a
-  // rule draft has no dimension and a rule needs one.
-  QualityDimension dimension = 7;
-}
-
-// QualityChangeRequestItemResult is one item's outcome.
-message QualityChangeRequestItemResult {
-  enum Status {
-    STATUS_UNSPECIFIED = 0;
-    STATUS_APPLIED = 1;
-    STATUS_FAILED = 2;
-    STATUS_SKIPPED = 3;
-  }
-  int32 index = 1;
-  Status status = 2;
-  string detail = 3;
-  string applied_resource_id = 4;
-}
-
-// QualityChangeRequest is one approve-or-reject batch of typed changes against one
-// target. Approving applies each item independently and returns a result per item.
-message QualityChangeRequest {
-  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
-  string name = 1;
-  QualityTarget target = 2;
-  QualityChangeRequestState state = 3;
-  // The published version the request was written against; a decision on a stale
-  // base expires the request instead of rebasing it.
-  int32 base_version = 4;
-  QualityChangeRequestSource source = 5;
-  repeated QualityChangeRequestItem items = 6;
-  repeated QualityChangeRequestItemResult item_results = 7;
-  repeated QualityChangeRejectionReason rejection_reasons = 8;
-  string decision_note = 9;
-  // Format: users/{user}. Empty when unknown.
-  string created_by = 10;
-  google.protobuf.Timestamp created_at = 11;
-  string decided_by = 12;
-  google.protobuf.Timestamp decided_at = 13;
-}
-
-message StageQualityPlanRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
-  MetaType meta_type = 3;
-  // The newest published version the declaration is written against. 0 is a valid
-  // base for a target that has never been published.
-  int32 base_version = 4 [(google.api.field_behavior) = REQUIRED];
-  // The complete declaration: coverage only, like UpdateQualityContract's draft.
-  // The list has no presence: an omitted or empty coverage clears the target's
-  // declaration and returns it to the projection derived from the intent and the
-  // live checks.
-  repeated QualityPlanCoverage coverage = 5;
-}
-
-message CreateQualityChangeRequestRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
-  MetaType meta_type = 3;
-  // The newest published version the request is written against. Required, but 0
-  // is a valid value for a target that has never been published.
-  int32 base_version = 4 [(google.api.field_behavior) = REQUIRED];
-  // At most 20 items.
-  repeated QualityChangeRequestItem items = 5 [(google.api.field_behavior) = REQUIRED];
-}
-
-message GetQualityChangeRequestRequest {
-  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ListQualityChangeRequestsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2;
-  QualityChangeRequestState state = 3;
-  int32 page_size = 4;
-  string page_token = 5;
-}
-
-message ListQualityChangeRequestsResponse {
-  repeated QualityChangeRequest quality_change_requests = 1;
-  string next_page_token = 2;
-}
-
-message DecideQualityChangeRequestRequest {
-  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  // APPROVE applies the request's items; REJECT records the refusal.
-  enum Decision {
-    DECISION_UNSPECIFIED = 0;
-    DECISION_APPROVE = 1;
-    DECISION_REJECT = 2;
-  }
-  Decision decision = 2 [(google.api.field_behavior) = REQUIRED];
-  // Why the request was rejected; required for REJECT.
-  repeated QualityChangeRejectionReason rejection_reasons = 3;
-  string decision_note = 4;
-}
-
-// QualityMemoryKind is what a memory records.
-enum QualityMemoryKind {
-  QUALITY_MEMORY_KIND_UNSPECIFIED = 0;
-  QUALITY_MEMORY_KIND_ASSET_FACT = 1;
-  QUALITY_MEMORY_KIND_DECISION = 2;
-  QUALITY_MEMORY_KIND_EVENT = 3;
-}
-
-// QualityMemoryStatus is where one memory stands.
-enum QualityMemoryStatus {
-  QUALITY_MEMORY_STATUS_UNSPECIFIED = 0;
-  QUALITY_MEMORY_STATUS_PROPOSED = 1;
-  QUALITY_MEMORY_STATUS_CONFIRMED = 2;
-  QUALITY_MEMORY_STATUS_REJECTED = 3;
-  QUALITY_MEMORY_STATUS_SUPERSEDED = 4;
-  QUALITY_MEMORY_STATUS_EXPIRED = 5;
-}
-
-// QualityMemorySource records who wrote the memory.
-enum QualityMemorySource {
-  QUALITY_MEMORY_SOURCE_UNSPECIFIED = 0;
-  QUALITY_MEMORY_SOURCE_AGENT = 1;
-  QUALITY_MEMORY_SOURCE_HUMAN = 2;
-  QUALITY_MEMORY_SOURCE_SYSTEM = 3;
-}
-
-// QualityMemory is one durable piece of knowledge with its evidence and its
-// correction path. It never replaces the engine's verdict; it explains the past.
-message QualityMemory {
-  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
-  string name = 1;
-  QualityMemoryKind kind = 2;
-  // What the memory is about: a target GUID, a rule resource id, a column, an issue.
-  string subject = 3;
-  string statement = 4;
-  QualityMemorySource source = 5;
-  QualityMemoryStatus status = 6;
-  // Deterministic evidence references; a memory without evidence is not recorded.
-  repeated QualityInvestigationEvidence evidence = 7;
-  // Reserved for domain-scoped memory; stored, not resolved.
-  string domain_ref = 8;
-  google.protobuf.Timestamp expires_at = 9;
-  // Format: users/{user}. Set when a person confirmed or rejected it.
-  string confirmed_by = 10;
-  google.protobuf.Timestamp confirmed_at = 11;
-  // Resource name of the memory that replaced this one.
-  string superseded_by = 12;
-  string created_by = 13;
-  google.protobuf.Timestamp create_time = 14;
-}
-
-message CreateQualityMemoryRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  QualityMemoryKind kind = 2 [(google.api.field_behavior) = REQUIRED];
-  string subject = 3 [(google.api.field_behavior) = REQUIRED];
-  string statement = 4 [(google.api.field_behavior) = REQUIRED];
-  repeated QualityInvestigationEvidence evidence = 5;
-  string domain_ref = 6;
-  google.protobuf.Timestamp expires_at = 7;
-}
-
-message ListQualityMemoriesRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  QualityMemoryKind kind = 2;
-  QualityMemoryStatus status = 3;
-  // An exact subject.
-  string subject = 4;
-  // The page size; 0 uses the default (50), and the maximum is 1000.
-  int32 page_size = 5;
-  string page_token = 6;
-}
-
-message ListQualityMemoriesResponse {
-  repeated QualityMemory quality_memories = 1;
-  string next_page_token = 2;
-}
-
-message ConfirmQualityMemoryRequest {
-  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  enum Decision {
-    DECISION_UNSPECIFIED = 0;
-    DECISION_CONFIRM = 1;
-    DECISION_REJECT = 2;
-  }
-  Decision decision = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
-message DeleteQualityMemoryRequest {
-  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-// QualityInvestigationStatus is where one investigation stands.
-enum QualityInvestigationStatus {
-  QUALITY_INVESTIGATION_STATUS_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_STATUS_CONCLUDED = 1;
-  QUALITY_INVESTIGATION_STATUS_FAILED = 2;
-  QUALITY_INVESTIGATION_STATUS_INTERRUPTED = 3;
-}
-
-// QualityInvestigationTrigger says what started the investigation.
-enum QualityInvestigationTrigger {
-  QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_TRIGGER_EXECUTION = 1;
-  QUALITY_INVESTIGATION_TRIGGER_ISSUE = 2;
-  QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE = 3;
-  QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP = 4;
-  QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT = 5;
-  QUALITY_INVESTIGATION_TRIGGER_MANUAL = 6;
-}
-
-// QualityInvestigationVerdict is the investigation's classification of the event. It
-// never replaces the engine's verdict.
-enum QualityInvestigationVerdict {
-  QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE = 1;
-  QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR = 2;
-  QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE = 3;
-  QUALITY_INVESTIGATION_VERDICT_UNRELATED = 4;
-}
-
-// QualityInvestigationEvidence is one deterministic reference behind an
-// investigation. It is a reference, never a copy of samples.
-message QualityInvestigationEvidence {
-  // EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
-  string kind = 1;
-  string reference = 2;
-  string note = 3;
-}
-
-// QualityInvestigationHypothesis is one candidate explanation.
-message QualityInvestigationHypothesis {
-  string statement = 1;
-  // CONFIRMED, REJECTED or OPEN.
-  string status = 2;
-}
-
-// QualityInvestigation is one agent's work product on one event. It is read-only
-// after creation in this slice: it never changes a check's verdict or an issue.
-message QualityInvestigation {
-  // Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
-  string name = 1;
-  QualityTarget target = 2;
-  QualityInvestigationTrigger trigger = 3;
-  string trigger_reference = 4;
-  QualityInvestigationStatus status = 5;
-  QualityInvestigationVerdict verdict = 6;
-  string summary = 7;
-  repeated QualityInvestigationHypothesis hypotheses = 8;
-  repeated QualityInvestigationEvidence evidence = 9;
-  // Names of change requests the investigation proposed.
-  repeated string action_refs = 10;
-  string provider = 11;
-  string model = 12;
-  string prompt_version = 13;
-  int64 prompt_tokens = 14;
-  int64 completion_tokens = 15;
-  string failure_reason = 16;
-  // Format: users/{user}. The agent principal that wrote it, when recorded.
-  string created_by = 17;
-  google.protobuf.Timestamp create_time = 18;
-}
-
-message CreateQualityInvestigationRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
-  MetaType meta_type = 3;
-  QualityInvestigationTrigger trigger = 4 [(google.api.field_behavior) = REQUIRED];
-  // The triggering object's resource name or value.
-  string trigger_reference = 5 [(google.api.field_behavior) = REQUIRED];
-  QualityInvestigationStatus status = 6;
-  QualityInvestigationVerdict verdict = 7;
-  string summary = 8;
-  repeated QualityInvestigationHypothesis hypotheses = 9;
-  repeated QualityInvestigationEvidence evidence = 10;
-  repeated string action_refs = 11;
-  string provider = 12;
-  string model = 13;
-  string prompt_version = 14;
-  int64 prompt_tokens = 15;
-  int64 completion_tokens = 16;
-  string failure_reason = 17;
-  // An idempotency key from the agent's run; a retry with the same key returns the
-  // recorded investigation instead of writing a second one.
-  string request_fingerprint = 18;
-}
-
-message GetQualityInvestigationRequest {
-  // Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ListQualityInvestigationsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2;
-  QualityInvestigationStatus status = 3;
-  QualityInvestigationTrigger trigger = 4;
-  int32 page_size = 5;
-  string page_token = 6;
-}
-
-message ListQualityInvestigationsResponse {
-  repeated QualityInvestigation quality_investigations = 1;
-  string next_page_token = 2;
-}
-
-// QualityAction is one card of the WS2 action catalog with its live policy verdict.
-message QualityAction {
-  // The stable catalog id, e.g. "A0-4" or "A3-1".
-  string id = 1;
-  // A short developer-facing title; the UI owns the localized copy.
-  string title = 2;
-  // A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
-  // (changes promises, responsibility or irreversible state).
-  string autonomy_level = 3;
-  // AGENT or HUMAN: who may ever perform it.
-  string actor = 4;
-  // A red line never accepts a pure model proposal, even with autonomy on.
-  bool red_line = 5;
-  // False when this codebase has no write path for the action yet; such an action is
-  // refused with its own reason instead of pretending to work.
-  bool implemented = 6;
-  // Whether the shipped agent role and handlers actually expose the action to an
-  // agent. It differs from implemented on purpose: a person may author a check while
-  // an agent can only propose it through a change request.
-  bool agent_reachable = 11;
-  // Whether an enabled agent would be allowed to do it under the current policy.
-  bool agent_allowed = 7;
-  // Whether a person must still approve the action after the policy allows it.
-  bool requires_approval = 8;
-  // The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
-  // DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL,
-  // DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person
-  // must still approve).
-  string decision_code = 9;
-  string reason = 10;
-}
-
-message QualityActionPolicy {
-  // The workspace kill switch the agent verdicts were computed with.
-  bool agent_autonomy_enabled = 1;
-  repeated QualityAction actions = 2;
-}
-
-message GetQualityActionPolicyRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
 // QualityAgentState is the runtime lifecycle of one quality agent.
 enum QualityAgentState {
   QUALITY_AGENT_STATE_UNSPECIFIED = 0;
@@ -4349,20 +3777,23 @@ message QualityAgentBudget {
   int32 conversation_messages_per_hour = 6;
 }
 
-// QualityAgent is one agent principal: an independent identity an administrator
-// creates for autonomous quality work. Its token is issued once, and disabling the
-// agent ends every token it holds.
+// QualityAgent is one built-in quality agent: a service-account identity that exists
+// only as the in-process runner's IAM and audit actor, plus the runtime configuration
+// an administrator edits. There is no token or external API surface.
 message QualityAgent {
   // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
   string name = 1;
   string display_name = 2;
   string description = 3;
-  bool enabled = 4;
+  // Removed: the internal principal has no independent API-enabled switch; `state`
+  // is the only lifecycle truth.
+  reserved 4;
+  reserved "enabled";
   // Format: users/{user}. Empty when unknown.
   string created_by = 5;
   google.protobuf.Timestamp create_time = 6;
 
-  // Runtime state; DISABLED is permanent and enabled is false.
+  // Runtime state; DISABLED is permanent.
   QualityAgentState state = 7;
   // Format: users/{user}. The owner is the only caller who may talk to the agent.
   string owner = 8;
@@ -4370,8 +3801,9 @@ message QualityAgent {
   repeated string databases = 9;
   // Capability ids: "suggest", "adopt", "patrol"; extensible server-side.
   repeated string capabilities = 10;
-  // LLM provider profile; empty means the workspace default.
-  string provider_profile = 11;
+  // Removed: every agent uses the workspace LLM provider profile.
+  reserved 11;
+  reserved "provider_profile";
   QualityAgentReportSchedule report_schedule = 12;
   QualityAgentAdoptionSetting adoption = 13;
   QualityAgentBudget budget = 14;
@@ -4441,27 +3873,13 @@ message ListQualityAgentConversationMessagesResponse {
   string next_page_token = 2;
 }
 
-// QualityAgentReportTrigger says what produced a report.
-enum QualityAgentReportTrigger {
-  QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED = 1;
-  QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND = 2;
-}
-
 // QualityAgentReportPeriod is the report's period shape.
 enum QualityAgentReportPeriod {
   QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED = 0;
   QUALITY_AGENT_REPORT_PERIOD_DAILY = 1;
   QUALITY_AGENT_REPORT_PERIOD_WEEKLY = 2;
-  QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND = 3;
-}
-
-// QualityAgentReportState is the asynchronous report generation state.
-enum QualityAgentReportState {
-  QUALITY_AGENT_REPORT_STATE_UNSPECIFIED = 0;
-  QUALITY_AGENT_REPORT_STATE_PENDING = 1;
-  QUALITY_AGENT_REPORT_STATE_READY = 2;
-  QUALITY_AGENT_REPORT_STATE_FAILED = 3;
+  reserved 3;
+  reserved "QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND";
 }
 
 // QualityAgentReport is one deterministic patrol report over an agent's scope.
@@ -4475,13 +3893,17 @@ message QualityAgentReport {
   string name = 1;
   // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
   string agent = 2;
-  QualityAgentReportTrigger trigger = 3;
+  // Removed: reports are always generated by the scheduled runner.
+  reserved 3;
+  reserved "trigger";
   QualityAgentReportPeriod period_kind = 4;
   // Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly.
   string period_key = 5;
   google.protobuf.Timestamp period_start = 6;
   google.protobuf.Timestamp period_end = 7;
-  QualityAgentReportState state = 8;
+  // Removed: report generation is synchronous and always complete.
+  reserved 8;
+  reserved "state";
   // Database resource names the report covers.
   repeated string databases = 9;
   int32 target_count = 10;
@@ -4495,9 +3917,9 @@ message QualityAgentReport {
   int32 new_issue_count = 18;
   int32 open_issue_count = 19;
   int32 pending_proposal_count = 20;
-  int64 tokens_used = 21;
+  reserved 21, 23;
+  reserved "tokens_used", "failure_reason";
   string body_markdown = 22;
-  string failure_reason = 23;
   google.protobuf.Timestamp create_time = 24;
   google.protobuf.Timestamp generate_time = 25;
 }
@@ -4515,14 +3937,6 @@ message ListQualityAgentReportsRequest {
 message ListQualityAgentReportsResponse {
   repeated QualityAgentReport quality_agent_reports = 1;
   string next_page_token = 2;
-}
-
-message GetQualityAgentReportRequest {
-  // Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentReport"}
-  ];
 }
 
 // QualityAgentAttentionKind is why the owner is needed.
@@ -4556,8 +3970,9 @@ message QualityAgentAttention {
   QualityAgentAttentionStatus status = 4;
   // The target session to resume when the owner answers; empty for an agent event.
   string session = 5;
-  // The resource the owner should open, e.g. a report or a proposal.
-  string reference = 6;
+  // Removed: the UI never rendered the reference.
+  reserved 6;
+  reserved "reference";
   string title = 7;
   string question = 8;
   google.protobuf.Timestamp create_time = 9;
@@ -4615,7 +4030,7 @@ message SetQualityAgentAdoptionRequest {
 message UpdateQualityAgentRequest {
   QualityAgent quality_agent = 1 [(google.api.field_behavior) = REQUIRED];
   // Fields to replace: display_name, description, owner, databases, capabilities,
-  // provider_profile, report_schedule, adoption, budget.
+  // report_schedule, adoption, budget.
   google.protobuf.FieldMask update_mask = 2;
 }
 
@@ -4639,9 +4054,9 @@ message PauseQualityAgentRequest {
 
 message CreateQualityAgentResponse {
   QualityAgent agent = 1;
-  // The bearer token, returned exactly once. It authenticates as the agent
-  // principal and cannot be retrieved again; rotate it if lost.
-  string token = 2;
+  // Removed with the external-agent token surface.
+  reserved 2;
+  reserved "token";
 }
 
 message ListQualityAgentsRequest {
@@ -4659,16 +4074,6 @@ message ListQualityAgentsResponse {
 message DisableQualityAgentRequest {
   // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
   string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message RotateQualityAgentTokenRequest {
-  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message RotateQualityAgentTokenResponse {
-  QualityAgent agent = 1;
-  string token = 2;
 }
 
 // QualityCoverageGap is one required property a target's plan does not satisfy.
@@ -5158,17 +4563,11 @@ message DeleteQualityCodeTableRequest {
 enum QualityAgentSessionState {
   QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
   QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
-  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  // Removed: pausing an agent is an agent-state transition, not a session one.
+  reserved 2;
+  reserved "QUALITY_AGENT_SESSION_STATE_PAUSED";
   QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
   QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
-}
-
-// QualityAgentSessionSource says who created a session: a person or the
-// enrollment queue.
-enum QualityAgentSessionSource {
-  QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED = 0;
-  QUALITY_AGENT_SESSION_SOURCE_MANUAL = 1;
-  QUALITY_AGENT_SESSION_SOURCE_AUTO = 2;
 }
 
 // QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
@@ -5178,25 +4577,6 @@ enum QualityAgentSessionMode {
   QUALITY_AGENT_SESSION_MODE_UNSPECIFIED = 0;
   QUALITY_AGENT_SESSION_MODE_MONITOR = 1;
   QUALITY_AGENT_SESSION_MODE_TRIAGE = 2;
-}
-
-// QualityAgentEnrollmentState is the queue state of one target in the runner's
-// scope. The enrollment row is the desired state; a session is created lazily when
-// the row is admitted.
-enum QualityAgentEnrollmentState {
-  QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED = 0;
-  // Discovered and waiting for admission (a budget, a person or a dependency).
-  QUALITY_AGENT_ENROLLMENT_STATE_PENDING = 1;
-  // Admitted: a session exists and is triaging or monitoring the target.
-  QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE = 2;
-  // Triaged with nothing left to do; waits for its next review or an approval.
-  QUALITY_AGENT_ENROLLMENT_STATE_DORMANT = 3;
-  // A person opted the target out; discovery never re-admits it.
-  QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED = 4;
-  // The target's database left the runner's scope. Reversible.
-  QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE = 5;
-  // The registry object no longer exists. The row is kept for history.
-  QUALITY_AGENT_ENROLLMENT_STATE_GONE = 6;
 }
 
 // QualityAgentMessageRole is one entry in a session's conversation.
@@ -5240,7 +4620,9 @@ message QualityAgentSession {
   string database = 3;
   // Format: users/{user}. The agent principal that runs the session.
   string agent = 4;
-  string objective = 5;
+  // Removed: the wake objective is derived from the session mode.
+  reserved 5;
+  reserved "objective";
   QualityAgentSessionState state = 6;
   // Stable blocked code and its explanation; empty unless blocked.
   string blocked_code = 7;
@@ -5248,10 +4630,9 @@ message QualityAgentSession {
   // Incremented by every mutation; human mutations carry the revision they saw.
   int32 revision = 9;
   int32 wake_count = 10;
-  // Lifetime token spend, so an archived session still counts.
-  int64 tokens_used = 11;
-  // The largest real prompt_tokens of the last wake.
-  int32 context_tokens = 12;
+  // Removed: token accounting lives on transcript messages.
+  reserved 11, 12;
+  reserved "tokens_used", "context_tokens";
   google.protobuf.Timestamp next_wake_time = 13;
   // The newest transcript entry, used as a heartbeat.
   google.protobuf.Timestamp last_activity_time = 14;
@@ -5263,8 +4644,9 @@ message QualityAgentSession {
   google.protobuf.Timestamp create_time = 18;
   google.protobuf.Timestamp update_time = 19;
   google.protobuf.Timestamp archive_time = 20;
-  // Who created the session: a person or the enrollment queue.
-  QualityAgentSessionSource source = 21;
+  // Removed: sessions are always created by the enrollment queue.
+  reserved 21;
+  reserved "source";
   // MONITOR reviews a covered target; TRIAGE analyses an uncovered one.
   QualityAgentSessionMode mode = 22;
 }
@@ -5296,92 +4678,6 @@ message QualityAgentSessionMessage {
   string reference = 15;
 }
 
-// QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
-// and counters are durable; runner_last_tick_time is process-local and reset by a
-// restart, so it is a liveness hint, not durable state.
-message QualityAgentRunnerStatus {
-  bool enabled = 1;
-  bool autonomy_enabled = 2;
-  bool llm_configured = 3;
-  int32 running_sessions = 4;
-  int32 idle_sessions = 5;
-  int32 blocked_sessions = 6;
-  int64 tokens_last_hour = 7;
-  int64 tokens_per_hour_limit = 8;
-  int32 wakes_last_hour = 9;
-  int32 wakes_per_hour_limit = 10;
-  int32 max_concurrent_sessions = 11;
-  int32 compaction_trigger_tokens = 12;
-  int32 idle_wake_seconds = 13;
-  google.protobuf.Timestamp last_activity_time = 14;
-  google.protobuf.Timestamp runner_last_tick_time = 15;
-  // Enrollment queue counts. A queue row is the desired state of one target in
-  // scope; a session is created lazily when the row is admitted.
-  int32 pending_enrollments = 16;
-  int32 active_enrollments = 17;
-  int32 dormant_enrollments = 18;
-  int32 excluded_enrollments = 19;
-  // The last discovery scan of any database. Process-local: a restart resets it.
-  google.protobuf.Timestamp enrollment_last_scan_time = 20;
-  // The effective admission limits so the queue page can explain a stalled row.
-  int32 max_new_sessions_per_hour = 21;
-  int32 max_active_sessions = 22;
-  bool auto_enroll_enabled = 23;
-}
-
-// QualityAgentSessionStateCount is how many sessions stand in one state.
-message QualityAgentSessionStateCount {
-  QualityAgentSessionState state = 1;
-  int32 count = 2;
-}
-
-// QualityAgentTargetCost is one target's share of the runner's token spend.
-message QualityAgentTargetCost {
-  QualityTarget target = 1;
-  int64 tokens_used = 2;
-  int32 session_count = 3;
-}
-
-// QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
-// how the proposals it made were decided. All of it is derived from existing rows.
-message QualityAgentMetrics {
-  repeated QualityAgentSessionStateCount sessions = 1;
-  int64 tokens_total = 2;
-  int64 tokens_last_hour = 3;
-  // Change requests proposed by an agent, by lifecycle state. Acceptance is
-  // applied / (applied + rejected); pending and expired are not decisions.
-  int32 agent_change_requests_total = 4;
-  int32 agent_change_requests_applied = 5;
-  int32 agent_change_requests_rejected = 6;
-  int32 agent_change_requests_pending = 7;
-  int32 agent_change_requests_approved = 8;
-  int32 agent_change_requests_expired = 9;
-  // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
-  // rows carry no verdict, so the buckets do not have to sum to the total.
-  int32 investigations_total = 10;
-  int32 investigations_inconclusive = 11;
-  int32 investigations_root_cause = 12;
-  int32 investigations_contributing_factor = 13;
-  int32 investigations_unrelated = 14;
-  repeated QualityAgentTargetCost top_targets = 15;
-}
-
-message GetQualityAgentMetricsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message CreateQualityAgentSessionRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
-  MetaType meta_type = 3;
-  // Empty means "keep this target trustworthy".
-  string objective = 4;
-  // Format: users/{user}. Empty uses the first enabled quality agent.
-  string agent = 5;
-}
-
 message ListQualityAgentSessionsRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
@@ -5391,8 +4687,8 @@ message ListQualityAgentSessionsRequest {
   string target_guid = 4;
   int32 page_size = 5;
   string page_token = 6;
-  // UNSPECIFIED keeps both manual and automatic sessions.
-  QualityAgentSessionSource source = 7;
+  reserved 7;
+  reserved "source";
   // UNSPECIFIED keeps both monitor and triage sessions.
   QualityAgentSessionMode mode = 8;
   // Administrator diagnostics filter: keep only this agent's sessions.
@@ -5404,36 +4700,9 @@ message ListQualityAgentSessionsResponse {
   string next_page_token = 2;
 }
 
-message GetQualityAgentSessionRequest {
-  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message PauseQualityAgentSessionRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  // The revision the caller saw; a stale value is rejected.
-  int32 expected_revision = 2;
-}
-
 message ResumeQualityAgentSessionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   int32 expected_revision = 2;
-}
-
-message ArchiveQualityAgentSessionRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 expected_revision = 2;
-}
-
-message WakeQualityAgentSessionRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  // The person's question or instruction; it becomes a user message in the session.
-  string content = 2;
-  // A client-generated idempotency id for this message. Repeating the same id returns
-  // the session without appending a second message; empty means the server generates a
-  // random one (a repeat is then a new message, which is what a person asking the same
-  // question twice means).
-  string request_id = 3;
 }
 
 message ListQualityAgentSessionMessagesRequest {
@@ -5451,124 +4720,4 @@ message ListQualityAgentSessionMessagesRequest {
 message ListQualityAgentSessionMessagesResponse {
   repeated QualityAgentSessionMessage quality_agent_session_messages = 1;
   string next_page_token = 2;
-}
-
-message GetQualityAgentRunnerStatusRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-// ---- Quality agent enrollments ----
-
-// QualityAgentEnrollment is one target's place in the runner's queue: the desired
-// state derived from the database scope, plus the priority and admission hints a
-// person sees. The session row remains the execution state.
-message QualityAgentEnrollment {
-  option (google.api.resource) = {
-    type: "metaxisdata/QualityAgentEnrollment"
-    pattern: "workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment}"
-  };
-
-  // Format: workspaces/{workspace}/qualityAgentEnrollments/{id}
-  string name = 1;
-  // The target this enrollment covers. Its path is reconstructed from the GUID.
-  QualityTarget target = 2;
-  // The database the target lives in: instances/{instance}/databases/{database}.
-  string database = 3;
-  QualityAgentEnrollmentState state = 4;
-  // MONITOR once the target has coverage; TRIAGE while it has none.
-  QualityAgentSessionMode mode = 5;
-  // 0..1000; larger is admitted first.
-  int32 priority = 6;
-  // Human-readable signals behind the priority, for example "rules,failing".
-  string priority_reason = 7;
-  // Why the row is not progressing, for example "budget" or "no-model".
-  string blocked_reason = 8;
-  // The target's session, or empty before admission.
-  string session = 9;
-  int32 triage_count = 10;
-  google.protobuf.Timestamp last_triaged_time = 11;
-  google.protobuf.Timestamp next_review_time = 12;
-  google.protobuf.Timestamp discovered_time = 13;
-  google.protobuf.Timestamp last_seen_time = 14;
-  // Incremented by every mutation; human mutations carry the revision they saw.
-  int32 revision = 15;
-  google.protobuf.Timestamp create_time = 16;
-  google.protobuf.Timestamp update_time = 17;
-}
-
-message ListQualityAgentEnrollmentsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  // The maximum number of enrollments to return. If unspecified, at most 50 are
-  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-  int32 page_size = 2;
-  string page_token = 3;
-  // Exact database resource name. Empty keeps every database in scope.
-  string database = 4;
-  // UNSPECIFIED keeps every state.
-  QualityAgentEnrollmentState state = 5;
-  // UNSPECIFIED keeps both modes.
-  QualityAgentSessionMode mode = 6;
-  // A case-insensitive substring over the target GUID. The display path is encoded in
-  // the GUID's semicolon-separated segments, so a path fragment matches too.
-  string search = 7;
-  // Administrator diagnostics filter: keep only this agent's queue rows.
-  string agent = 8 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}];
-}
-
-message ListQualityAgentEnrollmentsResponse {
-  repeated QualityAgentEnrollment quality_agent_enrollments = 1;
-  string next_page_token = 2;
-}
-
-message GetQualityAgentEnrollmentSummaryRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-// QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
-message QualityAgentEnrollmentStateCount {
-  QualityAgentEnrollmentState state = 1;
-  int32 count = 2;
-}
-
-// QualityAgentDatabaseEnrollmentSummary is one database's slice of the queue.
-message QualityAgentDatabaseEnrollmentSummary {
-  // instances/{instance}/databases/{database}
-  string database = 1;
-  int32 pending = 2;
-  int32 active = 3;
-  int32 dormant = 4;
-  int32 excluded = 5;
-  int32 out_of_scope = 6;
-  int32 gone = 7;
-}
-
-// QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
-// by database, and when discovery last scanned a database (process-local).
-message QualityAgentEnrollmentSummary {
-  repeated QualityAgentEnrollmentStateCount states = 1;
-  repeated QualityAgentDatabaseEnrollmentSummary databases = 2;
-  google.protobuf.Timestamp last_scan_time = 3;
-}
-
-message UpdateQualityAgentEnrollmentRequest {
-  // The enrollment to change. Only state and mode in update_mask are accepted.
-  QualityAgentEnrollment enrollment = 1 [(google.api.field_behavior) = REQUIRED];
-  // Supported paths: "state" (only PENDING and EXCLUDED are accepted) and "mode"
-  // (MONITOR and TRIAGE). The server rejects any other path.
-  google.protobuf.FieldMask update_mask = 2 [(google.api.field_behavior) = REQUIRED];
-  // The revision the caller saw; a stale value is rejected with Aborted.
-  int32 expected_revision = 3;
-}
-
-message RetryQualityAgentEnrollmentRequest {
-  // Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentEnrollment"}
-  ];
-  // The revision the caller saw; a stale value is rejected with Aborted.
-  int32 expected_revision = 2;
 }

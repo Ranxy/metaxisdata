@@ -5100,34 +5100,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityActionPolicy:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read the WS2 action catalog and how the autonomy policy would decide each action
-                 for an agent right now. Read-only: it exposes the policy, it does not change it.
-            operationId: DataQualityService_GetQualityActionPolicy
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityActionPolicy'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:dismiss:
         post:
             tags:
@@ -5207,201 +5179,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentEnrollments:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                List the runner's enrollment queue: one row per monitorable object in the
-                 runner's database scope, with its queue state, priority and session link.
-            operationId: DataQualityService_ListQualityAgentEnrollments
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: pageSize
-                  in: query
-                  description: |-
-                    The maximum number of enrollments to return. If unspecified, at most 50 are
-                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-                - name: database
-                  in: query
-                  description: Exact database resource name. Empty keeps every database in scope.
-                  schema:
-                    type: string
-                - name: state
-                  in: query
-                  description: UNSPECIFIED keeps every state.
-                  schema:
-                    enum:
-                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
-                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
-                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
-                    type: string
-                    format: enum
-                - name: mode
-                  in: query
-                  description: UNSPECIFIED keeps both modes.
-                  schema:
-                    enum:
-                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
-                        - QUALITY_AGENT_SESSION_MODE_MONITOR
-                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
-                    type: string
-                    format: enum
-                - name: search
-                  in: query
-                  description: |-
-                    A case-insensitive substring over the target GUID. The display path is encoded in
-                     the GUID's semicolon-separated segments, so a path fragment matches too.
-                  schema:
-                    type: string
-                - name: agent
-                  in: query
-                  description: 'Administrator diagnostics filter: keep only this agent''s queue rows.'
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityAgentEnrollmentsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentEnrollments:summary:
-        get:
-            tags:
-                - DataQualityService
-            description: Read enrollment counts by state and by database. Read-only.
-            operationId: DataQualityService_GetQualityAgentEnrollmentSummary
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentEnrollmentSummary'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentMetrics:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read the runner's evaluation: session states, token spend, the acceptance of the
-                 change requests it proposed, and investigation verdicts. Read-only.
-            operationId: DataQualityService_GetQualityAgentMetrics
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentMetrics'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentReports/{qualityAgentReport}:
-        get:
-            tags:
-                - DataQualityService
-            description: Read one report with its rendered body.
-            operationId: DataQualityService_GetQualityAgentReport
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentReport
-                  in: path
-                  description: The qualityAgentReport id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentReport'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentRunnerStatus:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read the runner's live state: what is running, what is due and how much of the
-                 budgets is spent. runner_last_tick_time is process-local and resets on restart.
-            operationId: DataQualityService_GetQualityAgentRunnerStatus
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentRunnerStatus'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentSessions:
         get:
             tags:
@@ -5422,7 +5199,6 @@ paths:
                     enum:
                         - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
                         - QUALITY_AGENT_SESSION_STATE_ENABLED
-                        - QUALITY_AGENT_SESSION_STATE_PAUSED
                         - QUALITY_AGENT_SESSION_STATE_BLOCKED
                         - QUALITY_AGENT_SESSION_STATE_ARCHIVED
                     type: string
@@ -5444,16 +5220,6 @@ paths:
                   in: query
                   schema:
                     type: string
-                - name: source
-                  in: query
-                  description: UNSPECIFIED keeps both manual and automatic sessions.
-                  schema:
-                    enum:
-                        - QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED
-                        - QUALITY_AGENT_SESSION_SOURCE_MANUAL
-                        - QUALITY_AGENT_SESSION_SOURCE_AUTO
-                    type: string
-                    format: enum
                 - name: mode
                   in: query
                   description: UNSPECIFIED keeps both monitor and triage sessions.
@@ -5476,38 +5242,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualityAgentSessionsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:
-        get:
-            tags:
-                - DataQualityService
-            description: Read one session.
-            operationId: DataQualityService_GetQualityAgentSession
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentSession
-                  in: path
-                  description: The qualityAgentSession id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentSession'
                 default:
                     description: Default error response
                     content:
@@ -5646,10 +5380,9 @@ paths:
             tags:
                 - DataQualityService
             description: |-
-                Create an agent principal and return its bearer token once. The agent is an
-                 independent principal whose only workspace role is the quality agent role; its
-                 token is a normal access token for that principal, so disabling the agent makes
-                 every token it issued unusable. Administrator only.
+                Create an internal quality agent with its runtime configuration. The agent's
+                 service-account principal exists only as the IAM/audit actor for the in-process
+                 runner; there is no external bearer-token surface. Administrator only.
             operationId: DataQualityService_CreateQualityAgent
             parameters:
                 - name: workspace
@@ -5700,7 +5433,7 @@ paths:
                   in: query
                   description: |-
                     Fields to replace: display_name, description, owner, databases, capabilities,
-                     provider_profile, report_schedule, adoption, budget.
+                     report_schedule, adoption, budget.
                   schema:
                     type: string
                     format: field-mask
@@ -5869,8 +5602,8 @@ paths:
             tags:
                 - DataQualityService
             description: |-
-                Disable an agent principal. Its tokens stop authenticating immediately; the
-                 agent row stays for the audit trail.
+                Disable an agent permanently. The row stays for the audit trail; a disabled
+                 agent is never re-enabled (create a new one instead).
             operationId: DataQualityService_DisableQualityAgent
             parameters:
                 - name: workspace
@@ -5984,46 +5717,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:rotateToken:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Rotate an agent's bearer token: mint a new one and invalidate every token
-                 minted before this call. The token is returned once.
-            operationId: DataQualityService_RotateQualityAgentToken
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgent
-                  in: path
-                  description: The qualityAgent id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/RotateQualityAgentTokenRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/RotateQualityAgentTokenResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:setAdoption:
         post:
             tags:
@@ -6068,7 +5761,7 @@ paths:
         post:
             tags:
                 - DataQualityService
-            description: Activate a DRAFT or PAUSED agent. Administrator only.
+            description: Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
             operationId: DataQualityService_StartQualityAgent
             parameters:
                 - name: workspace
@@ -6096,164 +5789,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityAgent'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityChangeRequests:
-        get:
-            tags:
-                - DataQualityService
-            description: List change requests, newest first.
-            operationId: DataQualityService_ListQualityChangeRequests
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: targetGuid
-                  in: query
-                  schema:
-                    type: string
-                - name: state
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED
-                        - QUALITY_CHANGE_REQUEST_STATE_PROPOSED
-                        - QUALITY_CHANGE_REQUEST_STATE_APPROVED
-                        - QUALITY_CHANGE_REQUEST_STATE_APPLIED
-                        - QUALITY_CHANGE_REQUEST_STATE_REJECTED
-                        - QUALITY_CHANGE_REQUEST_STATE_EXPIRED
-                    type: string
-                    format: enum
-                - name: pageSize
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityChangeRequestsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Create a batch of typed changes against one target. It stays PROPOSED until a
-                 person decides; creating it changes nothing on the target. An agent principal
-                 may only create PROPOSED requests, and only while autonomy is enabled.
-            operationId: DataQualityService_CreateQualityChangeRequest
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualityChangeRequestRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityChangeRequest'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityChangeRequests/{qualityChangeRequest}:
-        get:
-            tags:
-                - DataQualityService
-            description: Read one change request, with its items and per-item results.
-            operationId: DataQualityService_GetQualityChangeRequest
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityChangeRequest
-                  in: path
-                  description: The qualityChangeRequest id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityChangeRequest'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityChangeRequests/{qualityChangeRequest}:decide:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Approve or reject a change request. Approving applies each item through its
-                 existing path and returns a result per item; rejecting records the structured
-                 reasons. A stale base version expires the request instead of rebasing it.
-            operationId: DataQualityService_DecideQualityChangeRequest
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityChangeRequest
-                  in: path
-                  description: The qualityChangeRequest id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/DecideQualityChangeRequestRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityChangeRequest'
                 default:
                     description: Default error response
                     content:
@@ -6698,41 +6233,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityContracts:stagePlan:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Write the target's plan declaration without touching its settings. This is the
-                 one write an agent principal may make; an agent call is refused while the
-                 workspace kill switch or the agent itself is disabled.
-            operationId: DataQualityService_StageQualityPlan
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/StageQualityPlanRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityContract'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityContracts:update:
         post:
             tags:
@@ -6980,134 +6480,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityInvestigations:
-        get:
-            tags:
-                - DataQualityService
-            description: List investigations, newest first.
-            operationId: DataQualityService_ListQualityInvestigations
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: targetGuid
-                  in: query
-                  schema:
-                    type: string
-                - name: status
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_INVESTIGATION_STATUS_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_STATUS_CONCLUDED
-                        - QUALITY_INVESTIGATION_STATUS_FAILED
-                        - QUALITY_INVESTIGATION_STATUS_INTERRUPTED
-                    type: string
-                    format: enum
-                - name: trigger
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_TRIGGER_EXECUTION
-                        - QUALITY_INVESTIGATION_TRIGGER_ISSUE
-                        - QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE
-                        - QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP
-                        - QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT
-                        - QUALITY_INVESTIGATION_TRIGGER_MANUAL
-                    type: string
-                    format: enum
-                - name: pageSize
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityInvestigationsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Record one investigation: an agent's hypotheses, deterministic evidence
-                 references, verdict and cost on one event. It never changes the check's verdict
-                 or an issue's state. The agent needs autonomy enabled.
-            operationId: DataQualityService_CreateQualityInvestigation
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualityInvestigationRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityInvestigation'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityInvestigations/{qualityInvestigation}:
-        get:
-            tags:
-                - DataQualityService
-            description: Read one investigation.
-            operationId: DataQualityService_GetQualityInvestigation
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityInvestigation
-                  in: path
-                  description: The qualityInvestigation id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityInvestigation'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityIssues:
         get:
             tags:
@@ -7305,176 +6677,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityLLMUsage'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityMemories:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                List memories. Expired confirmations read as EXPIRED; superseded ones stay
-                 visible for the correction path.
-            operationId: DataQualityService_ListQualityMemories
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: kind
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_MEMORY_KIND_UNSPECIFIED
-                        - QUALITY_MEMORY_KIND_ASSET_FACT
-                        - QUALITY_MEMORY_KIND_DECISION
-                        - QUALITY_MEMORY_KIND_EVENT
-                    type: string
-                    format: enum
-                - name: status
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_MEMORY_STATUS_UNSPECIFIED
-                        - QUALITY_MEMORY_STATUS_PROPOSED
-                        - QUALITY_MEMORY_STATUS_CONFIRMED
-                        - QUALITY_MEMORY_STATUS_REJECTED
-                        - QUALITY_MEMORY_STATUS_SUPERSEDED
-                        - QUALITY_MEMORY_STATUS_EXPIRED
-                    type: string
-                    format: enum
-                - name: subject
-                  in: query
-                  description: An exact subject.
-                  schema:
-                    type: string
-                - name: pageSize
-                  in: query
-                  description: The page size; 0 uses the default (50), and the maximum is 1000.
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityMemoriesResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Record one memory: an asset fact, a decision with its structured reason, or an
-                 event. An agent may write asset facts directly; a decision or an event it writes
-                 stays PROPOSED until a person confirms it.
-            operationId: DataQualityService_CreateQualityMemory
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualityMemoryRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityMemory'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityMemories/{qualityMemory}:
-        delete:
-            tags:
-                - DataQualityService
-            description: |-
-                Delete a memory. Administrator cleanup; the row is kept out of reads, and the
-                 audit row records who removed it.
-            operationId: DataQualityService_DeleteQualityMemory
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityMemory
-                  in: path
-                  description: The qualityMemory id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityMemories/{qualityMemory}:confirm:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
-                 knowledge; nothing else confirms it.
-            operationId: DataQualityService_ConfirmQualityMemory
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityMemory
-                  in: path
-                  description: The qualityMemory id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ConfirmQualityMemoryRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityMemory'
                 default:
                     description: Default error response
                     content:
@@ -10357,22 +9559,6 @@ components:
             description: |-
                 ColumnValue is one column of a sampled failed row. Values are truncated before
                  they are returned, so a wide text column cannot bloat the response.
-        ConfirmQualityMemoryRequest:
-            required:
-                - name
-                - decision
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityMemories/{quality_memory}'
-                decision:
-                    enum:
-                        - DECISION_UNSPECIFIED
-                        - DECISION_CONFIRM
-                        - DECISION_REJECT
-                    type: string
-                    format: enum
         ConnectedApp:
             type: object
             properties:
@@ -10596,186 +9782,6 @@ components:
             properties:
                 agent:
                     $ref: '#/components/schemas/QualityAgent'
-                token:
-                    type: string
-                    description: |-
-                        The bearer token, returned exactly once. It authenticates as the agent
-                         principal and cannot be retrieved again; rotate it if lost.
-        CreateQualityChangeRequestRequest:
-            required:
-                - parent
-                - targetGuid
-                - baseVersion
-                - items
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                targetGuid:
-                    type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - APPLICATION_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    format: enum
-                baseVersion:
-                    type: integer
-                    description: |-
-                        The newest published version the request is written against. Required, but 0
-                         is a valid value for a target that has never been published.
-                    format: int32
-                items:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityChangeRequestItem'
-                    description: At most 20 items.
-        CreateQualityInvestigationRequest:
-            required:
-                - parent
-                - targetGuid
-                - trigger
-                - triggerReference
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                targetGuid:
-                    type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - APPLICATION_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    format: enum
-                trigger:
-                    enum:
-                        - QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_TRIGGER_EXECUTION
-                        - QUALITY_INVESTIGATION_TRIGGER_ISSUE
-                        - QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE
-                        - QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP
-                        - QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT
-                        - QUALITY_INVESTIGATION_TRIGGER_MANUAL
-                    type: string
-                    format: enum
-                triggerReference:
-                    type: string
-                    description: The triggering object's resource name or value.
-                status:
-                    enum:
-                        - QUALITY_INVESTIGATION_STATUS_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_STATUS_CONCLUDED
-                        - QUALITY_INVESTIGATION_STATUS_FAILED
-                        - QUALITY_INVESTIGATION_STATUS_INTERRUPTED
-                    type: string
-                    format: enum
-                verdict:
-                    enum:
-                        - QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE
-                        - QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR
-                        - QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE
-                        - QUALITY_INVESTIGATION_VERDICT_UNRELATED
-                    type: string
-                    format: enum
-                summary:
-                    type: string
-                hypotheses:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationHypothesis'
-                evidence:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationEvidence'
-                actionRefs:
-                    type: array
-                    items:
-                        type: string
-                provider:
-                    type: string
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-                promptTokens:
-                    type: string
-                completionTokens:
-                    type: string
-                failureReason:
-                    type: string
-                requestFingerprint:
-                    type: string
-                    description: |-
-                        An idempotency key from the agent's run; a retry with the same key returns the
-                         recorded investigation instead of writing a second one.
-        CreateQualityMemoryRequest:
-            required:
-                - parent
-                - kind
-                - subject
-                - statement
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                kind:
-                    enum:
-                        - QUALITY_MEMORY_KIND_UNSPECIFIED
-                        - QUALITY_MEMORY_KIND_ASSET_FACT
-                        - QUALITY_MEMORY_KIND_DECISION
-                        - QUALITY_MEMORY_KIND_EVENT
-                    type: string
-                    format: enum
-                subject:
-                    type: string
-                statement:
-                    type: string
-                evidence:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationEvidence'
-                domainRef:
-                    type: string
-                expiresAt:
-                    type: string
-                    format: date-time
         CreateQualityRuleRequest:
             required:
                 - parent
@@ -11081,84 +10087,12 @@ components:
                     description: |-
                         IANA time zone the time variables of check filters and custom SQL are
                          resolved in, for example "Asia/Shanghai". Empty means UTC.
-                agentAutonomyEnabled:
-                    type: boolean
-                    description: |-
-                        Whether the workspace's agent principals may write plan declarations and
-                         proposed change requests. Off by default: the kill switch returns the
-                         workspace to human-only edits, and the agent still reads.
                 agentRunnerEnabled:
                     type: boolean
-                    description: Whether the built-in quality agent runner may run sessions. Off by default.
-                agentRunnerDatabases:
-                    type: array
-                    items:
-                        type: string
                     description: |-
-                        The databases the runner may see and work on, as database resource names
-                         (instances/{instance}/databases/{database}). Empty means none.
-                agentRunnerTokensPerHour:
-                    type: string
-                    description: |-
-                        The workspace's hourly token ceiling for runner sessions. Zero means the
-                         server default (100000000).
-                agentRunnerWakesPerHour:
-                    type: integer
-                    description: |-
-                        How many session wakes the workspace may start per hour. Zero means the
-                         server default (20).
-                    format: int32
-                agentRunnerMaxConcurrentSessions:
-                    type: integer
-                    description: How many sessions may run at once. Zero means the server default (2).
-                    format: int32
-                agentRunnerCompactionTriggerTokens:
-                    type: integer
-                    description: |-
-                        The context token threshold that triggers compaction of a session's older
-                         messages. Zero means the server default (262144).
-                    format: int32
-                agentRunnerIdleWakeSeconds:
-                    type: integer
-                    description: |-
-                        How long an idle session sleeps between wakes, in seconds. Zero means the
-                         server default (86400).
-                    format: int32
-                agentRunnerAutoInvestigateFailures:
-                    type: boolean
-                    description: |-
-                        Whether a failed check execution appends an event to its target's session and
-                         wakes it. On by default.
-                agentRunnerAutoEnroll:
-                    type: boolean
-                    description: |-
-                        Whether the runner enrolls every monitorable object in its database scope into
-                         its queue. Off by default: turning it on is the workspace's opt-in to automatic
-                         triage and monitoring.
-                agentRunnerMaxNewSessionsPerHour:
-                    type: integer
-                    description: |-
-                        How many automatic sessions the admission path may create per hour. Zero means
-                         the server default (10).
-                    format: int32
-                agentRunnerMaxActiveSessions:
-                    type: integer
-                    description: |-
-                        How many enrollments may be active (triaging or monitoring) at once. Zero means
-                         the server default (100).
-                    format: int32
-                agentRunnerDormantReviewDays:
-                    type: integer
-                    description: |-
-                        How many days a triaged target sleeps before it is reviewed again. Zero means
-                         the server default (30).
-                    format: int32
-                agentRunnerEventBudgetPercent:
-                    type: integer
-                    description: |-
-                        The percentage of the hourly wake budget reserved for events and people; the
-                         admission path only spends what remains. Zero means the server default (50).
-                    format: int32
+                        Whether the built-in quality agent runner may run sessions. Off by default:
+                         turning it off stops agent wakes, reports and failure events. Per-agent
+                         budgets and scope live on the agent.
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -11346,39 +10280,6 @@ components:
                         The list of event triggers in a database (PostgreSQL specific).
                          Event triggers are database-level objects, not schema-scoped.
             description: DatabaseSchemaMetadata is the schema metadata for databases.
-        DecideQualityChangeRequestRequest:
-            required:
-                - name
-                - decision
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}'
-                decision:
-                    enum:
-                        - DECISION_UNSPECIFIED
-                        - DECISION_APPROVE
-                        - DECISION_REJECT
-                    type: string
-                    format: enum
-                rejectionReasons:
-                    type: array
-                    items:
-                        enum:
-                            - QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED
-                            - QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT
-                            - QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT
-                            - QUALITY_CHANGE_REJECTION_REASON_NOISE
-                            - QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM
-                            - QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN
-                            - QUALITY_CHANGE_REJECTION_REASON_DEFER
-                            - QUALITY_CHANGE_REJECTION_REASON_OTHER
-                        type: string
-                        format: enum
-                    description: Why the request was rejected; required for REJECT.
-                decisionNote:
-                    type: string
         DeleteIdentityProviderBindingRequest:
             required:
                 - user
@@ -13165,15 +12066,6 @@ components:
                 nextPageToken:
                     type: string
             description: ListQualityAgentConversationMessagesResponse is one chronological page.
-        ListQualityAgentEnrollmentsResponse:
-            type: object
-            properties:
-                qualityAgentEnrollments:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentEnrollment'
-                nextPageToken:
-                    type: string
         ListQualityAgentReportsResponse:
             type: object
             properties:
@@ -13208,15 +12100,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityAgent'
-                nextPageToken:
-                    type: string
-        ListQualityChangeRequestsResponse:
-            type: object
-            properties:
-                qualityChangeRequests:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityChangeRequest'
                 nextPageToken:
                     type: string
         ListQualityCodeTablesResponse:
@@ -13258,15 +12141,6 @@ components:
                         $ref: '#/components/schemas/QualityExecution'
                 nextPageToken:
                     type: string
-        ListQualityInvestigationsResponse:
-            type: object
-            properties:
-                qualityInvestigations:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigation'
-                nextPageToken:
-                    type: string
         ListQualityIssuesResponse:
             type: object
             properties:
@@ -13274,15 +12148,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityIssue'
-                nextPageToken:
-                    type: string
-        ListQualityMemoriesResponse:
-            type: object
-            properties:
-                qualityMemories:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityMemory'
                 nextPageToken:
                     type: string
         ListQualityPlansResponse:
@@ -14782,63 +13647,6 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
-        QualityAction:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: The stable catalog id, e.g. "A0-4" or "A3-1".
-                title:
-                    type: string
-                    description: A short developer-facing title; the UI owns the localized copy.
-                autonomyLevel:
-                    type: string
-                    description: |-
-                        A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
-                         (changes promises, responsibility or irreversible state).
-                actor:
-                    type: string
-                    description: 'AGENT or HUMAN: who may ever perform it.'
-                redLine:
-                    type: boolean
-                    description: A red line never accepts a pure model proposal, even with autonomy on.
-                implemented:
-                    type: boolean
-                    description: |-
-                        False when this codebase has no write path for the action yet; such an action is
-                         refused with its own reason instead of pretending to work.
-                agentReachable:
-                    type: boolean
-                    description: |-
-                        Whether the shipped agent role and handlers actually expose the action to an
-                         agent. It differs from implemented on purpose: a person may author a check while
-                         an agent can only propose it through a change request.
-                agentAllowed:
-                    type: boolean
-                    description: Whether an enabled agent would be allowed to do it under the current policy.
-                requiresApproval:
-                    type: boolean
-                    description: Whether a person must still approve the action after the policy allows it.
-                decisionCode:
-                    type: string
-                    description: |-
-                        The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
-                         DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL,
-                         DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person
-                         must still approve).
-                reason:
-                    type: string
-            description: QualityAction is one card of the WS2 action catalog with its live policy verdict.
-        QualityActionPolicy:
-            type: object
-            properties:
-                agentAutonomyEnabled:
-                    type: boolean
-                    description: The workspace kill switch the agent verdicts were computed with.
-                actions:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAction'
         QualityAgent:
             type: object
             properties:
@@ -14849,8 +13657,6 @@ components:
                     type: string
                 description:
                     type: string
-                enabled:
-                    type: boolean
                 createdBy:
                     type: string
                     description: 'Format: users/{user}. Empty when unknown.'
@@ -14865,7 +13671,7 @@ components:
                         - QUALITY_AGENT_STATE_PAUSED
                         - QUALITY_AGENT_STATE_DISABLED
                     type: string
-                    description: Runtime state; DISABLED is permanent and enabled is false.
+                    description: Runtime state; DISABLED is permanent.
                     format: enum
                 owner:
                     type: string
@@ -14880,9 +13686,6 @@ components:
                     items:
                         type: string
                     description: 'Capability ids: "suggest", "adopt", "patrol"; extensible server-side.'
-                providerProfile:
-                    type: string
-                    description: LLM provider profile; empty means the workspace default.
                 reportSchedule:
                     $ref: '#/components/schemas/QualityAgentReportSchedule'
                 adoption:
@@ -14898,9 +13701,9 @@ components:
                     type: string
                     format: date-time
             description: |-
-                QualityAgent is one agent principal: an independent identity an administrator
-                 creates for autonomous quality work. Its token is issued once, and disabling the
-                 agent ends every token it holds.
+                QualityAgent is one built-in quality agent: a service-account identity that exists
+                 only as the in-process runner's IAM and audit actor, plus the runtime configuration
+                 an administrator edits. There is no token or external API surface.
         QualityAgentAdoptionSetting:
             type: object
             properties:
@@ -14982,9 +13785,6 @@ components:
                 session:
                     type: string
                     description: The target session to resume when the owner answers; empty for an agent event.
-                reference:
-                    type: string
-                    description: The resource the owner should open, e.g. a report or a proposal.
                 title:
                     type: string
                 question:
@@ -15043,201 +13843,6 @@ components:
             description: |-
                 QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
                  default; the workspace hard caps still apply.
-        QualityAgentDatabaseEnrollmentSummary:
-            type: object
-            properties:
-                database:
-                    type: string
-                    description: instances/{instance}/databases/{database}
-                pending:
-                    type: integer
-                    format: int32
-                active:
-                    type: integer
-                    format: int32
-                dormant:
-                    type: integer
-                    format: int32
-                excluded:
-                    type: integer
-                    format: int32
-                outOfScope:
-                    type: integer
-                    format: int32
-                gone:
-                    type: integer
-                    format: int32
-            description: QualityAgentDatabaseEnrollmentSummary is one database's slice of the queue.
-        QualityAgentEnrollment:
-            type: object
-            properties:
-                id:
-                    type: string
-                workspaceId:
-                    type: string
-                targetGuid:
-                    type: string
-                targetType:
-                    type: integer
-                    format: int32
-                databaseRef:
-                    type: string
-                state:
-                    enum:
-                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
-                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
-                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
-                    type: string
-                    format: enum
-                mode:
-                    enum:
-                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
-                        - QUALITY_AGENT_SESSION_MODE_MONITOR
-                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
-                    type: string
-                    format: enum
-                priority:
-                    type: integer
-                    description: 0..1000; larger is admitted first.
-                    format: int32
-                priorityReason:
-                    type: string
-                    description: Human-readable signals behind the score, for example "rules,failing".
-                blockedReason:
-                    type: string
-                    description: Why the row is not progressing (a budget, a person or a missing dependency).
-                sessionId:
-                    type: string
-                triageCount:
-                    type: integer
-                    format: int32
-                lastTriagedAt:
-                    type: string
-                    format: date-time
-                nextReviewAt:
-                    type: string
-                    format: date-time
-                discoveredAt:
-                    type: string
-                    format: date-time
-                lastSeenAt:
-                    type: string
-                    format: date-time
-                excludedBy:
-                    type: integer
-                    format: int32
-                excludedAt:
-                    type: string
-                    format: date-time
-                revision:
-                    type: integer
-                    format: int32
-                createdAt:
-                    type: string
-                    format: date-time
-                updatedAt:
-                    type: string
-                    format: date-time
-            description: |-
-                QualityAgentEnrollment is one target's place in the runner's queue: the desired
-                 state derived from the database scope, plus the priority and admission hints a
-                 person sees. The session row remains the execution state.
-        QualityAgentEnrollmentStateCount:
-            type: object
-            properties:
-                state:
-                    enum:
-                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
-                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
-                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
-                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
-                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
-                    type: string
-                    format: enum
-                count:
-                    type: integer
-                    format: int32
-            description: QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
-        QualityAgentEnrollmentSummary:
-            type: object
-            properties:
-                states:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentEnrollmentStateCount'
-                databases:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentDatabaseEnrollmentSummary'
-                lastScanTime:
-                    type: string
-                    format: date-time
-            description: |-
-                QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
-                 by database, and when discovery last scanned a database (process-local).
-        QualityAgentMetrics:
-            type: object
-            properties:
-                sessions:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentSessionStateCount'
-                tokensTotal:
-                    type: string
-                tokensLastHour:
-                    type: string
-                agentChangeRequestsTotal:
-                    type: integer
-                    description: |-
-                        Change requests proposed by an agent, by lifecycle state. Acceptance is
-                         applied / (applied + rejected); pending and expired are not decisions.
-                    format: int32
-                agentChangeRequestsApplied:
-                    type: integer
-                    format: int32
-                agentChangeRequestsRejected:
-                    type: integer
-                    format: int32
-                agentChangeRequestsPending:
-                    type: integer
-                    format: int32
-                agentChangeRequestsApproved:
-                    type: integer
-                    format: int32
-                agentChangeRequestsExpired:
-                    type: integer
-                    format: int32
-                investigationsTotal:
-                    type: integer
-                    description: |-
-                        Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
-                         rows carry no verdict, so the buckets do not have to sum to the total.
-                    format: int32
-                investigationsInconclusive:
-                    type: integer
-                    format: int32
-                investigationsRootCause:
-                    type: integer
-                    format: int32
-                investigationsContributingFactor:
-                    type: integer
-                    format: int32
-                investigationsUnrelated:
-                    type: integer
-                    format: int32
-                topTargets:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentTargetCost'
-            description: |-
-                QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
-                 how the proposals it made were decided. All of it is derived from existing rows.
         QualityAgentReport:
             type: object
             properties:
@@ -15247,19 +13852,11 @@ components:
                 agent:
                     type: string
                     description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
-                trigger:
-                    enum:
-                        - QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED
-                        - QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED
-                        - QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND
-                    type: string
-                    format: enum
                 periodKind:
                     enum:
                         - QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED
                         - QUALITY_AGENT_REPORT_PERIOD_DAILY
                         - QUALITY_AGENT_REPORT_PERIOD_WEEKLY
-                        - QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND
                     type: string
                     format: enum
                 periodKey:
@@ -15271,14 +13868,6 @@ components:
                 periodEnd:
                     type: string
                     format: date-time
-                state:
-                    enum:
-                        - QUALITY_AGENT_REPORT_STATE_UNSPECIFIED
-                        - QUALITY_AGENT_REPORT_STATE_PENDING
-                        - QUALITY_AGENT_REPORT_STATE_READY
-                        - QUALITY_AGENT_REPORT_STATE_FAILED
-                    type: string
-                    format: enum
                 databases:
                     type: array
                     items:
@@ -15317,11 +13906,7 @@ components:
                 pendingProposalCount:
                     type: integer
                     format: int32
-                tokensUsed:
-                    type: string
                 bodyMarkdown:
-                    type: string
-                failureReason:
                     type: string
                 createTime:
                     type: string
@@ -15359,81 +13944,6 @@ components:
                     type: string
                     format: enum
             description: QualityAgentReportSchedule is the agent's patrol report cadence.
-        QualityAgentRunnerStatus:
-            type: object
-            properties:
-                enabled:
-                    type: boolean
-                autonomyEnabled:
-                    type: boolean
-                llmConfigured:
-                    type: boolean
-                runningSessions:
-                    type: integer
-                    format: int32
-                idleSessions:
-                    type: integer
-                    format: int32
-                blockedSessions:
-                    type: integer
-                    format: int32
-                tokensLastHour:
-                    type: string
-                tokensPerHourLimit:
-                    type: string
-                wakesLastHour:
-                    type: integer
-                    format: int32
-                wakesPerHourLimit:
-                    type: integer
-                    format: int32
-                maxConcurrentSessions:
-                    type: integer
-                    format: int32
-                compactionTriggerTokens:
-                    type: integer
-                    format: int32
-                idleWakeSeconds:
-                    type: integer
-                    format: int32
-                lastActivityTime:
-                    type: string
-                    format: date-time
-                runnerLastTickTime:
-                    type: string
-                    format: date-time
-                pendingEnrollments:
-                    type: integer
-                    description: |-
-                        Enrollment queue counts. A queue row is the desired state of one target in
-                         scope; a session is created lazily when the row is admitted.
-                    format: int32
-                activeEnrollments:
-                    type: integer
-                    format: int32
-                dormantEnrollments:
-                    type: integer
-                    format: int32
-                excludedEnrollments:
-                    type: integer
-                    format: int32
-                enrollmentLastScanTime:
-                    type: string
-                    description: 'The last discovery scan of any database. Process-local: a restart resets it.'
-                    format: date-time
-                maxNewSessionsPerHour:
-                    type: integer
-                    description: The effective admission limits so the queue page can explain a stalled row.
-                    format: int32
-                maxActiveSessions:
-                    type: integer
-                    format: int32
-                autoEnrollEnabled:
-                    type: boolean
-            description: |-
-                QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
-                 and counters are durable; runner_last_tick_time is process-local and reset by a
-                 restart, so it is a liveness hint, not durable state.
         QualityAgentSession:
             type: object
             properties:
@@ -15453,13 +13963,10 @@ components:
                 agentId:
                     type: integer
                     format: int32
-                objective:
-                    type: string
                 state:
                     enum:
                         - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
                         - QUALITY_AGENT_SESSION_STATE_ENABLED
-                        - QUALITY_AGENT_SESSION_STATE_PAUSED
                         - QUALITY_AGENT_SESSION_STATE_BLOCKED
                         - QUALITY_AGENT_SESSION_STATE_ARCHIVED
                     type: string
@@ -15474,13 +13981,6 @@ components:
                     format: int32
                 wakeCount:
                     type: integer
-                    format: int32
-                tokensUsed:
-                    type: string
-                    description: Lifetime token spend, so an archived session still counts in metrics.
-                contextTokens:
-                    type: integer
-                    description: The largest real prompt_tokens of the last wake; the compaction trigger.
                     format: int32
                 summary:
                     type: string
@@ -15501,9 +14001,6 @@ components:
                 restartCount:
                     type: integer
                     format: int32
-                createdBy:
-                    type: integer
-                    format: int32
                 createdAt:
                     type: string
                     format: date-time
@@ -15513,13 +14010,6 @@ components:
                 archivedAt:
                     type: string
                     format: date-time
-                source:
-                    enum:
-                        - QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED
-                        - QUALITY_AGENT_SESSION_SOURCE_MANUAL
-                        - QUALITY_AGENT_SESSION_SOURCE_AUTO
-                    type: string
-                    format: enum
                 mode:
                     enum:
                         - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
@@ -15541,8 +14031,6 @@ components:
                     type: integer
                     format: int32
                 blockedCode:
-                    type: string
-                phase:
                     type: string
             description: |-
                 QualityAgentSessionEngineState is the JSONB payload of
@@ -15615,177 +14103,6 @@ components:
                 QualityAgentSessionMessage is one append-only transcript entry of a session. (The
                  internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
                  after the session so a message always carries its parent in the name.)
-        QualityAgentSessionStateCount:
-            type: object
-            properties:
-                state:
-                    enum:
-                        - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
-                        - QUALITY_AGENT_SESSION_STATE_ENABLED
-                        - QUALITY_AGENT_SESSION_STATE_PAUSED
-                        - QUALITY_AGENT_SESSION_STATE_BLOCKED
-                        - QUALITY_AGENT_SESSION_STATE_ARCHIVED
-                    type: string
-                    format: enum
-                count:
-                    type: integer
-                    format: int32
-            description: QualityAgentSessionStateCount is how many sessions stand in one state.
-        QualityAgentTargetCost:
-            type: object
-            properties:
-                target:
-                    $ref: '#/components/schemas/QualityTarget'
-                tokensUsed:
-                    type: string
-                sessionCount:
-                    type: integer
-                    format: int32
-            description: QualityAgentTargetCost is one target's share of the runner's token spend.
-        QualityChangeRequest:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}'
-                target:
-                    $ref: '#/components/schemas/QualityTarget'
-                state:
-                    enum:
-                        - QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED
-                        - QUALITY_CHANGE_REQUEST_STATE_PROPOSED
-                        - QUALITY_CHANGE_REQUEST_STATE_APPROVED
-                        - QUALITY_CHANGE_REQUEST_STATE_APPLIED
-                        - QUALITY_CHANGE_REQUEST_STATE_REJECTED
-                        - QUALITY_CHANGE_REQUEST_STATE_EXPIRED
-                    type: string
-                    format: enum
-                baseVersion:
-                    type: integer
-                    description: |-
-                        The published version the request was written against; a decision on a stale
-                         base expires the request instead of rebasing it.
-                    format: int32
-                source:
-                    enum:
-                        - QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED
-                        - QUALITY_CHANGE_REQUEST_SOURCE_HUMAN
-                        - QUALITY_CHANGE_REQUEST_SOURCE_AGENT
-                    type: string
-                    format: enum
-                items:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityChangeRequestItem'
-                itemResults:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityChangeRequestItemResult'
-                rejectionReasons:
-                    type: array
-                    items:
-                        enum:
-                            - QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED
-                            - QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT
-                            - QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT
-                            - QUALITY_CHANGE_REJECTION_REASON_NOISE
-                            - QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM
-                            - QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN
-                            - QUALITY_CHANGE_REJECTION_REASON_DEFER
-                            - QUALITY_CHANGE_REJECTION_REASON_OTHER
-                        type: string
-                        format: enum
-                decisionNote:
-                    type: string
-                createdBy:
-                    type: string
-                    description: 'Format: users/{user}. Empty when unknown.'
-                createdAt:
-                    type: string
-                    format: date-time
-                decidedBy:
-                    type: string
-                decidedAt:
-                    type: string
-                    format: date-time
-            description: |-
-                QualityChangeRequest is one approve-or-reject batch of typed changes against one
-                 target. Approving applies each item independently and returns a result per item.
-        QualityChangeRequestItem:
-            type: object
-            properties:
-                kind:
-                    enum:
-                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED
-                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF
-                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE
-                    type: string
-                    format: enum
-                suggestionResourceId:
-                    type: string
-                    description: 'SUGGESTION_REF: the proposal''s immutable resource id.'
-                property:
-                    enum:
-                        - QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
-                        - QUALITY_COVERAGE_PROPERTY_VOLUME
-                        - QUALITY_COVERAGE_PROPERTY_FRESHNESS
-                        - QUALITY_COVERAGE_PROPERTY_UNIQUENESS
-                        - QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
-                        - QUALITY_COVERAGE_PROPERTY_NULL_RATE
-                        - QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES
-                        - QUALITY_COVERAGE_PROPERTY_FORMAT
-                        - QUALITY_COVERAGE_PROPERTY_RANGE
-                    type: string
-                    description: 'COVERAGE_CHANGE: the declaration to add or modify.'
-                    format: enum
-                column:
-                    type: string
-                minChecks:
-                    type: integer
-                    format: int32
-                remove:
-                    type: boolean
-                    description: 'COVERAGE_CHANGE: remove the declaration instead of adding or changing it.'
-                dimension:
-                    enum:
-                        - QUALITY_DIMENSION_UNSPECIFIED
-                        - QUALITY_DIMENSION_COMPLETENESS
-                        - QUALITY_DIMENSION_VALIDITY
-                        - QUALITY_DIMENSION_UNIQUENESS
-                        - QUALITY_DIMENSION_CONSISTENCY
-                        - QUALITY_DIMENSION_TIMELINESS
-                        - QUALITY_DIMENSION_ACCURACY
-                    type: string
-                    description: |-
-                        SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
-                         dimension of its own and a rule requires one.
-                    format: enum
-            description: |-
-                QualityChangeRequestItem is one typed change. Which fields are read depends on
-                 kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
-                 one plan declaration.
-        QualityChangeRequestItemResult:
-            type: object
-            properties:
-                index:
-                    type: integer
-                    format: int32
-                status:
-                    enum:
-                        - STATUS_UNSPECIFIED
-                        - STATUS_APPLIED
-                        - STATUS_FAILED
-                        - STATUS_SKIPPED
-                    type: string
-                    format: enum
-                detail:
-                    type: string
-                appliedResourceId:
-                    type: string
-                    description: The resource the item created, when it created one.
-            description: |-
-                QualityChangeRequestItemResult is one item's outcome. A request returns a result
-                 per item: a batch never reports only "the whole request succeeded or failed".
         QualityCodeTable:
             type: object
             properties:
@@ -16589,96 +14906,6 @@ components:
             description: |-
                 QualityImpactAsset is one asset downstream of a target, with its monitoring
                  state.
-        QualityInvestigation:
-            type: object
-            properties:
-                target:
-                    $ref: '#/components/schemas/QualityTargetPath'
-                trigger:
-                    enum:
-                        - QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_TRIGGER_EXECUTION
-                        - QUALITY_INVESTIGATION_TRIGGER_ISSUE
-                        - QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE
-                        - QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP
-                        - QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT
-                        - QUALITY_INVESTIGATION_TRIGGER_MANUAL
-                    type: string
-                    format: enum
-                triggerReference:
-                    type: string
-                status:
-                    enum:
-                        - QUALITY_INVESTIGATION_STATUS_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_STATUS_CONCLUDED
-                        - QUALITY_INVESTIGATION_STATUS_FAILED
-                        - QUALITY_INVESTIGATION_STATUS_INTERRUPTED
-                    type: string
-                    format: enum
-                verdict:
-                    enum:
-                        - QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED
-                        - QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE
-                        - QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR
-                        - QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE
-                        - QUALITY_INVESTIGATION_VERDICT_UNRELATED
-                    type: string
-                    format: enum
-                summary:
-                    type: string
-                hypotheses:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationHypothesis'
-                evidence:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationEvidence'
-                actionRefs:
-                    type: array
-                    items:
-                        type: string
-                    description: Names of change requests the investigation proposed.
-                provider:
-                    type: string
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-                promptTokens:
-                    type: string
-                completionTokens:
-                    type: string
-                failureReason:
-                    type: string
-                    description: Set when the analysis failed; empty otherwise.
-            description: |-
-                QualityInvestigation is one agent's work product on one event: hypotheses,
-                 deterministic evidence references, a verdict and its cost. It is not a second
-                 verdict engine: an investigation conclusion never replaces the check's result and
-                 never opens or closes an issue by itself.
-        QualityInvestigationEvidence:
-            type: object
-            properties:
-                kind:
-                    type: string
-                    description: EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
-                reference:
-                    type: string
-                note:
-                    type: string
-            description: |-
-                QualityInvestigationEvidence is one deterministic reference behind an
-                 investigation. It is a reference, never a copy of samples.
-        QualityInvestigationHypothesis:
-            type: object
-            properties:
-                statement:
-                    type: string
-                status:
-                    type: string
-                    description: CONFIRMED, REJECTED or OPEN.
-            description: QualityInvestigationHypothesis is one candidate explanation.
         QualityIssue:
             type: object
             properties:
@@ -16786,71 +15013,6 @@ components:
                 QualityLLMUsage is one process's view of the data quality LLM budget: today's
                  counters, the effective limits from the workspace settings, and the in-flight
                  analyses. A restart resets the counters.
-        QualityMemory:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityMemories/{quality_memory}'
-                kind:
-                    enum:
-                        - QUALITY_MEMORY_KIND_UNSPECIFIED
-                        - QUALITY_MEMORY_KIND_ASSET_FACT
-                        - QUALITY_MEMORY_KIND_DECISION
-                        - QUALITY_MEMORY_KIND_EVENT
-                    type: string
-                    format: enum
-                subject:
-                    type: string
-                    description: 'What the memory is about: a target GUID, a rule resource id, a column, an issue.'
-                statement:
-                    type: string
-                source:
-                    enum:
-                        - QUALITY_MEMORY_SOURCE_UNSPECIFIED
-                        - QUALITY_MEMORY_SOURCE_AGENT
-                        - QUALITY_MEMORY_SOURCE_HUMAN
-                        - QUALITY_MEMORY_SOURCE_SYSTEM
-                    type: string
-                    format: enum
-                status:
-                    enum:
-                        - QUALITY_MEMORY_STATUS_UNSPECIFIED
-                        - QUALITY_MEMORY_STATUS_PROPOSED
-                        - QUALITY_MEMORY_STATUS_CONFIRMED
-                        - QUALITY_MEMORY_STATUS_REJECTED
-                        - QUALITY_MEMORY_STATUS_SUPERSEDED
-                        - QUALITY_MEMORY_STATUS_EXPIRED
-                    type: string
-                    format: enum
-                evidence:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityInvestigationEvidence'
-                    description: Deterministic evidence references; a memory without evidence is not recorded.
-                domainRef:
-                    type: string
-                    description: Reserved for domain-scoped memory; stored, not resolved.
-                expiresAt:
-                    type: string
-                    format: date-time
-                confirmedBy:
-                    type: string
-                    description: 'Format: users/{user}. Set when a person confirmed or rejected it.'
-                confirmedAt:
-                    type: string
-                    format: date-time
-                supersededBy:
-                    type: string
-                    description: Resource name of the memory that replaced this one.
-                createdBy:
-                    type: string
-                createTime:
-                    type: string
-                    format: date-time
-            description: |-
-                QualityMemory is one durable piece of knowledge with its evidence and its
-                 correction path. It never replaces the engine's verdict; it explains the past.
         QualityOverview:
             type: object
             properties:
@@ -18438,21 +16600,6 @@ components:
                  workspaceMember) are defined in Go and never stored in the DB; custom roles
                  live in the role table. Both resolve identically in the IAM engine.
                  Predefined roles are read-only over this API.
-        RotateQualityAgentTokenRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
-        RotateQualityAgentTokenResponse:
-            type: object
-            properties:
-                agent:
-                    $ref: '#/components/schemas/QualityAgent'
-                token:
-                    type: string
         RowCountChangeConfig:
             type: object
             properties:
@@ -19060,55 +17207,6 @@ components:
                         type: string
                     description: Engine specific parameters.
             description: SpatialIndexConfig is the configuration of a spatial index.
-        StageQualityPlanRequest:
-            required:
-                - parent
-                - targetGuid
-                - baseVersion
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                targetGuid:
-                    type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - APPLICATION_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    format: enum
-                baseVersion:
-                    type: integer
-                    description: |-
-                        The newest published version the declaration is written against. 0 is a valid
-                         base for a target that has never been published.
-                    format: int32
-                coverage:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityPlanCoverage'
-                    description: |-
-                        The complete declaration: coverage only, like UpdateQualityContract's draft.
-                         The list has no presence: an omitted or empty coverage clears the target's
-                         declaration and returns it to the projection derived from the intent and the
-                         live checks.
         StandardCodeConfig:
             type: object
             properties:

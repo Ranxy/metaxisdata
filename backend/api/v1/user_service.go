@@ -120,6 +120,10 @@ func (s *UserService) ListUsers(ctx context.Context, request *connect.Request[v1
 		Limit:       &limitPlusOne,
 		Offset:      &offset.offset,
 		ShowDeleted: request.Msg.ShowDeleted,
+		// A built-in quality agent's principal is an internal IAM/audit actor, not a
+		// person an operator manages. Hide it from the user directory (and from owner
+		// pickers) but keep GetUser so audit rows stay resolvable.
+		ExcludeQualityAgents: true,
 	}
 	if err := parseListUserFilter(find, request.Msg.Filter); err != nil {
 		return nil, err

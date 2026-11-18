@@ -25,5 +25,5 @@ func TestLocalizedAttentionText(t *testing.T) {
 	require.Contains(t, BlockedQuestion(Chinese, "model failed"), "model failed")
 	require.Contains(t, ProposalQuestion(Chinese, 3), "3")
 	require.Contains(t, ReportQuestion(English, 2, 1), "2")
-	require.Contains(t, ScopeSummary(Chinese, 10, 1, 2, 3, 4, 5, 6), "范围")
+	require.Contains(t, ScopeSummary(Chinese, 10, 1, 2, 3, 4, 5), "范围")
 }

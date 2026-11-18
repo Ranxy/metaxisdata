@@ -33,7 +33,7 @@ func TestExecutionEventContentCitesTheExecution(t *testing.T) {
 	require.Contains(t, content, "ERROR")
 }
 
-// A transient block still collects the event; a paused or needs-human session does not.
+// A transient block still collects the event; an archived or needs-human session does not.
 func TestSessionAcceptsAgentEvents(t *testing.T) {
 	t.Parallel()
 
@@ -49,7 +49,7 @@ func TestSessionAcceptsAgentEvents(t *testing.T) {
 		BlockedCode: "needs-human",
 	}))
 	require.False(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
-		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED,
+		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED,
 	}))
 	require.False(t, sessionAcceptsAgentEvents(nil))
 }

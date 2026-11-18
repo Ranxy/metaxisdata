@@ -14,7 +14,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// Stable capability ids. They are stored in quality_agent_config.capabilities
+// Stable capability ids. They are stored in quality_agent.capabilities
 // and exposed by the API, so they are never renamed.
 const (
 	// Suggest lets an agent triage targets without coverage and draft checks,

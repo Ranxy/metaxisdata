@@ -10,9 +10,6 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  QualityAgentEnrollmentState,
-  QualityAgentEnrollmentStateCountSchema,
-  QualityAgentEnrollmentSummarySchema,
   QualityCodeTableSchema,
   QualityLLMUsageSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -29,15 +26,12 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceProfileSetting: vi.fn(),
   updateDataQualitySetting: vi.fn(),
   listProfiles: vi.fn(),
-  getQualityAgentRunnerStatus: vi.fn(),
-  getQualityAgentEnrollmentSummary: vi.fn(),
   getQualityLLMUsage: vi.fn(),
   listAllQualityCodeTables: vi.fn(),
   getQualityCodeTable: vi.fn(),
   createQualityCodeTable: vi.fn(),
   updateQualityCodeTable: vi.fn(),
   deleteQualityCodeTable: vi.fn(),
-  listQualityAgents: vi.fn(),
   listAllInstances: vi.fn(),
   listDatabases: vi.fn(),
 }));
@@ -60,15 +54,12 @@ vi.mock("@/api/database", () => ({
 }));
 
 vi.mock("@/api/data-quality", () => ({
-  getQualityAgentRunnerStatus: mocks.getQualityAgentRunnerStatus,
-  getQualityAgentEnrollmentSummary: mocks.getQualityAgentEnrollmentSummary,
   getQualityLLMUsage: mocks.getQualityLLMUsage,
   listAllQualityCodeTables: mocks.listAllQualityCodeTables,
   getQualityCodeTable: mocks.getQualityCodeTable,
   createQualityCodeTable: mocks.createQualityCodeTable,
   updateQualityCodeTable: mocks.updateQualityCodeTable,
   deleteQualityCodeTable: mocks.deleteQualityCodeTable,
-  listQualityAgents: mocks.listQualityAgents,
 }));
 
 const PERMISSIONS = [
@@ -89,22 +80,6 @@ function codeTableSummary() {
     title: "Municipal codes",
     description: "Divisions of the municipality.",
     valueCount: 12,
-  });
-}
-
-/** The queue summary the auto-enrollment confirmation reads for its estimate. */
-function enrollmentSummaryFixture(pending = 0, active = 0) {
-  return create(QualityAgentEnrollmentSummarySchema, {
-    states: [
-      create(QualityAgentEnrollmentStateCountSchema, {
-        state: QualityAgentEnrollmentState.PENDING,
-        count: pending,
-      }),
-      create(QualityAgentEnrollmentStateCountSchema, {
-        state: QualityAgentEnrollmentState.ACTIVE,
-        count: active,
-      }),
-    ],
   });
 }
 
@@ -137,18 +112,9 @@ async function mountPage(permissions = PERMISSIONS) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().user = create(UserSchema, { permissions });
-  // The runner card links to the agent sessions page, so the page needs a
-  // router even though every test stays on the settings route.
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [
-      {
-        path: "/data-quality/agent",
-        name: "DataQualityAgent",
-        component: { template: "<div />" },
-      },
-      { path: "/:pathMatch(.*)*", component: { template: "<div />" } },
-    ],
+    routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div />" } }],
   });
   await router.push("/settings/data-quality");
   await router.isReady();
@@ -187,7 +153,6 @@ describe("DataQualitySettingsPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    mocks.listQualityAgents.mockResolvedValue([]);
     mocks.listAllInstances.mockResolvedValue([]);
     mocks.listDatabases.mockResolvedValue({ databases: [] });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
@@ -237,9 +202,6 @@ describe("DataQualitySettingsPage", () => {
         concurrencyLimit: 12,
         resetsAt: { seconds: 1_700_035_200n, nanos: 0 },
       })
-    );
-    mocks.getQualityAgentEnrollmentSummary.mockResolvedValue(
-      enrollmentSummaryFixture()
     );
   });
 
@@ -787,6 +749,28 @@ describe("DataQualitySettingsPage", () => {
         fieldInput(wrapper, i18n.global.t("dataQualitySettings.digestTimezone"))
           ?.element as HTMLInputElement
       ).disabled
+    ).toBe(true);
+  });
+
+  it("carries the untouched agent runner switch so saving cannot clear it", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        allowedLlmProviderProfiles: ["llmProfiles/p1"],
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/p1",
+          agentRunnerEnabled: true,
+        }),
+      })
+    );
+    const wrapper = await mountPage();
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.updateDataQualitySetting.mock.calls[0]?.[0]?.agentRunnerEnabled
     ).toBe(true);
   });
 });

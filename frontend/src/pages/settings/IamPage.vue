@@ -274,7 +274,7 @@ import { useI18n } from "vue-i18n";
 import { listGroups } from "@/api/group";
 import { getWorkspaceIamPolicy, setWorkspaceIamPolicy } from "@/api/iam";
 import { listRoles } from "@/api/role";
-import { listAllUsers } from "@/api/user";
+import { batchGetUsers, listAllUsers } from "@/api/user";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -420,6 +420,26 @@ async function loadPolicy() {
     roles.value = roleResponse.roles;
     users.value = allUsers;
     groups.value = groupResponse.groups;
+    // Internal principals (quality agents) are hidden from the user directory, but
+    // the policy still names them as role members. Resolve those names so the IAM
+    // page shows an identity instead of a raw resource name.
+    const known = new Set(allUsers.map((user) => user.name));
+    const unresolved = new Set<string>();
+    for (const binding of bindings.value) {
+      for (const member of binding.members) {
+        if (member.startsWith("users/") && !known.has(member)) {
+          unresolved.add(member);
+        }
+      }
+    }
+    if (unresolved.size > 0) {
+      try {
+        const response = await batchGetUsers([...unresolved]);
+        users.value = [...allUsers, ...response.users];
+      } catch {
+        // Keep the raw resource name as the label; the policy itself is unaffected.
+      }
+    }
     dirty.value = false;
   } catch (err) {
     error.value = formatError(err);

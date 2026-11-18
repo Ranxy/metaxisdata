@@ -1379,131 +1379,78 @@ ALTER SEQUENCE quality_contract_id_seq RESTART WITH 101;
 ALTER SEQUENCE quality_contract_revision_id_seq RESTART WITH 101;
 
 
--- A change request is one approve-or-reject batch of typed changes against one
--- target; the row keeps the decision and the per-item application results.
-CREATE TABLE IF NOT EXISTS quality_change_request (
-    id BIGSERIAL PRIMARY KEY,
-    resource_id TEXT COLLATE "C" NOT NULL,
-    target_guid TEXT COLLATE "C" NOT NULL,
-    target_type INT2 NOT NULL,
-    -- Stored as QualityChangeRequestState (proto/store/store/data_quality.proto)
-    state INT2 NOT NULL DEFAULT 1,
-    base_version INT4 NOT NULL DEFAULT 0,
-    -- Stored as QualityChangeRequestSource (proto/store/store/data_quality.proto)
-    source INT2 NOT NULL DEFAULT 1,
-    -- Stored as QualityChangeRequestItems (proto/store/store/data_quality.proto)
-    items JSONB NOT NULL DEFAULT '{}',
-    -- Stored as QualityChangeRequestItemResults (proto/store/store/data_quality.proto)
-    item_results JSONB NOT NULL DEFAULT '{}',
-    request_fingerprint TEXT NOT NULL DEFAULT '',
-    rationale_codes JSONB NOT NULL DEFAULT '{}',
-    decision_note TEXT NOT NULL DEFAULT '',
-    created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    decided_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_change_request_resource
-    ON quality_change_request(resource_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_change_request_idempotency
-    ON quality_change_request(target_guid, target_type, base_version, source, request_fingerprint);
-CREATE INDEX IF NOT EXISTS idx_quality_change_request_target
-    ON quality_change_request(target_guid, target_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_quality_change_request_state
-    ON quality_change_request(state, created_at DESC);
-COMMENT ON TABLE quality_change_request IS 'Approve-or-reject batches of typed quality changes with per-item results';
-COMMENT ON COLUMN quality_change_request.items IS 'Stored as QualityChangeRequestItems (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_change_request.item_results IS 'Stored as QualityChangeRequestItemResults (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_change_request.rationale_codes IS 'Stored as QualityChangeRejectionReasons (proto/store/store/data_quality.proto)';
-ALTER SEQUENCE quality_change_request_id_seq RESTART WITH 101;
-
-
--- An agent principal is an independent identity for autonomous quality work; its
--- tokens are normal access tokens for the principal, so disabling the principal
--- ends them all.
+-- A quality agent is one built-in agent: an internal principal (its IAM and audit
+-- actor) plus the runtime configuration an administrator edits. State is the only
+-- lifecycle truth; there is no separate enabled flag and no config side table.
 CREATE TABLE IF NOT EXISTS quality_agent (
     id BIGSERIAL PRIMARY KEY,
     resource_id TEXT COLLATE "C" NOT NULL,
     principal_id INT4 NOT NULL UNIQUE REFERENCES principal(id) ON DELETE CASCADE,
     display_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    -- 1 DRAFT, 2 ACTIVE, 3 PAUSED, 4 DISABLED (QualityAgentState); DISABLED is terminal.
+    state INT2 NOT NULL DEFAULT 1,
+    -- The owner is the only human who may talk to the agent. A deleted owner leaves
+    -- NULL; the notification falls back to workspace admins.
+    owner_principal_id INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    -- JSON array of capability ids: "suggest", "adopt", "patrol", ...
+    capabilities JSONB NOT NULL DEFAULT '[]',
+    -- 0 UNSPECIFIED, 1 OFF, 2 DAILY, 3 WEEKLY (QualityAgentReportFrequency).
+    report_frequency INT2 NOT NULL DEFAULT 0,
+    -- "HH:MM" in report_timezone.
+    report_time TEXT NOT NULL DEFAULT '',
+    report_timezone TEXT NOT NULL DEFAULT '',
+    -- DayOfWeek for WEEKLY: 1 Monday .. 7 Sunday; 0 while unused.
+    report_weekday INT2 NOT NULL DEFAULT 0,
+    -- 0 UNSPECIFIED, 1 OFF, 2 PAUSED, 3 ACTIVE (QualityAgentAdoptionMode). PAUSED
+    -- creates an adopted check disabled for the owner to enable.
+    adoption_mode INT2 NOT NULL DEFAULT 2,
+    -- JSON array of QualityRuleType numbers eligible for auto-adoption; empty means
+    -- the server default low-risk set.
+    adoption_rule_types JSONB NOT NULL DEFAULT '[]',
+    adoption_confidence_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    adoption_allow_critical BOOLEAN NOT NULL DEFAULT FALSE,
+    adoption_max_per_day INT4 NOT NULL DEFAULT 10,
+    conversation_messages_per_hour INT4 NOT NULL DEFAULT 60,
+    -- Per-agent budgets; zero means the server default. The server hard caps still
+    -- apply.
+    tokens_per_hour INT8 NOT NULL DEFAULT 0,
+    wakes_per_hour INT4 NOT NULL DEFAULT 0,
+    max_concurrent_sessions INT4 NOT NULL DEFAULT 0,
+    max_new_sessions_per_hour INT4 NOT NULL DEFAULT 0,
+    max_active_sessions INT4 NOT NULL DEFAULT 0,
     created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_resource
     ON quality_agent(resource_id);
-COMMENT ON TABLE quality_agent IS 'Workspace-level agent principals for autonomous quality work';
-COMMENT ON COLUMN quality_agent.principal_id IS 'The independent principal the agent authenticates as (type SERVICE_ACCOUNT)';
+COMMENT ON TABLE quality_agent IS 'Built-in quality agents: the internal principal plus its runtime configuration';
+COMMENT ON COLUMN quality_agent.principal_id IS 'The internal principal the agent acts as (type SERVICE_ACCOUNT); never an API caller';
+COMMENT ON COLUMN quality_agent.state IS 'Stored as QualityAgentState (v1 QualityAgentState); the only lifecycle truth';
+COMMENT ON COLUMN quality_agent.capabilities IS 'JSON array of capability ids; validated against the server capability catalog';
+COMMENT ON COLUMN quality_agent.adoption_rule_types IS 'JSON array of QualityRuleType numbers; empty means the default low-risk set';
 ALTER SEQUENCE quality_agent_id_seq RESTART WITH 101;
 
 
--- An investigation is one agent's work product on one event: hypotheses,
--- deterministic evidence references, a verdict and its cost. It never changes a
--- check's result or an issue's state.
-CREATE TABLE IF NOT EXISTS quality_investigation (
-    id BIGSERIAL PRIMARY KEY,
-    resource_id TEXT COLLATE "C" NOT NULL,
-    target_guid TEXT COLLATE "C" NOT NULL,
-    target_type INT2 NOT NULL,
-    trigger INT2 NOT NULL DEFAULT 0,
-    trigger_reference TEXT NOT NULL DEFAULT '',
-    status INT2 NOT NULL DEFAULT 1,
-    verdict INT2 NOT NULL DEFAULT 0,
-    summary TEXT NOT NULL DEFAULT '',
-    hypotheses JSONB NOT NULL DEFAULT '{}',
-    evidence JSONB NOT NULL DEFAULT '{}',
-    action_refs JSONB NOT NULL DEFAULT '{}',
-    provider TEXT NOT NULL DEFAULT '',
-    model TEXT NOT NULL DEFAULT '',
-    prompt_version TEXT NOT NULL DEFAULT '',
-    prompt_tokens INT8 NOT NULL DEFAULT 0,
-    completion_tokens INT8 NOT NULL DEFAULT 0,
-    failure_reason TEXT NOT NULL DEFAULT '',
-    request_fingerprint TEXT NOT NULL DEFAULT '',
-    created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_investigation_resource
-    ON quality_investigation(resource_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_investigation_idempotency
-    ON quality_investigation(target_guid, target_type, request_fingerprint)
-    WHERE request_fingerprint <> '';
-CREATE INDEX IF NOT EXISTS idx_quality_investigation_target
-    ON quality_investigation(target_guid, target_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_quality_investigation_status
-    ON quality_investigation(status, created_at DESC);
-COMMENT ON TABLE quality_investigation IS 'Agent work products on one event: hypotheses, evidence references, verdict and cost';
-COMMENT ON COLUMN quality_investigation.hypotheses IS 'Stored as QualityInvestigationHypothesisList (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_investigation.evidence IS 'Stored as QualityInvestigationEvidenceList (proto/store/store/data_quality.proto); references only, never sample payloads';
-COMMENT ON COLUMN quality_investigation.action_refs IS 'Stored as QualityInvestigationActionRefs (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_investigation.trigger IS 'Stored as QualityInvestigationTrigger (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_investigation.status IS 'Stored as QualityInvestigationStatus (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_investigation.verdict IS 'Stored as QualityInvestigationVerdict (proto/store/store/data_quality.proto)';
-ALTER SEQUENCE quality_investigation_id_seq RESTART WITH 101;
-
-
--- A memory is durable knowledge with its evidence and a correction path: an asset
--- fact may be written automatically, while a decision or an event needs a person's
--- confirmation before it counts.
+-- An asset fact is what the agent knows deterministically about one target. A fact is
+-- written confirmed; a newer fact supersedes the previous one of the same subject, and
+-- an expired fact is reported expired on read rather than deleted.
 CREATE TABLE IF NOT EXISTS quality_memory (
     id BIGSERIAL PRIMARY KEY,
     resource_id TEXT COLLATE "C" NOT NULL,
-    kind INT2 NOT NULL,
+    -- Stored as QualityMemoryKind (proto/store/store/data_quality.proto); only ASSET_FACT is written.
+    kind INT2 NOT NULL DEFAULT 1,
     subject TEXT NOT NULL DEFAULT '',
     statement TEXT NOT NULL DEFAULT '',
-    source INT2 NOT NULL DEFAULT 0,
-    status INT2 NOT NULL DEFAULT 1,
+    -- Stored as QualityMemorySource (proto/store/store/data_quality.proto); agent facts are AGENT.
+    source INT2 NOT NULL DEFAULT 1,
+    -- Stored as QualityMemoryStatus (proto/store/store/data_quality.proto); CONFIRMED, then SUPERSEDED.
+    status INT2 NOT NULL DEFAULT 2,
+    -- Stored as QualityMemoryEvidenceList (proto/store/store/data_quality.proto); references only, never sample payloads
     evidence JSONB NOT NULL DEFAULT '{}',
-    domain_ref TEXT NOT NULL DEFAULT '',
     expires_at TIMESTAMPTZ,
-    confirmed_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    confirmed_at TIMESTAMPTZ,
     superseded_by TEXT NOT NULL DEFAULT '',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1511,10 +1458,10 @@ CREATE TABLE IF NOT EXISTS quality_memory (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_memory_resource
     ON quality_memory(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_memory_subject
-    ON quality_memory(kind, subject, created_at DESC) WHERE deleted = FALSE;
+    ON quality_memory(subject, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_memory_status
-    ON quality_memory(status, created_at DESC) WHERE deleted = FALSE;
-COMMENT ON TABLE quality_memory IS 'Durable knowledge with evidence and a correction path: asset facts, decisions and events';
+    ON quality_memory(status, created_at DESC);
+COMMENT ON TABLE quality_memory IS 'Confirmed asset facts kept across wakes; superseded and expired rows stay for the correction path';
 COMMENT ON COLUMN quality_memory.kind IS 'Stored as QualityMemoryKind (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_memory.source IS 'Stored as QualityMemorySource (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_memory.status IS 'Stored as QualityMemoryStatus (proto/store/store/data_quality.proto)';
@@ -1523,76 +1470,75 @@ ALTER SEQUENCE quality_memory_id_seq RESTART WITH 101;
 
 
 -- A quality agent session is one target's long-lived conversation with the built-in
--- agent: every wake appends messages to the same thread instead of starting a fresh
--- round. The message table is that transcript (system/user/assistant/tool/engine/
--- compaction); the runner's wake scheduling and budgets live on the session row.
--- This replaces the goal substrate: a goal was one objective with an independent
--- per-round conversation, which could not answer "what has the agent done for this
--- table" or "what input is it working from".
+-- agent: every wake appends messages to the same thread. The message table is that
+-- transcript (system/user/assistant/tool/engine/compaction); the runner's wake
+-- scheduling and budgets live on the session row. "Running" is expressed by the lease,
+-- never by the state.
 CREATE TABLE IF NOT EXISTS quality_agent_session (
     id BIGSERIAL PRIMARY KEY,
     -- API-facing identity: workspaces/{workspace}/qualityAgentSessions/{resource_id}.
     resource_id TEXT COLLATE "C" NOT NULL,
     workspace_id TEXT COLLATE "C" NOT NULL,
-    target_guid TEXT COLLATE "C" NOT NULL,
+    target_guid TEXT COLLATE "C" NOT NULL DEFAULT '',
     target_type INT2 NOT NULL DEFAULT 0,
     -- The database allowlist entry this session is scoped to.
     database_ref TEXT NOT NULL DEFAULT '',
     agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
-    objective TEXT NOT NULL DEFAULT '',
-    -- 1 ENABLED, 2 PAUSED, 3 BLOCKED, 4 ARCHIVED (QualityAgentSessionState).
+    -- 1 ENABLED, 3 BLOCKED, 4 ARCHIVED (QualityAgentSessionState).
     state INT2 NOT NULL DEFAULT 1,
     blocked_code TEXT NOT NULL DEFAULT '',
     blocked_reason TEXT NOT NULL DEFAULT '',
     revision INT4 NOT NULL DEFAULT 1,
     wake_count INT4 NOT NULL DEFAULT 0,
-    -- Lifetime tokens, so a cleared/archived session still counts in metrics.
-    tokens_used INT8 NOT NULL DEFAULT 0,
-    -- The largest real prompt_tokens of the last wake; the compaction trigger.
-    context_tokens INT4 NOT NULL DEFAULT 0,
     -- The rolling checkpoint summary and the message seq it replaces in model context.
     summary TEXT NOT NULL DEFAULT '',
     summary_through_seq INT8 NOT NULL DEFAULT 0,
     -- The largest message seq the last wake consumed; a newer seq is a pending event.
     processed_seq INT8 NOT NULL DEFAULT 0,
-    -- Deterministic-engine bookkeeping (done gaps, blocked rounds).
+    -- Stored as QualityAgentSessionEngineState (proto/store/store/data_quality.proto)
     engine_state JSONB NOT NULL DEFAULT '{}',
     next_wake_at TIMESTAMPTZ,
     lease_until TIMESTAMPTZ,
     restart_count INT4 NOT NULL DEFAULT 0,
-    created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     archived_at TIMESTAMPTZ,
-    -- 1 MANUAL, 2 AUTO (QualityAgentSessionSource).
-    source INT2 NOT NULL DEFAULT 1,
     -- 1 MONITOR, 2 TRIAGE (QualityAgentSessionMode).
-    mode INT2 NOT NULL DEFAULT 1
+    mode INT2 NOT NULL DEFAULT 1,
+    -- 1 TARGET work thread, 2 CONVERSATION front office.
+    kind INT2 NOT NULL DEFAULT 1,
+    CONSTRAINT quality_agent_session_kind_check
+        CHECK ((kind = 1 AND target_guid <> '') OR (kind = 2 AND target_guid = ''))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_resource
     ON quality_agent_session(resource_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_target
-    ON quality_agent_session(workspace_id, target_guid) WHERE archived_at IS NULL;
+    ON quality_agent_session(agent_id, target_guid)
+    WHERE archived_at IS NULL AND kind = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_conversation
+    ON quality_agent_session(agent_id)
+    WHERE archived_at IS NULL AND kind = 2;
+CREATE INDEX IF NOT EXISTS idx_quality_agent_session_agent_due
+    ON quality_agent_session(agent_id, state, next_wake_at)
+    WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_quality_agent_session_due
     ON quality_agent_session(state, next_wake_at) WHERE archived_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_quality_agent_session_workspace
     ON quality_agent_session(workspace_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_session_database
     ON quality_agent_session(database_ref) WHERE archived_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_quality_agent_session_source
-    ON quality_agent_session(workspace_id, source, created_at DESC);
 COMMENT ON TABLE quality_agent_session IS 'One long-lived agent conversation per target, with wake scheduling and budgets';
 COMMENT ON COLUMN quality_agent_session.state IS 'Stored as QualityAgentSessionState (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_agent_session.source IS 'Stored as QualityAgentSessionSource (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_session.mode IS 'Stored as QualityAgentSessionMode (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_agent_session.engine_state IS 'Deterministic wake bookkeeping; not a user-facing state';
+COMMENT ON COLUMN quality_agent_session.engine_state IS 'Stored as QualityAgentSessionEngineState (proto/store/store/data_quality.proto); deterministic wake bookkeeping';
 COMMENT ON COLUMN quality_agent_session.summary IS 'Rolling checkpoint summary that replaces messages up to summary_through_seq in model context';
+COMMENT ON COLUMN quality_agent_session.kind IS '1 TARGET work thread, 2 CONVERSATION front office';
 ALTER SEQUENCE quality_agent_session_id_seq RESTART WITH 101;
 
 -- One row per message in a session's conversation. assistant rows carry their
--- tool_calls JSON so the row maps 1:1 to a provider assistant message; tool rows
--- carry the result the model actually saw. engine rows are runner/UI notes and are
--- never sent back to the model.
+-- tool_calls JSON so the row maps 1:1 to a provider assistant message; tool rows carry
+-- the result the model actually saw. engine rows are runner/UI notes and are never sent
+-- back to the model.
 CREATE TABLE IF NOT EXISTS quality_agent_message (
     id BIGSERIAL PRIMARY KEY,
     session_id INT8 NOT NULL REFERENCES quality_agent_session(id) ON DELETE CASCADE,
@@ -1607,16 +1553,15 @@ CREATE TABLE IF NOT EXISTS quality_agent_message (
     -- 1 WAKE, 2 EVENT, 3 ASK, 4 RUNNER, 5 MODEL, 6 COMPACTION (QualityAgentMessageOrigin).
     origin INT2 NOT NULL DEFAULT 0,
     content TEXT NOT NULL DEFAULT '',
-    -- QualityToolCallList JSONB: the assistant message's tool calls.
+    -- Stored as QualityToolCallList (proto/store/store/data_quality.proto)
     tool_calls JSONB NOT NULL DEFAULT '{}',
     tool_call_id TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
     -- The object an event or wake is about (for example a quality execution
     -- resource name); empty for model and runner messages.
     reference TEXT NOT NULL DEFAULT '',
+    -- Only the total token count is stored; prompt/completion splits are not.
     tokens INT4 NOT NULL DEFAULT 0,
-    prompt_tokens INT4 NOT NULL DEFAULT 0,
-    completion_tokens INT4 NOT NULL DEFAULT 0,
     error TEXT NOT NULL DEFAULT '',
     truncated BOOLEAN NOT NULL DEFAULT FALSE,
     -- The store returns the existing row for a retried key, so a repeated wake or a
@@ -1636,19 +1581,21 @@ COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessage
 COMMENT ON COLUMN quality_agent_message.tool_calls IS 'Stored as QualityToolCallList (proto/store/store/data_quality.proto)';
 ALTER SEQUENCE quality_agent_message_id_seq RESTART WITH 101;
 
+
 -- One row per monitorable object in the runner's database scope: the desired
--- enrollment state, the admission priority and the session the queue created.
--- The session row stays the execution state; this table is the queue.
+-- enrollment state, the admission priority and the session the queue created. The
+-- session row stays the execution state; this table is the queue.
 CREATE TABLE IF NOT EXISTS quality_agent_enrollment (
     id BIGSERIAL PRIMARY KEY,
     -- API-facing identity: workspaces/{workspace}/qualityAgentEnrollments/{resource_id}.
     resource_id TEXT COLLATE "C" NOT NULL,
     workspace_id TEXT COLLATE "C" NOT NULL,
+    agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
     -- instances/{instance}/databases/{database}.
     database_ref TEXT NOT NULL,
-    -- 1 PENDING, 2 ACTIVE, 3 DORMANT, 4 EXCLUDED, 5 OUT_OF_SCOPE, 6 GONE
+    -- 1 PENDING, 2 ACTIVE, 3 DORMANT, 5 OUT_OF_SCOPE, 6 GONE
     -- (QualityAgentEnrollmentState).
     state INT2 NOT NULL DEFAULT 1,
     -- 1 MONITOR, 2 TRIAGE (QualityAgentSessionMode): what admission will create.
@@ -1666,19 +1613,17 @@ CREATE TABLE IF NOT EXISTS quality_agent_enrollment (
     next_review_at TIMESTAMPTZ,
     discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    excluded_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    excluded_at TIMESTAMPTZ,
     revision INT4 NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uk_quality_agent_enrollment_target UNIQUE (workspace_id, target_guid)
+    CONSTRAINT uk_quality_agent_enrollment_target_agent UNIQUE (agent_id, target_guid)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_enrollment_resource
     ON quality_agent_enrollment(resource_id);
-CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_admit
-    ON quality_agent_enrollment(workspace_id, state, priority DESC, target_guid);
-CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_database
-    ON quality_agent_enrollment(database_ref, state);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_agent_admit
+    ON quality_agent_enrollment(agent_id, state, priority DESC, target_guid);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_agent_database
+    ON quality_agent_enrollment(agent_id, database_ref);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_review
     ON quality_agent_enrollment(state, next_review_at);
 COMMENT ON TABLE quality_agent_enrollment IS 'One target''s place in the quality agent runner''s queue: desired state, priority and session link';
@@ -1822,58 +1767,6 @@ COMMENT ON TABLE quality_code_table IS 'Workspace-defined accepted code lists a 
 COMMENT ON COLUMN quality_code_table.resource_id IS 'API-facing identity; the resource name carries this string and it is never reused';
 COMMENT ON COLUMN quality_code_table.codes IS 'QualityCodeTableValues JSONB: sorted, de-duplicated accepted codes';
 COMMENT ON COLUMN quality_code_table.value_count IS 'len(codes); list reads report the size without parsing the payload';
--- Multi-agent runtime configuration. A quality_agent row keeps the agent's
--- identity (principal, token, display name); quality_agent_config carries the
--- runtime settings an administrator creates and edits in the Quality Agent
--- settings page. A config row is what makes an agent a built-in agent; agents
--- without one are external token principals only.
---
--- The data quality feature has never shipped, so this migration creates the
--- target shape directly and does not backfill any legacy rows.
-
-CREATE TABLE IF NOT EXISTS quality_agent_config (
-    agent_id INT4 PRIMARY KEY REFERENCES quality_agent(id) ON DELETE CASCADE,
-    -- 1 DRAFT, 2 ACTIVE, 3 PAUSED, 4 DISABLED (QualityAgentState).
-    state INT2 NOT NULL DEFAULT 1,
-    -- The owner is the only caller who may talk to the agent. A deleted owner
-    -- leaves NULL; the notification falls back to workspace admins.
-    owner_principal_id INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    -- JSON array of capability ids: "suggest", "adopt", "patrol", ...
-    capabilities JSONB NOT NULL DEFAULT '[]',
-    provider_profile TEXT NOT NULL DEFAULT '',
-    -- 0 UNSPECIFIED, 1 OFF, 2 DAILY, 3 WEEKLY (QualityAgentReportFrequency).
-    report_frequency INT2 NOT NULL DEFAULT 0,
-    -- "HH:MM" in report_timezone.
-    report_time TEXT NOT NULL DEFAULT '',
-    report_timezone TEXT NOT NULL DEFAULT '',
-    -- DayOfWeek for WEEKLY: 1 Monday .. 7 Sunday; 0 while unused.
-    report_weekday INT2 NOT NULL DEFAULT 0,
-    -- 0 OFF, 1 PAUSED, 2 ACTIVE (QualityAgentAdoptionMode). PAUSED creates an
-    -- adopted check disabled for the owner to enable.
-    adoption_mode INT2 NOT NULL DEFAULT 1,
-    -- JSON array of QualityRuleType numbers eligible for auto-adoption; empty
-    -- means the server default low-risk set.
-    adoption_rule_types JSONB NOT NULL DEFAULT '[]',
-    adoption_confidence_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
-    adoption_allow_critical BOOLEAN NOT NULL DEFAULT FALSE,
-    adoption_max_per_day INT4 NOT NULL DEFAULT 10,
-    conversation_messages_per_hour INT4 NOT NULL DEFAULT 60,
-    -- Per-agent budgets; zero means the server default. The workspace hard caps
-    -- still apply.
-    tokens_per_hour INT8 NOT NULL DEFAULT 0,
-    wakes_per_hour INT4 NOT NULL DEFAULT 0,
-    max_concurrent_sessions INT4 NOT NULL DEFAULT 0,
-    max_new_sessions_per_hour INT4 NOT NULL DEFAULT 0,
-    max_active_sessions INT4 NOT NULL DEFAULT 0,
-    last_active_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-COMMENT ON TABLE quality_agent_config IS 'Per-agent runtime configuration for the built-in quality agent';
-COMMENT ON COLUMN quality_agent_config.state IS 'Stored as QualityAgentState (QualityAgentState in the v1 proto)';
-COMMENT ON COLUMN quality_agent_config.capabilities IS 'JSON array of capability ids; validated against the server capability catalog';
-COMMENT ON COLUMN quality_agent_config.adoption_rule_types IS 'JSON array of QualityRuleType numbers; empty means the default low-risk set';
-
 -- One row per database in one agent's scope. The same database may belong to
 -- multiple agents; the settings page warns about the duplicate cost.
 CREATE TABLE IF NOT EXISTS quality_agent_database (
@@ -1886,64 +1779,6 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_database_ref
     ON quality_agent_database(database_ref);
 COMMENT ON TABLE quality_agent_database IS 'Database resource names in one quality agent''s scope';
 COMMENT ON COLUMN quality_agent_database.database_ref IS 'instances/{instance}/databases/{database}';
--- Multi-agent isolation: an enrollment, a session and a suggestion now belong to
--- one quality agent. A target can be covered by several agents (the settings page
--- warns about the duplicate cost), so the unique keys move from the workspace to
--- the agent. The data quality feature has never shipped; existing development rows
--- are reset rather than backfilled.
-
--- Enrollment: add the owning agent. The old unique constraint on
--- (workspace_id,target_guid) becomes (agent_id,target_guid).
-ALTER TABLE quality_agent_enrollment
-    ADD COLUMN IF NOT EXISTS agent_id INT4;
-DELETE FROM quality_agent_enrollment;
-ALTER TABLE quality_agent_enrollment
-    ALTER COLUMN agent_id SET NOT NULL;
-ALTER TABLE quality_agent_enrollment
-    DROP CONSTRAINT IF EXISTS uk_quality_agent_enrollment_target;
-ALTER TABLE quality_agent_enrollment
-    DROP CONSTRAINT IF EXISTS uk_quality_agent_enrollment_target_agent;
-ALTER TABLE quality_agent_enrollment
-    ADD CONSTRAINT uk_quality_agent_enrollment_target_agent UNIQUE (agent_id, target_guid);
-ALTER TABLE quality_agent_enrollment
-    DROP CONSTRAINT IF EXISTS quality_agent_enrollment_agent_fk;
-ALTER TABLE quality_agent_enrollment
-    ADD CONSTRAINT quality_agent_enrollment_agent_fk
-    FOREIGN KEY (agent_id) REFERENCES quality_agent(id) ON DELETE CASCADE;
-CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_agent_admit
-    ON quality_agent_enrollment(agent_id, state, priority DESC, target_guid);
-CREATE INDEX IF NOT EXISTS idx_quality_agent_enrollment_agent_database
-    ON quality_agent_enrollment(agent_id, database_ref);
-
--- Session: a per-target session is unique per agent, not per workspace. kind
--- separates the target work thread from the agent's front-office conversation.
-ALTER TABLE quality_agent_session
-    ADD COLUMN IF NOT EXISTS kind INT2 NOT NULL DEFAULT 1;
-ALTER TABLE quality_agent_session
-    ALTER COLUMN target_guid DROP NOT NULL;
-ALTER TABLE quality_agent_session
-    ALTER COLUMN target_guid SET DEFAULT '';
-ALTER TABLE quality_agent_session
-    DROP CONSTRAINT IF EXISTS quality_agent_session_kind_check;
-ALTER TABLE quality_agent_session
-    ADD CONSTRAINT quality_agent_session_kind_check
-    CHECK (kind IN (1, 2) AND (kind = 1 OR target_guid = ''));
-DROP INDEX IF EXISTS idx_quality_agent_session_target;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_target
-    ON quality_agent_session(agent_id, target_guid)
-    WHERE archived_at IS NULL AND kind = 1;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_conversation
-    ON quality_agent_session(agent_id)
-    WHERE archived_at IS NULL AND kind = 2;
-CREATE INDEX IF NOT EXISTS idx_quality_agent_session_agent_due
-    ON quality_agent_session(agent_id, state, next_wake_at)
-    WHERE archived_at IS NULL;
-COMMENT ON COLUMN quality_agent_session.kind IS '1 TARGET work thread, 2 CONVERSATION front office';
-
--- Transcript: the human who sent an ASK is recorded on the row.
-ALTER TABLE quality_agent_message
-    ADD COLUMN IF NOT EXISTS created_by INT4 REFERENCES principal(id) ON DELETE SET NULL;
-
 -- Suggestions: an agent's proposals belong to that agent. Two agents covering the
 -- same target each keep their own pending draft; a refresh may only touch its own
 -- agent's row. Human/other proposals keep the old workspace-wide identity.
@@ -1959,25 +1794,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_pending_signature
 CREATE INDEX IF NOT EXISTS idx_quality_suggestion_agent_status
     ON quality_suggestion(agent_id, status, created_at DESC);
 COMMENT ON COLUMN quality_suggestion.agent_id IS 'The proposing quality agent; NULL for human/external proposals';
--- Per-agent patrol reports. A report is a deterministic snapshot over the agent's
--- database scope for one period; the body is rendered markdown so the report can be
--- read in the conversation and copied out, while the columns keep the counts
--- queryable without parsing the body.
+-- Per-agent patrol reports. A report is a synchronous deterministic snapshot over the
+-- agent's database scope for one scheduled DAILY/WEEKLY period; the body is rendered
+-- markdown so the report can be read in the conversation and copied out, while the
+-- columns keep the counts queryable without parsing the body.
 CREATE TABLE IF NOT EXISTS quality_agent_report (
     id BIGSERIAL PRIMARY KEY,
     -- API-facing identity: workspaces/{workspace}/qualityAgentReports/{resource_id}.
     resource_id TEXT COLLATE "C" NOT NULL,
     workspace_id TEXT COLLATE "C" NOT NULL,
     agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
-    -- 1 SCHEDULED, 2 ON_DEMAND (QualityAgentReportTrigger).
-    trigger INT2 NOT NULL DEFAULT 1,
-    -- 1 DAILY, 2 WEEKLY, 3 ON_DEMAND (QualityAgentReportPeriod).
+    -- 1 DAILY, 2 WEEKLY (QualityAgentReportPeriod); every report is scheduled.
     period_kind INT2 NOT NULL DEFAULT 1,
     period_key TEXT NOT NULL DEFAULT '',
     period_start TIMESTAMPTZ NOT NULL,
     period_end TIMESTAMPTZ NOT NULL,
-    -- 1 PENDING, 2 READY, 3 FAILED (QualityAgentReportState).
-    state INT2 NOT NULL DEFAULT 1,
     -- Database resource names the report covers.
     scope TEXT[] NOT NULL DEFAULT '{}',
     target_count INT4 NOT NULL DEFAULT 0,
@@ -1991,25 +1822,23 @@ CREATE TABLE IF NOT EXISTS quality_agent_report (
     new_issue_count INT4 NOT NULL DEFAULT 0,
     open_issue_count INT4 NOT NULL DEFAULT 0,
     pending_proposal_count INT4 NOT NULL DEFAULT 0,
-    tokens_used INT8 NOT NULL DEFAULT 0,
-    severity INT2 NOT NULL DEFAULT 0,
     body_markdown TEXT NOT NULL DEFAULT '',
-    failure_reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     generated_at TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_report_resource
     ON quality_agent_report(resource_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_report_period
-    ON quality_agent_report(agent_id, trigger, period_key);
+    ON quality_agent_report(agent_id, period_key);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_report_agent_created
     ON quality_agent_report(agent_id, created_at DESC);
 COMMENT ON TABLE quality_agent_report IS 'Per-agent deterministic patrol report over the agent database scope';
 COMMENT ON COLUMN quality_agent_report.scope IS 'Database resource names the report covers';
 COMMENT ON COLUMN quality_agent_report.body_markdown IS 'Rendered report body; counts are also stored as columns';
+
 -- A quality agent's escalation: something needs its owner. The notification is the
--- doorbell; this table is the durable to-do item that survives the notification and
--- can be answered from the agent home.
+-- doorbell; this table is the durable to-do item that survives the notification and can
+-- be answered from the agent home.
 CREATE TABLE IF NOT EXISTS quality_agent_attention (
     id BIGSERIAL PRIMARY KEY,
     -- workspaces/{workspace}/qualityAgentAttentions/{resource_id}.
@@ -2020,16 +1849,14 @@ CREATE TABLE IF NOT EXISTS quality_agent_attention (
     kind INT2 NOT NULL DEFAULT 1,
     -- The target session this escalation came from; NULL for agent-level events.
     session_id INT8 REFERENCES quality_agent_session(id) ON DELETE SET NULL,
-    -- A resource the owner should open, e.g. the proposal or the report.
-    reference TEXT COLLATE "C" NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT '',
     question TEXT NOT NULL DEFAULT '',
     -- 1 OPEN, 2 RESOLVED, 3 DISMISSED (QualityAgentAttentionStatus).
     status INT2 NOT NULL DEFAULT 1,
-    -- Idempotency: one open escalation per agent/kind/reference. A retried runner
-    -- pass or a re-blocked session cannot page the owner twice.
+    -- Idempotency: one open escalation per agent/kind. A retried runner pass or a
+    -- re-blocked session cannot page the owner twice.
     dedupe_key TEXT NOT NULL DEFAULT '',
-    resolved_by INT4,
+    resolved_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     resolved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -2040,6 +1867,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_attention_open_dedupe
 CREATE INDEX IF NOT EXISTS idx_quality_agent_attention_agent_status
     ON quality_agent_attention(agent_id, status, created_at DESC);
 COMMENT ON TABLE quality_agent_attention IS 'Per-agent escalation to the owner; the durable to-do behind a notification';
+
 -- The manual AI drafting job is retired: drafting is now the agent's triage work and
 -- its suggestions go through the same review queue. Drop the job table; suggestions
 -- already queued are kept.
@@ -2051,53 +1879,22 @@ DROP TABLE IF EXISTS quality_suggestion_job;
 ALTER TABLE quality_suggestion ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION NOT NULL DEFAULT 0;
 COMMENT ON COLUMN quality_suggestion.confidence IS 'Confidence the drafting model reported (0..1); 0 for older rows';
 
--- The adoption ledger: one row per suggestion the agent adopted (or tried to). It
--- is the audit trail behind the count the daily guardrail enforces, and it keeps
--- the decision attributable to an agent rather than to a person.
+-- The adoption ledger: one row per suggestion the agent adopted (or tried to). It is
+-- the audit trail behind the count the daily guardrail enforces, and it keeps the
+-- decision attributable to an agent rather than to a person.
 CREATE TABLE IF NOT EXISTS quality_agent_adoption (
     id BIGSERIAL PRIMARY KEY,
     agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
     suggestion_id INT8 NOT NULL REFERENCES quality_suggestion(id) ON DELETE CASCADE,
-    -- 1 ADOPTED, 2 SKIPPED, 3 FAILED (QualityAgentAdoptionOutcome).
-    outcome INT2 NOT NULL DEFAULT 1,
+    -- 1 ADOPTED, 2 SKIPPED, 3 FAILED (QualityAgentAdoptionOutcome); 0 is unset.
+    outcome INT2 NOT NULL DEFAULT 0 CHECK (outcome IN (0, 1, 2, 3)),
     rule_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_adoption_suggestion
-    ON quality_agent_adoption(suggestion_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_adoption_agent_suggestion
+    ON quality_agent_adoption(agent_id, suggestion_id);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_adoption_agent_created
     ON quality_agent_adoption(agent_id, created_at DESC);
 COMMENT ON TABLE quality_agent_adoption IS 'One row per suggestion an agent auto-adopted or skipped, the daily-cap audit trail';
--- The adoption ledger is keyed by agent and suggestion, not suggestion alone: the
--- same suggestion may first be SKIPPED and later ADOPTED when the guardrails
--- change, and the later row must update the earlier one instead of being silently
--- ignored. Outcome 0 means "not decided" and is never written by the code.
-DROP INDEX IF EXISTS idx_quality_agent_adoption_suggestion;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_adoption_agent_suggestion
-    ON quality_agent_adoption(agent_id, suggestion_id);
-ALTER TABLE quality_agent_adoption ALTER COLUMN outcome SET DEFAULT 0;
-ALTER TABLE quality_agent_adoption DROP CONSTRAINT IF EXISTS chk_quality_agent_adoption_outcome;
-ALTER TABLE quality_agent_adoption ADD CONSTRAINT chk_quality_agent_adoption_outcome
-    CHECK (outcome IN (0, 1, 2, 3));
 COMMENT ON COLUMN quality_agent_adoption.outcome IS '1 ADOPTED, 2 SKIPPED, 3 FAILED; 0 is unset and never written by the code';
--- Review follow-ups on the multi-agent schema.
--- The adoption default is PAUSED (2), not OFF: a newly created agent that selects
--- adoption starts with paused checks for its owner to enable. 0054's comment said
--- "0 OFF, 1 PAUSED, 2 ACTIVE" but the store/v1 enum is 0 UNSPECIFIED, 1 OFF,
--- 2 PAUSED, 3 ACTIVE.
-ALTER TABLE quality_agent_config ALTER COLUMN adoption_mode SET DEFAULT 2;
-COMMENT ON COLUMN quality_agent_config.adoption_mode IS '0 UNSPECIFIED, 1 OFF, 2 PAUSED, 3 ACTIVE (QualityAgentAdoptionMode)';
-
--- A target work thread must name a target; only the front-office conversation may
--- have an empty target_guid. The earlier check allowed NULL to pass.
-ALTER TABLE quality_agent_session DROP CONSTRAINT IF EXISTS quality_agent_session_kind_check;
-ALTER TABLE quality_agent_session ADD CONSTRAINT quality_agent_session_kind_check
-    CHECK ((kind = 1 AND target_guid IS NOT NULL AND target_guid <> '') OR
-           (kind = 2 AND target_guid = ''));
-
--- The resolver is a person; deleting the account should clear the resolution
--- pointer like it does elsewhere.
-ALTER TABLE quality_agent_attention DROP CONSTRAINT IF EXISTS quality_agent_attention_resolved_by_fkey;
-ALTER TABLE quality_agent_attention ADD CONSTRAINT quality_agent_attention_resolved_by_fkey
-    FOREIGN KEY (resolved_by) REFERENCES principal(id) ON DELETE SET NULL;

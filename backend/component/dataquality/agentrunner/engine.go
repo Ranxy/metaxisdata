@@ -45,15 +45,12 @@ type Store interface {
 	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
 	ListQualityMemories(ctx context.Context, find *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error)
-	CreateQualityInvestigation(ctx context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
-	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
-	GetQualityAgentConfig(ctx context.Context, agentID int64) (*store.QualityAgentConfigMessage, error)
 	QualityAgentEnrollmentSummary(ctx context.Context, workspaceID string, agentID int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error)
 	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
@@ -84,9 +81,6 @@ type Engine struct {
 	// principal. A process that does not wire it skips the check; production wires
 	// it, because an in-process tool call does not pass the RPC ACL interceptor.
 	checker tool.PermissionChecker
-	// actionSettings loads the workspace settings the autonomy policy reads. A
-	// process that does not wire it skips the action-policy gate.
-	actionSettings func(ctx context.Context) (dataquality.Settings, error)
 	// maxParallelReads bounds concurrent parallel-safe tool calls in one batch.
 	maxParallelReads int
 	// auditSink records side-effecting tool calls in the deployment ledger.
@@ -118,7 +112,8 @@ func NewModelEngine(store Store, chat Chat, resolve ResolveModel, m *metrics.Met
 	return engine
 }
 
-// Options carries the per-wake budgets the runner resolves from the workspace settings.
+// Options carries the per-wake budgets the runner resolves (the compaction trigger is a
+// package constant, so only an explicit override moves it).
 type Options struct {
 	// CompactionTriggerTokens is the context size that triggers compaction; zero uses
 	// the server default.
@@ -132,9 +127,7 @@ type Outcome struct {
 	BlockedReason string
 	// NextWakeAt is the wake the engine asks for; nil lets the runner use the idle
 	// cadence.
-	NextWakeAt    *time.Time
-	TokensUsed    int64
-	ContextTokens int32
+	NextWakeAt *time.Time
 	// TriageComplete tells the runner this wake finished a TRIAGE analysis of an
 	// uncovered target, so the enrollment row can park until its next review.
 	TriageComplete bool
@@ -244,7 +237,6 @@ func (e *Engine) modelWake(
 			consumed = message.Seq
 		}
 	}
-	var compactionTokens int64
 	var (
 		messages []*store.QualityAgentTranscriptMessage
 		err      error
@@ -254,17 +246,14 @@ func (e *Engine) modelWake(
 		if err != nil {
 			return nil, err
 		}
-		compactTokens, compacted, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages, options.CompactionTriggerTokens, false)
+		_, compacted, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages, options.CompactionTriggerTokens, false)
 		if compactErr != nil {
 			slog.Warn("failed to compact the session context",
 				slog.String("session", session.ResourceID), slog.Any("error", compactErr))
-		} else {
-			compactionTokens += compactTokens
-			if compacted {
-				messages, err = e.loadTranscript(ctx, session)
-				if err != nil {
-					return nil, err
-				}
+		} else if compacted {
+			messages, err = e.loadTranscript(ctx, session)
+			if err != nil {
+				return nil, err
 			}
 		}
 		// Old tool results keep their head and tail only: the middle of an oversized
@@ -275,12 +264,9 @@ func (e *Engine) modelWake(
 	state := cloneEngineState(session.EngineState)
 	var (
 		turn           int32
-		totalTokens    int64
-		maxPrompt      int32
 		truncatedTools = map[string]bool{}
 		turnUsage      = map[int32]*llm.Usage{}
 	)
-	totalTokens = compactionTokens
 	// The control tools write this state; the wake applies it once, after the loop.
 	control := &wakeControl{}
 	set, err := e.toolSet(session, control)
@@ -317,13 +303,6 @@ func (e *Engine) modelWake(
 			case agent.EventUsage:
 				if event.Usage != nil {
 					turnUsage[int32(event.Turn)] = event.Usage
-					totalTokens += event.Usage.TotalTokens
-					if event.Usage.TotalTokens == 0 {
-						totalTokens += event.Usage.PromptTokens + event.Usage.CompletionTokens
-					}
-					if event.Usage.PromptTokens > int64(maxPrompt) {
-						maxPrompt = int32(event.Usage.PromptTokens)
-					}
 				}
 			case agent.EventAssistant:
 				if event.Assistant == nil {
@@ -331,16 +310,14 @@ func (e *Engine) modelWake(
 				}
 				usage := turnUsage[int32(event.Turn)]
 				e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
-					Wake:             wake,
-					Turn:             int32(event.Turn),
-					Role:             storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-					Origin:           storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
-					Content:          event.Assistant.Content,
-					ToolCalls:        toolCallsToStore(event.Assistant.ToolCalls),
-					Tokens:           usageTokens(usage),
-					PromptTokens:     usagePromptTokens(usage),
-					CompletionTokens: usageCompletionTokens(usage),
-					IdempotencyKey:   assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
+					Wake:           wake,
+					Turn:           int32(event.Turn),
+					Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+					Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+					Content:        event.Assistant.Content,
+					ToolCalls:      toolCallsToStore(event.Assistant.ToolCalls),
+					Tokens:         usageTokens(usage),
+					IdempotencyKey: assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
 				})
 			case agent.EventToolEnd:
 				if event.ToolCall == nil {
@@ -375,10 +352,8 @@ func (e *Engine) modelWake(
 	if failure != nil && llm.IsContextOverflow(failure.Error) {
 		// The provider rejected the context as too large. Compact as much as possible,
 		// rebuild, and retry once inside this wake instead of wasting a whole retry cycle.
-		tokens, _, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
+		_, _, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
 			options.CompactionTriggerTokens, true)
-		compactionTokens += tokens
-		totalTokens += tokens
 		if compactErr == nil {
 			if conversation, err = buildContext(); err != nil {
 				return Outcome{}, err
@@ -393,12 +368,10 @@ func (e *Engine) modelWake(
 		}
 		e.recordEngine(ctx, session, wake, turn, summary)
 		return Outcome{
-			NextWakeAt:    ptrTime(e.now().Add(retryWake)),
-			TokensUsed:    totalTokens,
-			ContextTokens: maxPrompt,
-			ProcessedSeq:  consumed,
-			EngineState:   state,
-			Summary:       summary,
+			NextWakeAt:   ptrTime(e.now().Add(retryWake)),
+			ProcessedSeq: consumed,
+			EngineState:  state,
+			Summary:      summary,
 		}, nil
 	}
 
@@ -415,20 +388,16 @@ func (e *Engine) modelWake(
 				Blocked:       true,
 				BlockedCode:   control.blockedCode,
 				BlockedReason: control.blockedWhy,
-				TokensUsed:    totalTokens,
-				ContextTokens: maxPrompt,
 				ProcessedSeq:  consumed,
 				EngineState:   state,
 				Summary:       "blocked: " + control.blockedWhy,
 			}, nil
 		}
 		return Outcome{
-			NextWakeAt:    ptrTime(e.now().Add(retryWake)),
-			TokensUsed:    totalTokens,
-			ContextTokens: maxPrompt,
-			ProcessedSeq:  consumed,
-			EngineState:   state,
-			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", control.blockedCode),
+			NextWakeAt:   ptrTime(e.now().Add(retryWake)),
+			ProcessedSeq: consumed,
+			EngineState:  state,
+			Summary:      fmt.Sprintf("reported the blocker %q once; waiting for it to persist", control.blockedCode),
 		}, nil
 	}
 	state.BlockedCode = ""
@@ -439,8 +408,6 @@ func (e *Engine) modelWake(
 	return Outcome{
 		NextWakeAt:     control.nextWake,
 		TriageComplete: session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
-		TokensUsed:     totalTokens,
-		ContextTokens:  maxPrompt,
 		ProcessedSeq:   consumed,
 		EngineState:    state,
 		Summary:        summary,
@@ -452,15 +419,12 @@ func (e *Engine) modelWake(
 // checker (tests, a deployment that has not wired IAM) returns nil, which the
 // pipeline treats as "the transport already authorized this call".
 func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage, product string) (*tool.Invocation, error) {
-	if e.checker == nil && e.metrics == nil && e.actionSettings == nil && e.auditSink == nil {
+	if e.checker == nil && e.metrics == nil && e.auditSink == nil {
 		return nil, nil
 	}
 	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now, Logger: slog.Default()}
 	if e.metrics != nil {
 		invocation.Observer = agentToolObserver{metrics: e.metrics, product: product}
-	}
-	if e.actionSettings != nil {
-		invocation.Policy = sessionActionPolicy{engine: e, session: session}
 	}
 	if e.auditSink != nil {
 		invocation.Audit = e.auditSink
@@ -485,49 +449,6 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	return invocation, nil
 }
 
-// sessionActionPolicy answers the autonomy question for one session's tools: the
-// product's action catalog decides, with the target's real criticality. The runner
-// has already parked a session whose workspace or agent switch is off, but the
-// policy re-reads the settings so the verdict is never based on stale state.
-type sessionActionPolicy struct {
-	engine  *Engine
-	session *store.QualityAgentSessionMessage
-}
-
-// Decide evaluates one action for this agent on this target.
-func (p sessionActionPolicy) Decide(ctx context.Context, action string) (tool.ActionDecision, error) {
-	settings, err := p.engine.actionSettings(ctx)
-	if err != nil {
-		return tool.ActionDecision{}, err
-	}
-	criticality := p.engine.planCriticality(ctx, p.session)
-	agent, err := p.engine.store.GetQualityAgentByID(ctx, p.session.AgentID)
-	if err != nil {
-		return tool.ActionDecision{}, errors.Wrap(err, "failed to read the agent's state")
-	}
-	if agent == nil {
-		return tool.ActionDecision{}, errors.New("the session's agent no longer exists")
-	}
-	decision := dataquality.DecideAction(dataquality.PolicyInput{
-		Action:          dataquality.ActionID(action),
-		Actor:           dataquality.ActorAgent,
-		Criticality:     criticality,
-		AutonomyEnabled: settings.AgentAutonomyEnabled,
-		AgentEnabled:    agent.Enabled,
-	})
-	reason := decision.Reason
-	if !decision.Allowed && decision.RequiresApproval && dataquality.ActionID(action) == dataquality.ActionRecordDecisionWhy {
-		// Keep the actionable guidance the tool used to give the model when a
-		// critical asset hands the decision to a person.
-		reason = "a decision about a critical asset needs a person; record the conclusion with block_session instead"
-	}
-	return tool.ActionDecision{
-		Allowed:          decision.Allowed,
-		RequiresApproval: decision.RequiresApproval,
-		Reason:           reason,
-	}, nil
-}
-
 // agentToolObserver labels the shared tool metrics with this product's name.
 type agentToolObserver struct {
 	metrics *metrics.Metrics
@@ -539,9 +460,9 @@ func (o agentToolObserver) ObserveToolCall(toolName, outcome string, duration ti
 	o.metrics.ObserveAgentToolCall(o.product, toolName, outcome, duration, resultBytes)
 }
 
-// deterministicWake runs the no-model survey or event investigation. It consumes every
-// pending event it can process (bounded per wake); an ask parks the session because only
-// a model can answer it, and anything it leaves unprocessed keeps a seq above the
+// deterministicWake runs the no-model survey or event review. It consumes every pending
+// event it can process (bounded per wake); an ask parks the session because only a
+// model can answer it, and anything it leaves unprocessed keeps a seq above the
 // watermark so the runner wakes it again immediately.
 func (e *Engine) deterministicWake(
 	ctx context.Context,
@@ -579,7 +500,7 @@ func (e *Engine) deterministicWake(
 			if investigated >= maxDeterministicEvents {
 				break
 			}
-			outcome, err := e.investigateEvent(ctx, session, wake, event.Reference)
+			outcome, err := e.reviewFailedExecution(ctx, session, wake, event.Reference)
 			if err != nil {
 				return Outcome{}, err
 			}
@@ -594,7 +515,7 @@ func (e *Engine) deterministicWake(
 			NextWakeAt:   ptrTime(e.now().Add(maintainWake)),
 			ProcessedSeq: consumed,
 			EngineState:  cloneEngineState(session.EngineState),
-			Summary:      fmt.Sprintf("investigated %d event(s)", investigated),
+			Summary:      fmt.Sprintf("reviewed %d event(s)", investigated),
 		}, nil
 	}
 	outcome, err := e.maintain(ctx, session, wake)
@@ -606,8 +527,7 @@ func (e *Engine) deterministicWake(
 }
 
 // maintain surveys the target's plan. A fully surveyed target sleeps until the next
-// daily look; uncovered declared properties become investigations, and one asset fact
-// records the survey.
+// daily look; uncovered declared properties are recorded as one asset fact.
 func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32) (Outcome, error) {
 	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
 	if err != nil {
@@ -623,7 +543,6 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 	}
 	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(contractSettings.GetIntent(), e.now()), quality.RuleShapes(rules))
 	state := cloneEngineState(session.EngineState)
-	state.Phase = "survey"
 	done := doneSet(state)
 
 	gapLabels := make([]string, 0, len(plan.Requirements))
@@ -642,54 +561,14 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 		}, nil
 	}
 
-	written, remaining := 0, 0
-	for _, label := range gapLabels {
-		if done["gap:"+label] {
-			continue
-		}
-		if written >= maxGapInvestigations {
-			remaining++
-			continue
-		}
-		investigation := &store.CreateQualityInvestigationInput{
-			TargetGUID:       session.TargetGUID,
-			TargetType:       storepb.MetaType(session.TargetType),
-			Trigger:          storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP,
-			TriggerReference: session.TargetGUID + "#" + label,
-			Status:           storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
-			Verdict:          storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR,
-			Summary:          fmt.Sprintf("the target declares %s but no enabled check covers it", label),
-			Evidence: &storepb.QualityInvestigationEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
-				{Kind: "PLAN", Reference: session.TargetGUID},
-				{Kind: "COVERAGE", Reference: label},
-			}},
-			RequestFingerprint: "coverage-gap:" + session.TargetGUID + ":" + label,
-			CreatedBy:          ptrInt32(session.AgentPrincipalID),
-		}
-		if _, err := e.agentTools().CreateInvestigation(ctx, investigation); err != nil {
-			return Outcome{}, err
-		}
-		state.Done = append(state.Done, "gap:"+label)
-		done["gap:"+label] = true
-		written++
-	}
-	if !done["asset_fact"] {
-		statement := fmt.Sprintf("the plan declares %d uncovered propert(ies): %s", len(gapLabels), joinLabels(gapLabels))
+	statement := fmt.Sprintf("the plan declares %d uncovered propert(ies): %s", len(gapLabels), joinLabels(gapLabels))
+	factKey := fmt.Sprintf("gapfact:%x", contentHash(statement))
+	if !done[factKey] {
 		if err := e.agentTools().RecordAssetFactStatement(ctx, agentSessionOf(session), statement); err != nil {
 			return Outcome{}, err
 		}
-		state.Done = append(state.Done, "asset_fact")
-	}
-	if written > 0 {
-		e.recordEngine(ctx, session, wake, 0,
-			fmt.Sprintf("deterministic survey recorded %d investigation(s)", written))
-	}
-	if remaining > 0 {
-		return Outcome{
-			NextWakeAt:  ptrTime(e.now().Add(gapContinueWake)),
-			EngineState: state,
-			Summary:     fmt.Sprintf("surveyed %d uncovered propert(ies); %d remain for the next wake", len(gapLabels), remaining),
-		}, nil
+		state.Done = append(state.Done, factKey)
+		e.recordEngine(ctx, session, wake, 0, "deterministic survey: "+statement)
 	}
 	return Outcome{
 		NextWakeAt:  ptrTime(e.now().Add(maintainWake)),
@@ -698,9 +577,9 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 	}, nil
 }
 
-// investigateEvent turns one failed execution into an investigation. The conclusion is
-// deliberately inconclusive: without a model it records the facts, not a root cause.
-func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, reference string) (Outcome, error) {
+// reviewFailedExecution reviews one failed execution without a model. The facts stay in
+// the session transcript; without a model there is no root cause to conclude.
+func (e *Engine) reviewFailedExecution(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, reference string) (Outcome, error) {
 	executionID, parseReason := executionIDFromReference(reference)
 	if parseReason != "" {
 		return Outcome{
@@ -744,26 +623,11 @@ func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAge
 	if execution.ErrorCode != "" {
 		summary = fmt.Sprintf("execution %s ended %s: %s", reference, execution.ErrorCode, execution.ErrorMessage)
 	}
-	investigation := &store.CreateQualityInvestigationInput{
-		TargetGUID:         session.TargetGUID,
-		TargetType:         storepb.MetaType(session.TargetType),
-		Trigger:            storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
-		TriggerReference:   reference,
-		Status:             storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
-		Verdict:            storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE,
-		Summary:            summary,
-		Evidence:           &storepb.QualityInvestigationEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{{Kind: "EXECUTION", Reference: reference}}},
-		RequestFingerprint: "event-investigation:" + reference,
-		CreatedBy:          ptrInt32(session.AgentPrincipalID),
-	}
-	if _, err := e.agentTools().CreateInvestigation(ctx, investigation); err != nil {
-		return Outcome{}, err
-	}
-	e.recordEngine(ctx, session, wake, 0, "deterministic investigation recorded for "+reference)
+	e.recordEngine(ctx, session, wake, 0, "deterministic event review: "+summary)
 	return Outcome{
 		NextWakeAt:  ptrTime(e.now().Add(maintainWake)),
 		EngineState: cloneEngineState(session.EngineState),
-		Summary:     "investigated the event",
+		Summary:     "reviewed the event",
 	}, nil
 }
 
@@ -944,20 +808,6 @@ func usageTokens(usage *llm.Usage) int32 {
 		return clampInt32(usage.TotalTokens)
 	}
 	return clampInt32(usage.PromptTokens + usage.CompletionTokens)
-}
-
-func usagePromptTokens(usage *llm.Usage) int32 {
-	if usage == nil {
-		return 0
-	}
-	return clampInt32(usage.PromptTokens)
-}
-
-func usageCompletionTokens(usage *llm.Usage) int32 {
-	if usage == nil {
-		return 0
-	}
-	return clampInt32(usage.CompletionTokens)
 }
 
 func clampInt32(value int64) int32 {
