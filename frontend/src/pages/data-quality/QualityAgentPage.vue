@@ -185,6 +185,20 @@
                   {{ capability }}
                 </Badge>
               </div>
+              <div
+                v-if="canChat && agent?.capabilities.includes('adopt')"
+                class="flex items-center justify-between gap-2 border-t pt-2"
+              >
+                <span class="text-muted-foreground">{{ t("qualityAgent.adoptionLabel") }}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="busy"
+                  @click="toggleAdoption"
+                >
+                  {{ adoptionEnabled ? t("qualityAgent.adoptionDisable") : t("qualityAgent.adoptionEnable") }}
+                </Button>
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -375,6 +389,7 @@ import {
   replyQualityAgentAttention,
   rotateQualityAgentToken,
   sendQualityAgentMessage,
+  setQualityAgentAdoption,
   startQualityAgent,
 } from "@/api/data-quality";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
@@ -402,6 +417,7 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityAgent,
+  QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
   QualityAgentMessageRole,
@@ -447,6 +463,11 @@ const canChat = computed(
     agent.value !== undefined &&
     agent.value.owner !== "" &&
     agent.value.owner === authStore.user?.name
+);
+const adoptionEnabled = computed(
+  () =>
+    agent.value?.adoption?.mode === QualityAgentAdoptionMode.ACTIVE ||
+    agent.value?.adoption?.mode === QualityAgentAdoptionMode.PAUSED
 );
 const visibleMessages = computed(() =>
   messages.value.filter(
@@ -666,6 +687,24 @@ function clearPoll() {
   if (pollTimer !== undefined) {
     window.clearInterval(pollTimer);
     pollTimer = undefined;
+  }
+}
+
+async function toggleAdoption() {
+  if (!agent.value) {
+    return;
+  }
+  busy.value = true;
+  try {
+    const mode = adoptionEnabled.value
+      ? QualityAgentAdoptionMode.OFF
+      : QualityAgentAdoptionMode.PAUSED;
+    agent.value = await setQualityAgentAdoption(agentName.value, mode);
+    notify.success(t("qualityAgent.adoptionUpdated"));
+  } catch (err) {
+    notify.error(formatError(err));
+  } finally {
+    busy.value = false;
   }
 }
 
