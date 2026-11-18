@@ -2073,20 +2073,20 @@ func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	require.Len(t, pending, 1)
 
 	states, err := stores.QualitySuggestionSignatureStates(ctx, targetGUID,
-		storepb.MetaType_TABLE, []string{signature})
+		storepb.MetaType_TABLE, []string{signature}, nil)
 	require.NoError(t, err)
 	require.True(t, states[signature].Pending)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)
 
 	superseded, err := stores.SupersedePendingQualitySuggestions(ctx, targetGUID,
-		storepb.MetaType_TABLE, []string{signature}, "the column already has a semantic label", time.Now())
+		storepb.MetaType_TABLE, []string{signature}, "the column already has a semantic label", nil, time.Now())
 	require.NoError(t, err)
 	require.Equal(t, int64(1), superseded)
 
 	// Closing a proposal is not a reviewer decision: the signature has no last
 	// decision, so a later pass may still propose it.
 	states, err = stores.QualitySuggestionSignatureStates(ctx, targetGUID,
-		storepb.MetaType_TABLE, []string{signature})
+		storepb.MetaType_TABLE, []string{signature}, nil)
 	require.NoError(t, err)
 	require.False(t, states[signature].Pending)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED, states[signature].LastDecision)

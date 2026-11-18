@@ -552,7 +552,7 @@ func (s *Store) ReopenQualitySuggestion(ctx context.Context, resourceID string) 
 // without a reviewer decision, which is why the status is SUPERSEDED rather than
 // ACCEPTED/REJECTED, and it records the reason in the note. A proposal that is not
 // pending is left untouched, so this is safe to call on every write path.
-func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string, reason string, at time.Time) (int64, error) {
+func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string, reason string, agentID *int64, at time.Time) (int64, error) {
 	if len(signatures) == 0 {
 		return 0, nil
 	}
@@ -565,11 +565,12 @@ func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGU
 		UPDATE quality_suggestion
 		SET status = $1, decided_at = $2, decision_note = $3
 		WHERE target_guid = $4 AND target_type = $5 AND status = $6 AND signature = ANY($7::text[])
+			AND ($8::bigint IS NULL OR agent_id = $8)
 	`,
 		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED), at, strings.TrimSpace(reason),
 		targetGUID, int16(targetType),
 		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
-		pq.Array(signatures))
+		pq.Array(signatures), agentID)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to supersede pending quality suggestions")
 	}
@@ -599,13 +600,14 @@ const qualitySuggestionSignatureStatesQuery = `
 			FILTER (WHERE status IN ($2, $3)))[1]
 	FROM quality_suggestion
 	WHERE target_guid = $4 AND target_type = $5 AND signature = ANY($6::text[])
+		AND ($7::bigint IS NULL OR agent_id = $7)
 	GROUP BY signature
 `
 
 // QualitySuggestionSignatureStates folds the queue into one state per signature.
 // The read is scoped to a target and to the signatures the caller is considering,
 // so it stays small even when the target has a long decision history.
-func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string) (map[string]QualitySuggestionSignatureState, error) {
+func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string, agentID *int64) (map[string]QualitySuggestionSignatureState, error) {
 	states := make(map[string]QualitySuggestionSignatureState, len(signatures))
 	if len(signatures) == 0 {
 		return states, nil
@@ -617,7 +619,7 @@ func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID
 	// source array holds at most one element; the decision array is ordered so [1] is
 	// the latest decision.
 	rows, err := s.GetDB().QueryContext(ctx, qualitySuggestionSignatureStatesQuery,
-		pending, accepted, rejected, targetGUID, int16(targetType), pq.Array(signatures))
+		pending, accepted, rejected, targetGUID, int16(targetType), pq.Array(signatures), agentID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read quality suggestion signature states")
 	}

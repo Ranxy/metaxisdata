@@ -116,7 +116,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	for _, column := range requestedColumns {
 		labelSignatures = append(labelSignatures, dataquality.LabelSuggestionSignature(column))
 	}
-	labelStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, labelSignatures)
+	labelStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, labelSignatures, nil)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the label suggestion history"))
 	}
@@ -126,7 +126,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 		// One statement closes every stale proposal this pass found; the returned
 		// count is what actually changed (a concurrent reviewer may have decided one).
 		superseded, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
-			plan.SupersedeSignatures, "the column already has a semantic label", time.Now())
+			plan.SupersedeSignatures, "the column already has a semantic label", nil, time.Now())
 		if supersedeErr != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(supersedeErr, "failed to close stale label suggestions"))
 		}
@@ -254,7 +254,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	for _, candidate := range draftCandidates {
 		draftSignatures = append(draftSignatures, candidate.signature)
 	}
-	draftStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, draftSignatures)
+	draftStates, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, draftSignatures, nil)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the rule draft suggestion history"))
 	}
@@ -263,7 +263,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 		if _, covered := ruleSignatures[candidate.signature]; covered {
 			if state.Pending {
 				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
-					[]string{candidate.signature}, "a saved rule with the same identity exists", time.Now())
+					[]string{candidate.signature}, "a saved rule with the same identity exists", nil, time.Now())
 				if err != nil {
 					return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale rule draft suggestion"))
 				}
