@@ -35,8 +35,26 @@ describe("quality agent route helpers", () => {
     expect(qualityAgentRoute("qualityAgents/agent-1")).toEqual({
       name: "QualityAgents",
     });
+    expect(qualityAgentDiagnosticsRoute("qualityAgents/agent-1")).toEqual({
+      name: "QualityAgents",
+    });
     expect(qualityAgentPath("qualityAgents/agent-1")).toBe(
       "/data-quality/agents"
     );
+  });
+
+  it("rejects names with the wrong prefix or an empty segment", () => {
+    expect(
+      qualityAgentRouteParams("projects/ws/qualityAgents/agent-1")
+    ).toBeUndefined();
+    expect(
+      qualityAgentRouteParams("workspaces//qualityAgents/agent-1")
+    ).toBeUndefined();
+    expect(
+      qualityAgentRouteParams("workspaces/ws/qualityAgents/")
+    ).toBeUndefined();
+    expect(
+      qualityAgentRouteParams("workspaces/ws/qualityAgents")
+    ).toBeUndefined();
   });
 });
