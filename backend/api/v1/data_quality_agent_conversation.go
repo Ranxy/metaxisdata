@@ -174,17 +174,25 @@ func (s *DataQualityService) qualityAgentConversationAccess(ctx context.Context,
 	if err != nil {
 		return nil, nil, err
 	}
-	if config == nil || config.OwnerPrincipalID == nil {
+	if config == nil {
 		return nil, nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the agent has no owner"))
+			errors.New("the agent has no configuration"))
 	}
-	owner := int32(currentUserID(ctx)) == *config.OwnerPrincipalID
+	owner := config.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *config.OwnerPrincipalID
 	if requireOwner {
-		if !owner {
-			return nil, nil, connect.NewError(connect.CodePermissionDenied,
-				errors.New("only the agent's owner may talk to it"))
+		if owner {
+			return agent, config, nil
 		}
-		return agent, config, nil
+		// An ownerless agent (the owner was deleted) falls back to the workspace
+		// administrators so its escalations are not permanently stuck.
+		if config.OwnerPrincipalID == nil {
+			admin, adminErr := s.callerIsQualityAgentAdmin(ctx)
+			if adminErr == nil && admin {
+				return agent, config, nil
+			}
+		}
+		return nil, nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only the agent's owner may talk to it"))
 	}
 	if owner {
 		return agent, config, nil

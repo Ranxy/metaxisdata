@@ -190,6 +190,7 @@ import {
   QualityAgentSessionState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime } from "@/utils/datetime";
+import { qualityAgentName } from "@/utils/qualityAgent";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -201,7 +202,10 @@ const busySession = ref("");
 const transcriptOpen = ref(false);
 const transcript = ref<QualityAgentSessionMessage[]>([]);
 
-const agentName = `workspaces/${String(route.params.workspace)}/qualityAgents/${String(route.params.agentId)}`;
+const agentName = qualityAgentName(
+  String(route.params.workspace),
+  String(route.params.agentId)
+);
 
 function stateLabel(state: QualityAgentSessionState): string {
   switch (state) {
