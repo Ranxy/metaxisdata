@@ -35,6 +35,18 @@ func (s *Service) SendQualityAgentAttention(ctx context.Context, ownerID int32, 
 	return s.Send(ctx, message)
 }
 
+// SendQualityAgentAttentionToAdmins delivers an escalation when the agent has no
+// owner (for example the owner account was deleted). The attention row remains the
+// durable to-do; this only routes the inbox copy.
+func (s *Service) SendQualityAgentAttentionToAdmins(ctx context.Context, dedupeKey string, detail *storepb.QualityAgentAttentionDetail) error {
+	if detail == nil {
+		return errors.New("a quality agent attention detail is required")
+	}
+	message := QualityAgentAttentionMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, detail)
+	message.DedupeKey = dedupeKey
+	return s.SendToWorkspaceAdmins(ctx, message)
+}
+
 func boundQualityAgentAttentionDetail(detail *storepb.QualityAgentAttentionDetail) *storepb.QualityAgentAttentionDetail {
 	if detail == nil {
 		return nil

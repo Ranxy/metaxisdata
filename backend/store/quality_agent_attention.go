@@ -191,10 +191,11 @@ func (s *Store) ResolveQualityAgentAttention(ctx context.Context, resourceID str
 // CountOpenQualityAgentAttentions is the agent home's pending badge.
 func (s *Store) CountOpenQualityAgentAttentions(ctx context.Context, agentID int64) (int32, error) {
 	var count int32
-	if err := s.GetDB().QueryRowContext(ctx,
+	countErr := s.GetDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM quality_agent_attention WHERE agent_id = $1 AND status = $2`,
-		agentID, int16(QualityAgentAttentionStatusOpen)).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count the open quality agent attentions")
+		agentID, int16(QualityAgentAttentionStatusOpen)).Scan(&count)
+	if countErr != nil {
+		return 0, errors.Wrap(countErr, "failed to count the open quality agent attentions")
 	}
 	return count, nil
 }
@@ -208,12 +209,13 @@ func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*Q
 		resolvedBy sql.NullInt32
 		resolvedAt sql.NullTime
 	)
-	if err := scanner.Scan(
+	scanErr := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&kind, &sessionID, &message.Reference, &message.Title, &message.Question,
 		&status, &message.DedupeKey, &resolvedBy, &resolvedAt, &message.CreatedAt,
-	); err != nil {
-		return nil, err
+	)
+	if scanErr != nil {
+		return nil, scanErr
 	}
 	message.Kind = QualityAgentAttentionKind(kind)
 	message.Status = QualityAgentAttentionStatus(status)
@@ -256,8 +258,9 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 	}
 	var answered *QualityAgentTranscriptMessage
 	if attention.SessionID != nil {
-		if _, lockErr := tx.ExecContext(ctx,
-			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, *attention.SessionID); lockErr != nil {
+		_, lockErr := tx.ExecContext(ctx,
+			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, *attention.SessionID)
+		if lockErr != nil {
 			return nil, nil, false, errors.Wrap(lockErr, "failed to lock the attention's session")
 		}
 		var wake int32

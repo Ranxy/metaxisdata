@@ -802,17 +802,18 @@ service DataQualityService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
-  // Pause an ACTIVE agent. Administrator only.
+  // Pause an ACTIVE agent. The owner and administrators may pause; only an
+  // administrator may edit the configuration.
   rpc PauseQualityAgent(PauseQualityAgentRequest) returns (QualityAgent) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgents/*}:pause"
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
   // List the workspace's agents. Administrators see every agent; other members
@@ -915,14 +916,14 @@ service DataQualityService {
   // budgets is spent. runner_last_tick_time is process-local and resets on restart.
   rpc GetQualityAgentRunnerStatus(GetQualityAgentRunnerStatusRequest) returns (QualityAgentRunnerStatus) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentRunnerStatus"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Read the runner's evaluation: session states, token spend, the acceptance of the
   // change requests it proposed, and investigation verdicts. Read-only.
   rpc GetQualityAgentMetrics(GetQualityAgentMetricsRequest) returns (QualityAgentMetrics) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentMetrics"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // ---- Quality agent enrollments ----

@@ -623,7 +623,8 @@ type DataQualityServiceClient interface {
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
 	StartQualityAgent(context.Context, *connect.Request[v1.StartQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
-	// Pause an ACTIVE agent. Administrator only.
+	// Pause an ACTIVE agent. The owner and administrators may pause; only an
+	// administrator may edit the configuration.
 	PauseQualityAgent(context.Context, *connect.Request[v1.PauseQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// List the workspace's agents. Administrators see every agent; other members
 	// see the agents they own.
@@ -2137,7 +2138,8 @@ type DataQualityServiceHandler interface {
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
 	StartQualityAgent(context.Context, *connect.Request[v1.StartQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
-	// Pause an ACTIVE agent. Administrator only.
+	// Pause an ACTIVE agent. The owner and administrators may pause; only an
+	// administrator may edit the configuration.
 	PauseQualityAgent(context.Context, *connect.Request[v1.PauseQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// List the workspace's agents. Administrators see every agent; other members
 	// see the agents they own.

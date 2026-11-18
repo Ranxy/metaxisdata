@@ -15,6 +15,7 @@ import (
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -151,7 +152,7 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 			responseMessage = nil
 		}
 	}
-	responseStruct, responseMap := audit.MarshalAuditMessage(responseMessage)
+	responseStruct, responseMap := audit.MarshalAuditMessage(redactAuditResponse(responseMessage))
 
 	auditLog := &storepb.AuditLog{
 		Parent:          audit.ResolveParent(common.FormatWorkspace(workspaceID), requestMap, responseMap),
@@ -172,6 +173,52 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 
 	_, createErr := in.store.CreateAuditLog(auditCtx, auditLog)
 	return createErr
+}
+
+// redactAuditResponse strips product prose from the response copy the ledger
+// stores. The request-side field redaction cannot see these: a conversation reply
+// is named message_body in the request but content in the response, and a
+// diagnostics transcript is a repeated message content. The handler still returns
+// the original, unmodified response.
+func redactAuditResponse(message proto.Message) proto.Message {
+	switch response := message.(type) {
+	case *v1pb.QualityAgentSessionMessage:
+		cloned, ok := proto.Clone(response).(*v1pb.QualityAgentSessionMessage)
+		if !ok {
+			return message
+		}
+		cloned.Content = ""
+		cloned.ToolCalls = nil
+		return cloned
+	case *v1pb.QualityAgentSession:
+		cloned, ok := proto.Clone(response).(*v1pb.QualityAgentSession)
+		if !ok {
+			return message
+		}
+		cloned.Objective = ""
+		cloned.BlockedReason = ""
+		return cloned
+	case *v1pb.ListQualityAgentSessionMessagesResponse:
+		cloned, ok := proto.Clone(response).(*v1pb.ListQualityAgentSessionMessagesResponse)
+		if !ok {
+			return message
+		}
+		for _, item := range cloned.QualityAgentSessionMessages {
+			item.Content = ""
+			item.ToolCalls = nil
+		}
+		return cloned
+	case *v1pb.QualityAgentAttention:
+		cloned, ok := proto.Clone(response).(*v1pb.QualityAgentAttention)
+		if !ok {
+			return message
+		}
+		cloned.Title = ""
+		cloned.Question = ""
+		return cloned
+	default:
+		return message
+	}
 }
 
 func shouldSkipAudit(message proto.Message) bool {

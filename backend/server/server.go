@@ -310,7 +310,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	s.sessionRunner.SetAttentionSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
 		config, err := s.store.GetQualityAgentConfig(ctx, session.AgentID)
-		if err != nil || config == nil || config.OwnerPrincipalID == nil {
+		if err != nil || config == nil {
 			return
 		}
 		agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
@@ -338,9 +338,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			Title:     attention.Title,
 			Question:  attention.Question,
 		}
-		if err := s.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID,
-			"dqagent:"+attention.ResourceID, detail); err != nil {
-			slog.Warn("failed to send a quality agent attention notification", log.WithError(err))
+		dedupeKey := "dqagent:" + attention.ResourceID
+		if config.OwnerPrincipalID != nil {
+			if sendErr := s.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+				slog.Warn("failed to send a quality agent attention notification", log.WithError(sendErr))
+			}
+		} else if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+			slog.Warn("failed to send a quality agent attention notification to admins", log.WithError(sendErr))
 		}
 	})
 	s.agentReportRunner = qualityagentrunner.NewRunner(stores, s.notifier)

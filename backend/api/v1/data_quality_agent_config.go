@@ -12,6 +12,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -63,6 +64,9 @@ func (s *DataQualityService) UpdateQualityAgent(ctx context.Context, req *connec
 	}
 	next, nextDatabases, err := applyQualityAgentUpdate(req.Msg.GetQualityAgent(), current, databases, req.Msg.GetUpdateMask().GetPaths())
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateQualityAgentOwner(ctx, next.OwnerPrincipalID); err != nil {
 		return nil, err
 	}
 	if _, err := s.store.UpdateQualityAgentConfig(ctx, next); err != nil {
@@ -132,6 +136,10 @@ func (s *DataQualityService) transitionQualityAgentState(ctx context.Context, na
 	if config == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the agent is not a built-in agent; it has no runtime configuration"))
+	}
+	if !s.qualityAgentOwnerOrAdmin(ctx, config) {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only the agent's owner or an administrator may start or pause it"))
 	}
 	if !agent.Enabled || config.State == store.QualityAgentStateDisabled {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
@@ -257,6 +265,12 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentConfi
 		if err := validateQualityAgentReportSchedule(config); err != nil {
 			return nil, nil, err
 		}
+	} else if containsCapability(capabilities, agentcapability.Patrol) {
+		// The design default is one daily report at 09:00; UTC is the fallback when
+		// the caller did not name a timezone.
+		config.ReportFrequency = store.QualityAgentReportFrequencyDaily
+		config.ReportTime = "09:00"
+		config.ReportTimezone = "UTC"
 	}
 	if adoption := agent.GetAdoption(); adoption != nil {
 		mode, err := qualityAgentAdoptionModeFromV1(adoption.GetMode())
@@ -342,6 +356,36 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 		return nil, nil, err
 	}
 	return config, nextDatabases, nil
+}
+
+// qualityAgentOwnerOrAdmin is the caller check shared by the owner-manageable
+// operations (start/pause). ACL alone cannot express "owner of this row".
+func (s *DataQualityService) qualityAgentOwnerOrAdmin(ctx context.Context, config *store.QualityAgentConfigMessage) bool {
+	if config == nil {
+		return false
+	}
+	if config.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *config.OwnerPrincipalID {
+		return true
+	}
+	admin, err := s.callerIsQualityAgentAdmin(ctx)
+	return err == nil && admin
+}
+
+// validateQualityAgentOwner requires the owner to be a live human member. Parsing
+// only proves users/{id}; a service account or a deleted member cannot own an agent
+// whose owner-only RPCs would then be reachable by a machine credential.
+func (s *DataQualityService) validateQualityAgentOwner(ctx context.Context, owner *int32) error {
+	if owner == nil {
+		return connectErrorInvalid("the agent needs an owner")
+	}
+	user, err := s.store.GetUserByID(ctx, int(*owner))
+	if err != nil {
+		return err
+	}
+	if user == nil || user.MemberDeleted || user.Type != storepb.PrincipalType_END_USER {
+		return connectErrorInvalid("the agent owner must be an active workspace member")
+	}
+	return nil
 }
 
 // qualityAgentConfigFields renders the editable fields of a stored config as the

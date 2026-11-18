@@ -2069,3 +2069,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_adoption_suggestion
 CREATE INDEX IF NOT EXISTS idx_quality_agent_adoption_agent_created
     ON quality_agent_adoption(agent_id, created_at DESC);
 COMMENT ON TABLE quality_agent_adoption IS 'One row per suggestion an agent auto-adopted or skipped, the daily-cap audit trail';
+-- The adoption ledger is keyed by agent and suggestion, not suggestion alone: the
+-- same suggestion may first be SKIPPED and later ADOPTED when the guardrails
+-- change, and the later row must update the earlier one instead of being silently
+-- ignored. Outcome 0 means "not decided" and is never written by the code.
+DROP INDEX IF EXISTS idx_quality_agent_adoption_suggestion;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_adoption_agent_suggestion
+    ON quality_agent_adoption(agent_id, suggestion_id);
+ALTER TABLE quality_agent_adoption ALTER COLUMN outcome SET DEFAULT 0;
+ALTER TABLE quality_agent_adoption DROP CONSTRAINT IF EXISTS chk_quality_agent_adoption_outcome;
+ALTER TABLE quality_agent_adoption ADD CONSTRAINT chk_quality_agent_adoption_outcome
+    CHECK (outcome IN (0, 1, 2, 3));
+COMMENT ON COLUMN quality_agent_adoption.outcome IS '1 ADOPTED, 2 SKIPPED, 3 FAILED; 0 is unset and never written by the code';
+-- Review follow-ups on the multi-agent schema.
+-- The adoption default is PAUSED (2), not OFF: a newly created agent that selects
+-- adoption starts with paused checks for its owner to enable. 0054's comment said
+-- "0 OFF, 1 PAUSED, 2 ACTIVE" but the store/v1 enum is 0 UNSPECIFIED, 1 OFF,
+-- 2 PAUSED, 3 ACTIVE.
+ALTER TABLE quality_agent_config ALTER COLUMN adoption_mode SET DEFAULT 2;
+COMMENT ON COLUMN quality_agent_config.adoption_mode IS '0 UNSPECIFIED, 1 OFF, 2 PAUSED, 3 ACTIVE (QualityAgentAdoptionMode)';
+
+-- A target work thread must name a target; only the front-office conversation may
+-- have an empty target_guid. The earlier check allowed NULL to pass.
+ALTER TABLE quality_agent_session DROP CONSTRAINT IF EXISTS quality_agent_session_kind_check;
+ALTER TABLE quality_agent_session ADD CONSTRAINT quality_agent_session_kind_check
+    CHECK ((kind = 1 AND target_guid IS NOT NULL AND target_guid <> '') OR
+           (kind = 2 AND target_guid = ''));
+
+-- The resolver is a person; deleting the account should clear the resolution
+-- pointer like it does elsewhere.
+ALTER TABLE quality_agent_attention DROP CONSTRAINT IF EXISTS quality_agent_attention_resolved_by_fkey;
+ALTER TABLE quality_agent_attention ADD CONSTRAINT quality_agent_attention_resolved_by_fkey
+    FOREIGN KEY (resolved_by) REFERENCES principal(id) ON DELETE SET NULL;

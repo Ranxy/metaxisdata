@@ -5948,7 +5948,9 @@ paths:
         post:
             tags:
                 - DataQualityService
-            description: Pause an ACTIVE agent. Administrator only.
+            description: |-
+                Pause an ACTIVE agent. The owner and administrators may pause; only an
+                 administrator may edit the configuration.
             operationId: DataQualityService_PauseQualityAgent
             parameters:
                 - name: workspace

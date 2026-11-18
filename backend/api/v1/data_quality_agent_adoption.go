@@ -7,6 +7,8 @@ import (
 	"slices"
 	"time"
 
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
@@ -52,16 +54,23 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 		return
 	}
 	ownerID := config.OwnerPrincipalID
-	if ownerID == nil {
+	agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil || agent == nil {
 		return
 	}
-	owner, err := s.store.GetUserByID(ctx, int(*ownerID))
-	if err != nil || owner == nil {
-		return
+	// Without an owner the agent still queues its drafts and escalates to the
+	// administrators; only the rule write needs an owner to attribute the rule to.
+	agentCtx := ctx
+	canAdopt := false
+	if ownerID != nil {
+		owner, ownerErr := s.store.GetUserByID(ctx, int(*ownerID))
+		if ownerErr == nil && owner != nil {
+			if agentUser, userErr := s.store.GetUserByID(ctx, agent.PrincipalID); userErr == nil && agentUser != nil {
+				agentCtx = context.WithValue(ctx, common.UserContextKey, agentUser)
+				canAdopt = true
+			}
+		}
 	}
-	// The rule path attributes the write to the owner; the ledger keeps the agent
-	// attribution. The owner context is what the rule path reads for created_by.
-	ownerCtx := context.WithValue(ctx, common.UserContextKey, owner)
 	since := time.Now().UTC().Add(-adoptionWindow)
 	agentID := session.AgentID
 	targetGUID := session.TargetGUID
@@ -83,7 +92,7 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 	critical := s.targetIsCritical(ctx, session.TargetGUID, session.TargetType)
 	for _, suggestion := range suggestions {
 		draft := suggestion.Payload.GetRule()
-		if draft == nil {
+		if draft == nil || !canAdopt {
 			continue
 		}
 		ruleType, ok := ruleTypeForDraftConfig(draft.GetConfig())
@@ -118,19 +127,22 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 			Config:      convertQualityRuleConfigToV1(draft.GetConfig()),
 			Severity:    v1pb.QualitySeverity(draft.GetSeverity()),
 			State:       state,
+			Owner:       common.FormatUserUID(int(*ownerID)),
 			Target: &v1pb.QualityTarget{
 				MetaGuid: suggestion.TargetGUID,
 				MetaType: v1pb.MetaType(suggestion.TargetType),
 			},
 		}
 		name := common.FormatWorkspace(session.WorkspaceID) + "/qualitySuggestions/" + suggestion.ResourceID
-		created, err := s.createQualityRuleFromRequest(ownerCtx, session.WorkspaceID, rule, name)
+		created, err := s.createQualityRuleFromRequest(agentCtx, session.WorkspaceID, rule, name)
 		if err != nil {
 			slog.Warn("failed to auto-adopt a quality draft",
 				slog.String("suggestion", suggestion.ResourceID), log.WithError(err))
+			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeFailed, "", "rule creation failed")
 			continue
 		}
 		s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeAdopted, created.GetName(), "")
+		s.recordAdoptionAudit(ctx, session, agent, suggestion, created, state)
 		adopted++
 	}
 	// Whatever is still pending after the pass is the owner's queue: one attention
@@ -143,10 +155,6 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 		Limit:      intPointer(100),
 	})
 	if err != nil || len(remaining) == 0 {
-		return
-	}
-	agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
-	if err != nil || agent == nil {
 		return
 	}
 	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
@@ -169,8 +177,47 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 		Title:     attention.Title,
 		Question:  attention.Question,
 	}
-	if sendErr := s.notifier.SendQualityAgentAttention(ctx, *ownerID, "dqagent:"+attention.ResourceID, detail); sendErr != nil {
-		slog.Warn("failed to send a proposal attention notification", log.WithError(sendErr))
+	dedupeKey := "dqagent:" + attention.ResourceID
+	if ownerID != nil {
+		if sendErr := s.notifier.SendQualityAgentAttention(ctx, *ownerID, dedupeKey, detail); sendErr != nil {
+			slog.Warn("failed to send a proposal attention notification", log.WithError(sendErr))
+		}
+	} else if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+		slog.Warn("failed to send a proposal attention notification to admins", log.WithError(sendErr))
+	}
+}
+
+// recordAdoptionAudit writes the permanent ledger row for one automatic
+// adoption. The rule path is internal, so no RPC interceptor sees this write; the
+// actor is the agent principal and the owner is named in the request payload.
+func (s *DataQualityService) recordAdoptionAudit(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage, rule *v1pb.QualityRule, state v1pb.QualityRuleState) {
+	request, err := structpb.NewStruct(map[string]any{
+		"suggestion": suggestion.ResourceID,
+		"agent":      agent.ResourceID,
+		"target":     suggestion.TargetGUID,
+		"ruleState":  state.String(),
+	})
+	if err != nil {
+		return
+	}
+	response, err := structpb.NewStruct(map[string]any{
+		"rule": rule.GetName(),
+	})
+	if err != nil {
+		return
+	}
+	_, auditErr := s.store.CreateAuditLog(ctx, &storepb.AuditLog{
+		Parent:   common.FormatWorkspace(session.WorkspaceID),
+		Method:   "metaxisdata.v1.DataQualityService/AdoptQualitySuggestion",
+		Resource: rule.GetName(),
+		User:     common.FormatUserUID(agent.PrincipalID),
+		Severity: storepb.AuditLogSeverity_INFO,
+		Request:  request,
+		Response: response,
+		Status:   &storepb.AuditLogStatus{Message: "ok"},
+	})
+	if auditErr != nil {
+		slog.Warn("failed to write the adoption audit row", log.WithError(auditErr))
 	}
 }
 
