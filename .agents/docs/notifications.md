@@ -1,393 +1,342 @@
-# 站内信与通知推送 — Reference
+# Notifications — Reference
 
-> Status: **implemented**（站内信 `4fb0e00`/`32a6bd2`，服务端推送 `a00e3e0`）。本文件是 `backend/component/notification/`、`backend/api/v1/notification_service.go`、`backend/runner/schemasync/operation.go` 与前端 `notification*` 这一族的维护参考。
-> Related: [proto/v1/v1/notification_service.proto](../../proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](../../proto/store/store/notification.proto)、[docs/security-posture.md:31](../../docs/security-posture.md#L31)。
-> 行形状与公开面的字段清单以 proto 为准；本文件只记契约、不变量与耦合。
+> Maintenance reference for `backend/component/notification/`, the notification
+> service handlers, the notification store, the dispatcher and digest runners, and the
+> frontend notification family. Wire shapes live in
+> [notification_service.proto](../../proto/v1/v1/notification_service.proto) and
+> [notification.proto](../../proto/store/store/notification.proto); operator behavior is
+> [docs/notifications.md](../../docs/notifications.md).
 
 ## What it is
 
-按**用户**投递的站内信，外加一条常驻的服务端推送流（ConnectRPC server streaming）。消息只有两个来源：
+Two delivery surfaces over one event. The **inbox** writes one row per recipient and the
+browser renders it from structured data; **outbound channels** fan the same event out to
+administrator-configured destinations, rendered and posted by a background dispatcher. The
+inbox is always on, and outbound delivery never blocks or rolls back an inbox write.
 
-| 来源 | 触发 | 收件人 | detail |
+| Inbox source | Trigger | Recipients | Detail |
 | --- | --- | --- | --- |
-| schema 同步操作 | 人工同步 / 建实例后首次同步 / 周期后台同步失败 | 发起人；后台失败给工作区管理员 | `SchemaSyncDetail` |
-| OpenLineage 摄取 | 4xx 拒收、5xx 失败、namespace 未映射 | 工作区管理员（摄取用 API key，无发起用户） | `OpenLineageDetail` |
-| 数据质量 | 问题打开/恢复、执行失败、风暴摘要（`qualityrunner`），以及目标结构变更（`schemasync`） | 规则 owner（无 owner 时管理员）；执行失败与风暴摘要只发管理员；结构变更发给该目标检查的 owner（无 owner 时管理员，未监控目标不发） | `DataQualityDetail`（kind 见 [data-quality.md](data-quality.md) §3.4/§3.13） |
-| 质量 Agent 升级 | Agent 会话被 `needs-human`/`restart-limit`/`model-reported` 阻塞，`qualitysessionrunner` 写入 `quality_agent_attention` 后 | 该 Agent 的 owner | `QualityAgentAttentionDetail`（agent/attention/kind/title/question；`NOTIFICATION_TYPE_DATA_QUALITY_AGENT`） |
+| Schema sync | A user-requested sync, the first sync after instance creation, or a failed periodic sync | Initiator; a background failure goes to the administrators | `SchemaSyncDetail` |
+| OpenLineage ingestion | A refused request, or a namespace matching no instance | Administrators: API-key auth, no initiating user | `OpenLineageDetail` |
+| Data quality | Issue opened or recovered, execution failure, storm summary, watched target's schema change | Rule owner (administrators when none); failures and storms to administrators only | `DataQualityDetail` |
+| Quality agent | A session parked on a code that needs a person, a patrol report with failures or new issues, or drafts awaiting review | Agent owner, or administrators when none is set | `QualityAgentAttentionDetail` (`NOTIFICATION_TYPE_DATA_QUALITY_AGENT`) |
 
-消息正文**不落文本**：服务端只存 `type + severity + 结构化 detail`，前端用 i18n 渲染（`en-US` / `zh-CN`）。这是双语与 proto3 前向兼容（老前端遇新类型降级为通用文案）的前提。
+A row stores `type + severity + structured detail`, never prose: the frontend renders it
+through i18n, so one row reads in either language and an older client degrades an unknown
+type to a generic line. The table is **personal data** — reads are scoped by
+`recipient_id`, not by workspace. **Two counts, not one:** `unread` (`read_at IS NULL`)
+changes only when a message is clicked or all are marked read; `unseen` is the subset
+created after `principal.notification_seen_at` and drives the bell badge. Opening the
+inbox only advances the watermark, so the badge clears while every message stays unread.
 
-`notification` 表是**个人数据**：与其余所有表不同，读路径按 `recipient_id` 作用域而不是 workspace，因此表本身没有 workspace 列（[0017##notification.sql:1-8](../../backend/migrator/migration/0.1/0017%23%23notification.sql#L1-L8)）。
+## Decisions — inbox
 
-**两个数不是一回事**：`unread`（未读，`read_at IS NULL`）是消息自身的状态，只有点开某一条或"全部已读"才变；`unseen`（未查看）是未读里、`created_at > principal.notification_seen_at` 的那些，是铃铛红点的数字。打开通知（铃铛下拉或 `/notifications`）只把 `notification_seen_at` 推到当前时间，红点清零而消息仍未读——用户点了哪条，哪条才变已读。
-
-## Decisions
-
-站内信侧（写入口径）：
-
-| # | 决定 | 理由 / 影响 |
-| --- | --- | --- |
-| 1 | 收件人 = **操作发起人**；只有后台/周期同步失败发给**工作区管理员** | 需要"操作"实体与角色→用户解析 |
-| 2 | 只做消息中心，不建同步任务表、不展示进度 | 聚合状态在 syncer 进程内，不是新表 |
-| 3 | 粒度 = **一次同步操作一条** | 引入 operation 聚合器 |
-| 4 | 首批事件：schema 同步 + OpenLineage 摄取异常 | 两类 detail |
-| 5 | 仅站内信（铃铛 + 列表），不做邮件 / webhook | 无出站投递器 |
-| 6 | **永久保留**，不接 TTL 清理 | 无 TTL，表持续增长，量级话题是分区/归档 |
-| 7 | 后台通知抑制窗口默认 **1 小时桶**（`NAMESPACE_UNMAPPED` 为 24 小时） | 常量，可调；两层抑制必须一起调 |
-| 8 | 建实例后的首次全量同步**要发**消息（发起人 = 创建者） | `CreateInstance` 也登记操作 |
-| 9 | OpenLineage 的 **4xx 拒收**与 **namespace 未映射**都通知管理员 | 通知点覆盖全部拒收分支 + resolver |
-| 10 | 管理员手动发消息**不做** | 正文仍全部走 i18n，不引入自由文本 |
-| 11 | 一个库在"这次操作"里的结果 = **它的第一次结果** | 退避重试（1m/5m/15m）不改写消息、不补发；代价是瞬时失败也出现在消息里 |
-| 12 | **红点数字 = 上次打开通知之后写入的未读消息数**（`principal.notification_seen_at` 水位），不是未读数 | 用户看的是"有没有新的"，不是"还有几条没点"；未读态留在列表里由用户自己清 |
-| 13 | 打开通知**只推水位、不改读态** | 打开下拉/页面就清红点，消息仍需用户点开才变已读；`read_at` 只有 `BatchMarkNotificationsRead` / `MarkAllNotificationsRead` 能写 |
-| 14 | 下拉/页面**打开期间**到达的消息不点亮红点，并顺带推进水位 | 它此刻正出现在用户看的列表里；否则刚看完列表又被提示"有新消息" |
-| 15 | 水位由**服务端 `NOW()`** 打戳 | 与 `read_at` 同约定：客户端不能自报"我在某条消息之前就看过" |
-
-推送侧：
-
-| # | 决定 | 理由 / 影响 |
-| --- | --- | --- |
-| 1 | 用 ConnectRPC **server-streaming RPC**，不用字面 SSE/`EventSource` | 复用 `ExplainSQL` 先例；auth/throttle/error-mapping 拦截器免费；前端保持 100% 收敛在 ConnectRPC client |
-| 2 | 事件**带消息本身 + 两个最新计数**（`unread_count` + `unseen_count`） | 铃铛收到即更新，零额外往返；服务端每条消息多两次计数查询（都走同一个 partial index） |
-| 3 | **单副本 / 进程内 hub** | 与"设备登录状态进程内""操作聚合器进程内"同取向；跨副本投递不做 |
-| 4 | 覆盖铃铛 + `/notifications` **仅第一页**自动刷新 | 不打断分页阅读 |
-| 5 | 去掉 30s 轮询，只在"重连成功"与"标签页重新可见"时各刷新一次 | 不再有周期性请求 |
-| 6 | 连接时长上界 **30 分钟**，到点服务端主动收尾 | 流只在连接时鉴权一次，收尾逼客户端重连 = 重新鉴权，logout/撤销才有上界 |
-| 7 | 心跳 **25s** 常驻显式 `KeepAlive` 空消息 | Connect protocol 无注释帧；同时是"对端已死"的写失败探测点；小于 nginx 默认 `proxy_read_timeout` 60s |
-| 8 | 背压 = **丢订阅、不丢消息** | 订阅者缓冲满就关它的流，消息已在库里，客户端重连刷新 |
-| 9 | **已读状态变化不推送** | 另一标签页标已读后角标要等刷新/重连/重新可见；推送它需要再定"谁改的、多标签页回声" |
-| 10 | **水位的推进也不推送** | 与 9 同一取舍：标签页 A 清掉红点后，标签页 B 要等刷新/重连/重新可见（切过去就会触发可见性刷新） |
-
-## 数据模型
-
-表与索引（[LATEST.sql:678-705](../../backend/migrator/migration/LATEST.sql#L678-L705)，与 [0017##notification.sql](../../backend/migrator/migration/0.1/0017%23%23notification.sql) 同列同索引，只是注释长短不一）：
-
-| 列 / 索引 | 形状 | 作用 |
-| --- | --- | --- |
-| `recipient_id` | `INTEGER NOT NULL REFERENCES principal(id) ON DELETE CASCADE` | 个人数据的作用域键 |
-| `read_at` | `TIMESTAMPTZ`，`NULL` = 未读 | **读态是列，不是 JSONB 字段** |
-| `dedupe_key` | `TEXT NOT NULL DEFAULT ''`，格式 `<event>:<target>:<bucket>` | 空串 = 不去重（发给发起人的个人消息） |
-| `payload` | `JSONB NOT NULL DEFAULT '{}'` | `protojson` 的 `proto/store Notification`；`id`/`createTime`/`recipientId`/`readTime`/`dedupeKey` **不在** payload 里 |
-| `idx_notification_recipient_created_at` | `(recipient_id, created_at DESC, id DESC)` | 收件箱列表 |
-| `idx_notification_recipient_unread` | `(recipient_id) WHERE read_at IS NULL` | 未读计数只探索引 |
-| `idx_notification_dedupe` | UNIQUE `(recipient_id, dedupe_key) WHERE dedupe_key <> ''` | 跨副本、跨重启的最终去重 |
-
-**读态为什么是列**：未读计数是角标热路径，`payload->>'readTime' IS NULL` 走不了 partial index；`read_at` + 部分索引让计数成为一次索引探针。
-
-水位在 `principal` 上（[0018##notification_seen.sql](../../backend/migrator/migration/0.1/0018%23%23notification_seen.sql)、[LATEST.sql:31-35](../../backend/migrator/migration/LATEST.sql#L31-L35)）：
-
-| 列 | 形状 | 作用 |
-| --- | --- | --- |
-| `principal.notification_seen_at` | `TIMESTAMPTZ`，`NULL` = 从没打开过通知 | 红点的水位；`NULL` 时读作"所有未读都是新的"（SQL 里用 `COALESCE(..., '-infinity')` 表达）。**不在 `notification` 表上**：它是"我上次看收件箱是什么时候"，一行一个用户，而给每条消息记一个"看过"标志会让每次打开都 UPDATE 一整批行 |
-
-两个数由**同一条语句**返回（[notification.go:151](../../backend/store/notification.go#L151)）：`COUNT(*)` 与 `COUNT(*) FILTER (created_at > 水位)`，`WHERE` 由 `notificationScope(recipientID, true)` 拼出，所以 `unseen ≤ unread` 是构造出来的，不是"通常成立"。分两条语句读会拿到两个快照，中间写入的那条能让红点数超过未读数。语句里 join `principal` 只为取水位，`recipient_id` 仍是第一个谓词，未读 partial index 照旧是入口。
-
-## 写入路径
-
-唯一写入口是 `notification.Service`（[service.go:83-95](../../backend/component/notification/service.go#L83-L95)），它同时是推送的起点：
-
-| 方法 | 契约 |
+| Decision | Why |
 | --- | --- |
-| `Send(ctx, n)` | 投给一个收件人；`recipient_id` 必须 > 0 |
-| `SendToWorkspaceAdmins(ctx, n)` | 解析 `roles/workspaceAdmin`（含组展开，跳过 `allUsers` 与 system bot）后逐条克隆投递，每人一行、各自读态；无管理员只记日志 |
-| `create(ctx, n)` | 补齐 workspace 名 → 写库 → 若真写出新行则 `publish`；被 dedupe 抑制（`CreateNotification` 返回 `(nil, nil)`）时**不发布** |
-| `publish(ctx, n)` | 在 `publishMu` 内"读一次计数（两个数） + 交给订阅者"，保证投递顺序与快照顺序一致；计数读不到仍投递消息本身（`Event.CountsKnown = false`，前端自己去问） |
-| `Subscribe(recipientID) / Close()` | 订阅/停机收尾（见下节） |
-| `DedupeKey(event, target, now, window)` | 生成 `<event>:<target>:<bucket>`；`window <= 0` 返回空串（不去重） |
+| Recipient is the operation's initiator; only a background failure goes to the administrators | Needs an operation entity and role-to-user resolution |
+| A message center only: no sync-job table and no progress display | Aggregated state lives in the syncer process |
+| One message per sync operation, and a database's result within it is **its first result** | Retry does not rewrite the message; a transient failure therefore appears in it |
+| Permanent retention, no TTL | Capacity is a partitioning question, not cleanup |
+| A suppression window defaults to one hour (`NAMESPACE_UNMAPPED`: 24 hours) | One constant, adjustable only together with the database bucket |
+| The first full sync after instance creation notifies, and OpenLineage 4xx refusals and unmapped namespaces both notify administrators | The message points cover every refusal branch plus the resolver |
+| Administrators cannot compose messages by hand | Every body renders from i18n; no free text in a permanent row |
+| The badge counts messages written after the inbox was last opened, not unread messages | The user asks "anything new", not "how many unclicked" |
+| Opening the inbox only advances the watermark, never writes `read_at` | Only the mark-read RPCs write read state |
+| Messages arriving while the inbox is open do not light the badge and advance the watermark | They are already on screen |
+| The watermark is stamped by the server's `NOW()` | A client cannot claim it saw a message before a chosen time |
 
-关键实现事实：
+## Data model
 
-- **best-effort 契约**：写通知失败只记日志，绝不影响同步/摄取路径（与 audit 拦截器同约定）。调用方显式忽略返回错误。
-- **写入脱离请求取消但有界**：`Send` / `SendToWorkspaceAdmins` 用 `context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)`，`writeTimeout = 10s`（[service.go:65-68](../../backend/component/notification/service.go#L65-L68)）。
-- **两层抑制**：进程内闸门 `Service.claim`（`recent` map，`gateLimit = 1<<16`、`gateRetention = 24h`，[service.go:415-445](../../backend/component/notification/service.go#L415-L445)）先挡掉绝大多数重复，省下"读 IAM policy + 展开组"的成本；数据库唯一索引是第二层，负责跨副本/重启。`dedupe_key` 为空时两层都不生效。写库失败会 `release`，让本窗口内可以重试。
-- **载荷边界在构造函数/消息构造函数里**：`MaxFailureEntries = 100`、`MaxErrorBytes = 2<<10`（按 rune 截断），调用方传什么都不会撑大那条永久保留的行（[service.go:57-63](../../backend/component/notification/service.go#L57-L63)、[:172-219](../../backend/component/notification/service.go#L172-L219)）。
-- **窗口常量**（[service.go:37-46](../../backend/component/notification/service.go#L37-L46)）：`BackgroundFailureWindow = 1h`、`UnmappedNamespaceWindow = 24h`；键见下表。
-
-| 事件类 | 键 | 窗口 |
+| Column or index | Shape | Role |
 | --- | --- | --- |
-| 后台同步失败（实例/库） | `schema-sync.instance:<instance>:<h>` / `schema-sync.database:<db>:<h>` | 1 小时 |
-| OpenLineage 拒收 / 服务端失败 | `openlineage:<主体>:<kind>:<h>`，主体 = 事件的 namespace，解析不出来时 `key/<api key id>` | 1 小时 |
-| OpenLineage namespace 未映射 | `openlineage.namespace-unmapped:<namespace>:<d>` | 24 小时 |
+| `recipient_id` | `INTEGER NOT NULL REFERENCES principal(id) ON DELETE CASCADE` | Personal-data scope key |
+| `read_at` | `TIMESTAMPTZ`, `NULL` = unread | Read state is a column, not a JSONB field |
+| `dedupe_key` | `TEXT NOT NULL DEFAULT ''`, `<event>:<target>:<bucket>` | Empty = not deduplicated |
+| `payload` | `JSONB` | `protojson` of `Notification`; ids, timestamps, recipient and dedupe key are not inside |
+| `idx_notification_recipient_created_at` | `(recipient_id, created_at DESC, id DESC)` | Inbox listing |
+| `idx_notification_recipient_unread` | `(recipient_id) WHERE read_at IS NULL` | Badge count touches only this index |
+| `idx_notification_dedupe` | UNIQUE `(recipient_id, dedupe_key) WHERE dedupe_key <> ''` | Cross-replica, cross-restart deduplication |
 
-## 同步操作聚合
+Read state is a column because the badge count is a hot path: `payload->>'readTime' IS
+NULL` cannot use a partial index, while `read_at` plus the partial index makes the count
+one index probe. `principal.notification_seen_at` is the per-user watermark (`NULL` = never
+opened), not a per-message column, which would update a batch of rows on every open. Both
+counts come from one statement (`COUNT(*)` plus `COUNT(*) FILTER (created_at > watermark)`),
+so `unseen <= unread` is constructed; two statements would take two snapshots.
 
-一个用户可见的同步操作 = 实例元数据步骤 + 它入队的所有库；进程内聚合，`operationTimeout = 2h`（[operation.go:21](../../backend/runner/schemasync/operation.go#L21)、[:31-66](../../backend/runner/schemasync/operation.go#L31-L66)）。
+Outbound storage: `notification_channel` (payload JSONB plus a write-only `secret` TEXT
+with a `v1:` encrypted `NotificationChannelSecret`), `notification_delivery` (`event_id`,
+cascading `channel_id`, state, attempts, `next_attempt_at` as both retry time and SENDING
+lease, `last_error`, payload, `quiet_deferred`, UNIQUE `(event_id, channel_id)`), and
+`notification_route` (payload JSONB). A new channel kind, config field or audience rule is
+a proto increment needing no migration; a new table does.
 
-- 登记入口：`StartOperation` → `RecordInstanceResult` → `EnqueueDatabases`（登记 pending 并**封口**）→ checker 里 `completeDatabase` 把结果**扇出**给所有包含该库的 op（两个并发操作共享一个库是可能的）。
-- checker 丢弃"实例已不存在"的队列项时也要回报，否则 op 永远等不到结果。
-- **超时兜底**：op 带 deadline，checker 的 10s tick 顺带 finalize 超时 op，未出结果的库记 `UNFINISHED`。这是"永远不写消息 / 内存条目永不释放"的唯一保险。
-- 库级后台失败在 `scheduleRetry` 的**放弃**分支通知管理员（"重试 N 次仍失败"）；实例级失败在 `trySyncAll` 里通知，用小时桶，因为 `last_sync_time` 不前进会每 15 分钟重试。后台**成功不通知**（没有人在等，只会变噪声）。
-- 调用方改造：`CreateInstance`、`SyncInstance`、`BatchSyncInstances`（每实例一个 op）登记 op；**单库同步 `SyncDatabase` 不走聚合器**（请求内同步完成，直接投递）。
-- 无库入队（没有新库、或实例阶段就失败）时 `FinishOperation` 立即写消息。
+## Write path
 
-## OpenLineage 摄取异常 → 管理员
+`notification.Service` is the only inbox writer and the start of the push stream:
+`Send` (one recipient), `SendToWorkspaceAdmins` (resolve `roles/workspaceAdmin` with group
+expansion, one cloned row each; none means a log line), `SendToRecipients` (explicit set),
+`create` (fill the workspace name, insert, publish only when a row was written), `publish`
+(under `publishMu`, read both counts once and hand the event to subscribers, so delivery
+order matches snapshot order; a failed count read still delivers with
+`CountsKnown = false`), the quality-agent helpers that build a `DATA_QUALITY_AGENT`
+escalation, and `DedupeKey` (empty key for a non-positive window).
 
-摄取是 API key 认证的机器流量，异常一律给管理员。所有拒绝分支收成一个 `reportIngestionFailure`（[openlineage_handler.go:93-143](../../backend/api/v1/openlineage_handler.go#L93-L143)），4xx 与 5xx 共用，severity 由 status 决定。
+- **Best effort by contract.** A failed write is logged and never fails the sync or
+  ingestion path; callers discard the error. The send methods detach from request
+  cancellation (`context.WithoutCancel`) but stay bounded to `writeTimeout = 10s`.
+- **Two suppression layers.** The process gate (`Service.claim`, a `recent` map bounded by
+  `gateLimit = 1<<16`, `gateRetention = 24h`) absorbs most repeats cheaply; the unique
+  index covers replicas and restarts. An empty key bypasses both; a failed insert
+  releases the gate so the window can retry.
+- **Payload bounds live in the constructors**: `MaxFailureEntries = 100`,
+  `MaxErrorBytes = 2<<10` (rune-truncated), so no caller grows a permanent row.
+- **Windows**: sync failure `1h`; OpenLineage refusal or failure `1h` (subject = the
+  namespace, or `key/<id>`); unmapped namespace `24h`.
 
-| 分支 | HTTP | kind | severity | 去重主体 |
+## Sync operation aggregation
+
+One sync operation = the instance metadata step plus every database it queued; the
+aggregator is process-local with `operationTimeout = 2h`.
+
+- `StartOperation` → `RecordInstanceResult` → `EnqueueDatabases` (registers pending
+  databases and seals the set); the checker's `completeDatabase` fans a database result
+  out to every operation containing it. A discarded queue item (instance gone) must be
+  reported too, or the operation waits forever.
+- A deadline plus the checker's 10-second tick finalizes timed-out operations with missing
+  databases as `UNFINISHED`; that is the only guard against a message never written and an
+  entry never freed.
+- A database background failure notifies on retry abandon; an instance failure notifies
+  in `trySyncAll` with the hourly bucket, because a stuck `last_sync_time` retries every 15
+  minutes. Background success does not notify.
+- `CreateInstance`, `SyncInstance` and `BatchSyncInstances` register per-instance
+  operations; a single-database `SyncDatabase` bypasses the aggregator; with no database
+  queued, `FinishOperation` writes immediately.
+
+## OpenLineage ingestion failures
+
+Every refusal branch funnels through `reportIngestionFailure`, which notifies and then
+writes the response; the status selects the severity.
+
+| Branch | HTTP | Kind | Severity | Dedupe subject |
 | --- | --- | --- | --- | --- |
-| 事件/批次解析失败、超单事件限制 | 400/413 | `INVALID_EVENT` | WARNING | `key/<id>`（拿不到 namespace） |
-| 请求体 > 8MiB、批量 > 1000 条 | 413 | `LIMIT_EXCEEDED` | WARNING | `key/<id>` |
-| `eventWithinScope` 不符 | 403 | `SCOPE_MISMATCH` | WARNING | 事件的 namespace |
-| `UpsertOpenLineageRun(s)` / `ProcessRunEvent` 报错（含批量部分成功） | 500 | `PERSIST_FAILED` / `PROCESS_FAILED` | ERROR | 事件的 namespace |
-| 数据集没匹配到实例、被存成 external dataset | — | `NAMESPACE_UNMAPPED` | WARNING | namespace（24h 桶） |
+| Parse failure, per-event limit | 400/413 | `INVALID_EVENT` | WARNING | `key/<id>` |
+| Transport or batch limit | 413 | `LIMIT_EXCEEDED` | WARNING | `key/<id>` |
+| Scope mismatch | 403 | `SCOPE_MISMATCH` | WARNING | The event's namespace |
+| Persist or process error (including a partial batch) | 500 | `PERSIST_FAILED` / `PROCESS_FAILED` | ERROR | The event's namespace |
+| No matching instance, stored as external | — | `NAMESPACE_UNMAPPED` | WARNING | The namespace, 24-hour bucket |
 
-`NAMESPACE_UNMAPPED` 挂在 `Resolver.warnUnmatchedNamespace` 已有的"每 namespace 每进程一次"闸门上；resolver 通过可选的 `UnmatchedNamespaceReporter` 接口注入，`server.go` 那条给 maintenance/lineagevalidation 用的 processor **不注入**（reporter 为 nil 时行为与今天一致）。
+`NAMESPACE_UNMAPPED` hangs on the resolver's once-per-namespace-per-process gate; the
+resolver takes an optional `UnmatchedNamespaceReporter`, and the processor wired for
+maintenance and lineage revalidation is built without one. **Deliberately not
+notified:** `401` (anonymous probing and misconfiguration look alike, and the audit
+ledger holds it), `429` (the response says the producer is over budget), and "valid event
+but no lineage" (a data-quality problem). Display uses a masked key.
 
-**明确不通知**：**401**（匿名探测 + 配置错误混在一起，无可信主体，已在审计里）、**429**（producer 超预算，HTTP 响应已说清）、"事件合法但提不出血缘"的 Warn（数据质量，不是摄取失败）。展示用 `MaskedKey` 掩码，去重键用不敏感的 `key/<id>`。
+## Public API
 
-## 对外 API
+`NotificationService` has 20 RPCs; the field list and HTTP annotations are in the proto,
+which is the source of truth.
 
-`NotificationService` 共 7 个方法（[notification_service.proto](../../proto/v1/v1/notification_service.proto)）。**不加 `(metaxisdata.v1.permission)` 注解，也不加 `allow_without_credential`，不加 `(metaxisdata.v1.audit)`**：登录必需，作用域由 handler 按当前用户保证，读收件箱不是管理动作、不该进永久审计账本（[notification_service.proto:14-23](../../proto/v1/v1/notification_service.proto#L14-L23)、[notification_service.go:50-59](../../backend/api/v1/notification_service.go#L50-L59)）。
+- The inbox half carries no permission annotation, no `allow_without_credential` and no
+  audit annotation: login is required, the scope is the caller, and reading one's inbox is
+  not an administrative action for the ledger. A permission would lock a custom role out
+  of its own messages. The channel, delivery and routing half uses `settings.get` for reads
+  and `settings.update` for changes; writes are audited, a test send is not.
+- `GetUnreadNotificationCount` returns both counts from one statement (its name is kept
+  for older clients); `BatchMarkNotificationsRead` is idempotent and bounded by
+  `maxNotificationsPerBatch = 1000`; `DeleteNotification` returns `NotFound` for someone
+  else's message without distinguishing it. There is no CEL filter, no merged-counts RPC
+  (a rename would 404 older frontends), and no REST route for the stream, because
+  grpc-gateway cannot proxy server streaming.
 
-| RPC | HTTP | 说明 |
-| --- | --- | --- |
-| `ListNotifications` | `GET /v1/{parent=workspaces/*}/notifications` | `unread_only` 过滤；`parseLimitAndOffset`/`paginate`；支持 `workspaces/-` |
-| `GetUnreadNotificationCount` | `GET .../notifications:unreadCount` | 一次返回 `unread_count` 与 `unseen_count` 两个数（名字只说了前一个，保留是为了兼容老前端）；都走 partial index；流的兜底 |
-| `MarkNotificationsSeen` | `POST .../notifications:markSeen` | 幂等：把水位推到 `NOW()`，不写 `read_at`；红点清零、未读不变 |
-| `BatchMarkNotificationsRead` | `POST .../notifications:batchMarkRead` | 幂等（只置 `read_at IS NULL`）；names 非空且 ≤ `maxNotificationsPerBatch = 1000`，校验在 workspace 解析**之前** |
-| `MarkAllNotificationsRead` | `POST .../notifications:markAllRead` | 全部已读 |
-| `DeleteNotification` | `DELETE /v1/{name=workspaces/*/notifications/*}` | 删自己的；删不到（不存在或别人的）返回 `NotFound`，不区分 |
-| `SubscribeNotifications` | —（无 `google.api.http`） | server streaming，见下节 |
+## Push stream
 
-不加 CEL `filter`：`unread_only` 一个布尔覆盖实际需求（全部/未读两个态）。
+A ConnectRPC **server-streaming RPC**, not SSE or `EventSource`: it reuses the
+`ExplainSQL` precedent, so the interceptors apply and the frontend stays on the ConnectRPC
+client. An event carries the message plus both counts, so the bell updates on arrival. The
+stream is process-local on a single replica; there is no polling, only a refresh on
+reconnect and one when the tab becomes visible. A connection lives at most 30 minutes and
+the server ends it, because a stream authenticates once at open and ending it bounds logout
+and revocation; a 25-second `KeepAlive` heartbeat also notices a dead peer. Backpressure
+drops the subscription, never a message, and read-state or watermark changes are not
+pushed.
 
-**没把两个数合成一个 RPC**：`GetUnreadNotificationCount` 已经是红点的兜底调用，多一个字段就够；改成一个新名字会让"前端比服务端新"的窗口里老前端直接 404。代价是方法名只描述了其中一个数。
+`hub.go` is the fan-out keyed by `recipientID`: `publish` never blocks the writer and
+closes a subscriber whose buffer is full; the buffer is 16; at most 8 subscriptions per
+recipient, past which the new connection is refused with `ResourceExhausted`; `close` ends
+everything and refuses new subscriptions; every send and close happens under the hub
+lock. The handler authenticates the caller, returns `Unimplemented` when no subscriptions
+are configured (before any store read), resolves the workspace once, subscribes, sets
+`X-Accel-Buffering: no` before the first `Send`, then loops on the heartbeat and lifetime.
+A lifetime end and a client disconnect both return `nil`.
 
-**流无 REST 路由**：grpc-gateway 不能代理 server streaming（`ExplainSQL` 的生成网关直接返回 `Unimplemented`），浏览器直接打 Connect 端点。注册处：`connectHandlers` map + `grpcreflect` 静态列表按服务名注册（[grpc_routes.go:99](../../backend/server/grpc_routes.go#L99)、[:162](../../backend/server/grpc_routes.go#L162)、[:192](../../backend/server/grpc_routes.go#L192)）。
+`Server.Shutdown` closes the notifier before Echo, or every stop waits out the graceful
+period for streams that never end; the nil guard covers a hand-built `Server{}` in a
+lifecycle test.
 
-## 推送流：hub 与 handler
+## Frontend
 
-`backend/component/notification/hub.go` 是进程内 fan-out，按 `recipientID` 分订阅者集合：
+`api/notification.ts` holds the inbox, count and read calls, the subscription wrapper and
+the channel/delivery/route CRUD; `store/modules/notification.ts` holds the Pinia state and
+the reconnect loop; `lib/notificationText.ts` renders type + detail into keys, params and
+an href (with a coverage gate); `NotificationBell.vue` owns the badge (99+, recent
+`RECENT_NOTIFICATION_LIMIT = 8` messages) and the stream lifecycle; `NotificationsPage.vue`
+and `settings/NotificationSettingsPage.vue` are the two surfaces.
 
-| 机制 | 行为 | 理由 |
-| --- | --- | --- |
-| `publish` | `select { case ch <- event: default: 关掉这个订阅者 }` | **永不阻塞写入方**（常是 runner goroutine）；缓冲满 = 连接不健康，关流让客户端重连刷新 |
-| `subscriptionBuffer` | 16 | 通知低频，这是安全阀不是工作队列 |
-| `MaxSubscriptionsPerRecipient` | 8，超过时拒绝**新**连接（`ResourceExhausted`） | 一个标签页一条 + 重连短暂重叠；拒绝新的而不是踢掉旧的，否则另一个标签页静默变哑 |
-| `close()` | 结束所有订阅并拒绝新订阅；此后 `subscribe` 立刻返回已关闭通道 | 停机期间新建的流立即正常结束，而非挂住 |
-| 锁 | 所有对 `ch` 的 send/close 都在 hub 锁内 | 不存在"关掉之后又 send"的窗口 |
-
-`SubscribeNotifications` handler（[notification_service.go:244-302](../../backend/api/v1/notification_service.go#L244-L302)）：先 `notificationCaller`（未登录 `Unauthenticated`）→ `subscriptions == nil` 时 `Unimplemented`（在任何 store 读取之前，因此可用 nil store 单测）→ 解析一次 workspace（流的每条消息共用）→ `Subscribe` → 设 `X-Accel-Buffering: no`（必须在第一次 `Send` 前，connect-go 随首帧发头）→ `heartbeat = 25s` / `lifetime = 30min` 循环。超时收尾与客户端断开都 `return nil`（**不是错误**）。
-
-**停机顺序**：`server.Shutdown` 在 `echoServer.Shutdown(ctx)` **之前** `s.notifier.Close()`（[server.go:225-226](../../backend/server/server.go#L225-L226)）。常驻流是永不结束的 in-flight 请求，Echo 的 Shutdown 会等它到 `gracefulShutdownPeriod`（10s）。对 nil 的守卫是必须的（`server_lifecycle_test.go` 手工构造的 `Server{}` 没有 notifier）。
-
-## 前端
-
-| 文件 | 职责 |
-| --- | --- |
-| `frontend/src/api/notification.ts` | 7 个 RPC 的调用、`listAll` 分页与 `subscribeNotifications(signal)` 薄封装；`getNotificationCounts()` 一次拿两个数 |
-| `frontend/src/store/modules/notification.ts` | Pinia：`unreadCount`、`unseenCount`、`recent`、`arrivalSeq`、`openInboxCount`、`openInbox()`/`closeInbox()`、`startStreaming()`/`stopStreaming()` |
-| `frontend/src/lib/notificationText.ts` | **纯函数**：type + detail → `{titleKey, titleParams, messageKey, messageParams, href}`（有覆盖率门槛） |
-| `frontend/src/components/layout/NotificationBell.vue` | 侧栏底部（`UserMenu` 之上）：红点计数（99+）、下拉最近 `RECENT_NOTIFICATION_LIMIT = 8` 条、"查看全部" |
-| `frontend/src/pages/NotificationsPage.vue` | `/notifications`：全部/未读、单条已读、全部已读、删除、分页、跳转源对象 |
-
-行为要点：
-
-- **流的生命周期归铃铛**：`onMounted → startStreaming()`、`onBeforeUnmount → stopStreaming()`（[NotificationBell.vue:165-175](../../frontend/src/components/layout/NotificationBell.vue#L165-L175)）。侧栏只在登录后的壳里存在，它的生命周期就是会话的生命周期。
-- **红点由 `unseenCount` 驱动，页面的两处由 `unreadCount` 驱动**：`store.hasUnseen` 画铃铛的红点与数字，`store.hasUnread` 决定"全部已读"按钮可不可点。把其中一个换到另一个上，要么红点清不掉，要么按钮在还有未读时是灰的。
-- **`openInbox()` / `closeInbox()` 是"通知正开着"的登记**：`openInboxCount` 是计数而不是布尔量（铃铛下拉与页面可能同时挂着），为 0 时新消息才点亮红点。打开时乐观清零 `unseenCount` 再调 `MarkNotificationsSeen`（失败只吞掉：下次刷新红点会回来，比开一次通知抛错好）。下拉/页面卸载时必须 `closeInbox()`，否则残留的计数会让红点永远不再亮。
-- **打开期间到达的消息要真的出现在列表里**：`applyArrival` 往 `recent` 前插的条件是"列表已有行 **或** 通知正开着"（[notification.ts:216-258](../../frontend/src/store/modules/notification.ts#L216-L258)）。水位要盖过这条消息，前提是用户看得到它；空下拉也是"开着"，此时不插入就等于把一个从没展示过的消息永久静音（红点不会再亮，因为水位已经过去了）。
-- **页面打开也算打开通知**：`NotificationsPage.vue` 的 `onMounted` 调 `openInbox()`，`onBeforeUnmount` 调 `closeInbox()`；深链或刷新直接进页面时红点同样是清的。
-- **`generation` 把守连接循环**（[notification.ts:70](../../frontend/src/store/modules/notification.ts#L70)）：`startStreaming`/`stopStreaming` 都推进 `generation`，每条循环只在自己那一代里重连。卸载与随后挂载可能落在同一 tick（布局切换），只用布尔量会让被停止的循环把新的开始误认成自己的，于是每次切换多留一条常驻流，直到 8 条上限把新连接全拒掉。
-- **每次（重）连都 `refresh()` 一次**：这是"丢事件/缓冲溢出被丢订阅/进程重启/标签页被冻结"的统一兜底。任何一帧（含 `KeepAlive`）都重置退避到 `RECONNECT_MIN_MS = 1s`，上限 `RECONNECT_MAX_MS = 30s`。`refreshCounts()` 落地时若 `openInboxCount > 0`，把 `unseenCount` 压回 0，**并且服务端还认为有"新的"时补一次 `MarkNotificationsSeen`**：流漏掉的那条消息正是靠这次刷新发现的（重连/重新可见会同时刷列表与计数），只压数不推水位会让用户关掉下拉后红点又亮——为一条他刚在屏幕上读过的消息（[notification.ts:116-138](../../frontend/src/store/modules/notification.ts#L116-L138)）。
-- **两张票防止旧响应覆盖新值**（`countTicket` / `recentTicket`）：推送到达会推进票号，已过期的 fetch 让位；两个计数共用一张 `countTicket`，因为它们来自同一次服务端计算。
-- **`arrivalSeq`**：每收到一条推送 +1；页面 `watch` 它，只在 `!hasPrevious`（停在第 1 页）时重载首页，不把第 2 页的读者弹回去。
-- **`Unimplemented` 是唯一不重试的错误**（前端比服务端新）：安静停掉；其余交给退避重连，重连的握手会再走一遍 `sessionInterceptor` 的会话刷新。
-- **可见性监听保留**，动作从"拉一次计数"升级为 `refresh()`（计数 + 已加载过的列表）。
-- **深链**（[notificationText.ts](../../frontend/src/lib/notificationText.ts)）：schema 同步 → `/instances/{instanceId}`；OpenLineage 拒收/失败 → `/openlineage/events`；`NAMESPACE_UNMAPPED` → `/settings/openlineage`（namespace mapping 页）。
-- **文案渲染**：组件用返回的 `titleKey`/`messageKey` 调 `t()`；未知 type / 未知 detail 走 fallback 文案。`notifications.*` 同时进 `en-US.json` 与 `zh-CN.json`（各 46 个键）。`eslint.config.mjs` 的 `no-unused-keys` 对这一族加了显式 ignores（规则追不到 `notificationText.ts` 返回值里的键）；若改用别的属性名，`scripts/check-vue-i18n.mjs` 的 `KEY_PROP_RE` 也需要相应处理。
+- The badge is driven by `unseenCount` and the page actions by `unreadCount`; swapping them
+  either makes the badge impossible to clear or grays out "mark all read" while unread
+  messages exist. `openInbox()`/`closeInbox()` are a counter because the dropdown and the
+  page can be open together; a stuck count leaves the badge dark. Opening clears the badge
+  optimistically and a failed `MarkNotificationsSeen` is swallowed, because the next
+  refresh restores it. A message arriving while open must be prepended by `applyArrival`,
+  or the watermark silences a message the user never saw.
+- A `generation` counter, not a boolean, guards the reconnect loop: unmount and mount in
+  one tick would leak a stream per layout switch until the 8-subscription cap refuses every
+  new one. Every (re)connect refreshes once — the fallback for lost events and restarts —
+  and with the inbox open it re-sends `MarkNotificationsSeen` if the server reports newer
+  messages. `Unimplemented` is the only error not retried; two tickets keep a stale
+  response from overwriting a newer one.
+- Deep links point at the instance, OpenLineage events, namespace mapping or agent page.
+  The **61** `notifications.*` keys exist in both locales; the `no-unused-keys`
+  exemptions are the shared list that `frontend/eslint.config.mjs` imports from
+  `frontend/scripts/check-vue-i18n.mjs` (`eslintUnusedKeyIgnores`), so that script's
+  reference patterns must change with this family's property names.
 
 ## Invariants
 
-| 规则 | 破坏后果 |
+| Rule | Breaking consequence |
 | --- | --- |
-| 每个读/写查询都必须带 `recipient_id` 作用域 | B 能看到/标已读/删除 A 的消息；`backend/store/notification_test.go:35` 的作用域守卫测试会变红 |
-| 读态必须是 `read_at` 列 + `idx_notification_recipient_unread` partial index | 未读计数无法走索引，角标热路径退化为全表 `payload->>` 扫描 |
-| 打开通知只能推 `principal.notification_seen_at`，**绝不能**顺手写 `read_at` | 用户没点过的消息被标已读，未读筛选与"全部已读"从此说不清；这是本特性唯一的行为红线 |
-| 水位必须由服务端 `NOW()` 打戳，客户端只发"我打开了" | 客户端可控时间就能把某条消息永久排除在"新消息"之外 |
-| 两个计数必须由**同一条语句**返回 | 分两次读会拿到两个快照，红点能出现比未读数还大（"5 条新的"而收件箱 0 条未读） |
-| 红点只能由 `unseen_count`（`unreadCount` 与它分开）驱动 | 用 `unread_count` 画红点 = 回到"必须点开每条才能清"；用 `unseen_count` 画页面按钮 = 还有未读时按钮变灰 |
-| `openInbox()` 与 `closeInbox()` 必须成对，卸载也要 `closeInbox()` | 残留的 `openInboxCount` 让红点永远不再亮，且只有刷新页面才恢复 |
-| 去重必须靠 `idx_notification_dedupe` 唯一索引 + `ON CONFLICT DO NOTHING` | 只有进程内闸门时，多副本/重启后重复通知会穿过去；单副本下两层等价，调窗口必须一起调 |
-| 写通知必须保持 best-effort，失败只记日志 | 同步/摄取路径会因一条消息写不进而失败 |
-| `publish` 必须非阻塞、缓冲满即丢订阅 | 慢客户端会拖住 runner goroutine（写入方），同步被客户端拖死 |
-| 订阅必须按当前鉴权用户注册，且方法不得加 permission 注解 | 加 permission 会让自定义角色看不到自己的消息；按别的作用域订阅会串收件箱 |
-| `SubscribeNotifications` 不得加 `(metaxisdata.v1.audit)` | 每条常驻连接往永久账本写行，是纯噪声 |
-| `X-Accel-Buffering: no` 必须在第一次 `Send` 前设置 | 反代会把整个流攒进 buffer，铃铛永不更新（集成用例已钉住） |
-| `Shutdown` 必须先 `notifier.Close()` 再关 Echo | 每次停机白等满 `gracefulShutdownPeriod`（10s）并打一条 error |
-| 前端必须用 `generation`（不能只用布尔量）把守连接循环 | 布局切换时残留多条常驻流，直到 8 条上限拒绝所有新连接 |
-| 每次（重）连必须 `refresh()` 一次 | 丢事件/丢订阅/重启/冻结都没有补偿路径，收件箱与角标长期不一致 |
-| 一库一次操作的结果 = 第一次结果 | 退避重试改写消息会产生两套噪声；这是已接受的取舍，不是 bug |
-| `notification` 行永久保留，不接 maintenance TTL | 与 `audit_log` 同取向；清理会丢掉"系统告诉过用户什么"的账本 |
+| Every query is scoped by `recipient_id` | One user can read, mark or delete another's messages |
+| Read state is `read_at` plus the unread partial index | The badge count degrades to a `payload->>` scan |
+| Opening the inbox only advances the watermark, never writes `read_at` | Unclicked messages become read and "mark all read" loses meaning |
+| The watermark is stamped by the server's `NOW()` | A client clock could permanently exclude a message from "new" |
+| Both counts come from one statement, and the badge uses `unseen_count` only | The badge can exceed the unread count, or return to "click every message to clear it" |
+| `openInbox()` and `closeInbox()` are paired | A stuck counter leaves the badge dark until a reload |
+| Deduplication keeps the unique index plus `ON CONFLICT DO NOTHING` | The process gate alone lets duplicates through after a restart or on a second replica |
+| A notification write stays best-effort; `publish` stays non-blocking and drops an overflowing subscription | A full table or a slow client fails the sync or blocks the runner goroutine |
+| Subscription methods carry no permission annotation; `SubscribeNotifications` carries no audit annotation | A custom role cannot see its own messages, or every connection writes to the permanent ledger |
+| `X-Accel-Buffering: no` precedes the first `Send` | A proxy buffers the stream and the bell never updates |
+| `Shutdown` closes the notifier before Echo | Every stop waits out the graceful period and logs an error |
+| The frontend uses `generation`, not a boolean, and refreshes on every (re)connect | A layout switch leaks streams, or lost events and restarts leave the inbox drifted |
+| One operation reports a database's first result; `notification` rows are never pruned | Retries send two noisy messages, or the record of what the system told a user is lost |
 
 ## Failure modes
 
-| 场景 | 行为 |
+| Situation | Behavior |
 | --- | --- |
-| 计数查询失败 | 记专属日志行；事件仍投递，`Event.CountsKnown = false`，前端自己补问一次 |
-| `CreateNotification` 被唯一索引挡下 | 返回 `(nil, nil)`，`create` 不发布——收件箱里那条已在，不必再提醒 |
-| 写库失败 | `release` 抑制键并返回错误；调用方（同步/摄取）忽略它继续 |
-| 进程内闸门"认领后写入失败"的窄窗口 | 窗口内那次真实失败没留消息；保留行为（否则一次抖动静默整个窗口），下一窗口自愈 |
-| 订阅者缓冲满 / 客户端不再读 | hub 关掉该订阅，客户端退避重连 + 刷新；消息仍在库里 |
-| 每收件人超过 8 条订阅 | 新连接收到 `ResourceExhausted`，旧连接不受影响 |
-| 服务端到 30 分钟上界 | 流正常结束（非错误），客户端立刻重连并重新鉴权 |
-| 服务端停机 | `Close()` 结束所有流，客户端看到干净结束，在 2s 内返回（回归用例钉住） |
-| 服务端返回 `Unimplemented`（前端更新） | store 自行 `stopStreaming()`，不重试 |
-| 会话在流上已过期/被吊销 | 握手期在第一次 `Receive` 被拒，`Unauthenticated`；一元调用同样被拒；前端走会话刷新或登出 |
-| **server-streaming 请求遇到 401 重放** | `sessionInterceptor` 的重放对 server streaming 无效：connect-web 把请求体构造成一次性 async iterable，重放抛 `missing request message`（`Code.Unknown`）。**`frontend/src/api/session.ts` 至今没有为 streaming 缓存输入消息**（[session.ts:73-101](../../frontend/src/api/session.ts#L73-L101) 无条件 `await next(request)`）。续期已发生，流由连接循环的下一次重连接上；调用方看到一次 `Unknown` 错误。**`ExplainSQL`（同样 server streaming）受影响相同**，是既有缺陷、非本特性引入 |
-| 多副本 | 用户在副本 A、消息由副本 B 写出 → 推不到，靠重连/重新可见那次刷新兜；`LISTEN/NOTIFY` 不做 |
-| 另一个标签页改已读 | 本标签页角标要等刷新/重连/重新可见才对齐 |
-| 另一个标签页打开通知 | 同样要等那次刷新：水位在服务端已经推进，红点下一次 `refreshCounts()` 就灭 |
-| `MarkNotificationsSeen` 写库失败 | 前端已经本地清零（乐观），下次刷新红点会回来；不弹错、不阻塞打开，再打开一次就修好 |
-| 前端比服务端新（旧服务端没有 `markSeen` / `unseen_count`） | `markSeen` 报错被吞掉，`unseen_count` 读作 0 → 红点不亮。两者同镜像发布，升级服务端即恢复 |
-| **应用主机与数据库主机时钟不一致** | 水位由 DB `NOW()` 打戳，`created_at` 由应用进程打戳（[notification.go:64](../../backend/store/notification.go#L64)），比较跨了两个时钟域：应用时钟偏慢时，打开通知后极短时间内写入的消息会被判为"已看过"而不再点亮红点。同机/同集群 + NTP 下不可见，已作为假设写进代码注释 |
+| The count query fails | Logged; the event still delivers with `CountsKnown = false` and the frontend asks again |
+| The unique index suppresses the insert | No row, no error, nothing published |
+| A write fails | The suppression key is released; the caller ignores the error and continues |
+| A subscriber buffer fills | The hub closes that stream; the client reconnects and refreshes; the message remains |
+| One recipient exceeds 8 subscriptions, or the 30-minute bound is reached | The new connection gets `ResourceExhausted`; the stream ends normally and the client reconnects and re-authenticates |
+| The session expires or is revoked on an open stream | The next `Receive` is refused with `Unauthenticated` |
+| A server-streaming call hits the 401 replay path | The session interceptor's replay fails for server streaming (connect-web builds a one-shot iterable, so the replay throws `missing request message`, `Unknown`). Renewal did happen; the reconnect loop restores the stream and the caller sees one `Unknown`. `ExplainSQL` is affected the same way; pre-existing |
+| More than one replica, or another tab marks read | A message written elsewhere is not pushed and another tab's read is not echoed; the reconnecting or visibility refresh covers both |
+| Application and database clocks disagree | The watermark uses the database's `NOW()` and `created_at` the application clock; a slow application clock can mark a just-written message as seen. Invisible with one host and NTP; recorded in a code comment |
 
 ## Open items
 
-1. **修 `frontend/src/api/session.ts` 的 streaming 重放**：为 streaming 请求把唯一那条输入消息缓存下来，重放时交给 transport 一个新的 iterable。它动的是共享会话路径、影响所有流式方法（含 `ExplainSQL`），值得单独一次评审——本特性只记录，未修。
-2. 跨副本投递（PostgreSQL `LISTEN/NOTIFY`）：一旦真出现多副本再说；需要一条常驻连接、断线重连与去重语义。
-3. 推送已读状态变化，让多标签页角标严格一致：需要先定"谁改的、改了哪些行、多标签页回声"。**水位的推进（`markSeen`）同理**，今天只靠刷新/重新可见对齐。
-4. 桌面通知 / toast：有了这条流，`notify` 是 `applyArrival` 里多一个分支。
-5. 心跳期复查 token 撤销，把 30 分钟上界收紧到心跳间隔（要把 `stateCfg` 的撤销缓存接进 API 层）。
-6. `processor.go` 里"事件合法但提不出血缘"的 Warn 是否也要通知（数据质量问题，今天只记日志）。
-7. 管理员给指定用户手动发消息：需要新增自由文本 detail 分支 + 一条发送 RPC，并重新考虑它与审计的关系。
-8. 多副本/频繁重启下的操作聚合器加固：op 开始时落一条 `pending = TRUE` 隐藏行，完成时 UPDATE，启动时收尾陈旧行。代价是一个必须被"列表/计数/删除"处处尊重的隐藏态和一个清扫任务。
-9. 后台抑制窗口整体调大：进程内闸门与数据库桶必须一起调。
-10. **把水位的打戳与应用时钟统一**：今天水位吃 DB `NOW()`、`created_at` 吃应用时钟（见 Failure modes 末行）。要么 `MarkNotificationsSeen` 改成接收应用侧时间戳，要么 `CreateNotification` 改成库端 `DEFAULT NOW()`，二者取一，多副本部署前值得定下来。
-11. **登出没有重置通知 store**（既有缺陷）：`frontend/src/store/modules/auth.ts` 的就地登出不 reload，`unreadCount` / `unseenCount` / `recent` 会留到下一个账号登录、被铃铛重新挂载时刷掉为止——另一个用户能短暂看到上一个人的消息列表。与本特性无关（`recent` 一直如此），但红点现在也在这条路径上。
+1. Cache the single streaming input message in `frontend/src/api/session.ts` so the 401
+   replay works for server streaming; it touches the shared session path and affects
+   `ExplainSQL` too.
+2. Cross-replica delivery via PostgreSQL `LISTEN/NOTIFY`, with reconnect and dedup; and
+   push read-state and watermark changes for exactly consistent multi-tab badges, which
+   first needs an echo story.
+3. Desktop notifications (a new branch in `applyArrival`), and a decision whether the
+   "valid event but no lineage" warning should notify.
+4. Re-check token revocation on each heartbeat to tighten the 30-minute bound. Letting
+   administrators message a user needs a free-text detail branch, a send RPC and an audit
+   decision.
+5. Harden the operation aggregator for multiple replicas or frequent restarts with a
+   hidden pending row plus a startup sweep. Tune the suppression window only by moving the
+   process gate and the database bucket together, and unify the watermark and application
+   clocks before multiple replicas.
+
+## Outbound delivery
+
+The outbound surface extends the inbox. Its operator-facing configuration and behavior live
+in [docs/notifications.md](../../docs/notifications.md); this section records the decisions
+behind them. One `Send`, `SendToWorkspaceAdmins` or `SendToRecipients` call is one event: N
+inbox rows plus 0..M deliveries selected by channel subscription. Inbox and deliveries stay
+decoupled. The quiet-hours schedule is also the data-quality maintenance window: checks and
+inbox writes continue, and only outbound delivery is deferred, except for
+`bypass_quiet_hours` channels (see [data-quality.md](data-quality.md)).
+
+A `notification_channel` is a workspace-level destination, kind one of `WEBHOOK`,
+`DINGTALK`, `WECOM`, `FEISHU`, `EMAIL`. HTTP kinds keep the endpoint URL and signing secret
+encrypted in `secret` and never return them; EMAIL has no credential of its own and sends
+through the workspace SMTP setting. A `notification_delivery` is one event × channel,
+state PENDING/SENDING/SENT/DEAD, with `next_attempt_at` as both retry time and SENDING
+lease. `event_id` is random per Send call and shared by the event's inbox rows; UNIQUE
+`(event_id, channel_id)` gives one delivery per event per channel.
+
+### Decisions
+
+| Decision | Why |
+| --- | --- |
+| A channel is workspace-level; credentials are write-only and `v1:` AES-256-GCM encrypted, and channel management reuses `settings.get`/`settings.update` with writes audited and test sends not | Outbound capability belongs to the workspace and the permission catalog does not grow; a test changes nothing |
+| Subscription filtering is per channel: `event_types` (empty = every type that existed when it was configured) and `min_severity` | An empty list must never silently select a later periodic type |
+| Asynchronous outbox plus a dispatcher (2-second tick, 20 claims, 4 concurrent posts, 5-minute lease); backoff 1m/5m/15m/1h/6h, then DEAD; manual retry resets attempts; EMAIL and HTTP kinds share the path | A producer never fails on a channel problem; an expired lease is reclaimable, and there is no second delivery path |
+| Render at send time (channel language, empty = `en-US`); the row stores a structured event and audience user ids, never names or addresses | A template fix applies to queued deliveries; addresses resolve at send time |
+| The webhook body is stable JSON (`eventId`, `deliveryId`, `eventType`, `severity`, `title`, `text`, `link`, `occurredAt`); event and delivery headers are always sent, and `sign=true` adds an HMAC-SHA256 signature header | Destinations can script against it; secrets stay out of logs and errors |
+| Deep links come from `WorkspaceProfileSetting.external_url`; with none, no link | A link must open in a browser |
+| Deliveries are kept 30 days and queued rows never pruned; redirects are never followed, and a 3xx is a failed attempt | Long enough to explain a missed alert, bounded in size; a default client would turn a redirect into a bodyless GET or re-POST the signature elsewhere |
+| Outbound SSRF risk is carried by administrators-only configuration, audit and documentation; an IM host allowlist can be added later | The same accepted decision as instance credentials reaching any database |
+| DingTalk, WeCom and Feishu are separate kinds with their own payload and signing; all check HTTP 2xx and the response `errcode`/`code` | "HTTP 200 plus a business error" differs per vendor; trusting the status records a refusal as delivered |
+| Email uses the workspace SMTP setting; the password is encrypted, write-only and audit-redacted; authentication requires TLS; recipients are the fixed addresses plus optionally the event audience, resolved at send time, deduplicated case-insensitively, capped at 50; empty resolution is immediate DEAD while missing SMTP retries | One deployment has one sending server and a password must never cross plaintext; email has no signed-in-user layer, so "who should receive this" must come from the event |
+| Quiet hours are a workspace setting: weekly windows plus one-off maintenance windows of at most 30 days, which a channel may bypass; a delivery inside a window is held (returned to PENDING at window end, attempt decremented, `quiet_deferred`) and never dropped; a read, parse or DST-gap failure fails open | One on-call rhythm per deployment; on-call must page through maintenance; alerts are not lost or charged to the retry budget |
+| Routing rules are a separate `notification_route` table matching event types, minimum severity, owners and IAM groups, and are additive; matching happens at enqueue time and fails open to the subscription fan-out; a routed channel still passes its own filter, and a `routed_only` channel with no matching rule is skipped | Team channels opt out while normal channels are unaffected; the event decides its channels when written, and a failure prefers a duplicate to a lost alert |
+| "Escalate to a second channel after N hours" is not implemented | Not every deployment wants automatic escalation; a default would page twice |
+| A quality-agent escalation is a per-owner inbox message, not a broadcast, and its detail carries resource names and a bounded title/question | The owner is the person who can decide; no prose in the row keeps both languages and forward compatibility |
+| The weekly digest is delivery-only: no inbox row, no audience, deterministic `event_id = dqdigest:<ISO week>`, only explicitly subscribed enabled channels, `routed_only` and address-less EMAIL channels skipped | A new periodic message must be opt-in; a digest has no audience for routing or e-mail, and the deterministic id makes a retried tick or restart a no-op |
+
+### Failure modes
+
+| Situation | Behavior |
+| --- | --- |
+| The channel is deleted | Its queued deliveries cascade with it |
+| A credential is missing or cannot be decrypted | A missing credential is a configuration error and immediate DEAD; an undecryptable one retries until the key is fixed |
+| The channel list cannot be read | Claimed deliveries go back to PENDING without spending an attempt |
+| 5xx, timeout or network error | Backoff retry; the URL is replaced with `<endpoint>` in `last_error` |
+| 4xx or 3xx | Retried until the budget is spent (3xx never followed); after a fix a DEAD delivery can be retried by hand with a reset attempt count |
+| An IM endpoint returns 200 with a non-zero vendor code | Treated as a failure, with the vendor text in `last_error` |
+| SMTP is not configured, or an EMAIL channel resolves no recipient | Missing SMTP retries and self-heals once configured; no recipient is immediate DEAD and a fixed address allows a manual retry |
+| A delivery lands in a quiet window | Returned to PENDING at window end with the attempt decremented, metric `deferred`, adapter not called |
+| Quiet hours are saved or disabled | `ReleaseQuietDeferredDeliveries` marks held rows due; a still-active window re-defers them next tick |
+| The inbox write succeeded but the outbox write failed | Logged only; the message remains and the event is not delivered (best effort) |
+| The dispatcher crashes mid-POST | The lease expires and the next tick reclaims the row, counting an attempt |
+| A test send is pressed | The adapter is called directly; nothing queued, no delivery, no audit |
+| Digest enqueue fails, or a crash splits enqueue and period recording | Retried within 24 hours; the deterministic event id makes the retry a no-op, and a recorded-but-unqueued period is skipped |
 
 ## Where things live
 
-代码：
-
-- 迁移：[backend/migrator/migration/0.1/0017##notification.sql](../../backend/migrator/migration/0.1/0017%23%23notification.sql)、[0018##notification_seen.sql](../../backend/migrator/migration/0.1/0018%23%23notification_seen.sql)（`principal.notification_seen_at`）、[LATEST.sql:678-705](../../backend/migrator/migration/LATEST.sql#L678-L705)。
-- 组件（写入口 + 推送 hub）：[backend/component/notification/service.go](../../backend/component/notification/service.go)、[hub.go](../../backend/component/notification/hub.go)。
-- store：[backend/store/notification.go](../../backend/store/notification.go)。
-- API handler 与转换：[backend/api/v1/notification_service.go](../../backend/api/v1/notification_service.go)。
-- 同步聚合与后台失败通知：[backend/runner/schemasync/operation.go](../../backend/runner/schemasync/operation.go)（`notifyBackgroundInstanceFailure`、`notifyBackgroundDatabaseFailure`），调用点 [instance_sync.go](../../backend/runner/schemasync/instance_sync.go)、[syncer.go](../../backend/runner/schemasync/syncer.go)。
-- 摄取失败通知：[backend/api/v1/openlineage_handler.go:93-143](../../backend/api/v1/openlineage_handler.go#L93-L143)、[backend/plugin/openlineage/resolver.go](../../backend/plugin/openlineage/resolver.go)。
-- 接线与停机：[backend/server/grpc_routes.go:74-192](../../backend/server/grpc_routes.go#L74-L192)、[backend/server/server.go:128](../../backend/server/server.go#L128)、[:225-226](../../backend/server/server.go#L225-L226)。
-- proto：[proto/v1/v1/notification_service.proto](../../proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](../../proto/store/store/notification.proto)；生成物 `backend/generated-go/`、`frontend/src/types/proto-es/`、`proto/gen/grpc-doc/` 一起提交。
-- 前端：[api/notification.ts](../../frontend/src/api/notification.ts)、[store/modules/notification.ts](../../frontend/src/store/modules/notification.ts)、[lib/notificationText.ts](../../frontend/src/lib/notificationText.ts)、[components/layout/NotificationBell.vue](../../frontend/src/components/layout/NotificationBell.vue)、[pages/NotificationsPage.vue](../../frontend/src/pages/NotificationsPage.vue)、[router/index.ts:270](../../frontend/src/router/index.ts#L270)、[api/session.ts](../../frontend/src/api/session.ts)（遗留缺陷）。
-- 启用点：`NotificationBell` 挂在 `AppSidebar` 底部（[AppSidebar.vue:174](../../frontend/src/components/layout/AppSidebar.vue#L174)）；`/notifications` 不在 `menuItems`，经铃铛下拉"查看全部"进入。服务端无开关——通知随服务启动。
-
-测试与门禁：
-
-- store 作用域守卫 + 扫描：[backend/store/notification_test.go:35](../../backend/store/notification_test.go#L35) → `go test ./backend/store/...`。
-- 组件（hub 扇出/上限/溢出/Close、create 路径、两个计数一次读、读不到就只发消息）：[backend/component/notification/hub_test.go](../../backend/component/notification/hub_test.go)、[service_test.go](../../backend/component/notification/service_test.go) → `go test ./backend/component/notification/...`。
-- API（转换、鉴权、nil 通道、批次校验、打开通知必须有凭据且不碰 store）：[backend/api/v1/notification_service_test.go](../../backend/api/v1/notification_service_test.go) → `go test ./backend/api/v1/...`。
-- ACL 守卫（无注解方法必须登记）：[backend/api/v1/acl_interceptor_test.go:145](../../backend/api/v1/acl_interceptor_test.go#L145)。
-- 生命周期回归：[backend/server/server_lifecycle_test.go](../../backend/server/server_lifecycle_test.go)。
-- 集成（真 server + PG + MySQL）：[backend/test/integration/runner/notification_service_test.go](../../backend/test/integration/runner/notification_service_test.go)（7 条，含收件人隔离、流推送、过期/吊销会话、摄取拒收去重、"打开通知只清红点不改读态"）→ `make test-integration-smoke && make test-integration`。迁移链一致性由 `TestMigrateSchemaLATESTMatchesTheIncrementChain` 钉住（`-tags integration ./backend/migrator/`）。
-- 前端 store/api/lib：[store/modules/notification.test.ts](../../frontend/src/store/modules/notification.test.ts)、[api/notification.test.ts](../../frontend/src/api/notification.test.ts)、[lib/notificationText.test.ts](../../frontend/src/lib/notificationText.test.ts) → `pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛；红点相关行为：打开即清、开着时刷新补一次水位、空下拉里到达的消息必须进列表）。
-- 前端组件交互：[components/layout/NotificationBell.test.ts](../../frontend/src/components/layout/NotificationBell.test.ts)（"点开铃铛 = 清红点且不标已读"、"点某条消息才标已读"、"开着下拉时卸载要归还 `openInboxCount`"）、[pages/NotificationsPage.test.ts](../../frontend/src/pages/NotificationsPage.test.ts)（"进页面清红点、离开后新消息又能点亮"）。
-- proto 门禁：`buf format -w proto && buf lint proto && (cd proto && buf generate)`。
-
----
-
-## 出站渠道与投递（Outbound delivery）
-
-> 2026-10 增量：站内信之外，管理员可配置**出站渠道**，把同一事件投递到外部目的地：Webhook、钉钉/企业微信/飞书群机器人，或通过工作区 SMTP 的邮件。上面的"仅站内信"决定（Decisions 站内信侧 #5）由本节取代；站内信本身的行为不变。
-
-### 它是什么
-
-一次 `Send` / `SendToWorkspaceAdmins` / `SendToRecipients` 调用 = **一个事件**。事件写入 N 条站内信（每个收件人一条），同时按渠道订阅过滤 fan-out 成 0..M 条 `notification_delivery`；每条投递由 dispatcher 渲染、POST、重试。**站内信与投递解耦**：投递失败不回滚、不阻塞站内信写入，也不改变现有 1h 去重与风暴抑制语义。
-
-同一套静默窗口也是**数据质量的维护窗口**：窗口内 DQ 检查照常执行、站内信照常写入，只有出站投递被推迟到窗口结束（`bypass_quiet_hours` 的渠道照常），见 [data-quality.md](data-quality.md) §3.15 与 O-15/O-16。
-
-| 概念 | 含义 |
-| --- | --- |
-| `notification_channel` | 管理员配置的目的地。kind 为 `WEBHOOK` / `DINGTALK` / `WECOM` / `FEISHU` / `EMAIL`；`payload` 存 `NotificationChannel`（含 kind 对应的 config oneof），HTTP 类的凭据（endpoint URL、签名密钥）单独加密存 `secret` 列，**任何读路径都不返回**；EMAIL 渠道本身无凭据，发信走工作区 SMTP 设置 |
-| `notification_delivery` | 一条"事件 × 渠道"的投递。`state` = PENDING/SENDING/SENT/DEAD；`attempts` 记录已发起的尝试次数；`next_attempt_at` 同时是重试时间和 SENDING 租约 |
-| 事件身份 | `event_id` = 每次 Send 调用生成的随机串，同一事件的 N 条站内信共享；唯一索引 `(event_id, channel_id)` 保证同一事件对同一渠道至多一条投递 |
-
-### 决策
-
-| # | 决定 | 理由 / 影响 |
-| --- | --- | --- |
-| O-1 | 渠道是**工作区级**资源，凭据 write-only、`v1:` AES-256-GCM 加密（复用 `common/crypto` 与部署数据密钥） | 渠道配置属于出站能力，不属于某个收件人；读接口只返回 `secret_set` |
-| O-2 | 订阅过滤在**渠道级**：`event_types`（空=全部）+ `min_severity`；不做按 owner/团队路由的规则引擎。**例外：数据质量周报 digest 必须显式订阅**（见 O-22） | 覆盖"哪类事件发到哪个群/端点"的常见需求；更细路由等有真实需求再加；空 event_types 的"全部"是在 digest 类型出现之前就存在的语义，不能被一条新周期消息悄悄扩大 |
-| O-3 | 投递异步 outbox + 独立 runner（tick 2s、单批 ≤20、并发 ≤4、租约 5m），失败退避 1m/5m/15m/1h/6h，**6 次后 DEAD**；管理员手动的"重试"把 attempts 归零，等于重新给 6 次 | 生产者不因渠道故障失败；租约过期可被重新认领，崩溃不丢投递 |
-| O-4 | 渲染在**发送时**做（渠道 `language`，空=服务端默认 en-US），`payload` 只存结构化事件；不存收件人的姓名/地址，但**存事件级 audience 用户 id**（`audience_user_ids`），供 EMAIL 渠道发送时解析 | 模板修复能作用于已排队的投递；邮箱地址在发送时才解析，账号改邮箱/被删都能反映；outbox 不含 per-recipient 列、已读态、样本值 |
-| O-5 | Webhook body 是稳定 JSON（eventId/deliveryId/eventType/severity/title/text/link/occurredAt）；`X-Metaxisdata-Event`/`X-Metaxisdata-Delivery` **总是**发送，`sign=true` 时另附 `X-Metaxisdata-Signature: sha256=<hex>`（HMAC-SHA256） | 端点可脚本化；签名密钥与 URL 一样不落日志/审计/错误 |
-| O-6 | 深链来自 `WorkspaceProfileSetting.external_url`；未配置时不生成 link | 消息里的链接必须能在浏览器打开；未配置时宁可不给链接 |
-| O-7 | 渠道管理复用 `settings.get` / `settings.update` 权限，变更与测试发送审计 | member 基线本来没有 settings 权限；不扩权限目录 |
-| O-8 | 投递记录保留 30 天（maintenance 清理终态行），队列行永不清理 | 诊断窗口足够，outbox 不无限增长 |
-| O-9 | 出站 SSRF 风险由"仅管理员可配置 + 审计 + 文档化"承担；IM 类渠道的域名白名单在接入对应 kind 时再加 | 与实例凭据可连任意数据库同一类接受决策；见 `docs/security-posture.md` |
-| O-10 | **不跟随重定向**（`CheckRedirect` 返回 `ErrUseLastResponse`），3xx 按失败重试 | 默认 client 会把 301/302/303 降级成无 body 的 GET（端点回 200，投递被记成 SENT 而正文根本没送到），307/308 会把 body 与签名重发到端点选择的另一个 host（超出管理员配置的目的地）；错误里 URL 归一化后也要脱敏 |
-| O-11 | 钉钉/企微/飞书是独立 kind，各有自己的 payload 与签名：钉钉 markdown + `timestamp`/`sign` query（HMAC-SHA256(secret, timestamp+"\n"+secret)），企微 markdown + URL 里的 key，飞书 text + body 里的 `timestamp`/`sign`（HMAC-SHA256(timestamp+"\n"+secret, "")）；三者都检查 HTTP 2xx **和**响应体的 `errcode`/`code` | 各家的"HTTP 200 + 业务错误码"语义不同，只看状态码会把拒收记成已送达；企微 markdown 有 4096 字节上限，超长按 UTF-8 安全截断 |
-| O-12 | 邮件走**工作区级** SMTP 设置（`SettingName.EMAIL`，`EmailSetting` payload），不按渠道存 SMTP 凭据；密码在 payload 里是 `v1:` AES-256-GCM 密文、write-only、审计脱敏；认证方式 PLAIN/LOGIN/CRAM-MD5 强制要求 STARTTLS/SSL-TLS | 一个部署只有一个发信服务器；密码与渠道 endpoint 同一套加密/不落明文契约；禁止明文连接上送密码 |
-| O-13 | EMAIL 收件人 = 渠道固定地址 ∪（可选）事件 audience；audience 由 `Send`（单个收件人）或 `SendToWorkspaceAdmins`（全部管理员）在入队时写入投递 payload，发送时再查用户邮箱；去重不区分大小写、最多 50 个；解析为空 → **DEAD**，SMTP 未配置 → 按退避重试（配置补齐可自愈），预算耗尽后 DEAD | 邮件没有"已登录用户"这一层，"谁该收到"必须来自事件语义（规则 owner / 同步发起人 / 管理员）；发送时查邮箱让改址/删号自然生效；固定地址保证无人可解析时仍有兜底 |
-| O-14 | `notification_delivery` 的唯一索引与事件 id 语义不变；EMAIL 与 HTTP 渠道共用 outbox/dispatcher/重试/指标 | 不为邮件单开投递路径，投递记录、重试、DEAD 诊断一致 |
-| O-15 | 静默窗口是**工作区级**设置（`SettingName.QUIET_HOURS`，`QuietHoursSetting`），支持周期窗口（按 ISO 星期 + `HH:MM`，end<=start 跨午夜）与一次性维护窗口（单个窗口 ≤30 天）；渠道可 `bypass_quiet_hours` 豁免 | 一个部署一套作息；值班渠道必须能穿透维护期；一次性窗口覆盖计划维护；30 天上限防止笔误把告警静默成"停机" |
-| O-16 | 静默期**暂缓不丢弃**：dispatcher 在批次开始算一次 `QuietUntil`，非豁免渠道的投递用 `DeferNotificationDelivery` 放回 PENDING、`next_attempt_at = 窗口结束`，并把认领时 +1 的 attempts 减回去；投递行带 `quiet_deferred` 标记，指标 outcome 记 `deferred` | 告警不丢、不消耗 6 次预算、窗口结束后的第一个 tick 补发；标记让"改/关静默设置"能精确释放被扣住的行，而不会误伤重试退避行 |
-| O-17 | 静默设置读取/解析失败**fail open**（记日志后照常投递）；窗口结束时间已过也照常投递；周期窗口的两个边界若落在夏令时跳变的小时里，该天窗口按"不存在"跳过（fail open），不推导成 24 小时 | 坏的静默配置不能成为全站告警的静默器；DST 每年一次，绝不能把夜间窗口变成整天 |
-| O-18 | 路由规则是独立表 `notification_route`（`NotificationRoute` payload）：match = event_types + min_severity + owners(`users/{id}`) + groups(IAM group email)，channels = 渠道 resource id 列表；规则**只做加法** | 团队渠道用 `routed_only` 排除普通订阅，普通值班渠道不受影响；删除渠道不会连带删规则 |
-| O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开（只读规则点名的 group，走 `GetGroup` 缓存）；路由表或 group 读取失败**fail open** 回到订阅 fan-out（`routed_only` 渠道此时不投递，等管理员修复） | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
-| O-20 | 路由目标渠道仍要满足自身 `enabled` + `event_types` + `min_severity` 过滤；`routed_only` 渠道未被任何规则选中则完全跳过 | 规则表达"谁的事发到哪个渠道"，渠道自己的过滤仍是第二道闸；避免配置矛盾时意外群发 |
-| O-21 | "未确认 N 小时升级到第二渠道"**不做** | 产品反馈并非所有部署喜欢自动升级（会重复打扰值班）；等有明确需求再评估，避免做成默认行为 |
-| O-23 | **质量 Agent 升级是 per-owner 的站内信，不是广播**：`qualitysessionrunner` 只在会话被人工类 block code 阻塞时写 attention 并向 `quality_agent.owner_principal_id` 发 `DATA_QUALITY_AGENT`；detail 只带 agent/attention 资源名与 bounded 的 title/question，正文由前端 i18n 渲染；重复 block 由 attention 的 open dedupe 与通知 dedupe 双保险。owner 回复走 `ReplyQualityAgentAttention`，管理员只读。 | 升级的语义是"这个 Agent 的 owner 需要做决定"，发给管理员池会让真正能决策的人被噪音淹没；通知文本不落库以保持双语与前向兼容。 |
-| O-22 | **数据质量周报 digest 是"仅投递"事件**：没有站内信、没有 audience，由 `qualitydigestrunner` 每周按 DQ 设置生成一次，用确定性 `event_id=dqdigest:<ISO 周>` 入队到**显式**订阅 `DATA_QUALITY_DIGEST` 的启用渠道；`routed_only` 渠道跳过、`notification_route` 不参与、无固定地址的 EMAIL 渠道跳过（digest 的 audience 为空，`include_audience` 解析不出人）；其余投递语义（outbox、重试、静默窗口、指标）完全复用 | 新周期消息必须是 opt-in，否则所有"空=全部"的存量渠道会突然收到周报；digest 无 audience，路由规则和 audience 邮件都失去意义；确定性事件 id 让重复 tick/重启/部分成功重试都不重复投递 |
-
-### 失败模式
-
-| 场景 | 行为 |
-| --- | --- |
-| 渠道被删除 | `notification_delivery.channel_id` 是 `ON DELETE CASCADE`：该渠道的排队投递随渠道一起删除（`docs/notifications.md` 与 proto `Delete` 注释的语义） |
-| 渠道凭据缺失 | 适配器构造失败是配置错误，**立即 `DEAD`**（重试不会修好），错误进 `last_error` |
-| 渠道凭据无法解密 | 读取失败按普通失败重试；管理员修复密钥后 `DEAD` 的可手动重试 |
-| 渠道列表读取失败 | 本批已认领的投递**释放回 PENDING 且不消耗 attempt**，下个 tick 重试；绝不当作"渠道都不存在"标 DEAD |
-| 端点 5xx/超时/网络错误 | 退避重试；错误写入 `last_error`（Webhook/IM 错误中的 URL 被替换为 `<endpoint>`，避免凭据进错误/审计） |
-| 端点 4xx | 同样按失败重试直至预算耗尽；管理员修正后可在投递记录里"重试"（仅 DEAD → PENDING，attempts 归零，幂等） |
-| 端点返回 3xx | 不跟随，按失败重试（见 O-10）；IM 渠道同样适用 |
-| IM 返回 HTTP 200 但 `errcode`/`code` 非 0 | 按失败重试，`last_error` 带厂商错误信息（签名不匹配、关键词不匹配等） |
-| SMTP 未配置（`SettingName.EMAIL` 缺失/为空） | 按普通失败重试（配置可补齐自愈）；预算耗尽后 DEAD，`last_error` 为 "email delivery is not configured" |
-| EMAIL 渠道解析不出任何收件人 | **立即 DEAD**（重试不会凭空产生地址），`last_error` 说明原因；管理员补固定地址后可手动重试 |
-| SMTP 认证失败/连接被拒/TLS 错误 | 按普通失败重试，`last_error` 带服务器文本（不含密码）；预算耗尽后 DEAD |
-| SMTP 密码密文无法解密 | 读取设置失败按普通失败重试；管理员重填密码后 DEAD 的可手动重试 |
-| 收件人解析时用户查询失败 | 按普通失败重试，不把该投递误判为"无收件人" |
-| 投递落在静默窗口内 | 放回 PENDING、`next_attempt_at = max(窗口结束)`，attempts 减回；指标 `deferred`；不调用适配器 |
-| 静默窗口内有 `bypass_quiet_hours` 渠道 | 照常投递（同一批次内按渠道分别判断） |
-| 静默设置读不到/时区非法/窗口格式错 | 记日志后照常投递（fail open），不让坏配置静默全站 |
-| 路由表读取失败 | 记日志后回退到订阅 fan-out（fail open）；`routed_only` 渠道此时收不到，需管理员修复 |
-| 路由命中的渠道已被删除 | 忽略该渠道，规则其余渠道照常；规则本身保留 |
-| routed_only 渠道没有任何规则选中 | 不建投递（渠道完全跳过），不是失败 |
-| 路由 group 读取失败 | 该次 enqueue 的 group 条件不命中（owner 条件仍可命中）；按 fail open 处理 |
-| 维护窗口结束时间已过 | 视为不活跃；可在设置里删除该窗口 |
-| 维护窗口超过 30 天 | 设置校验直接拒绝（`InvalidArgument`），防止笔误把告警静默成"停机" |
-| 周期窗口边界落在 DST 跳变的小时 | 该天该窗口视为不存在（fail open），不会推导成 24 小时 |
-| 管理员修改/关闭静默设置 | 保存成功后先 `ReleaseQuietDeferredDeliveries` 把带 `quiet_deferred` 标记的行全部置为 due；若新设置仍在窗口内，dispatcher 下个 tick 会按新窗口重新推迟 |
-| DST 跳变/静默推迟的失败释放 | 推迟失败时 dispatcher 回退到普通 `ReleaseNotificationDelivery`，避免行卡在 SENDING 被租约重认领后消耗 attempt |
-| 同一事件重复入队 | 唯一索引吞掉；不会重复投递 |
-| 站内信因去重未写入 | 不产生投递（事件不存在） |
-| 站内信写入成功但 outbox 写入失败 | 只记日志；站内信仍在，事件不投递（best effort，与包契约一致） |
-| dispatcher 崩溃在 POST 中途 | 租约过期，下一次 tick 重新认领并记一次 attempt |
-| 渲染缺 detail | 不产生投递 |
-| 管理员"测试发送" | 直接走适配器，不排队、不建投递、**不审计**（只读诊断，端点响应正文不落永久账本） |
-| digest 的订阅渠道为空 event_types | 不投递（digest 是显式 opt-in，空=全部不包含它），记 debug 日志；周期照常记为已处理（channel_count=0） |
-| digest 的渠道是 routed_only 或无规则选中 | 完全跳过：digest 没有 audience，路由不参与 |
-| digest 的 EMAIL 渠道没有固定地址 | 入队时跳过并记 debug 日志；不建投递，避免每周一条注定 DEAD 的行 |
-| digest 入队失败（渠道读取/DB 写） | 不记录周期，runner 下个 tick 在 24h 窗口内重试；确定性 event_id 让部分成功后的重试无副作用 |
-| digest 入队与记录周期之间的崩溃 | 若入队成功、记录失败：下个 tick 用同一 event_id 重复入队，`(event_id,channel_id)` 唯一索引吞掉；若记录成功但入队前崩溃：该周期不发（可接受，宁可少发不重复） |
-| digest 计划时刻已过超过 24h | 不补发；每个被跨过的周期记一次 WARN（进程内去重），随后进入下一周期 |
-
-### Where things live（出站部分）
-
-- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`0034##notification_route.sql`、`LATEST.sql`。PR-2 的 kind/config/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。唯一注意：PR-1 的 `NotificationChannelSecret` 字段叫 `webhook_url`/`webhook_signing_secret`，PR-2 改名为 `endpoint`/`signing_secret`；PR-1 从未发布，因此没有需要迁移的存量渠道。若在 PR-1 构建上建过渠道（仅开发环境可能），升级后凭据读不出，重新填写一次 endpoint/签名密钥即可（读接口仍显示 `secret_set`，编辑保存会覆盖）。
-- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/静默推迟/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）、`backend/store/quiet_hours.go`、`backend/store/notification_route.go`。`notification_delivery.go` 里两条 SQL 形状是不变量：claim 的 `RETURNING` 必须用 `d.` 限定（`FROM due` 里也有 `id`，不限定会 42702 `column reference "id" is ambiguous`，认领永远失败）；完成语句的 `CASE WHEN $2::int4 = $5::int4` 必须显式定型（同一参数在赋值与比较里各推导一次，不 cast 会 42P08，投递永远停在 SENDING 并被租约重投）。`quality_digest_send` 的周期唯一索引是 digest 幂等的真正仲裁者，由 `backend/store/quality_digest.go` 读写。
-- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`outbound_routing.go`（路由匹配与 group 展开）、`outbound/schedule.go`（静默窗口计算与校验，纯函数）、`data_quality_digest.go`（digest 的"仅投递"入队：显式订阅、跳过 routed_only/无地址 EMAIL、确定性 event id）、`outbound/` 的其余部分（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链（含 digest 分支与 `/data-quality` 链接）、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
-- runner：`backend/runner/notificationdispatcher/`（静默窗口在此计算并推迟投递；EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/runner/qualitydigestrunner/`（digest 的周期计算/幂等/入队，见 [data-quality.md](data-quality.md)）；`backend/server/server.go` 注册第 7/8 个 runner。
-- API：`backend/api/v1/notification_outbound_service.go`（13 个 RPC：渠道/投递 + 路由 CRUD，权限复用 settings.*）、`backend/api/v1/notification_route_service.go`、`backend/api/v1/setting_service.go` 的 email 与 quiet-hours RPC；SMTP 密码字段标 `INPUT_ONLY`，审计按字段名脱敏（`endpoint`、`password`）。
-- 前端：`frontend/src/pages/settings/NotificationSettingsPage.vue`（渠道弹窗按 kind 切换字段 + SMTP 卡片）、`frontend/src/api/notification.ts`、`frontend/src/api/setting.ts` 的 email 部分、`components/layout/SettingsNav.vue`、`router/index.ts`、`locales/*.json` 的 `notificationSettings.*`、`glossary.json`（Notifications 类目：channel/delivery/webhook/dingtalk/wecom/feishu/smtp）。
-- 文档：`docs/notifications.md`（运维侧）。
-- 测试：`go test ./backend/component/notification/... ./backend/runner/notificationdispatcher/... ./backend/runner/maintenance/... ./backend/api/v1/ ./backend/store/ ./backend/common/`；`backend/common/resource_name_test.go` 钉住"生成的 id 必须能被自己的 name parser 解析"；`backend/store/notification_delivery_test.go` 钉住 claim/list SQL 形状；`outbound/chat_test.go` 钉住三种 IM 的 payload/签名/错误码/脱敏/不跟随重定向；`outbound/email_test.go` 钉住地址规范化、收件人解析、MIME 头注入防护与 SMTP 配置校验；`notificationdispatcher_test.go` 用本地假 SMTP 服务器跑通"audience + 固定地址 → DATA 段"；`backend/api/v1/setting_service_test.go` 钉住 EmailSetting 掩码合并、密码不入 payload、清空与校验；前端 `frontend/src/pages/settings/NotificationSettingsPage.test.ts` 覆盖列表/权限门禁/弹窗状态/重试/新 kind 字段/SMTP 保存。
-
-### Open items（出站）
-
-1. "未确认 N 小时升级到第二渠道"**明确不做**（产品反馈：并非所有部署喜欢自动升级）；若以后要做，应默认关闭并做成渠道级可选策略（见 O-21）。
-2. 路由规则目前只按 owner/群组 + 事件类型/严重级别匹配；按 target（实例/库/表）路由、规则优先级与兜底渠道未做。
-3. 投递的可观测性目前只有 `notification_deliveries_attempted_total{outcome}`（含 `deferred`）与耗时直方图；队列深度 gauge 待补。
-4. 跨副本 dispatcher：与单副本假设一致，不做；多副本需 `SKIP LOCKED` 之外的无害化重复投递语义（当前唯一索引只防同事件同渠道，跨副本各自认领不同行是安全的，但事件级重复仍需 `LISTEN/NOTIFY` 才能避免）。
-5. 邮件投递的集成覆盖目前是"dispatcher + 本地假 SMTP 服务器"与单元测试；没有对真实外部 SMTP 的集成套件（外部依赖不适合 CI），上线前手工用 **Send test email** 验证一次真实服务器即可。
-6. IM 渠道按厂商 API 直发；厂商若改协议（如飞书新版 webhook 鉴权）需要在对应 `outbound/*.go` 适配器内升级，`payload`/`secret` 形状不变时无需迁移。
+- **Migrations**: `backend/migrator/migration/0.1/0017##notification.sql`,
+  `0018##notification_seen.sql`, `0033##notification_outbound.sql` and
+  `0034##notification_route.sql`, mirrored in `LATEST.sql` and pinned by the migrator's
+  consistency test.
+- **Component** `backend/component/notification/`: `service.go` (write path and
+  suppression), `hub.go`, `data_quality_agent.go`, `data_quality_digest.go`,
+  `outbound_queue.go` (fan-out and subscription filter), `outbound_routing.go`, and
+  `outbound/` (receiver factory, validation, render, webhook, chat kinds, email,
+  recipients, quiet-hours schedule). **Store**: `backend/store/notification.go`,
+  `notification_channel.go`, `notification_delivery.go`, `notification_route.go`,
+  `email_setting.go`, `quiet_hours.go`, `quality_digest.go`; two SQL shapes are invariants
+  — the claim's `RETURNING` must qualify with `d.` (the `FROM due` subquery also has an
+  `id`, so unqualified fails with 42702) and the completion statement must cast its reused
+  parameter explicitly (inferred twice it fails with 42P08 and deliveries stay SENDING
+  until the lease reclaims them).
+- **API and wiring**: the three `backend/api/v1/notification*_service.go` files,
+  `backend/server/grpc_routes.go` and `server.go`. **Runners**:
+  `backend/runner/notificationdispatcher/`, `backend/runner/qualitydigestrunner/`, the
+  quality session and patrol runners, and `backend/runner/schemasync/operation.go`.
+  **Ingestion notifications**: `backend/api/v1/openlineage_handler.go` and
+  `backend/plugin/openlineage/resolver.go`. The frontend files are named in the section
+  above; the bell mounts at the bottom of `AppSidebar`, `/notifications` is reached through
+  its "view all", and there is no server-side switch.
+- **Tests**: component tests for hub, service, digest and the outbound queue; store tests
+  for recipient scope and claim SQL; dispatcher tests with a fake SMTP server; digest
+  idempotency; `backend/common/resource_name_test.go`; the notifier-first lifecycle test;
+  the integration suite in `backend/test/integration/runner/`; and the frontend tests
+  beside each file. **Gates**: `go test` on those packages, the integration suites,
+  `pnpm --dir frontend test run`, and the buf gates for a proto change.
