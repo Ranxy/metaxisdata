@@ -149,6 +149,7 @@ import {
   type RotateQualityAgentTokenResponse,
   RunQualityRulesRequestSchema,
   SendQualityAgentMessageRequestSchema,
+  SetQualityAgentAdoptionRequestSchema,
   StartQualityAgentRequestSchema,
   SuggestColumnLabelsRequestSchema,
   type SuggestColumnLabelsResponse,
@@ -1738,6 +1739,19 @@ export async function pauseQualityAgent(
 ): Promise<QualityAgent> {
   const request = create(PauseQualityAgentRequestSchema, { name });
   return await dataQualityClient.pauseQualityAgent(request, { signal });
+}
+
+/** Owner/admin adoption switch; ACTIVE is administrator-only. */
+export async function setQualityAgentAdoption(
+  name: string,
+  mode: QualityAgentAdoptionMode,
+  signal?: AbortSignal
+): Promise<QualityAgent> {
+  const request = create(SetQualityAgentAdoptionRequestSchema, {
+    name,
+    adoption: { mode },
+  });
+  return await dataQualityClient.setQualityAgentAdoption(request, { signal });
 }
 
 /** Mint a new token for an agent and invalidate the previous ones. */

@@ -134,6 +134,14 @@
                       </RouterLink>
                     </Button>
                     <Button
+                      v-if="canManage"
+                      variant="ghost"
+                      size="sm"
+                      @click="openEdit(agent)"
+                    >
+                      {{ t("qualityAgents.edit") }}
+                    </Button>
+                    <Button
                       v-if="canManage && agent.state === QualityAgentState.ACTIVE"
                       variant="ghost"
                       size="sm"
@@ -185,8 +193,12 @@
     >
       <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{{ t("qualityAgents.createTitle") }}</DialogTitle>
-          <DialogDescription>{{ t("qualityAgents.createDescription") }}</DialogDescription>
+          <DialogTitle>
+            {{ editingAgent ? t("qualityAgents.editTitle") : t("qualityAgents.createTitle") }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ editingAgent ? t("qualityAgents.editDescription") : t("qualityAgents.createDescription") }}
+          </DialogDescription>
         </DialogHeader>
         <div class="space-y-4">
           <div class="grid gap-3 sm:grid-cols-2">
@@ -304,6 +316,7 @@
                 <Select v-model="form.adoptionMode">
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="off">{{ t("qualityAgents.adoptionOff") }}</SelectItem>
                     <SelectItem value="paused">{{ t("qualityAgents.adoptionPaused") }}</SelectItem>
                     <SelectItem value="active">{{ t("qualityAgents.adoptionActive") }}</SelectItem>
                   </SelectContent>
@@ -403,6 +416,37 @@
             </label>
           </div>
 
+          <div class="space-y-2 rounded-md border p-3">
+            <Label>{{ t("qualityAgents.budgetSection") }}</Label>
+            <p class="text-xs text-muted-foreground">{{ t("qualityAgents.budgetHint") }}</p>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetTokens") }}</Label>
+                <Input v-model.number="form.budgetTokensPerHour" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetWakes") }}</Label>
+                <Input v-model.number="form.budgetWakesPerHour" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetConcurrency") }}</Label>
+                <Input v-model.number="form.budgetMaxConcurrentSessions" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetNewSessions") }}</Label>
+                <Input v-model.number="form.budgetMaxNewSessionsPerHour" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetActiveSessions") }}</Label>
+                <Input v-model.number="form.budgetMaxActiveSessions" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetConversation") }}</Label>
+                <Input v-model.number="form.budgetConversationMessagesPerHour" inputmode="numeric" />
+              </div>
+            </div>
+          </div>
+
           <Alert
             v-if="createError"
             variant="destructive"
@@ -434,7 +478,7 @@
                   v-if="creating"
                   class="mr-2 h-4 w-4 animate-spin"
                 />
-                {{ t("qualityAgents.createAction") }}
+                {{ editingAgent ? t("qualityAgents.saveAction") : t("qualityAgents.createAction") }}
               </Button>
             </div>
           </div>
@@ -473,6 +517,7 @@ import {
   type QualityAgentConfigInput,
   rotateQualityAgentToken,
   startQualityAgent,
+  updateQualityAgent,
 } from "@/api/data-quality";
 import { listDatabases } from "@/api/database";
 import { listAll } from "@/api/list";
@@ -524,7 +569,11 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityAgent,
   QualityAgentAdoptionMode,
+  QualityAgentAdoptionSettingSchema,
+  QualityAgentBudgetSchema,
   QualityAgentReportFrequency,
+  QualityAgentReportScheduleSchema,
+  QualityAgentSchema,
   QualityAgentState,
   QualityRuleType,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -600,6 +649,7 @@ const lowRiskRuleTypes = [
 ];
 
 const createOpen = ref(false);
+const editingAgent = ref<QualityAgent>();
 const creating = ref(false);
 const createError = ref("");
 const overlapAcknowledged = ref(false);
@@ -626,6 +676,12 @@ const form = ref({
   adoptionConfidence: 0.7,
   adoptionAllowCritical: false,
   adoptionRuleTypes: [] as number[],
+  budgetTokensPerHour: 0,
+  budgetWakesPerHour: 0,
+  budgetMaxConcurrentSessions: 0,
+  budgetMaxNewSessionsPerHour: 0,
+  budgetMaxActiveSessions: 0,
+  budgetConversationMessagesPerHour: 60,
 });
 
 const canCreate = computed(
@@ -643,6 +699,7 @@ const hasOverlap = computed(() =>
 
 function overlap(database: string): string[] {
   return agents.value
+    .filter((agent) => agent.name !== editingAgent.value?.name)
     .filter((agent) => agent.databases.includes(database))
     .map((agent) => agent.displayName);
 }
@@ -813,6 +870,7 @@ async function saveSwitch(kind: "runner" | "autonomy", value: boolean) {
 }
 
 function openCreate() {
+  editingAgent.value = undefined;
   form.value = {
     displayName: "",
     description: "",
@@ -829,13 +887,159 @@ function openCreate() {
     adoptionConfidence: 0.7,
     adoptionAllowCritical: false,
     adoptionRuleTypes: [],
+    budgetTokensPerHour: 0,
+    budgetWakesPerHour: 0,
+    budgetMaxConcurrentSessions: 0,
+    budgetMaxNewSessionsPerHour: 0,
+    budgetMaxActiveSessions: 0,
+    budgetConversationMessagesPerHour: 60,
   };
   overlapAcknowledged.value = false;
   createError.value = "";
   createOpen.value = true;
 }
 
+function openEdit(agent: QualityAgent) {
+  editingAgent.value = agent;
+  form.value = {
+    displayName: agent.displayName,
+    description: agent.description,
+    owner: agent.owner,
+    capabilities: [...agent.capabilities],
+    databases: [...agent.databases],
+    start: agent.state === QualityAgentState.ACTIVE,
+    reportFrequency: reportFrequencyValue(agent.reportSchedule?.frequency),
+    reportTime: agent.reportSchedule?.time || "09:00",
+    reportTimezone: agent.reportSchedule?.timezone || "UTC",
+    reportWeekday: String(agent.reportSchedule?.dayOfWeek || 1),
+    adoptionMode: adoptionModeValue(agent.adoption?.mode),
+    adoptionMaxPerDay: agent.adoption?.maxPerDay || 10,
+    adoptionConfidence: agent.adoption?.confidenceThreshold || 0.7,
+    adoptionAllowCritical: agent.adoption?.allowCritical ?? false,
+    adoptionRuleTypes: [...(agent.adoption?.ruleTypes ?? [])],
+    budgetTokensPerHour: Number(agent.budget?.tokensPerHour ?? 0n),
+    budgetWakesPerHour: agent.budget?.wakesPerHour ?? 0,
+    budgetMaxConcurrentSessions: agent.budget?.maxConcurrentSessions ?? 0,
+    budgetMaxNewSessionsPerHour: agent.budget?.maxNewSessionsPerHour ?? 0,
+    budgetMaxActiveSessions: agent.budget?.maxActiveSessions ?? 0,
+    budgetConversationMessagesPerHour:
+      agent.budget?.conversationMessagesPerHour ?? 60,
+  };
+  overlapAcknowledged.value = false;
+  createError.value = "";
+  createOpen.value = true;
+}
+
+function reportFrequencyValue(
+  value: QualityAgentReportFrequency | undefined
+): string {
+  switch (value) {
+    case QualityAgentReportFrequency.WEEKLY:
+      return "weekly";
+    case QualityAgentReportFrequency.DAILY:
+      return "daily";
+    default:
+      return "off";
+  }
+}
+
+function adoptionModeValue(
+  value: QualityAgentAdoptionMode | undefined
+): string {
+  switch (value) {
+    case QualityAgentAdoptionMode.ACTIVE:
+      return "active";
+    case QualityAgentAdoptionMode.PAUSED:
+      return "paused";
+    default:
+      return "paused";
+  }
+}
+
+async function submitEdit() {
+  if (!editingAgent.value) {
+    return;
+  }
+  creating.value = true;
+  createError.value = "";
+  try {
+    const next = create(QualityAgentSchema, {
+      name: editingAgent.value.name,
+      displayName: form.value.displayName.trim(),
+      description: form.value.description.trim(),
+      owner: form.value.owner,
+      databases: [...form.value.databases],
+      capabilities: [...form.value.capabilities],
+    });
+    next.reportSchedule = create(QualityAgentReportScheduleSchema, {
+      frequency: form.value.capabilities.includes("patrol")
+        ? reportFrequencyEnum(form.value.reportFrequency)
+        : QualityAgentReportFrequency.OFF,
+      time: form.value.reportTime,
+      timezone: form.value.reportTimezone,
+      dayOfWeek: Number(form.value.reportWeekday),
+    });
+    next.adoption = create(QualityAgentAdoptionSettingSchema, {
+      mode: form.value.capabilities.includes("adopt")
+        ? form.value.adoptionMode === "active"
+          ? QualityAgentAdoptionMode.ACTIVE
+          : QualityAgentAdoptionMode.PAUSED
+        : QualityAgentAdoptionMode.OFF,
+      ruleTypes: form.value.adoptionRuleTypes,
+      confidenceThreshold: form.value.adoptionConfidence,
+      maxPerDay: form.value.adoptionMaxPerDay,
+      allowCritical: form.value.adoptionAllowCritical,
+    });
+    next.budget = create(QualityAgentBudgetSchema, {
+      tokensPerHour: BigInt(
+        Math.max(0, Number(form.value.budgetTokensPerHour) || 0)
+      ),
+      wakesPerHour: Number(form.value.budgetWakesPerHour) || 0,
+      maxConcurrentSessions:
+        Number(form.value.budgetMaxConcurrentSessions) || 0,
+      maxNewSessionsPerHour:
+        Number(form.value.budgetMaxNewSessionsPerHour) || 0,
+      maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
+      conversationMessagesPerHour:
+        Number(form.value.budgetConversationMessagesPerHour) || 0,
+    });
+    await updateQualityAgent(next, [
+      "display_name",
+      "description",
+      "owner",
+      "databases",
+      "capabilities",
+      "report_schedule",
+      "adoption",
+      "budget",
+    ]);
+    createOpen.value = false;
+    editingAgent.value = undefined;
+    await load();
+    notify.success(t("qualityAgents.updated"));
+  } catch (err) {
+    createError.value = formatError(err);
+  } finally {
+    creating.value = false;
+  }
+}
+
+function reportFrequencyEnum(value: string): QualityAgentReportFrequency {
+  switch (value) {
+    case "weekly":
+      return QualityAgentReportFrequency.WEEKLY;
+    case "daily":
+      return QualityAgentReportFrequency.DAILY;
+    default:
+      return QualityAgentReportFrequency.OFF;
+  }
+}
+
 async function submitCreate() {
+  if (editingAgent.value) {
+    await submitEdit();
+    return;
+  }
   creating.value = true;
   createError.value = "";
   try {
@@ -870,6 +1074,19 @@ async function submitCreate() {
             allowCritical: form.value.adoptionAllowCritical,
           }
         : { mode: QualityAgentAdoptionMode.OFF },
+      budget: {
+        tokensPerHour: BigInt(
+          Math.max(0, Number(form.value.budgetTokensPerHour) || 0)
+        ),
+        wakesPerHour: Number(form.value.budgetWakesPerHour) || 0,
+        maxConcurrentSessions:
+          Number(form.value.budgetMaxConcurrentSessions) || 0,
+        maxNewSessionsPerHour:
+          Number(form.value.budgetMaxNewSessionsPerHour) || 0,
+        maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
+        conversationMessagesPerHour:
+          Number(form.value.budgetConversationMessagesPerHour) || 0,
+      },
     };
     const response = await createQualityAgent({
       config,

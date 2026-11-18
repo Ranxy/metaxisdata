@@ -8979,6 +8979,29 @@ export declare type DismissQualityAgentAttentionRequest = Message<"metaxisdata.v
 export declare const DismissQualityAgentAttentionRequestSchema: GenMessage<DismissQualityAgentAttentionRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.SetQualityAgentAdoptionRequest
+ */
+export declare type SetQualityAgentAdoptionRequest = Message<"metaxisdata.v1.SetQualityAgentAdoptionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAdoptionSetting adoption = 2;
+   */
+  adoption?: QualityAgentAdoptionSetting;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SetQualityAgentAdoptionRequest.
+ * Use `create(SetQualityAgentAdoptionRequestSchema)` to create a new message.
+ */
+export declare const SetQualityAgentAdoptionRequestSchema: GenMessage<SetQualityAgentAdoptionRequest>;
+
+/**
  * UpdateQualityAgentRequest replaces the masked configuration fields.
  *
  * @generated from message metaxisdata.v1.UpdateQualityAgentRequest
@@ -15179,6 +15202,17 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof DismissQualityAgentAttentionRequestSchema;
     output: typeof QualityAgentAttentionSchema;
+  },
+  /**
+   * Let the owner turn automatic adoption off or back to paused; administrators may
+   * also set ACTIVE. The rest of the configuration stays administrator-managed.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.SetQualityAgentAdoption
+   */
+  setQualityAgentAdoption: {
+    methodKind: "unary";
+    input: typeof SetQualityAgentAdoptionRequestSchema;
+    output: typeof QualityAgentSchema;
   },
   /**
    * Replace the masked configuration of one agent. Administrator only.
