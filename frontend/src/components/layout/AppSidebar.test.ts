@@ -57,6 +57,8 @@ const MEMBER_PERMISSIONS = [
   "metaxisdata.dataQuality.issues.get",
   "metaxisdata.dataQuality.issues.list",
   "metaxisdata.dataQuality.explain",
+  "metaxisdata.dataQuality.agents.get",
+  "metaxisdata.dataQuality.agents.list",
 ];
 
 // A caller with no permission at all: every section that gates an entry is hidden.
@@ -222,7 +224,7 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).toContain("Data Quality");
     expect(wrapper.text()).toContain("Overview");
     expect(wrapper.text()).toContain("Quality Targets");
-    expect(wrapper.text()).toContain("Agent sessions");
+    expect(wrapper.text()).toContain("Quality agents");
     expect(wrapper.text()).toContain("Executions");
     expect(wrapper.text()).toContain("Issues");
   });

@@ -61,6 +61,9 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.agent.state.",
   "dataQuality.agent.role.",
   "dataQuality.agent.origin.",
+  // qualityAgentAttentionText() in src/lib/notificationText.ts returns the title
+  // key for an agent escalation; the checker cannot follow a key a helper returns.
+  "notifications.qualityAgent",
   // agentSessionSourceKey/agentSessionModeKey in src/utils/agentSession.ts return
   // the label key for who created a session and what its wake does.
   "dataQuality.agent.source.",

@@ -63,7 +63,6 @@ const (
 	// A finished drafting job is the record of one background AI run; it is kept
 	// for a quarter like the suggestions it queued, while a pending/running job is
 	// never pruned.
-	qualitySuggestionJobRetention = 90 * 24 * time.Hour
 )
 
 // LineageRevalidator re-checks ingested lineage whose endpoints the metadata
@@ -92,7 +91,6 @@ type maintenanceStore interface {
 	DeleteExpiredQualityRuns(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredQualityIssues(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error)
-	DeleteExpiredQualitySuggestionJobs(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredColumnProfiles(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredDataQualityLLMCache(ctx context.Context, cutoff time.Time) (int64, error)
 	PruneNotificationDeliveries(ctx context.Context, before time.Time) (int64, error)
@@ -267,16 +265,6 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			success: "Pruned expired data quality LLM cache entries",
 			delete: func(ctx context.Context) (int64, error) {
 				return r.store.DeleteExpiredDataQualityLLMCache(ctx, now.Add(-qualityLLMCacheRetention))
-			},
-		},
-		{
-			// Only finished jobs are pruned; a pending or running job is still the
-			// durable record of work in progress.
-			name:    "quality_suggestion_jobs",
-			failure: "Failed to prune finished quality suggestion jobs",
-			success: "Pruned finished quality suggestion jobs",
-			delete: func(ctx context.Context) (int64, error) {
-				return r.store.DeleteExpiredQualitySuggestionJobs(ctx, now.Add(-qualitySuggestionJobRetention))
 			},
 		},
 		{

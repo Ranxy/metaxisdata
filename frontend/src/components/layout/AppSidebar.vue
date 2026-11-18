@@ -398,10 +398,10 @@ function buildMenuItems(): MenuItem[] {
         },
         {
           key: "dataQualityAgent",
-          label: t("menu.dataQualityAgent"),
-          path: "/data-quality/agent",
+          label: t("menu.qualityAgents"),
+          path: "/data-quality/agents",
           icon: Bot,
-          permission: "metaxisdata.dataQuality.rules.list",
+          permission: "metaxisdata.dataQuality.agents.list",
         },
         {
           key: "dataQualityChecks",

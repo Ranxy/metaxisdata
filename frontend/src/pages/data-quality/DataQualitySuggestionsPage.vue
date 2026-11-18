@@ -16,25 +16,8 @@
           />
           {{ t("common.refresh") }}
         </Button>
-        <Button
-          :disabled="!llmAvailability.available"
-          :title="
-            llmAvailability.available
-              ? ''
-              : t(llmAvailability.reasonKey ?? 'dataQuality.llm.disabledHint')
-          "
-          @click="openWorkbench"
-        >
-          <Sparkles class="mr-2 h-4 w-4" />
-          {{ t("dataQuality.llm.draft.openButton") }}
-        </Button>
       </template>
     </PageHeader>
-
-    <SuggestionJobsPanel
-      :refresh-key="jobsRefreshKey"
-      @settled="onJobsSettled"
-    />
 
     <Card>
       <div class="flex flex-wrap items-end gap-3 border-b p-4">
@@ -198,13 +181,6 @@
             </Button>
           </template>
           <template v-else>
-            <Button
-              :disabled="!llmAvailability.available"
-              @click="openWorkbench"
-            >
-              <Sparkles class="mr-2 h-4 w-4" />
-              {{ t("dataQuality.llm.draft.openButton") }}
-            </Button>
             <Button
               v-if="appliedStatus === String(QualitySuggestionStatus.PENDING)"
               variant="outline"
@@ -530,12 +506,6 @@
       </PageState>
     </Card>
 
-    <SuggestionWorkbench
-      v-model:open="workbenchOpen"
-      :llm-enabled="llmEnabled"
-      @submitted="onJobSubmitted"
-    />
-
     <SuggestionDetailDrawer
       v-model:open="drawerOpen"
       :suggestion="selected"
@@ -572,30 +542,21 @@ import {
   Eye,
   Lightbulb,
   RefreshCcw,
-  Sparkles,
   X,
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  type LocationQuery,
-  type LocationQueryRaw,
-  useRoute,
-  useRouter,
-} from "vue-router";
+import { type LocationQuery, useRouter } from "vue-router";
 import {
   listQualitySuggestions,
   updateQualitySuggestion,
 } from "@/api/data-quality";
-import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
 import BatchCreateRulesDialog from "@/components/data-quality/BatchCreateRulesDialog.vue";
 import BatchDecideSuggestionsDialog from "@/components/data-quality/BatchDecideSuggestionsDialog.vue";
 import SuggestionDetailDrawer from "@/components/data-quality/SuggestionDetailDrawer.vue";
-import SuggestionJobsPanel from "@/components/data-quality/SuggestionJobsPanel.vue";
-import SuggestionWorkbench from "@/components/data-quality/SuggestionWorkbench.vue";
 import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -636,7 +597,6 @@ import {
   qualitySeverityKey,
   qualitySeverityVariant,
 } from "@/utils/dataQuality";
-import { llmFeatureAvailability } from "@/utils/dataQualityLlm";
 import {
   suggestionConfidence as confidenceOf,
   suggestionConfidencePercent as confidencePercent,
@@ -672,7 +632,6 @@ import {
   enumFromFilter,
   type QueryValue,
   queryString,
-  readFlag,
 } from "@/utils/queryFilters";
 
 /**
@@ -686,18 +645,12 @@ import {
  */
 
 const { t, locale } = useI18n();
-const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const instanceStore = useInstanceStore();
 const { canCreate: canCreateRule, canSuggest } = useDataQualityPermissions();
 /** Deciding a suggestion is the same permission as drafting one. */
 const canDecide = canSuggest;
-
-const llmEnabled = ref(false);
-const llmAvailability = computed(() =>
-  llmFeatureAvailability(llmEnabled.value, canSuggest.value)
-);
 
 const PENDING = String(QualitySuggestionStatus.PENDING);
 
@@ -857,8 +810,6 @@ const drawerOpen = ref(false);
 const selected = ref<QualitySuggestion>();
 const deciding = ref(false);
 const decideError = ref("");
-const workbenchOpen = ref(false);
-const jobsRefreshKey = ref(0);
 const batchCreateOpen = ref(false);
 const batchCreateSuggestions = ref<QualitySuggestion[]>([]);
 const decisionOpen = ref(false);
@@ -1024,17 +975,6 @@ urlFilters.watchExternal((next) => {
   void resetPage();
 });
 
-// Closing the workbench is the one action that retires its deep link: the query
-// keeps every filter, and only `draft` goes.
-watch(workbenchOpen, (open) => {
-  if (open || !readFlag(route.query.draft)) {
-    return;
-  }
-  const next: LocationQueryRaw = { ...route.query };
-  delete next.draft;
-  void router.replace({ query: next });
-});
-
 // A re-fetch can drop the rows a stale selection points at.
 watch(suggestions, () => {
   const pending = new Set(
@@ -1192,13 +1132,6 @@ function openTarget(suggestion: QualitySuggestion) {
   void router.push(route);
 }
 
-function openWorkbench() {
-  if (!llmAvailability.value.available) {
-    return;
-  }
-  workbenchOpen.value = true;
-}
-
 function openBatchCreate(items: QualitySuggestion[]) {
   if (!canCreateRule.value || items.length === 0) {
     return;
@@ -1288,63 +1221,9 @@ function onBatchDone(succeededNames: string[]) {
   void refreshPage();
 }
 
-/** A new job exists: let the panel reload and start polling immediately. */
-function onJobSubmitted() {
-  jobsRefreshKey.value += 1;
-}
-
-/**
- * A drafting job settled. Its suggestions are the newest rows, so the queue
- * moves to page one and selects the ones visible there under the current
- * filters; the rest stay reviewable in the queue.
- */
-async function onJobsSettled(suggestionNames: string[]) {
-  if (suggestionNames.length === 0) {
-    await refreshPage();
-    return;
-  }
-  await resetPage();
-  const names = new Set(suggestionNames);
-  selectedNames.value = suggestions.value
-    .filter(
-      (suggestion) =>
-        names.has(suggestion.name) && isPendingSuggestion(suggestion)
-    )
-    .map((suggestion) => suggestion.name);
-  if (selectedNames.value.length < suggestionNames.length) {
-    notify.info(
-      t("dataQuality.suggestions.queuedPartial", {
-        selected: selectedNames.value.length,
-        total: suggestionNames.length,
-      })
-    );
-  }
-  notify.success(
-    t("dataQuality.suggestions.jobs.settledToast", {
-      count: suggestionNames.length,
-    })
-  );
-}
-
 /** Only the workspace switch is read here; the settings page changes it. */
-async function loadLlmSetting() {
-  try {
-    const profile = await getWorkspaceProfileSetting();
-    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
-  } catch {
-    llmEnabled.value = false;
-  }
-}
-
 onMounted(async () => {
   void instanceStore.ensureLoaded().catch(() => {});
   void resetPage();
-  await loadLlmSetting();
-  // `?draft=1` is the rules page's discovery link. Open it even when the switch
-  // is off or the caller may not draft: the workbench explains why with a link
-  // to the settings, so the link is never a dead end.
-  if (route.query.draft === "1") {
-    workbenchOpen.value = true;
-  }
 });
 </script>

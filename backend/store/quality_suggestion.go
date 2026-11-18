@@ -17,9 +17,9 @@ import (
 
 // qualitySuggestionColumns lists the columns every read of quality_suggestion
 // returns, in the order scanQualitySuggestion expects them.
-const qualitySuggestionColumns = `id, resource_id, kind, source, target_guid, target_type, payload, signature,
+const qualitySuggestionColumns = `id, resource_id, kind, source, agent_id, target_guid, target_type, payload, signature,
 	status, provider, model, prompt_version, created_by, created_at, refreshed_at, decided_by, decided_at,
-	decision_note`
+	decision_note, confidence`
 
 // queueQualitySuggestionQuery upserts one pending proposal by identity. A
 // suggestion is a proposal for a human, not a log entry: (target_guid,
@@ -38,19 +38,44 @@ const qualitySuggestionColumns = `id, resource_id, kind, source, target_guid, ta
 const queueQualitySuggestionQuery = `
 	INSERT INTO quality_suggestion (
 		resource_id, kind, source, target_guid, target_type, payload, signature, status,
-		provider, model, prompt_version, created_by, created_at, refreshed_at
+		provider, model, prompt_version, created_by, created_at, confidence, refreshed_at
 	)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)
-	ON CONFLICT (target_guid, target_type, signature) WHERE status = 1
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL)
+	ON CONFLICT (target_guid, target_type, signature) WHERE status = 1 AND agent_id IS NULL
 	DO UPDATE SET
 		payload = EXCLUDED.payload,
 		source = EXCLUDED.source,
 		provider = EXCLUDED.provider,
 		model = EXCLUDED.model,
 		prompt_version = EXCLUDED.prompt_version,
+		confidence = EXCLUDED.confidence,
 		refreshed_at = EXCLUDED.created_at
 	WHERE quality_suggestion.source = EXCLUDED.source
-		OR (EXCLUDED.source = $14 AND quality_suggestion.source = $15)
+		OR (EXCLUDED.source = $15 AND quality_suggestion.source = $16)
+	RETURNING ` + qualitySuggestionColumns
+
+// queueQualitySuggestionWithAgentQuery is the agent-scoped upsert: an agent's
+// pending proposal is unique per (agent,target,signature), so two agents covering
+// the same target each keep their own draft and a refresh cannot overwrite the
+// other agent's row.
+const queueQualitySuggestionWithAgentQuery = `
+	INSERT INTO quality_suggestion (
+		resource_id, kind, source, agent_id, target_guid, target_type, payload, signature,
+		status, provider, model, prompt_version, created_by, created_at, confidence, refreshed_at
+	)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NULL)
+	ON CONFLICT (agent_id, target_guid, target_type, signature)
+		WHERE status = 1 AND agent_id IS NOT NULL
+	DO UPDATE SET
+		payload = EXCLUDED.payload,
+		source = EXCLUDED.source,
+		provider = EXCLUDED.provider,
+		model = EXCLUDED.model,
+		prompt_version = EXCLUDED.prompt_version,
+		confidence = EXCLUDED.confidence,
+		refreshed_at = EXCLUDED.created_at
+	WHERE quality_suggestion.source = EXCLUDED.source
+		OR (EXCLUDED.source = $16 AND quality_suggestion.source = $17)
 	RETURNING ` + qualitySuggestionColumns
 
 // decideQualitySuggestionQuery resolves one suggestion only while it is pending.
@@ -78,10 +103,12 @@ const reopenQualitySuggestionQuery = `
 // rule draft or semantic label waiting for a reviewer. Nothing in this table is a
 // rule; accepting a suggestion edits or creates one through the normal rule path.
 type QualitySuggestionMessage struct {
-	ID            int64
-	ResourceID    string
-	Kind          storepb.QualitySuggestionKind
-	Source        storepb.QualitySuggestionSource
+	ID         int64
+	ResourceID string
+	Kind       storepb.QualitySuggestionKind
+	Source     storepb.QualitySuggestionSource
+	// AgentID is the proposing agent; nil for human or external proposals.
+	AgentID       *int64
 	TargetGUID    string
 	TargetType    storepb.MetaType
 	Payload       *storepb.QualitySuggestionPayload
@@ -92,6 +119,8 @@ type QualitySuggestionMessage struct {
 	PromptVersion string
 	CreatedBy     *int32
 	CreatedAt     time.Time
+	// Confidence is the drafting model's confidence (0..1); 0 for older rows.
+	Confidence float64
 	// RefreshedAt is set when a later generation pass updated this proposal.
 	RefreshedAt  *time.Time
 	DecidedBy    *int32
@@ -107,6 +136,8 @@ type FindQualitySuggestionMessage struct {
 	Kinds      []storepb.QualitySuggestionKind
 	Sources    []storepb.QualitySuggestionSource
 	TargetGUID *string
+	// AgentID filters by proposing agent; nil keeps every source.
+	AgentID *int64
 	// Instance, Database, Schema and TablePrefix are GUID path prefixes, the same
 	// shape as the rule list filters: a suggestion matches when its target GUID
 	// starts with the prefix.
@@ -114,8 +145,11 @@ type FindQualitySuggestionMessage struct {
 	Database    string
 	Schema      string
 	TablePrefix string
-	Limit       *int
-	Offset      *int
+	// CreatedAfter keeps suggestions queued after an instant; adoption uses it to
+	// consider only the drafts of the triage wake that just finished.
+	CreatedAfter *time.Time
+	Limit        *int
+	Offset       *int
 }
 
 // qualitySuggestionWhere builds the predicate and positional arguments for a
@@ -154,6 +188,14 @@ func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any, 
 		}
 		args = append(args, pq.Array(sources))
 		where = append(where, fmt.Sprintf("source = ANY($%d::int[])", len(args)))
+	}
+	if find.AgentID != nil {
+		args = append(args, *find.AgentID)
+		where = append(where, fmt.Sprintf("agent_id = $%d", len(args)))
+	}
+	if find.CreatedAfter != nil {
+		args = append(args, *find.CreatedAfter)
+		where = append(where, fmt.Sprintf("created_at >= $%d", len(args)))
 	}
 	if find.TargetGUID != nil && strings.TrimSpace(*find.TargetGUID) != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", strings.TrimSpace(*find.TargetGUID))
@@ -195,6 +237,7 @@ func scanQualitySuggestion(row rowScanner) (*QualitySuggestionMessage, error) {
 		message     QualitySuggestionMessage
 		kind        int16
 		source      int16
+		agentID     sql.NullInt64
 		targetType  int16
 		payload     []byte
 		status      int16
@@ -204,14 +247,18 @@ func scanQualitySuggestion(row rowScanner) (*QualitySuggestionMessage, error) {
 		decidedAt   sql.NullTime
 	)
 	if err := row.Scan(
-		&message.ID, &message.ResourceID, &kind, &source, &message.TargetGUID, &targetType, &payload,
+		&message.ID, &message.ResourceID, &kind, &source, &agentID, &message.TargetGUID, &targetType, &payload,
 		&message.Signature, &status, &message.Provider, &message.Model, &message.PromptVersion, &createdBy,
-		&message.CreatedAt, &refreshedAt, &decidedBy, &decidedAt, &message.DecisionNote,
+		&message.CreatedAt, &refreshedAt, &decidedBy, &decidedAt, &message.DecisionNote, &message.Confidence,
 	); err != nil {
 		return nil, err
 	}
 	message.Kind = storepb.QualitySuggestionKind(kind)
 	message.Source = storepb.QualitySuggestionSource(source)
+	if agentID.Valid {
+		value := agentID.Int64
+		message.AgentID = &value
+	}
 	message.TargetType = storepb.MetaType(targetType)
 	message.Status = storepb.QualitySuggestionStatus(status)
 	messagePayload := &storepb.QualitySuggestionPayload{}
@@ -367,13 +414,26 @@ func (s *Store) QueueQualitySuggestion(ctx context.Context, message *QualitySugg
 		createdAt = createdAt.UTC()
 	}
 
-	stored, err := scanQualitySuggestion(s.GetDB().QueryRowContext(ctx, queueQualitySuggestionQuery,
-		message.ResourceID, int32(message.Kind), int32(message.Source), message.TargetGUID,
-		int32(message.TargetType), payloadJSON, message.Signature, int32(status), message.Provider,
-		message.Model, message.PromptVersion, message.CreatedBy, createdAt,
-		int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION),
-		int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE),
-	))
+	var row *sql.Row
+	if message.AgentID != nil {
+		row = s.GetDB().QueryRowContext(ctx, queueQualitySuggestionWithAgentQuery,
+			message.ResourceID, int32(message.Kind), int32(message.Source), *message.AgentID,
+			message.TargetGUID, int32(message.TargetType), payloadJSON, message.Signature,
+			int32(status), message.Provider, message.Model, message.PromptVersion,
+			message.CreatedBy, createdAt, message.Confidence,
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION),
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE),
+		)
+	} else {
+		row = s.GetDB().QueryRowContext(ctx, queueQualitySuggestionQuery,
+			message.ResourceID, int32(message.Kind), int32(message.Source), message.TargetGUID,
+			int32(message.TargetType), payloadJSON, message.Signature, int32(status), message.Provider,
+			message.Model, message.PromptVersion, message.CreatedBy, createdAt, message.Confidence,
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION),
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE),
+		)
+	}
+	stored, err := scanQualitySuggestion(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}

@@ -219,6 +219,34 @@
   
     - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
   
+- [v1/setting_service.proto](#v1_setting_service-proto)
+    - [DataQualitySetting](#metaxisdata-v1-DataQualitySetting)
+    - [EmailSetting](#metaxisdata-v1-EmailSetting)
+    - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
+    - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
+    - [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest)
+    - [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest)
+    - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
+    - [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow)
+    - [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting)
+    - [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting)
+    - [QuietWindow](#metaxisdata-v1-QuietWindow)
+    - [SMTPConfig](#metaxisdata-v1-SMTPConfig)
+    - [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest)
+    - [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse)
+    - [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest)
+    - [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse)
+    - [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest)
+    - [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest)
+    - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
+    - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
+  
+    - [DayOfWeek](#metaxisdata-v1-DayOfWeek)
+    - [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication)
+    - [SMTPEncryption](#metaxisdata-v1-SMTPEncryption)
+  
+    - [SettingService](#metaxisdata-v1-SettingService)
+  
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
     - [AcceptedValuesQuery](#metaxisdata-v1-AcceptedValuesQuery)
@@ -235,7 +263,6 @@
     - [BatchUpdateQualitySuggestionResult](#metaxisdata-v1-BatchUpdateQualitySuggestionResult)
     - [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest)
     - [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse)
-    - [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
     - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
@@ -251,7 +278,6 @@
     - [CreateQualityMemoryRequest](#metaxisdata-v1-CreateQualityMemoryRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
-    - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CrossTableReference](#metaxisdata-v1-CrossTableReference)
@@ -262,6 +288,7 @@
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
     - [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest)
+    - [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest)
     - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk)
@@ -275,6 +302,8 @@
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
     - [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest)
     - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
+    - [GetQualityAgentReportRequest](#metaxisdata-v1-GetQualityAgentReportRequest)
+    - [GetQualityAgentRequest](#metaxisdata-v1-GetQualityAgentRequest)
     - [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest)
     - [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
@@ -293,9 +322,6 @@
     - [GetQualityRuleTemplateRequest](#metaxisdata-v1-GetQualityRuleTemplateRequest)
     - [GetQualityRuleTrendRequest](#metaxisdata-v1-GetQualityRuleTrendRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
-    - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
-    - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
-    - [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse)
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
     - [GetQualityTargetImpactRequest](#metaxisdata-v1-GetQualityTargetImpactRequest)
     - [GetQualityTargetImpactResponse](#metaxisdata-v1-GetQualityTargetImpactResponse)
@@ -307,8 +333,14 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest)
+    - [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse)
+    - [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest)
+    - [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse)
     - [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest)
     - [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse)
+    - [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest)
+    - [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse)
     - [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest)
     - [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse)
     - [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest)
@@ -339,13 +371,12 @@
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
     - [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest)
     - [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse)
-    - [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest)
-    - [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse)
     - [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest)
     - [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse)
     - [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest)
     - [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
+    - [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest)
     - [PauseQualityAgentSessionRequest](#metaxisdata-v1-PauseQualityAgentSessionRequest)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
@@ -357,11 +388,16 @@
     - [QualityAction](#metaxisdata-v1-QualityAction)
     - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
+    - [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting)
+    - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
+    - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
     - [QualityAgentDatabaseEnrollmentSummary](#metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary)
     - [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment)
     - [QualityAgentEnrollmentStateCount](#metaxisdata-v1-QualityAgentEnrollmentStateCount)
     - [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary)
     - [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics)
+    - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
+    - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
     - [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus)
     - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
     - [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage)
@@ -394,7 +430,6 @@
     - [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence)
     - [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
-    - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
     - [QualityMemory](#metaxisdata-v1-QualityMemory)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
@@ -415,8 +450,6 @@
     - [QualityRun](#metaxisdata-v1-QualityRun)
     - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
-    - [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob)
-    - [QualitySuggestionJobTarget](#metaxisdata-v1-QualitySuggestionJobTarget)
     - [QualitySuggestionPayload](#metaxisdata-v1-QualitySuggestionPayload)
     - [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
@@ -434,6 +467,7 @@
     - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
+    - [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest)
     - [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest)
     - [RetryQualityAgentEnrollmentRequest](#metaxisdata-v1-RetryQualityAgentEnrollmentRequest)
     - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
@@ -449,8 +483,10 @@
     - [SegmentRecord](#metaxisdata-v1-SegmentRecord)
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
+    - [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest)
     - [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest)
     - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
+    - [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
     - [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest)
     - [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse)
@@ -461,6 +497,7 @@
     - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
     - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
     - [UpdateQualityAgentEnrollmentRequest](#metaxisdata-v1-UpdateQualityAgentEnrollmentRequest)
+    - [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest)
     - [UpdateQualityCodeTableRequest](#metaxisdata-v1-UpdateQualityCodeTableRequest)
     - [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest)
     - [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest)
@@ -473,12 +510,20 @@
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
     - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
+    - [QualityAgentAdoptionMode](#metaxisdata-v1-QualityAgentAdoptionMode)
+    - [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind)
+    - [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus)
     - [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState)
     - [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole)
+    - [QualityAgentReportFrequency](#metaxisdata-v1-QualityAgentReportFrequency)
+    - [QualityAgentReportPeriod](#metaxisdata-v1-QualityAgentReportPeriod)
+    - [QualityAgentReportState](#metaxisdata-v1-QualityAgentReportState)
+    - [QualityAgentReportTrigger](#metaxisdata-v1-QualityAgentReportTrigger)
     - [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode)
     - [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource)
     - [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState)
+    - [QualityAgentState](#metaxisdata-v1-QualityAgentState)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason)
@@ -517,8 +562,6 @@
     - [QualitySeverity](#metaxisdata-v1-QualitySeverity)
     - [QualityStandardCode](#metaxisdata-v1-QualityStandardCode)
     - [QualityStatus](#metaxisdata-v1-QualityStatus)
-    - [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus)
-    - [QualitySuggestionJobTargetState](#metaxisdata-v1-QualitySuggestionJobTargetState)
     - [QualitySuggestionKind](#metaxisdata-v1-QualitySuggestionKind)
     - [QualitySuggestionSource](#metaxisdata-v1-QualitySuggestionSource)
     - [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus)
@@ -667,6 +710,7 @@
     - [NotificationRoute](#metaxisdata-v1-NotificationRoute)
     - [NotificationRouteMatch](#metaxisdata-v1-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
+    - [QualityAgentAttentionDetail](#metaxisdata-v1-QualityAgentAttentionDetail)
     - [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest)
     - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
     - [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest)
@@ -744,34 +788,6 @@
     - [UpdateRoleRequest](#metaxisdata-v1-UpdateRoleRequest)
   
     - [RoleService](#metaxisdata-v1-RoleService)
-  
-- [v1/setting_service.proto](#v1_setting_service-proto)
-    - [DataQualitySetting](#metaxisdata-v1-DataQualitySetting)
-    - [EmailSetting](#metaxisdata-v1-EmailSetting)
-    - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
-    - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
-    - [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest)
-    - [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest)
-    - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
-    - [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow)
-    - [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting)
-    - [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting)
-    - [QuietWindow](#metaxisdata-v1-QuietWindow)
-    - [SMTPConfig](#metaxisdata-v1-SMTPConfig)
-    - [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest)
-    - [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse)
-    - [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest)
-    - [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse)
-    - [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest)
-    - [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest)
-    - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
-    - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
-  
-    - [DayOfWeek](#metaxisdata-v1-DayOfWeek)
-    - [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication)
-    - [SMTPEncryption](#metaxisdata-v1-SMTPEncryption)
-  
-    - [SettingService](#metaxisdata-v1-SettingService)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -4255,6 +4271,423 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="v1_setting_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/setting_service.proto
+
+
+
+<a name="metaxisdata-v1-DataQualitySetting"></a>
+
+### DataQualitySetting
+DataQualitySetting configures the data quality subsystem for the workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enable_llm_analysis | [bool](#bool) |  | Whether the LLM-assisted entries (rule draft, failure explanation, column labels) are enabled. Off by default: the rule engine is fully offline. |
+| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
+| store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
+| failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
+| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |
+| daily_execution_limit | [int32](#int32) |  | The workspace&#39;s daily execution ceiling; 0 means the server default (10000). |
+| daily_column_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily column-analysis ceiling; 0 means the server default. |
+| max_columns_per_analysis | [int32](#int32) |  | The maximum number of columns one analysis may cover; 0 means the server default (50). |
+| send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
+| daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
+| llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
+| weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
+| time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
+| agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default: turning it off stops new wakes; recorded proposals stay for review. |
+| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no session. |
+| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions; 0 means the server default (100000000). A session has no individual token cap. |
+| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour; 0 means the server default (20). |
+| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once; 0 means the server default (2). |
+| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages; 0 means the server default (262144). |
+| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds; 0 means the server default (86400). |
+| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
+| agent_runner_auto_enroll | [bool](#bool) |  | Whether the runner enrolls every monitorable object in its database scope into its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic triage and monitoring. Every write stays a proposal a person approves. |
+| agent_runner_max_new_sessions_per_hour | [int32](#int32) |  | How many automatic sessions the admission path may create per hour; 0 means the server default (10), accepted range 1-1000. |
+| agent_runner_max_active_sessions | [int32](#int32) |  | How many enrollments may be active (triaging or monitoring) at once; 0 means the server default (100), accepted range 1-10000. |
+| agent_runner_dormant_review_days | [int32](#int32) |  | How many days a triaged target sleeps before it is reviewed again; 0 means the server default (30), accepted range 1-365. |
+| agent_runner_event_budget_percent | [int32](#int32) |  | The percentage of the hourly wake budget reserved for failed checks and people; automated admission only spends the remainder. 0 means the server default (50), accepted range 10-90. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-EmailSetting"></a>
+
+### EmailSetting
+EmailSetting configures the SMTP server workspace notifications are emailed
+through. There is one per workspace: a channel of kind EMAIL delivers through
+it, and an email channel fails while it is unset.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| from | [string](#string) |  | The From address. It must be an address the SMTP server is allowed to send as. Empty means email delivery is not configured. |
+| from_name | [string](#string) |  | The display name shown beside the From address. |
+| smtp | [SMTPConfig](#metaxisdata-v1-SMTPConfig) |  | The SMTP server. |
+| password_set | [bool](#bool) |  | Whether a password is stored. The password itself is never returned. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetDebugConfigRequest"></a>
+
+### GetDebugConfigRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetDebugConfigResponse"></a>
+
+### GetDebugConfigResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether runtime debug mode is currently enabled. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetEmailSettingRequest"></a>
+
+### GetEmailSettingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQuietHoursSettingRequest"></a>
+
+### GetQuietHoursSettingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
+
+### GetWorkspaceProfileSettingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-MaintenanceWindow"></a>
+
+### MaintenanceWindow
+MaintenanceWindow is one absolute quiet window, for planned maintenance.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityDigestSetting"></a>
+
+### QualityDigestSetting
+QualityDigestSetting is the schedule of the weekly data quality digest.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether the weekly digest is sent. |
+| day_of_week | [DayOfWeek](#metaxisdata-v1-DayOfWeek) |  | The weekday the digest is sent on. UNSPECIFIED while enabled is rejected. |
+| time | [string](#string) |  | The time of day the digest is sent at, &#34;HH:MM&#34;, in timezone. |
+| timezone | [string](#string) |  | The IANA time zone the schedule is evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QuietHoursSetting"></a>
+
+### QuietHoursSetting
+QuietHoursSetting is the workspace schedule during which outbound
+notifications are held rather than delivered. Held deliveries keep their
+place and are sent once the window ends; a channel that sets bypass_quiet_hours
+keeps delivering during the window.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether quiet hours are on. A disabled schedule is kept but selects nothing. |
+| timezone | [string](#string) |  | The IANA time zone the windows are evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
+| windows | [QuietWindow](#metaxisdata-v1-QuietWindow) | repeated | Recurring weekly windows. At least one window or maintenance window is required while enabled. |
+| maintenance_windows | [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow) | repeated | One-off absolute windows for planned maintenance. A window whose end has passed is inert and can be removed. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QuietWindow"></a>
+
+### QuietWindow
+QuietWindow is one recurring weekly quiet window.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| days | [DayOfWeek](#metaxisdata-v1-DayOfWeek) | repeated | The days the window starts on. A window whose end is at or before its start crosses midnight into the following day. |
+| start | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
+| end | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SMTPConfig"></a>
+
+### SMTPConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| host | [string](#string) |  | The SMTP server host name. |
+| port | [int32](#int32) |  | The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25 on a trusted network. |
+| encryption | [SMTPEncryption](#metaxisdata-v1-SMTPEncryption) |  |  |
+| authentication | [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication) |  |  |
+| username | [string](#string) |  | The user name the login authenticates as. Required unless authentication is NONE. |
+| password | [string](#string) |  | The login password. It is write-only: an empty value on update keeps the stored password, and no read returns it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SendTestEmailRequest"></a>
+
+### SendTestEmailRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-SendTestEmailResponse"></a>
+
+### SendTestEmailResponse
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateDebugConfigRequest"></a>
+
+### UpdateDebugConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether to enable runtime debug mode. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateDebugConfigResponse"></a>
+
+### UpdateDebugConfigResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | The resulting runtime debug mode. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateEmailSettingRequest"></a>
+
+### UpdateEmailSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [EmailSetting](#metaxisdata-v1-EmailSetting) |  | The setting to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: from, from_name, smtp, or one of smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username, smtp.password. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateQuietHoursSettingRequest"></a>
+
+### UpdateQuietHoursSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) |  | The schedule to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: enabled, timezone, windows or maintenance_windows. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateWorkspaceProfileSettingRequest"></a>
+
+### UpdateWorkspaceProfileSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) |  | The setting to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-WorkspaceProfileSetting"></a>
+
+### WorkspaceProfileSetting
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| external_url | [string](#string) |  | The external URL used for the SSO authentication callback. |
+| disallow_signup | [bool](#bool) |  | Disallow self-service signup. When enabled, only a workspace admin can create users. |
+| disallow_password_signin | [bool](#bool) |  | Disallow password signin. Workspace admins are exempt. |
+| openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
+| domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
+| enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
+| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
+| mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
+| sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
+
+Empty (the default) turns the feature off for every provider. The address claim is mutable, so listing a provider asserts that it verifies addresses and that its configuration, which only an administrator can write, is trusted: whoever can set an address there can sign in as the account it names. |
+| data_quality | [DataQualitySetting](#metaxisdata-v1-DataQualitySetting) |  | Data quality settings. They are read by the quality subsystem and written on the data quality settings page; every zero value means the server&#39;s default, which is why the reader resolves defaults instead of trusting the wire value. |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-DayOfWeek"></a>
+
+### DayOfWeek
+DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DAY_OF_WEEK_UNSPECIFIED | 0 |  |
+| DAY_OF_WEEK_MONDAY | 1 |  |
+| DAY_OF_WEEK_TUESDAY | 2 |  |
+| DAY_OF_WEEK_WEDNESDAY | 3 |  |
+| DAY_OF_WEEK_THURSDAY | 4 |  |
+| DAY_OF_WEEK_FRIDAY | 5 |  |
+| DAY_OF_WEEK_SATURDAY | 6 |  |
+| DAY_OF_WEEK_SUNDAY | 7 |  |
+
+
+
+<a name="metaxisdata-v1-SMTPAuthentication"></a>
+
+### SMTPAuthentication
+SMTPAuthentication is the login mechanism of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SMTP_AUTHENTICATION_UNSPECIFIED | 0 |  |
+| SMTP_AUTHENTICATION_NONE | 1 | No login; only for a server that accepts mail from trusted hosts. |
+| SMTP_AUTHENTICATION_PLAIN | 2 |  |
+| SMTP_AUTHENTICATION_LOGIN | 3 |  |
+| SMTP_AUTHENTICATION_CRAM_MD5 | 4 |  |
+
+
+
+<a name="metaxisdata-v1-SMTPEncryption"></a>
+
+### SMTPEncryption
+SMTPEncryption is the transport security of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SMTP_ENCRYPTION_UNSPECIFIED | 0 |  |
+| SMTP_ENCRYPTION_NONE | 1 | No transport encryption. Only for a server on a trusted network. |
+| SMTP_ENCRYPTION_STARTTLS | 2 | Upgrade the connection with STARTTLS after the greeting. |
+| SMTP_ENCRYPTION_SSL_TLS | 3 | Implicit TLS from the first byte, usually port 465. |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-SettingService"></a>
+
+### SettingService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetWorkspaceProfileSetting | [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Get the workspace profile setting. Permissions required: None
+
+This method is readable without credentials because the login page needs to know whether self-service signup is enabled. |
+| UpdateWorkspaceProfileSetting | [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Update the workspace profile setting. |
+| GetDebugConfig | [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest) | [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse) | Get the workspace runtime debug config. |
+| UpdateDebugConfig | [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest) | [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse) | Update the workspace runtime debug config.
+
+Enabling it switches the process-wide log level to debug, gates the verbose request logging emitted by the debug interceptor, exposes /debug/pprof, and allows panic handlers to return stack traces to the caller. Disabling it restores info-level logging and generic panic errors. |
+| GetEmailSetting | [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Get the workspace email setting. It is returned empty when email delivery is not configured, so the settings page can render one form either way. |
+| UpdateEmailSetting | [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Update the workspace email setting. The password is write-only: an empty one on update keeps the stored password, and no read returns it. |
+| SendTestEmail | [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest) | [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse) | Send a test email to the caller&#39;s own address through the configured SMTP server. It is not audited: it changes nothing, and it is a diagnostic probe the settings page can repeat while an administrator types the server in. |
+| GetQuietHoursSetting | [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Get the workspace quiet-hours schedule for outbound notifications. |
+| UpdateQuietHoursSetting | [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Update the workspace quiet-hours schedule. Any update releases the deliveries the previous schedule was holding, so shortening or disabling it takes effect immediately; held rows are then re-evaluated by the next dispatcher tick. |
+
+ 
+
+
+
 <a name="v1_data_quality_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -4515,21 +4948,6 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
-<a name="metaxisdata-v1-CancelQualitySuggestionJobRequest"></a>
-
-### CancelQualitySuggestionJobRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
-
-
-
-
-
-
 <a name="metaxisdata-v1-CelExpressionConfig"></a>
 
 ### CelExpressionConfig
@@ -4671,6 +5089,13 @@ they are returned, so a wide text column cannot bloat the response.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | display_name | [string](#string) |  |  |
 | description | [string](#string) |  |  |
+| owner | [string](#string) |  | Format: users/{user}. Required; the agent&#39;s owner and only conversationalist. |
+| databases | [string](#string) | repeated | Database resource names in scope; at least one is required. |
+| capabilities | [string](#string) | repeated | Capability ids; at least one is required. |
+| report_schedule | [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule) |  |  |
+| adoption | [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting) |  |  |
+| budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
+| start | [bool](#bool) |  | Whether to start the agent immediately; default false keeps it DRAFT. |
 
 
 
@@ -4827,25 +5252,6 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | quality_rule_template | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) |  | The template to create. Its name is assigned by the server. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-CreateQualitySuggestionJobRequest"></a>
-
-### CreateQualitySuggestionJobRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| intent | [string](#string) |  | The natural-language intent, e.g. &#34;email must not be empty&#34;. At most 2000 characters. |
-| language | [string](#string) |  | The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
-| targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The tables or views to draft for, at most 20. Set meta_guid, meta_type and optionally columns; the path and columns are snapshotted for progress. The job visits them in order. |
-| force_regenerate | [bool](#bool) |  | Re-propose drafts that were already accepted or rejected, and re-analyze columns that already have a fact. The queue is still deduplicated by identity: regeneration refreshes a pending proposal instead of appending a duplicate. |
 
 
 
@@ -5024,6 +5430,21 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DismissQualityAgentAttentionRequest"></a>
+
+### DismissQualityAgentAttentionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
 
 
 
@@ -5271,6 +5692,36 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityAgentReportRequest"></a>
+
+### GetQualityAgentReportRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityAgentRequest"></a>
+
+### GetQualityAgentRequest
+GetQualityAgentRequest reads one agent with its configuration.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
 
 
 
@@ -5559,56 +6010,6 @@ timestamp follows on_empty.
 
 
 
-<a name="metaxisdata-v1-GetQualitySuggestionJobRequest"></a>
-
-### GetQualitySuggestionJobRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest"></a>
-
-### GetQualitySuggestionJobTargetDebugRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
-| target_index | [int32](#int32) |  | The zero-based index of the target in the job&#39;s target list. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse"></a>
-
-### GetQualitySuggestionJobTargetDebugResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| available | [bool](#bool) |  | False when runtime debug was off, the write failed, or the seven-day debug log retention already pruned the row. |
-| correlation_id | [string](#string) |  |  |
-| request_body | [string](#string) |  |  |
-| response_body | [string](#string) |  |  |
-| error_code | [string](#string) |  | The classifier code of the failure, so the client can show its hint even when the raw bodies are gone. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-GetQualitySuggestionRequest"></a>
 
 ### GetQualitySuggestionRequest
@@ -5813,6 +6214,74 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityAgentAttentionsRequest"></a>
+
+### ListQualityAgentAttentionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| status | [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus) |  | UNSPECIFIED lists every status. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentAttentionsResponse"></a>
+
+### ListQualityAgentAttentionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_attentions | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentConversationMessagesRequest"></a>
+
+### ListQualityAgentConversationMessagesRequest
+ListQualityAgentConversationMessagesRequest reads the agent&#39;s conversation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| after_seq | [int64](#int64) |  | Return messages with seq greater than this; the polling watermark. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentConversationMessagesResponse"></a>
+
+### ListQualityAgentConversationMessagesResponse
+ListQualityAgentConversationMessagesResponse is one chronological page.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_conversation_messages | [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityAgentEnrollmentsRequest"></a>
 
 ### ListQualityAgentEnrollmentsRequest
@@ -5828,6 +6297,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  | UNSPECIFIED keeps every state. |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both modes. |
 | search | [string](#string) |  | A case-insensitive substring over the target GUID. The display path is encoded in the GUID&#39;s semicolon-separated segments, so a path fragment matches too. |
+| agent | [string](#string) |  | Administrator diagnostics filter: keep only this agent&#39;s queue rows. |
 
 
 
@@ -5843,6 +6313,39 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent_enrollments | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentReportsRequest"></a>
+
+### ListQualityAgentReportsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentReportsResponse"></a>
+
+### ListQualityAgentReportsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_reports | [QualityAgentReport](#metaxisdata-v1-QualityAgentReport) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5900,6 +6403,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | page_token | [string](#string) |  |  |
 | source | [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource) |  | UNSPECIFIED keeps both manual and automatic sessions. |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both monitor and triage sessions. |
+| agent | [string](#string) |  | Administrator diagnostics filter: keep only this agent&#39;s sessions. |
 
 
 
@@ -6410,40 +6914,6 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
-<a name="metaxisdata-v1-ListQualitySuggestionJobsRequest"></a>
-
-### ListQualitySuggestionJobsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
-| page_size | [int32](#int32) |  | The maximum number of jobs to return. If unspecified, at most 20 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
-| page_token | [string](#string) |  | A page token, received from a previous ListQualitySuggestionJobs call. |
-| status | [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualitySuggestionJobsResponse"></a>
-
-### ListQualitySuggestionJobsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_suggestion_jobs | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ListQualitySuggestionsRequest"></a>
 
 ### ListQualitySuggestionsRequest
@@ -6544,6 +7014,21 @@ optional and must not exceed the fail threshold.
 | max_null_pct | [double](#double) | optional |  |
 | warn_null_pct | [double](#double) | optional |  |
 | null_values | [string](#string) | repeated | Values that also count as missing, besides SQL NULL. Encoded as strings and converted with the column&#39;s type; at most 20. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-PauseQualityAgentRequest"></a>
+
+### PauseQualityAgentRequest
+PauseQualityAgentRequest pauses an active agent without disabling its identity.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
 
 
 
@@ -6742,6 +7227,81 @@ agent ends every token it holds.
 | enabled | [bool](#bool) |  |  |
 | created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| state | [QualityAgentState](#metaxisdata-v1-QualityAgentState) |  | Runtime state; DISABLED is permanent and enabled is false. |
+| owner | [string](#string) |  | Format: users/{user}. The owner is the only caller who may talk to the agent. |
+| databases | [string](#string) | repeated | Database resource names in scope: instances/{instance}/databases/{database}. |
+| capabilities | [string](#string) | repeated | Capability ids: &#34;suggest&#34;, &#34;adopt&#34;, &#34;patrol&#34;; extensible server-side. |
+| provider_profile | [string](#string) |  | LLM provider profile; empty means the workspace default. |
+| report_schedule | [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule) |  |  |
+| adoption | [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting) |  |  |
+| budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
+| conversation | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent&#39;s conversation session, created lazily. |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentAdoptionSetting"></a>
+
+### QualityAgentAdoptionSetting
+QualityAgentAdoptionSetting is the guardrail configuration of the adopt capability.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| mode | [QualityAgentAdoptionMode](#metaxisdata-v1-QualityAgentAdoptionMode) |  |  |
+| rule_types | [QualityRuleType](#metaxisdata-v1-QualityRuleType) | repeated | Rule types eligible for automatic adoption; empty means the server default low-risk set. |
+| confidence_threshold | [double](#double) |  | Minimum confidence (0..1) a draft needs; 0 means the server default (0.7). |
+| max_per_day | [int32](#int32) |  | Daily adoption ceiling; 0 means the server default (10). |
+| allow_critical | [bool](#bool) |  | Whether critical assets may be auto-adopted; default false. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentAttention"></a>
+
+### QualityAgentAttention
+QualityAgentAttention is one owner escalation inside an agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| kind | [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind) |  |  |
+| status | [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus) |  |  |
+| session | [string](#string) |  | The target session to resume when the owner answers; empty for an agent event. |
+| reference | [string](#string) |  | The resource the owner should open, e.g. a report or a proposal. |
+| title | [string](#string) |  |  |
+| question | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| resolve_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| resolved_by | [string](#string) |  | Format: users/{user}; empty while open. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentBudget"></a>
+
+### QualityAgentBudget
+QualityAgentBudget is one agent&#39;s runtime budget. Zero fields mean the server
+default; the workspace hard caps still apply.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tokens_per_hour | [int64](#int64) |  |  |
+| wakes_per_hour | [int32](#int32) |  |  |
+| max_concurrent_sessions | [int32](#int32) |  |  |
+| max_new_sessions_per_hour | [int32](#int32) |  |  |
+| max_active_sessions | [int32](#int32) |  |  |
+| conversation_messages_per_hour | [int32](#int32) |  |  |
 
 
 
@@ -6860,6 +7420,63 @@ how the proposals it made were decided. All of it is derived from existing rows.
 | investigations_contributing_factor | [int32](#int32) |  |  |
 | investigations_unrelated | [int32](#int32) |  |  |
 | top_targets | [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentReport"></a>
+
+### QualityAgentReport
+QualityAgentReport is one deterministic patrol report over an agent&#39;s scope.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report} |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| trigger | [QualityAgentReportTrigger](#metaxisdata-v1-QualityAgentReportTrigger) |  |  |
+| period_kind | [QualityAgentReportPeriod](#metaxisdata-v1-QualityAgentReportPeriod) |  |  |
+| period_key | [string](#string) |  | Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly. |
+| period_start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| period_end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| state | [QualityAgentReportState](#metaxisdata-v1-QualityAgentReportState) |  |  |
+| databases | [string](#string) | repeated | Database resource names the report covers. |
+| target_count | [int32](#int32) |  |  |
+| covered_target_count | [int32](#int32) |  |  |
+| rule_count | [int32](#int32) |  |  |
+| execution_count | [int32](#int32) |  |  |
+| passed_count | [int32](#int32) |  |  |
+| warned_count | [int32](#int32) |  |  |
+| failed_count | [int32](#int32) |  |  |
+| errored_count | [int32](#int32) |  |  |
+| new_issue_count | [int32](#int32) |  |  |
+| open_issue_count | [int32](#int32) |  |  |
+| pending_proposal_count | [int32](#int32) |  |  |
+| tokens_used | [int64](#int64) |  |  |
+| body_markdown | [string](#string) |  |  |
+| failure_reason | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| generate_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentReportSchedule"></a>
+
+### QualityAgentReportSchedule
+QualityAgentReportSchedule is the agent&#39;s patrol report cadence.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| frequency | [QualityAgentReportFrequency](#metaxisdata-v1-QualityAgentReportFrequency) |  |  |
+| time | [string](#string) |  | &#34;HH:MM&#34; in timezone. |
+| timezone | [string](#string) |  |  |
+| day_of_week | [DayOfWeek](#metaxisdata-v1-DayOfWeek) |  |  |
 
 
 
@@ -7604,36 +8221,6 @@ another, and a resolved issue is never reopened.
 
 
 
-<a name="metaxisdata-v1-QualityLLMDiagnostic"></a>
-
-### QualityLLMDiagnostic
-QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
-can act on and an operator can correlate with logs. It never includes the
-prompt or the model response; those are available on demand when runtime debug
-mode captured them (see GetQualitySuggestionJobTargetDebug).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error_code | [string](#string) |  | A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length), STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE, TIMEOUT, PARSE, UNKNOWN. |
-| provider | [string](#string) |  |  |
-| model | [string](#string) |  |  |
-| prompt_version | [string](#string) |  |  |
-| max_output_tokens | [int32](#int32) |  | The output-token budget the call asked for; TRUNCATED points at this. |
-| finish_reason | [string](#string) |  |  |
-| prompt_tokens | [int64](#int64) |  |  |
-| completion_tokens | [int64](#int64) |  |  |
-| total_tokens | [int64](#int64) |  |  |
-| prompt_chars | [int64](#int64) |  | How large the prompt was, so a context/usage problem is visible. |
-| correlation_id | [string](#string) |  | Copy this into server logs or the debug log lookup. |
-| provider_status | [int32](#int32) |  |  |
-| debug_payload_available | [bool](#bool) |  | Whether GetQualitySuggestionJobTargetDebug can return the raw bodies. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualityLLMUsage"></a>
 
 ### QualityLLMUsage
@@ -8131,62 +8718,6 @@ normal rule or label path.
 
 
 
-<a name="metaxisdata-v1-QualitySuggestionJob"></a>
-
-### QualitySuggestionJob
-QualitySuggestionJob is one background AI drafting run over a set of targets.
-It is the durable unit of the asynchronous drafting flow: it outlives the
-browser tab that submitted it and is safe to poll.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job} |
-| status | [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus) |  |  |
-| intent | [string](#string) |  | The natural-language intent the job drafts for, shared by every target. |
-| language | [string](#string) |  | The language the intent and drafts are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
-| targets | [QualitySuggestionJobTarget](#metaxisdata-v1-QualitySuggestionJobTarget) | repeated |  |
-| target_count | [int32](#int32) |  | Total targets, targets no longer PENDING/RUNNING, and queued suggestions. |
-| completed_target_count | [int32](#int32) |  |  |
-| suggestion_count | [int32](#int32) |  |  |
-| provider | [string](#string) |  | The provider facts of the analysis; set when the runner starts the job. |
-| model | [string](#string) |  |  |
-| prompt_version | [string](#string) |  |  |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| error | [string](#string) |  | Empty unless the whole job failed; per-target failures live on the targets. |
-| created_by | [string](#string) |  | Format: users/{user}. |
-| deduplicated | [bool](#bool) |  | True when this response returns a job that was already PENDING or RUNNING for the same intent, targets and columns. Re-submitting an identical request is idempotent: no second job or analysis is started. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualitySuggestionJobTarget"></a>
-
-### QualitySuggestionJobTarget
-QualitySuggestionJobTarget is one target of a drafting job and what happened
-to it. `suggestions` names the queued suggestions this target produced.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
-| state | [QualitySuggestionJobTargetState](#metaxisdata-v1-QualitySuggestionJobTargetState) |  |  |
-| suggestions | [string](#string) | repeated | The suggestions queued from this target so far. Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
-| error | [string](#string) |  | Empty unless this target failed; then why. |
-| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| diagnostic | [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic) |  | Set when the target failed in the model call: the classifier, provider facts, stop reason and usage behind the error, plus the correlation id that ties it to the server log and the debug log. |
-| summary | [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary) |  | What this target&#39;s pass did to the review queue. Set on success. |
-
-
-
-
-
-
 <a name="metaxisdata-v1-QualitySuggestionPayload"></a>
 
 ### QualitySuggestionPayload
@@ -8539,6 +9070,23 @@ engine&#39;s own regex operator.
 
 
 
+<a name="metaxisdata-v1-ReplyQualityAgentAttentionRequest"></a>
+
+### ReplyQualityAgentAttentionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
+| message_body | [string](#string) |  | The owner&#39;s answer. Named message_body so the audit ledger redacts it. |
+| request_id | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ResumeQualityAgentSessionRequest"></a>
 
 ### ResumeQualityAgentSessionRequest
@@ -8813,6 +9361,23 @@ SemanticLabelSuggestion is a model-proposed semantic label for one column.
 
 
 
+<a name="metaxisdata-v1-SendQualityAgentMessageRequest"></a>
+
+### SendQualityAgentMessageRequest
+SendQualityAgentMessageRequest appends the owner&#39;s message and wakes the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| message_body | [string](#string) |  | The owner&#39;s message. The field name is deliberately not `content`: the audit redaction list matches field names and this body must not enter the ledger. |
+| request_id | [string](#string) |  | A client-generated idempotency id; repeating it returns the existing message. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StageQualityPlanRequest"></a>
 
 ### StageQualityPlanRequest
@@ -8851,6 +9416,21 @@ in process, so its verdict is a sample verdict like cel_expression&#39;s.
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
 | code_table | [string](#string) |  | Optional workspace code table the value must also exist in, as a &#34;workspaces/{workspace}/qualityCodeTables/{quality_code_table}&#34; resource name. Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it narrows the accepted values (for example a customer&#39;s current division list). |
+
+
+
+
+
+
+<a name="metaxisdata-v1-StartQualityAgentRequest"></a>
+
+### StartQualityAgentRequest
+StartQualityAgentRequest activates a draft or paused agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
 
 
 
@@ -9040,6 +9620,22 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+<a name="metaxisdata-v1-UpdateQualityAgentRequest"></a>
+
+### UpdateQualityAgentRequest
+UpdateQualityAgentRequest replaces the masked configuration fields.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, databases, capabilities, provider_profile, report_schedule, adoption, budget. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateQualityCodeTableRequest"></a>
 
 ### UpdateQualityCodeTableRequest
@@ -9220,6 +9816,50 @@ APPROVE applies the request&#39;s items; REJECT records the refusal.
 
 
 
+<a name="metaxisdata-v1-QualityAgentAdoptionMode"></a>
+
+### QualityAgentAdoptionMode
+QualityAgentAdoptionMode says what happens to a low-risk suggestion an agent
+auto-adopts. PAUSED creates the check disabled for the owner to enable; ACTIVE
+creates it enabled. Both require the adopt capability.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_ADOPTION_MODE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_ADOPTION_MODE_OFF | 1 |  |
+| QUALITY_AGENT_ADOPTION_MODE_PAUSED | 2 |  |
+| QUALITY_AGENT_ADOPTION_MODE_ACTIVE | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentAttentionKind"></a>
+
+### QualityAgentAttentionKind
+QualityAgentAttentionKind is why the owner is needed.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_ATTENTION_KIND_BLOCKED | 1 |  |
+| QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING | 2 |  |
+| QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentAttentionStatus"></a>
+
+### QualityAgentAttentionStatus
+QualityAgentAttentionStatus is the to-do&#39;s lifecycle.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_ATTENTION_STATUS_OPEN | 1 |  |
+| QUALITY_AGENT_ATTENTION_STATUS_RESOLVED | 2 |  |
+| QUALITY_AGENT_ATTENTION_STATUS_DISMISSED | 3 |  |
+
+
+
 <a name="metaxisdata-v1-QualityAgentEnrollmentState"></a>
 
 ### QualityAgentEnrollmentState
@@ -9273,6 +9913,61 @@ QualityAgentMessageRole is one entry in a session&#39;s conversation.
 
 
 
+<a name="metaxisdata-v1-QualityAgentReportFrequency"></a>
+
+### QualityAgentReportFrequency
+QualityAgentReportFrequency is how often an agent&#39;s patrol report is generated.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_REPORT_FREQUENCY_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_REPORT_FREQUENCY_OFF | 1 |  |
+| QUALITY_AGENT_REPORT_FREQUENCY_DAILY | 2 |  |
+| QUALITY_AGENT_REPORT_FREQUENCY_WEEKLY | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentReportPeriod"></a>
+
+### QualityAgentReportPeriod
+QualityAgentReportPeriod is the report&#39;s period shape.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_REPORT_PERIOD_DAILY | 1 |  |
+| QUALITY_AGENT_REPORT_PERIOD_WEEKLY | 2 |  |
+| QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentReportState"></a>
+
+### QualityAgentReportState
+QualityAgentReportState is the asynchronous report generation state.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_REPORT_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_REPORT_STATE_PENDING | 1 |  |
+| QUALITY_AGENT_REPORT_STATE_READY | 2 |  |
+| QUALITY_AGENT_REPORT_STATE_FAILED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentReportTrigger"></a>
+
+### QualityAgentReportTrigger
+QualityAgentReportTrigger says what produced a report.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED | 1 |  |
+| QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND | 2 |  |
+
+
+
 <a name="metaxisdata-v1-QualityAgentSessionMode"></a>
 
 ### QualityAgentSessionMode
@@ -9314,6 +10009,21 @@ QualityAgentSessionState is the durable lifecycle of one target&#39;s agent sess
 | QUALITY_AGENT_SESSION_STATE_PAUSED | 2 |  |
 | QUALITY_AGENT_SESSION_STATE_BLOCKED | 3 |  |
 | QUALITY_AGENT_SESSION_STATE_ARCHIVED | 4 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentState"></a>
+
+### QualityAgentState
+QualityAgentState is the runtime lifecycle of one quality agent.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_STATE_DRAFT | 1 |  |
+| QUALITY_AGENT_STATE_ACTIVE | 2 |  |
+| QUALITY_AGENT_STATE_PAUSED | 3 |  |
+| QUALITY_AGENT_STATE_DISABLED | 4 |  |
 
 
 
@@ -9953,40 +10663,6 @@ means the check could not be evaluated at all, FAIL means the data failed it.
 
 
 
-<a name="metaxisdata-v1-QualitySuggestionJobStatus"></a>
-
-### QualitySuggestionJobStatus
-QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_SUGGESTION_JOB_STATUS_PENDING | 1 |  |
-| QUALITY_SUGGESTION_JOB_STATUS_RUNNING | 2 |  |
-| QUALITY_SUGGESTION_JOB_STATUS_COMPLETED | 3 |  |
-| QUALITY_SUGGESTION_JOB_STATUS_FAILED | 4 |  |
-| QUALITY_SUGGESTION_JOB_STATUS_CANCELED | 5 |  |
-
-
-
-<a name="metaxisdata-v1-QualitySuggestionJobTargetState"></a>
-
-### QualitySuggestionJobTargetState
-QualitySuggestionJobTargetState is where one target of a drafting job stands.
-SKIPPED means the job stopped before asking the model for that target; FAILED
-means the model was asked and the target could not produce suggestions.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED | 0 |  |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING | 1 |  |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING | 2 |  |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE | 3 |  |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED | 4 |  |
-| QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED | 5 |  |
-
-
-
 <a name="metaxisdata-v1-QualitySuggestionKind"></a>
 
 ### QualitySuggestionKind
@@ -10179,11 +10855,6 @@ No (google.api.http) annotation, for the same reason as ExportQualityExecutions.
 | GetQualitySuggestion | [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Read one queued suggestion. The queue is paged with ListQualitySuggestions; this exists so a deep link can open one draft without reading the pages. |
 | UpdateQualitySuggestion | [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Accept or reject one queued suggestion. A decision is final: the store refuses a second one. |
 | BatchUpdateQualitySuggestions | [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest) | [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse) | Accept or reject many queued suggestions in one call. Each decision is independent: a failure is reported in its own result and does not abort the rest. |
-| CreateQualitySuggestionJob | [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Start a background AI drafting job over one or more tables. The call returns as soon as the job is queued: the runner asks the model for each target in turn, and clients poll GetQualitySuggestionJob (or list the jobs) for progress. Queued suggestions appear in the review queue like any other. |
-| GetQualitySuggestionJob | [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Read one drafting job, including per-target progress and the suggestions it queued so far. |
-| ListQualitySuggestionJobs | [ListQualitySuggestionJobsRequest](#metaxisdata-v1-ListQualitySuggestionJobsRequest) | [ListQualitySuggestionJobsResponse](#metaxisdata-v1-ListQualitySuggestionJobsResponse) | List drafting jobs, newest first. |
-| CancelQualitySuggestionJob | [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest) | [QualitySuggestionJob](#metaxisdata-v1-QualitySuggestionJob) | Ask a drafting job to stop. A pending job is canceled immediately; a running job finishes its current target, marks the rest skipped and ends CANCELED. Suggestions already queued are kept. |
-| GetQualitySuggestionJobTargetDebug | [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest) | [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse) | Read the raw request and response bodies of one failed target when runtime debug mode captured them. The target&#39;s diagnostic carries the correlation id and says whether a body is available; llm_debug_log keeps it for seven days. |
 | ListColumnProfiles | [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest) | [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse) | List the cached deterministic profiles of columns. Profiles are read-only measurements; there is no get or update. |
 | ListColumnLabels | [ListColumnLabelsRequest](#metaxisdata-v1-ListColumnLabelsRequest) | [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse) | List the semantic labels asserted on columns. |
 | UpdateColumnLabel | [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest) | [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse) | Accept a proposed semantic label or clear the label of one column. |
@@ -10230,27 +10901,32 @@ The report includes real sample values from failed checks (capped), so it is a w
 | GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |
 | ListQualityChangeRequests | [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest) | [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse) | List change requests, newest first. |
 | CreateQualityAgent | [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest) | [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse) | Create an agent principal and return its bearer token once. The agent is an independent principal whose only workspace role is the quality agent role; its token is a normal access token for that principal, so disabling the agent makes every token it issued unusable. Administrator only. |
-| ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agent principals, without tokens. |
+| GetQualityAgent | [GetQualityAgentRequest](#metaxisdata-v1-GetQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Read one agent with its runtime configuration. |
+| SendQualityAgentMessage | [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest) | [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage) | Append the owner&#39;s message to the agent&#39;s conversation and wake it. Only the agent&#39;s owner may send; administrators may read but not talk. |
+| ListQualityAgentConversationMessages | [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest) | [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse) | Read the agent&#39;s front-office conversation. The owner and administrators may read; only the owner may send. |
+| ListQualityAgentReports | [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest) | [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse) | List one agent&#39;s patrol reports, newest period first. |
+| GetQualityAgentReport | [GetQualityAgentReportRequest](#metaxisdata-v1-GetQualityAgentReportRequest) | [QualityAgentReport](#metaxisdata-v1-QualityAgentReport) | Read one report with its rendered body. |
+| ListQualityAgentAttentions | [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest) | [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse) | List one agent&#39;s escalations. The owner and administrators may read. |
+| ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
+| DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
+| UpdateQualityAgent | [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Replace the masked configuration of one agent. Administrator only. |
+| StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. Administrator only. |
+| PauseQualityAgent | [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Pause an ACTIVE agent. Administrator only. |
+| ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agents. Administrators see every agent; other members see the agents they own. |
 | DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent principal. Its tokens stop authenticating immediately; the agent row stays for the audit trail. |
 | RotateQualityAgentToken | [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest) | [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse) | Rotate an agent&#39;s bearer token: mint a new one and invalidate every token minted before this call. The token is returned once. |
 | DecideQualityChangeRequest | [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Approve or reject a change request. Approving applies each item through its existing path and returns a result per item; rejecting records the structured reasons. A stale base version expires the request instead of rebasing it. |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
-| CreateQualityAgentSession | [CreateQualityAgentSessionRequest](#metaxisdata-v1-CreateQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Create one target&#39;s long-lived agent session. The target&#39;s database must be in the runner&#39;s allowlist, the runner must be enabled and an enabled agent must exist. |
 | ListQualityAgentSessions | [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest) | [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse) | List the workspace&#39;s sessions by newest activity first. |
 | GetQualityAgentSession | [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Read one session. |
-| PauseQualityAgentSession | [PauseQualityAgentSessionRequest](#metaxisdata-v1-PauseQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Pause a session: no new wake starts, the conversation stays. |
-| ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a paused or blocked session; it wakes immediately. |
-| ArchiveQualityAgentSession | [ArchiveQualityAgentSessionRequest](#metaxisdata-v1-ArchiveQualityAgentSessionRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Archive a session (a tombstone). The conversation stays readable. |
-| WakeQualityAgentSession | [WakeQualityAgentSessionRequest](#metaxisdata-v1-WakeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Append a person&#39;s message to the session and wake it immediately. |
+| ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a stuck session. Administrator-only recovery, used from diagnostics after a restart-limit/internal-error block; it is not a product action. |
 | ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. |
 | GetQualityAgentRunnerStatus | [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest) | [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus) | Read the runner&#39;s live state: what is running, what is due and how much of the budgets is spent. runner_last_tick_time is process-local and resets on restart. |
 | GetQualityAgentMetrics | [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest) | [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics) | Read the runner&#39;s evaluation: session states, token spend, the acceptance of the change requests it proposed, and investigation verdicts. Read-only. |
 | ListQualityAgentEnrollments | [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest) | [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse) | List the runner&#39;s enrollment queue: one row per monitorable object in the runner&#39;s database scope, with its queue state, priority and session link. |
 | GetQualityAgentEnrollmentSummary | [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest) | [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary) | Read enrollment counts by state and by database. Read-only. |
-| UpdateQualityAgentEnrollment | [UpdateQualityAgentEnrollmentRequest](#metaxisdata-v1-UpdateQualityAgentEnrollmentRequest) | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | Update one enrollment&#39;s queue state or mode. Only EXCLUDED/PENDING are accepted as target states, and a stale expected_revision is rejected. |
-| RetryQualityAgentEnrollment | [RetryQualityAgentEnrollmentRequest](#metaxisdata-v1-RetryQualityAgentEnrollmentRequest) | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | Requeue one enrollment now: it becomes pending, its next review is due and its priority is raised. |
 
  
 
@@ -12172,6 +12848,7 @@ Notification is one in-app message for one recipient.
 | schema_sync | [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-v1-DataQualityDetail) |  |  |
+| quality_agent_attention | [QualityAgentAttentionDetail](#metaxisdata-v1-QualityAgentAttentionDetail) |  |  |
 
 
 
@@ -12347,6 +13024,26 @@ fell through to an external dataset.
 | received_count | [int32](#int32) |  | How many events the request carried and how many of them failed. |
 | failed_count | [int32](#int32) |  |  |
 | error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentAttentionDetail"></a>
+
+### QualityAgentAttentionDetail
+QualityAgentAttentionDetail reports one agent escalation. The client renders the
+message from the structured detail and its own i18n catalog.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| attention | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
+| kind | [int32](#int32) |  | 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind). |
+| title | [string](#string) |  |  |
+| question | [string](#string) |  |  |
 
 
 
@@ -12604,6 +13301,7 @@ message the notification carries.
 | NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
 | NOTIFICATION_TYPE_DATA_QUALITY | 3 | A data quality rule opened, recovered, failed to execute, or failed in a storm that was merged into one summary. |
 | NOTIFICATION_TYPE_DATA_QUALITY_DIGEST | 4 | The workspace&#39;s scheduled data quality digest: one summary of the period&#39;s executions, problems and owners. It has no in-app copy; only the outbound channels subscribed to this type receive it. |
+| NOTIFICATION_TYPE_DATA_QUALITY_AGENT | 5 | A quality agent escalated a session or a proposal to its owner. |
 
 
 
@@ -13580,423 +14278,6 @@ metaxisdata.roles.* permissions.
 | CreateRole | [CreateRoleRequest](#metaxisdata-v1-CreateRoleRequest) | [Role](#metaxisdata-v1-Role) | Create a custom role. |
 | UpdateRole | [UpdateRoleRequest](#metaxisdata-v1-UpdateRoleRequest) | [Role](#metaxisdata-v1-Role) | Update a custom role. |
 | DeleteRole | [DeleteRoleRequest](#metaxisdata-v1-DeleteRoleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a custom role. |
-
- 
-
-
-
-<a name="v1_setting_service-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## v1/setting_service.proto
-
-
-
-<a name="metaxisdata-v1-DataQualitySetting"></a>
-
-### DataQualitySetting
-DataQualitySetting configures the data quality subsystem for the workspace.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enable_llm_analysis | [bool](#bool) |  | Whether the LLM-assisted entries (rule draft, failure explanation, column labels) are enabled. Off by default: the rule engine is fully offline. |
-| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
-| store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
-| failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
-| default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |
-| daily_execution_limit | [int32](#int32) |  | The workspace&#39;s daily execution ceiling; 0 means the server default (10000). |
-| daily_column_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily column-analysis ceiling; 0 means the server default. |
-| max_columns_per_analysis | [int32](#int32) |  | The maximum number of columns one analysis may cover; 0 means the server default (50). |
-| send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
-| daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
-| llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
-| weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
-| time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
-| agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
-| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default: turning it off stops new wakes; recorded proposals stay for review. |
-| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no session. |
-| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions; 0 means the server default (100000000). A session has no individual token cap. |
-| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour; 0 means the server default (20). |
-| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once; 0 means the server default (2). |
-| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages; 0 means the server default (262144). |
-| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds; 0 means the server default (86400). |
-| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
-| agent_runner_auto_enroll | [bool](#bool) |  | Whether the runner enrolls every monitorable object in its database scope into its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic triage and monitoring. Every write stays a proposal a person approves. |
-| agent_runner_max_new_sessions_per_hour | [int32](#int32) |  | How many automatic sessions the admission path may create per hour; 0 means the server default (10), accepted range 1-1000. |
-| agent_runner_max_active_sessions | [int32](#int32) |  | How many enrollments may be active (triaging or monitoring) at once; 0 means the server default (100), accepted range 1-10000. |
-| agent_runner_dormant_review_days | [int32](#int32) |  | How many days a triaged target sleeps before it is reviewed again; 0 means the server default (30), accepted range 1-365. |
-| agent_runner_event_budget_percent | [int32](#int32) |  | The percentage of the hourly wake budget reserved for failed checks and people; automated admission only spends the remainder. 0 means the server default (50), accepted range 10-90. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-EmailSetting"></a>
-
-### EmailSetting
-EmailSetting configures the SMTP server workspace notifications are emailed
-through. There is one per workspace: a channel of kind EMAIL delivers through
-it, and an email channel fails while it is unset.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| from | [string](#string) |  | The From address. It must be an address the SMTP server is allowed to send as. Empty means email delivery is not configured. |
-| from_name | [string](#string) |  | The display name shown beside the From address. |
-| smtp | [SMTPConfig](#metaxisdata-v1-SMTPConfig) |  | The SMTP server. |
-| password_set | [bool](#bool) |  | Whether a password is stored. The password itself is never returned. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetDebugConfigRequest"></a>
-
-### GetDebugConfigRequest
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetDebugConfigResponse"></a>
-
-### GetDebugConfigResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  | Whether runtime debug mode is currently enabled. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetEmailSettingRequest"></a>
-
-### GetEmailSettingRequest
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetQuietHoursSettingRequest"></a>
-
-### GetQuietHoursSettingRequest
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
-
-### GetWorkspaceProfileSettingRequest
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-MaintenanceWindow"></a>
-
-### MaintenanceWindow
-MaintenanceWindow is one absolute quiet window, for planned maintenance.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityDigestSetting"></a>
-
-### QualityDigestSetting
-QualityDigestSetting is the schedule of the weekly data quality digest.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  | Whether the weekly digest is sent. |
-| day_of_week | [DayOfWeek](#metaxisdata-v1-DayOfWeek) |  | The weekday the digest is sent on. UNSPECIFIED while enabled is rejected. |
-| time | [string](#string) |  | The time of day the digest is sent at, &#34;HH:MM&#34;, in timezone. |
-| timezone | [string](#string) |  | The IANA time zone the schedule is evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QuietHoursSetting"></a>
-
-### QuietHoursSetting
-QuietHoursSetting is the workspace schedule during which outbound
-notifications are held rather than delivered. Held deliveries keep their
-place and are sent once the window ends; a channel that sets bypass_quiet_hours
-keeps delivering during the window.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  | Whether quiet hours are on. A disabled schedule is kept but selects nothing. |
-| timezone | [string](#string) |  | The IANA time zone the windows are evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
-| windows | [QuietWindow](#metaxisdata-v1-QuietWindow) | repeated | Recurring weekly windows. At least one window or maintenance window is required while enabled. |
-| maintenance_windows | [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow) | repeated | One-off absolute windows for planned maintenance. A window whose end has passed is inert and can be removed. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QuietWindow"></a>
-
-### QuietWindow
-QuietWindow is one recurring weekly quiet window.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| days | [DayOfWeek](#metaxisdata-v1-DayOfWeek) | repeated | The days the window starts on. A window whose end is at or before its start crosses midnight into the following day. |
-| start | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
-| end | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-SMTPConfig"></a>
-
-### SMTPConfig
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| host | [string](#string) |  | The SMTP server host name. |
-| port | [int32](#int32) |  | The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25 on a trusted network. |
-| encryption | [SMTPEncryption](#metaxisdata-v1-SMTPEncryption) |  |  |
-| authentication | [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication) |  |  |
-| username | [string](#string) |  | The user name the login authenticates as. Required unless authentication is NONE. |
-| password | [string](#string) |  | The login password. It is write-only: an empty value on update keeps the stored password, and no read returns it. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-SendTestEmailRequest"></a>
-
-### SendTestEmailRequest
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-SendTestEmailResponse"></a>
-
-### SendTestEmailResponse
-
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateDebugConfigRequest"></a>
-
-### UpdateDebugConfigRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  | Whether to enable runtime debug mode. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateDebugConfigResponse"></a>
-
-### UpdateDebugConfigResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| enabled | [bool](#bool) |  | The resulting runtime debug mode. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateEmailSettingRequest"></a>
-
-### UpdateEmailSettingRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| setting | [EmailSetting](#metaxisdata-v1-EmailSetting) |  | The setting to update. |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: from, from_name, smtp, or one of smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username, smtp.password. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateQuietHoursSettingRequest"></a>
-
-### UpdateQuietHoursSettingRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| setting | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) |  | The schedule to update. |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: enabled, timezone, windows or maintenance_windows. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateWorkspaceProfileSettingRequest"></a>
-
-### UpdateWorkspaceProfileSettingRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| setting | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) |  | The setting to update. |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-WorkspaceProfileSetting"></a>
-
-### WorkspaceProfileSetting
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| external_url | [string](#string) |  | The external URL used for the SSO authentication callback. |
-| disallow_signup | [bool](#bool) |  | Disallow self-service signup. When enabled, only a workspace admin can create users. |
-| disallow_password_signin | [bool](#bool) |  | Disallow password signin. Workspace admins are exempt. |
-| openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
-| domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
-| enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
-| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
-| mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
-| sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
-
-Empty (the default) turns the feature off for every provider. The address claim is mutable, so listing a provider asserts that it verifies addresses and that its configuration, which only an administrator can write, is trusted: whoever can set an address there can sign in as the account it names. |
-| data_quality | [DataQualitySetting](#metaxisdata-v1-DataQualitySetting) |  | Data quality settings. They are read by the quality subsystem and written on the data quality settings page; every zero value means the server&#39;s default, which is why the reader resolves defaults instead of trusting the wire value. |
-
-
-
-
-
- 
-
-
-<a name="metaxisdata-v1-DayOfWeek"></a>
-
-### DayOfWeek
-DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| DAY_OF_WEEK_UNSPECIFIED | 0 |  |
-| DAY_OF_WEEK_MONDAY | 1 |  |
-| DAY_OF_WEEK_TUESDAY | 2 |  |
-| DAY_OF_WEEK_WEDNESDAY | 3 |  |
-| DAY_OF_WEEK_THURSDAY | 4 |  |
-| DAY_OF_WEEK_FRIDAY | 5 |  |
-| DAY_OF_WEEK_SATURDAY | 6 |  |
-| DAY_OF_WEEK_SUNDAY | 7 |  |
-
-
-
-<a name="metaxisdata-v1-SMTPAuthentication"></a>
-
-### SMTPAuthentication
-SMTPAuthentication is the login mechanism of the SMTP connection.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SMTP_AUTHENTICATION_UNSPECIFIED | 0 |  |
-| SMTP_AUTHENTICATION_NONE | 1 | No login; only for a server that accepts mail from trusted hosts. |
-| SMTP_AUTHENTICATION_PLAIN | 2 |  |
-| SMTP_AUTHENTICATION_LOGIN | 3 |  |
-| SMTP_AUTHENTICATION_CRAM_MD5 | 4 |  |
-
-
-
-<a name="metaxisdata-v1-SMTPEncryption"></a>
-
-### SMTPEncryption
-SMTPEncryption is the transport security of the SMTP connection.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SMTP_ENCRYPTION_UNSPECIFIED | 0 |  |
-| SMTP_ENCRYPTION_NONE | 1 | No transport encryption. Only for a server on a trusted network. |
-| SMTP_ENCRYPTION_STARTTLS | 2 | Upgrade the connection with STARTTLS after the greeting. |
-| SMTP_ENCRYPTION_SSL_TLS | 3 | Implicit TLS from the first byte, usually port 465. |
-
-
- 
-
- 
-
-
-<a name="metaxisdata-v1-SettingService"></a>
-
-### SettingService
-
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| GetWorkspaceProfileSetting | [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Get the workspace profile setting. Permissions required: None
-
-This method is readable without credentials because the login page needs to know whether self-service signup is enabled. |
-| UpdateWorkspaceProfileSetting | [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest) | [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting) | Update the workspace profile setting. |
-| GetDebugConfig | [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest) | [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse) | Get the workspace runtime debug config. |
-| UpdateDebugConfig | [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest) | [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse) | Update the workspace runtime debug config.
-
-Enabling it switches the process-wide log level to debug, gates the verbose request logging emitted by the debug interceptor, exposes /debug/pprof, and allows panic handlers to return stack traces to the caller. Disabling it restores info-level logging and generic panic errors. |
-| GetEmailSetting | [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Get the workspace email setting. It is returned empty when email delivery is not configured, so the settings page can render one form either way. |
-| UpdateEmailSetting | [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Update the workspace email setting. The password is write-only: an empty one on update keeps the stored password, and no read returns it. |
-| SendTestEmail | [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest) | [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse) | Send a test email to the caller&#39;s own address through the configured SMTP server. It is not audited: it changes nothing, and it is a diagnostic probe the settings page can repeat while an administrator types the server in. |
-| GetQuietHoursSetting | [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Get the workspace quiet-hours schedule for outbound notifications. |
-| UpdateQuietHoursSetting | [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Update the workspace quiet-hours schedule. Any update releases the deliveries the previous schedule was holding, so shortening or disabling it takes effect immediately; held rows are then re-evaluated by the next dispatcher tick. |
 
  
 

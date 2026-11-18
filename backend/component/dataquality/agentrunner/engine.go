@@ -53,6 +53,9 @@ type Store interface {
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
+	QualityAgentEnrollmentSummary(ctx context.Context, workspaceID string, agentID int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error)
+	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -74,6 +77,8 @@ type Engine struct {
 	// instead of pretending to have analysed the table.
 	tableContext TableContextReader
 	draftChecks  DraftChecksFunc
+	// adoption applies the agent's auto-adoption guardrails after a triage wake.
+	adoption AdoptionFunc
 	// checker enforces each tool's IAM permission against the session's agent
 	// principal. A process that does not wire it skips the check; production wires
 	// it, because an in-process tool call does not pass the RPC ACL interceptor.
@@ -85,6 +90,13 @@ type Engine struct {
 	maxParallelReads int
 	// auditSink records side-effecting tool calls in the deployment ledger.
 	auditSink tool.AuditSink
+}
+
+// SetAdoption wires the auto-adoption pass after the API service exists. The
+// engine is constructed before the service that owns the rule-creation path, so
+// this is a setter rather than an option.
+func (e *Engine) SetAdoption(adoption AdoptionFunc) {
+	e.adoption = adoption
 }
 
 // NewEngine creates the deterministic engine.
@@ -180,8 +192,19 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 	if e.resolveModel != nil && e.chat != nil {
 		config, ok, err := e.resolveModel(ctx)
 		if err == nil && ok {
-			return e.modelWake(ctx, session, wake, system, pending, config, options)
+			outcome, wakeErr := e.modelWake(ctx, session, wake, system, pending, config, options)
+			if wakeErr == nil && session.Kind != 2 &&
+				session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
+				e.adoption != nil {
+				e.adoption(ctx, session)
+			}
+			return outcome, wakeErr
 		}
+	}
+	// The front office must stay usable without a model: answer with a deterministic
+	// scope summary instead of parking the conversation.
+	if session.Kind == 2 {
+		return e.conversationWake(ctx, session, wake, pending)
 	}
 	// Triage is an analysis, not a bookkeeping survey: without a model there is nothing
 	// honest to record. Park the session for a person instead of retrying every ten
@@ -263,7 +286,7 @@ func (e *Engine) modelWake(
 	if err != nil {
 		return Outcome{}, err
 	}
-	spec := specFor(session.Mode)
+	spec := specForSession(session)
 	invocation, err := e.toolInvocation(ctx, session, spec.Name)
 	if err != nil {
 		return Outcome{}, err
@@ -763,7 +786,7 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 		Wake:           0,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
-		Content:        specFor(session.Mode).Prompt.Render(),
+		Content:        specForSession(session).Prompt.Render(),
 		IdempotencyKey: "system:v1",
 	})
 }

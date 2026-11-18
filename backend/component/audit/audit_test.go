@@ -92,33 +92,6 @@ func TestMarshalAuditMessageRedactsReportHTML(t *testing.T) {
 // The target-debug RPC returns raw LLM request/response bodies. The audit row must
 // keep the call context but never the bodies: the debug log expires after seven
 // days, while the ledger is kept forever.
-func TestMarshalAuditMessageRedactsLLMDebugBodies(t *testing.T) {
-	t.Parallel()
-
-	message := &v1pb.GetQualitySuggestionJobTargetDebugResponse{
-		Available:     true,
-		CorrelationId: "corr-1",
-		RequestBody:   `{"model":"gpt-4","messages":[{"role":"user","content":"secret prompt"}]}`,
-		ResponseBody:  `{"choices":[{"message":{"content":"secret answer"}}]}`,
-		ErrorCode:     "TRUNCATED",
-	}
-	structured, raw := auditMarshal(t, message)
-	require.Equal(t, RedactedValue, structured.GetFields()["requestBody"].GetStringValue())
-	require.Equal(t, RedactedValue, structured.GetFields()["responseBody"].GetStringValue())
-	require.Equal(t, RedactedValue, raw["requestBody"])
-	require.Equal(t, RedactedValue, raw["responseBody"])
-	require.NotContains(t, fmt.Sprint(structured), "secret prompt")
-	require.NotContains(t, fmt.Sprint(structured), "secret answer")
-
-	// The context that makes the row meaningful is kept.
-	require.True(t, structured.GetFields()["available"].GetBoolValue())
-	require.Equal(t, "corr-1", structured.GetFields()["correlationId"].GetStringValue())
-	require.Equal(t, "TRUNCATED", structured.GetFields()["errorCode"].GetStringValue())
-}
-
-// H6: an anonymous audited request must not be able to write its body into the
-// permanent ledger. Every string is cut to MaxAuditFieldBytes, wherever it sits,
-// and the map the resource/actor columns are derived from is cut too.
 func TestMarshalAuditMessageBoundsLongFields(t *testing.T) {
 	t.Parallel()
 

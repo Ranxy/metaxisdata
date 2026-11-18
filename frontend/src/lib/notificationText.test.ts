@@ -10,6 +10,7 @@ import {
   NotificationType,
   OpenLineageDetailSchema,
   OpenLineageFailureKind,
+  QualityAgentAttentionDetailSchema,
   SchemaSyncDetailSchema,
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
@@ -442,6 +443,48 @@ describe("describeNotification", () => {
         }
       }
     }
+  });
+});
+
+describe("quality agent attention", () => {
+  it("renders the escalation title and links to the agent home", () => {
+    const text = describeNotification(
+      create(NotificationSchema, {
+        type: NotificationType.DATA_QUALITY_AGENT,
+        severity: NotificationSeverity.WARNING,
+        detail: {
+          case: "qualityAgentAttention",
+          value: create(QualityAgentAttentionDetailSchema, {
+            agent: "workspaces/ws/qualityAgents/agent1",
+            attention: "workspaces/ws/qualityAgentAttentions/a1",
+            kind: 1,
+            title: "The agent needs help",
+            question: "Should the check be paused?",
+          }),
+        },
+      })
+    );
+    expect(text.titleKey).toBe("notifications.qualityAgentTitleWithQuestion");
+    expect(text.titleParams).toEqual({
+      title: "The agent needs help",
+      question: "Should the check be paused?",
+    });
+    expect(text.href).toBe("/data-quality/agents/ws/agent1");
+  });
+
+  it("falls back to the generic title without a question", () => {
+    const text = describeNotification(
+      create(NotificationSchema, {
+        type: NotificationType.DATA_QUALITY_AGENT,
+        detail: {
+          case: "qualityAgentAttention",
+          value: create(QualityAgentAttentionDetailSchema, {
+            agent: "workspaces/ws/qualityAgents/agent1",
+          }),
+        },
+      })
+    );
+    expect(text.titleKey).toBe("notifications.qualityAgentTitle");
   });
 });
 

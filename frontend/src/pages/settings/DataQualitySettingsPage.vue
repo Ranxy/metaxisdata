@@ -424,328 +424,6 @@
 
         <Card>
           <CardHeader>
-            <CardTitle>{{ t("dataQualitySettings.agentSection") }}</CardTitle>
-            <CardDescription>
-              {{ t("dataQualitySettings.agentSectionDescription") }}
-            </CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-3">
-            <!-- The kill switch is the workspace's total gate for agent writes. Off
-                 is the default: agents may read, and no agent write applies. -->
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="dq-setting-agent-autonomy"
-                :checked="form.agentAutonomyEnabled"
-                :disabled="!canUpdate"
-                @update:checked="form.agentAutonomyEnabled = $event === true"
-              />
-              <div class="grid gap-1">
-                <Label for="dq-setting-agent-autonomy">
-                  {{ t("dataQualitySettings.agentAutonomy") }}
-                </Label>
-                <p class="text-sm text-muted-foreground">
-                  {{ t("dataQualitySettings.agentAutonomyHint") }}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{{ t("dataQualitySettings.runnerSection") }}</CardTitle>
-            <CardDescription>
-              {{ t("dataQualitySettings.runnerSectionDescription") }}
-            </CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="dq-setting-agent-runner"
-                :checked="form.agentRunnerEnabled"
-                :disabled="!canUpdate"
-                @update:checked="form.agentRunnerEnabled = $event === true"
-              />
-              <div class="grid gap-1">
-                <Label for="dq-setting-agent-runner">
-                  {{ t("dataQualitySettings.runnerEnabled") }}
-                </Label>
-                <p class="text-sm text-muted-foreground">
-                  {{ t("dataQualitySettings.runnerEnabledHint") }}
-                </p>
-              </div>
-            </div>
-
-            <div class="space-y-2">
-              <fieldset class="space-y-1">
-                <legend class="text-sm font-medium">
-                  {{ t("dataQualitySettings.runnerDatabases") }}
-                </legend>
-              <p class="text-sm text-muted-foreground">
-                {{ t("dataQualitySettings.runnerDatabasesHint") }}
-              </p>
-              <p
-                v-if="runnerDatabasesLoading"
-                class="text-sm text-muted-foreground"
-              >
-                {{ t("common.loading") }}
-              </p>
-              <Alert
-                v-else-if="runnerDatabasesError"
-                variant="destructive"
-              >
-                <AlertTriangle class="h-4 w-4" />
-                <AlertDescription class="flex flex-wrap items-center gap-2">
-                  {{ runnerDatabasesError }}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    @click="loadRunnerDatabases"
-                  >
-                    {{ t("common.retry") }}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-              <p
-                v-else-if="runnerDatabases.length === 0"
-                class="text-sm text-muted-foreground"
-              >
-                {{ t("dataQualitySettings.runnerDatabasesEmpty") }}
-              </p>
-              <div
-                v-for="group in runnerDatabases"
-                :key="group.instance"
-                class="space-y-1"
-              >
-                <p class="text-sm font-medium">{{ group.title }}</p>
-                <div class="grid gap-1 sm:grid-cols-2">
-                  <label
-                    v-for="database in group.databases"
-                    :key="database.name"
-                    class="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      :data-testid="`dq-runner-db-${database.name}`"
-                      :checked="form.agentRunnerDatabases.includes(database.name)"
-                      :disabled="!canUpdate"
-                      @change="toggleRunnerDatabase(database.name)"
-                    />
-                    {{ database.name.split('/').pop() }}
-                  </label>
-                </div>
-              </div>
-              </fieldset>
-            </div>
-
-            <!-- Automatic enrollment turns the selected database scope into a
-                 discovered queue. It never publishes anything: every agent write
-                 remains a proposal a person approves. -->
-            <div class="space-y-3 border-t pt-3">
-              <div class="flex items-start gap-3">
-                <Checkbox
-                  id="dq-setting-runner-auto-enroll"
-                  :checked="form.agentRunnerAutoEnroll"
-                  :disabled="!canUpdate"
-                  @update:checked="onAutoEnrollToggle"
-                />
-                <div class="grid gap-1">
-                  <Label for="dq-setting-runner-auto-enroll">
-                    {{ t("dataQualitySettings.runnerAutoEnroll") }}
-                  </Label>
-                  <p class="text-sm text-muted-foreground">
-                    {{ t("dataQualitySettings.runnerAutoEnrollHint") }}
-                  </p>
-                </div>
-              </div>
-
-              <div class="grid gap-3 sm:grid-cols-2">
-                <div
-                  v-for="field in autoEnrollFields"
-                  :key="field.id"
-                  class="space-y-1.5"
-                >
-                  <Label :for="field.id">
-                    {{ t(field.labelKey) }}
-                  </Label>
-                  <Input
-                    :id="field.id"
-                    v-model="form[field.model]"
-                    inputmode="numeric"
-                    :disabled="!canUpdate"
-                  />
-                  <p class="text-xs text-muted-foreground">
-                    {{ t(field.descriptionKey) }}
-                  </p>
-                </div>
-              </div>
-
-              <Alert
-                v-if="showAutoEnrollWarnings"
-                variant="warning"
-              >
-                <AlertTriangle class="h-4 w-4" />
-                <AlertDescription>
-                  <ul class="list-disc space-y-1 pl-5">
-                    <li v-if="!form.agentRunnerEnabled">
-                      {{ t("dataQualitySettings.runnerAutoEnrollRunnerOffWarning") }}
-                    </li>
-                    <li v-if="!form.agentAutonomyEnabled">
-                      {{ t("dataQualitySettings.runnerAutoEnrollAutonomyOffWarning") }}
-                    </li>
-                  </ul>
-                </AlertDescription>
-              </Alert>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div class="space-y-1.5">
-                <Label for="dq-setting-runner-tokens">
-                  {{ t("dataQualitySettings.runnerTokensPerHour") }}
-                </Label>
-                <Input
-                  id="dq-setting-runner-tokens"
-                  v-model="form.agentRunnerTokensPerHour"
-                  inputmode="numeric"
-                  :disabled="!canUpdate"
-                />
-                <p class="text-xs text-muted-foreground">
-                  {{ t("dataQualitySettings.runnerTokensPerHourHint") }}
-                </p>
-              </div>
-              <div class="space-y-1.5">
-                <Label for="dq-setting-runner-wakes">
-                  {{ t("dataQualitySettings.runnerWakesPerHour") }}
-                </Label>
-                <Input
-                  id="dq-setting-runner-wakes"
-                  v-model="form.agentRunnerWakesPerHour"
-                  inputmode="numeric"
-                  :disabled="!canUpdate"
-                />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="dq-setting-runner-concurrency">
-                  {{ t("dataQualitySettings.runnerConcurrency") }}
-                </Label>
-                <Input
-                  id="dq-setting-runner-concurrency"
-                  v-model="form.agentRunnerMaxConcurrentSessions"
-                  inputmode="numeric"
-                  :disabled="!canUpdate"
-                />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="dq-setting-runner-compaction">
-                  {{ t("dataQualitySettings.runnerCompactionTriggerTokens") }}
-                </Label>
-                <Input
-                  id="dq-setting-runner-compaction"
-                  v-model="form.agentRunnerCompactionTriggerTokens"
-                  inputmode="numeric"
-                  :disabled="!canUpdate"
-                />
-                <p class="text-xs text-muted-foreground">
-                  {{ t("dataQualitySettings.runnerCompactionTriggerTokensHint") }}
-                </p>
-              </div>
-              <div class="space-y-1.5">
-                <Label for="dq-setting-runner-idle-wake">
-                  {{ t("dataQualitySettings.runnerIdleWakeSeconds") }}
-                </Label>
-                <Input
-                  id="dq-setting-runner-idle-wake"
-                  v-model="form.agentRunnerIdleWakeSeconds"
-                  inputmode="numeric"
-                  :disabled="!canUpdate"
-                />
-                <p class="text-xs text-muted-foreground">
-                  {{ t("dataQualitySettings.runnerIdleWakeSecondsHint") }}
-                </p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="dq-setting-runner-auto-events"
-                :checked="form.agentRunnerAutoInvestigateFailures"
-                :disabled="!canUpdate"
-                @update:checked="form.agentRunnerAutoInvestigateFailures = $event === true"
-              />
-              <div class="grid gap-1">
-                <Label for="dq-setting-runner-auto-events">
-                  {{ t("dataQualitySettings.runnerAutoInvestigateFailures") }}
-                </Label>
-                <p class="text-sm text-muted-foreground">
-                  {{ t("dataQualitySettings.runnerAutoInvestigateFailuresHint") }}
-                </p>
-              </div>
-            </div>
-
-            <!-- A read-only view of the process carrying out the settings above.
-                 The counters and budgets are live, so this line never needs a
-                 save; a caller without the quality read permission only gets the
-                 link to the sessions page. -->
-            <div class="flex flex-wrap items-center gap-2 border-t pt-3 text-sm">
-              <span class="font-medium">
-                {{ t("dataQualitySettings.runnerStatus") }}
-              </span>
-              <template v-if="runnerStatus">
-                <Badge :variant="runnerStatus.enabled ? 'success' : 'neutral'">
-                  {{
-                    runnerStatus.enabled
-                      ? t("dataQualitySettings.runnerStatusEnabled")
-                      : t("dataQualitySettings.runnerStatusDisabled")
-                  }}
-                </Badge>
-                <Badge variant="secondary">
-                  {{ t("dataQualitySettings.runnerStatusRunning", { count: runnerStatus.runningSessions }) }}
-                </Badge>
-                <Badge variant="neutral">
-                  {{ t("dataQualitySettings.runnerStatusIdle", { count: runnerStatus.idleSessions }) }}
-                </Badge>
-                <Badge
-                  v-if="runnerStatus.blockedSessions > 0"
-                  variant="warning"
-                >
-                  {{ t("dataQualitySettings.runnerStatusBlocked", { count: runnerStatus.blockedSessions }) }}
-                </Badge>
-                <span class="text-xs text-muted-foreground tabular-nums">
-                  {{
-                    t("dataQualitySettings.runnerStatusTokens", {
-                      used: formatTokens(runnerStatus.tokensLastHour, locale),
-                      limit: formatTokens(runnerStatus.tokensPerHourLimit, locale),
-                    })
-                  }}
-                </span>
-              </template>
-              <span
-                v-else-if="runnerStatusError"
-                class="text-xs text-muted-foreground"
-              >
-                {{ runnerStatusError }}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                class="ml-auto"
-                as-child
-              >
-                <RouterLink :to="{ name: 'DataQualityAgent' }">
-                  {{ t("dataQualitySettings.runnerOpenSessions") }}
-                </RouterLink>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <QualityAgentsCard
-          v-if="canUpdate"
-          :can-update="canUpdate"
-        />
-
-        <Card>
-          <CardHeader>
             <CardTitle>{{ t("dataQualitySettings.digestSection") }}</CardTitle>
             <CardDescription>
               {{ t("dataQualitySettings.digestSectionDescription") }}
@@ -1002,69 +680,6 @@
       </DialogContent>
     </Dialog>
 
-    <!-- Enabling automatic enrollment is an opt-in to queueing a whole scope, so
-         it names the scope, the targets discovered so far and a rough wake load
-         before the switch is set. -->
-    <Dialog v-model:open="autoEnrollConfirmOpen">
-      <DialogContent class="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {{ t("dataQualitySettings.runnerAutoEnrollConfirmTitle") }}
-          </DialogTitle>
-          <DialogDescription>
-            {{ t("dataQualitySettings.runnerAutoEnrollConfirmDescription") }}
-          </DialogDescription>
-        </DialogHeader>
-        <div class="space-y-1.5 text-sm">
-          <p>
-            {{
-              t("dataQualitySettings.runnerAutoEnrollConfirmDatabases", {
-                count: form.agentRunnerDatabases.length,
-              })
-            }}
-          </p>
-          <p v-if="discoveredEnrollmentCount > 0">
-            {{
-              t("dataQualitySettings.runnerAutoEnrollConfirmTables", {
-                count: discoveredEnrollmentCount,
-              })
-            }}
-          </p>
-          <p
-            v-else
-            class="text-muted-foreground"
-          >
-            {{ t("dataQualitySettings.runnerAutoEnrollConfirmEmpty") }}
-          </p>
-          <p>
-            {{
-              t("dataQualitySettings.runnerAutoEnrollConfirmWakes", {
-                count: estimatedDailyWakes,
-              })
-            }}
-          </p>
-          <p class="text-xs text-muted-foreground">
-            {{
-              t("dataQualitySettings.runnerAutoEnrollConfirmHint", {
-                days: dormantReviewDays,
-              })
-            }}
-          </p>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            @click="autoEnrollConfirmOpen = false"
-          >
-            {{ t("common.cancel") }}
-          </Button>
-          <Button @click="confirmAutoEnroll">
-            {{ t("dataQualitySettings.runnerAutoEnrollEnable") }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     <!-- A referenced table is refused server-side; the card shows that message
          instead of pretending the delete succeeded. -->
     <ConfirmDeleteDialog
@@ -1090,19 +705,14 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
 import {
   createQualityCodeTable,
   deleteQualityCodeTable,
-  getQualityAgentEnrollmentSummary,
-  getQualityAgentRunnerStatus,
   getQualityCodeTable,
   getQualityLLMUsage,
   listAllQualityCodeTables,
   updateQualityCodeTable,
 } from "@/api/data-quality";
-import { listDatabases } from "@/api/database";
-import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
@@ -1111,10 +721,8 @@ import {
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
-import QualityAgentsCard from "@/components/data-quality/QualityAgentsCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -1154,21 +762,11 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
-  QualityAgentEnrollmentState,
-  type QualityAgentEnrollmentSummary,
-  type QualityAgentRunnerStatus,
   type QualityCodeTable,
   QualityCodeTableSchema,
   type QualityLLMUsage,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { DayOfWeek } from "@/types/proto-es/v1/setting_service_pb";
-import {
-  enrollmentStateCount,
-  enrollmentStateCounts,
-  enrollmentWorkloadCount,
-  enrollmentWorkloadEstimate,
-} from "@/utils/agentEnrollment";
-import { formatTokens } from "@/utils/agentSession";
 import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
 import {
@@ -1199,79 +797,6 @@ const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
 const form = ref<DataQualitySettingsForm>(settingsToForm(undefined));
-interface RunnerDatabaseGroup {
-  instance: string;
-  title: string;
-  databases: Array<{ name: string }>;
-}
-const runnerDatabases = ref<RunnerDatabaseGroup[]>([]);
-const runnerDatabasesLoading = ref(true);
-const runnerDatabasesError = ref("");
-
-/** Load the whole estate in one paginated read and group it by instance. */
-async function loadRunnerDatabases() {
-  runnerDatabasesLoading.value = true;
-  runnerDatabasesError.value = "";
-  try {
-    const databases = await listAll(async (pageToken) => {
-      const response = await listDatabases({
-        parent: "workspaces/-",
-        pageSize: 1000,
-        pageToken,
-      });
-      return {
-        items: response.databases,
-        nextPageToken: response.nextPageToken,
-      };
-    });
-    const groups = new Map<string, RunnerDatabaseGroup>();
-    for (const database of databases) {
-      const segments = database.name.split("/");
-      const instance = segments.slice(0, 2).join("/");
-      let group = groups.get(instance);
-      if (!group) {
-        group = {
-          instance,
-          title: instance.split("/").pop() || instance,
-          databases: [],
-        };
-        groups.set(instance, group);
-      }
-      group.databases.push({ name: database.name });
-    }
-    // A saved name whose database is gone or no longer synced stays visible and
-    // removable; the server still enforces the scope.
-    const known = new Set(databases.map((database) => database.name));
-    const missing = form.value.agentRunnerDatabases.filter(
-      (name) => !known.has(name)
-    );
-    if (missing.length > 0) {
-      groups.set("out-of-sync", {
-        instance: "out-of-sync",
-        title: t("dataQualitySettings.runnerDatabasesOutOfSync"),
-        databases: missing.map((name) => ({ name })),
-      });
-    }
-    runnerDatabases.value = [...groups.values()].filter(
-      (group) => group.databases.length > 0
-    );
-  } catch {
-    runnerDatabasesError.value = t("dataQualitySettings.runnerDatabasesFailed");
-  } finally {
-    runnerDatabasesLoading.value = false;
-  }
-}
-
-/** Toggle one database in the runner allowlist. */
-function toggleRunnerDatabase(name: string) {
-  const selected = form.value.agentRunnerDatabases;
-  const index = selected.indexOf(name);
-  if (index >= 0) {
-    selected.splice(index, 1);
-  } else {
-    selected.push(name);
-  }
-}
 const profileOptions = ref<Array<{ name: string; title: string }>>([]);
 const issues = ref<ReturnType<typeof validateSettingsForm>>([]);
 const isLoading = ref(true);
@@ -1282,105 +807,6 @@ const original = ref("");
 const usage = ref<QualityLLMUsage>();
 const usageLoading = ref(false);
 const usageError = ref("");
-
-/** The runner's live counters; read-only, so they are never part of the form. */
-const runnerStatus = ref<QualityAgentRunnerStatus>();
-const runnerStatusError = ref("");
-/** The status RPC is part of the quality read surface, not the settings one. */
-const canListAgentSessions = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.list")
-);
-
-/**
- * The enrollment summary feeds the confirmation's estimate: how many targets the
- * runner has discovered so far and how many are active. It is best-effort — a
- * reader without the quality read permission or a failed read leaves the dialog
- * saying that the first scan has not run yet.
- */
-const enrollmentSummary = ref<QualityAgentEnrollmentSummary>();
-const autoEnrollConfirmOpen = ref(false);
-
-/** The numeric inputs automatic enrollment adds to the runner card. */
-const autoEnrollFields = [
-  {
-    id: "dq-setting-runner-max-new-sessions",
-    model: "agentRunnerMaxNewSessionsPerHour",
-    labelKey: "dataQualitySettings.runnerMaxNewSessionsPerHour",
-    descriptionKey: "dataQualitySettings.runnerMaxNewSessionsPerHourHint",
-  },
-  {
-    id: "dq-setting-runner-max-active-sessions",
-    model: "agentRunnerMaxActiveSessions",
-    labelKey: "dataQualitySettings.runnerMaxActiveSessions",
-    descriptionKey: "dataQualitySettings.runnerMaxActiveSessionsHint",
-  },
-  {
-    id: "dq-setting-runner-dormant-review-days",
-    model: "agentRunnerDormantReviewDays",
-    labelKey: "dataQualitySettings.runnerDormantReviewDays",
-    descriptionKey: "dataQualitySettings.runnerDormantReviewDaysHint",
-  },
-  {
-    id: "dq-setting-runner-event-budget-percent",
-    model: "agentRunnerEventBudgetPercent",
-    labelKey: "dataQualitySettings.runnerEventBudgetPercent",
-    descriptionKey: "dataQualitySettings.runnerEventBudgetPercentHint",
-  },
-] as const;
-
-const dormantReviewDays = computed(() => {
-  const value = Number(form.value.agentRunnerDormantReviewDays);
-  return Number.isInteger(value) && value > 0 ? value : 30;
-});
-
-const discoveredEnrollmentCount = computed(() =>
-  enrollmentWorkloadCount(enrollmentStateCounts(enrollmentSummary.value))
-);
-
-const estimatedDailyWakes = computed(() => {
-  const counts = enrollmentStateCounts(enrollmentSummary.value);
-  return enrollmentWorkloadEstimate({
-    tables: discoveredEnrollmentCount.value,
-    reviewDays: dormantReviewDays.value,
-    activeSessions: enrollmentStateCount(
-      counts,
-      QualityAgentEnrollmentState.ACTIVE
-    ),
-  });
-});
-
-/** Auto-enrollment is a setting, but autonomy and the runner still gate it. */
-const showAutoEnrollWarnings = computed(
-  () =>
-    form.value.agentRunnerAutoEnroll &&
-    (!form.value.agentRunnerEnabled || !form.value.agentAutonomyEnabled)
-);
-
-function onAutoEnrollToggle(value: unknown) {
-  if (value === true) {
-    void loadEnrollmentSummary();
-    autoEnrollConfirmOpen.value = true;
-    return;
-  }
-  form.value.agentRunnerAutoEnroll = false;
-}
-
-function confirmAutoEnroll() {
-  form.value.agentRunnerAutoEnroll = true;
-  autoEnrollConfirmOpen.value = false;
-}
-
-async function loadEnrollmentSummary() {
-  if (!canListAgentSessions.value) {
-    enrollmentSummary.value = undefined;
-    return;
-  }
-  try {
-    enrollmentSummary.value = await getQualityAgentEnrollmentSummary();
-  } catch {
-    enrollmentSummary.value = undefined;
-  }
-}
 
 /** The code-table card: the list, its dialogs, and their own failures. */
 const codeTables = ref<QualityCodeTable[]>([]);
@@ -1482,8 +908,6 @@ async function load() {
     await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
     void loadUsage();
     void loadCodeTables();
-    void loadRunnerStatus();
-    void loadEnrollmentSummary();
   } catch (e: unknown) {
     error.value = formatError(e, "dataQualitySettings.fetchError");
   } finally {
@@ -1547,25 +971,6 @@ function ratio(used: number, limit: number): string {
     used: formatRowCount(used, locale.value),
     limit: formatRowCount(limit, locale.value),
   });
-}
-
-/**
- * Read the runner's live status for the read-only line in the runner card. A
- * failure stays inside that line: the settings above still loaded.
- */
-async function loadRunnerStatus() {
-  if (!canListAgentSessions.value) {
-    runnerStatus.value = undefined;
-    runnerStatusError.value = "";
-    return;
-  }
-  try {
-    runnerStatus.value = await getQualityAgentRunnerStatus();
-    runnerStatusError.value = "";
-  } catch {
-    runnerStatus.value = undefined;
-    runnerStatusError.value = t("dataQualitySettings.runnerStatusFailed");
-  }
 }
 
 /**
@@ -1766,6 +1171,5 @@ async function handleSave() {
 
 onMounted(() => {
   void load();
-  void loadRunnerDatabases();
 });
 </script>

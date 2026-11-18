@@ -19,6 +19,7 @@ type qualitySuggestionScannerStub struct {
 	resourceID    string
 	kind          int16
 	source        int16
+	agentID       sql.NullInt64
 	targetGUID    string
 	targetType    int16
 	payload       []byte
@@ -33,6 +34,7 @@ type qualitySuggestionScannerStub struct {
 	decidedBy     sql.NullInt32
 	decidedAt     sql.NullTime
 	decisionNote  string
+	confidence    float64
 }
 
 func (s qualitySuggestionScannerStub) Scan(dest ...any) error {
@@ -40,20 +42,22 @@ func (s qualitySuggestionScannerStub) Scan(dest ...any) error {
 	*(dest[1].(*string)) = s.resourceID
 	*(dest[2].(*int16)) = s.kind
 	*(dest[3].(*int16)) = s.source
-	*(dest[4].(*string)) = s.targetGUID
-	*(dest[5].(*int16)) = s.targetType
-	*(dest[6].(*[]byte)) = s.payload
-	*(dest[7].(*string)) = s.signature
-	*(dest[8].(*int16)) = s.status
-	*(dest[9].(*string)) = s.provider
-	*(dest[10].(*string)) = s.model
-	*(dest[11].(*string)) = s.promptVersion
-	*(dest[12].(*sql.NullInt32)) = s.createdBy
-	*(dest[13].(*time.Time)) = s.createdAt
-	*(dest[14].(*sql.NullTime)) = s.refreshedAt
-	*(dest[15].(*sql.NullInt32)) = s.decidedBy
-	*(dest[16].(*sql.NullTime)) = s.decidedAt
-	*(dest[17].(*string)) = s.decisionNote
+	*(dest[4].(*sql.NullInt64)) = s.agentID
+	*(dest[5].(*string)) = s.targetGUID
+	*(dest[6].(*int16)) = s.targetType
+	*(dest[7].(*[]byte)) = s.payload
+	*(dest[8].(*string)) = s.signature
+	*(dest[9].(*int16)) = s.status
+	*(dest[10].(*string)) = s.provider
+	*(dest[11].(*string)) = s.model
+	*(dest[12].(*string)) = s.promptVersion
+	*(dest[13].(*sql.NullInt32)) = s.createdBy
+	*(dest[14].(*time.Time)) = s.createdAt
+	*(dest[15].(*sql.NullTime)) = s.refreshedAt
+	*(dest[16].(*sql.NullInt32)) = s.decidedBy
+	*(dest[17].(*sql.NullTime)) = s.decidedAt
+	*(dest[18].(*string)) = s.decisionNote
+	*(dest[19].(*float64)) = s.confidence
 	return nil
 }
 
@@ -204,6 +208,7 @@ func TestScanQualitySuggestionRoundTripsThePayloadAndDecision(t *testing.T) {
 		decidedBy:     sql.NullInt32{Int32: 6, Valid: true},
 		decidedAt:     sql.NullTime{Time: decidedAt, Valid: true},
 		decisionNote:  "looks right",
+		confidence:    0.73,
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(31), message.ID)
@@ -227,6 +232,7 @@ func TestScanQualitySuggestionRoundTripsThePayloadAndDecision(t *testing.T) {
 	require.NotNil(t, message.DecidedAt)
 	require.Equal(t, decidedAt, *message.DecidedAt)
 	require.Equal(t, "looks right", message.DecisionNote)
+	require.InDelta(t, 0.73, message.Confidence, 1e-9)
 }
 
 func TestScanQualitySuggestionLeavesPendingDecisionColumnsNil(t *testing.T) {
@@ -396,11 +402,11 @@ func TestDecideQualitySuggestionQueryGuardsThePendingState(t *testing.T) {
 	// unique index, not a read-then-write, is what makes concurrent generation
 	// passes converge on one pending row.
 	require.Contains(t, queueQualitySuggestionQuery, "INSERT INTO quality_suggestion")
-	require.Contains(t, queueQualitySuggestionQuery, "ON CONFLICT (target_guid, target_type, signature) WHERE status = 1")
+	require.Contains(t, queueQualitySuggestionQuery, "ON CONFLICT (target_guid, target_type, signature) WHERE status = 1 AND agent_id IS NULL")
 	require.Contains(t, queueQualitySuggestionQuery, "DO UPDATE SET")
 	require.Contains(t, queueQualitySuggestionQuery, "refreshed_at = EXCLUDED.created_at")
 	requirePlaceholdersMatchArgs(t, queueQualitySuggestionQuery,
-		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now(),
+		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now(), 0.0,
 			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION),
 			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE)})
 
@@ -418,7 +424,7 @@ func TestQualitySuggestionQueriesPinTheContractualPredicates(t *testing.T) {
 	t.Parallel()
 
 	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = EXCLUDED.source")
-	require.Contains(t, queueQualitySuggestionQuery, "EXCLUDED.source = $14")
-	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = $15")
+	require.Contains(t, queueQualitySuggestionQuery, "EXCLUDED.source = $15")
+	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = $16")
 	require.Contains(t, qualitySuggestionSignatureStatesQuery, "(array_agg(source) FILTER (WHERE status = $1))[1]")
 }

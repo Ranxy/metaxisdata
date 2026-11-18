@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -36,8 +37,6 @@ const (
 	passTimeout = 2 * time.Minute
 	// scanPageSize is how many registry rows one discovery page reads.
 	scanPageSize = 2000
-	// maxDatabaseScansPerTick bounds the discovery fan-out of one tick.
-	maxDatabaseScansPerTick = 4
 	// dueDormantBatch is how many due reviews are requeued per tick.
 	dueDormantBatch = 100
 	// coveredDormantBatch is how many newly covered targets are promoted per tick.
@@ -66,13 +65,13 @@ type Store interface {
 	GetWorkspaceID(ctx context.Context) (string, error)
 
 	UpsertQualityAgentEnrollments(ctx context.Context, workspaceID string, updates []*store.QualityAgentEnrollmentUpsert) (int64, error)
-	MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID, databaseRef string, scanStartedAt time.Time) (int64, error)
-	ReconcileQualityAgentEnrollmentScope(ctx context.Context, workspaceID string, keepDatabases []string) (int64, int64, error)
+	MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID string, agentID int64, databaseRef string, scanStartedAt time.Time) (int64, error)
+	ReconcileQualityAgentEnrollmentScope(ctx context.Context, workspaceID string, agentID int64, keepDatabases []string) (int64, int64, error)
 	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
-	ListAdmissibleQualityAgentEnrollments(ctx context.Context, workspaceID string, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
-	ListDueDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, now time.Time, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
-	ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
-	ListRecoverableQualityAgentEnrollments(ctx context.Context, workspaceID string, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListAdmissibleQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListDueDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, now time.Time, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListRecoverableQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	RequeueQualityAgentEnrollments(ctx context.Context, resourceIDs []string, reason string) (int64, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 	PromoteQualityAgentEnrollment(ctx context.Context, resourceID string, mode storepb.QualityAgentSessionMode) (*store.QualityAgentEnrollmentMessage, bool, error)
@@ -80,16 +79,18 @@ type Store interface {
 	SetQualityAgentEnrollmentBlockedReason(ctx context.Context, resourceID, reason string) error
 	UpdateQualityAgentEnrollmentPriority(ctx context.Context, updates []*store.QualityAgentEnrollmentPriorityUpdate) error
 
-	GetQualityAgentSessionByTarget(ctx context.Context, workspaceID, targetGUID string) (*store.QualityAgentSessionMessage, error)
+	GetQualityAgentSessionByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentSessionMessage, error)
 	CreateQualityAgentSession(ctx context.Context, input *store.CreateQualityAgentSessionInput) (*store.QualityAgentSessionMessage, error)
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	UpdateQualityAgentSessionMode(ctx context.Context, resourceID string, mode storepb.QualityAgentSessionMode) (bool, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
-	CountActiveQualityAgentEnrollments(ctx context.Context, workspaceID string) (int, error)
-	CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, source storepb.QualityAgentSessionSource, since time.Time) (int, error)
-	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
+	CountActiveQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error)
+	CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, source storepb.QualityAgentSessionSource, since time.Time) (int, error)
+	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	CurrentDatabaseTime(ctx context.Context) (time.Time, error)
 	ListQualityAgents(ctx context.Context) ([]*store.QualityAgentMessage, error)
+	ListQualityAgentConfigs(ctx context.Context) ([]*store.QualityAgentConfigMessage, error)
+	ListQualityAgentDatabasesByAgent(ctx context.Context) (map[int64][]string, error)
 
 	ListQualityRules(ctx context.Context, find *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error)
 	ListQualityContracts(ctx context.Context) ([]*store.QualityContractMessage, error)
@@ -110,11 +111,20 @@ type Runner struct {
 	scanInterval  time.Duration
 	// lastScan is process-local; a restart re-scans every database once, which is the
 	// same convergence rule the other runners follow.
-	lastScan           map[string]time.Time
-	scopeFingerprint   string
+	lastScan map[string]time.Time
+	// scopeFingerprints remembers each agent's scope so a save invalidates only that
+	// agent's scan clocks.
+	scopeFingerprints  map[int64]string
 	scopeInitialized   bool
 	lastTick           atomic.Int64
 	lastEnrollmentScan atomic.Int64
+}
+
+// activeAgent is one ACTIVE built-in agent and its scope.
+type activeAgent struct {
+	agent     *store.QualityAgentMessage
+	config    *store.QualityAgentConfigMessage
+	databases []string
 }
 
 // NewRunner creates the enrollment runner. llmConfigured reports whether a model is
@@ -125,11 +135,12 @@ func NewRunner(stores *store.Store, llmConfigured func(ctx context.Context) bool
 		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
 			return dataquality.LoadSettings(ctx, stores)
 		},
-		llmConfigured: llmConfigured,
-		now:           func() time.Time { return time.Now().UTC() },
-		tick:          tickInterval,
-		scanInterval:  databaseScanInterval,
-		lastScan:      map[string]time.Time{},
+		llmConfigured:     llmConfigured,
+		now:               func() time.Time { return time.Now().UTC() },
+		tick:              tickInterval,
+		scanInterval:      databaseScanInterval,
+		lastScan:          map[string]time.Time{},
+		scopeFingerprints: map[int64]string{},
 	}
 }
 
@@ -170,8 +181,8 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 }
 
-// runOnce advances one tick. Each step is best effort: a failing step is logged and
-// the rest of the tick still runs, because the queue converges on the next one.
+// runOnce advances the queue of every ACTIVE built-in agent. Each step is best
+// effort: a failing agent is logged and the rest of the tick still runs.
 func (r *Runner) runOnce(ctx context.Context) {
 	now := r.now()
 	r.lastTick.Store(now.UnixNano())
@@ -191,48 +202,116 @@ func (r *Runner) runOnce(ctx context.Context) {
 		slog.Error("failed to resolve the workspace for the enrollment runner", log.WithError(err))
 		return
 	}
-	r.reconcileScope(ctx, workspaceID, settings, now)
-	r.requeueDueReviews(ctx, workspaceID, now)
-	r.promoteCovered(ctx, workspaceID, now)
-	r.recoverBlocked(ctx, workspaceID, settings)
-	r.scanDueDatabases(ctx, workspaceID, settings, now)
-	r.admit(ctx, workspaceID, settings, now)
+	agents, err := r.activeAgents(ctx)
+	if err != nil {
+		slog.Error("failed to read the active quality agents", log.WithError(err))
+		return
+	}
+	// Scope and queue maintenance is per agent: an agent's range change must not
+	// touch another agent's rows.
+	for _, current := range agents {
+		r.reconcileScope(ctx, workspaceID, current, now)
+		r.requeueDueReviews(ctx, workspaceID, current.agent.ID, now)
+		r.promoteCovered(ctx, workspaceID, current.agent.ID, now)
+		r.recoverBlocked(ctx, workspaceID, current)
+	}
+	// Discovery is per (agent,database); overlapping scopes scan the same registry
+	// twice for now, which is correct and can be shared later.
+	for _, current := range agents {
+		for _, databaseRef := range current.databases {
+			r.scanDueDatabase(ctx, workspaceID, current.agent.ID, databaseRef, now)
+		}
+	}
+	for _, current := range agents {
+		if !settings.AgentAutonomyEnabled {
+			r.reasonCandidates(ctx, workspaceID, current.agent.ID, "autonomy-off")
+			continue
+		}
+		r.admit(ctx, workspaceID, settings, current, now)
+	}
 }
 
-// reconcileScope aligns the queue with the settings' database list. It runs on every
-// tick so a settings save is observed without a notification hook.
-func (r *Runner) reconcileScope(ctx context.Context, workspaceID string, settings dataquality.Settings, now time.Time) {
-	fingerprint := strings.Join(settings.AgentRunnerDatabases, "\x00")
-	if r.scopeInitialized && fingerprint == r.scopeFingerprint {
-		return
-	}
-	outOfScope, restored, err := r.store.ReconcileQualityAgentEnrollmentScope(ctx, workspaceID, settings.AgentRunnerDatabases)
+// activeAgents loads the agents the runner may serve: an enabled identity with an
+// ACTIVE config and at least one database in scope.
+func (r *Runner) activeAgents(ctx context.Context) ([]*activeAgent, error) {
+	configs, err := r.store.ListQualityAgentConfigs(ctx)
 	if err != nil {
-		slog.Error("failed to reconcile the enrollment scope", log.WithError(err))
+		return nil, err
+	}
+	agents, err := r.store.ListQualityAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*store.QualityAgentMessage, len(agents))
+	for _, agent := range agents {
+		byID[agent.ID] = agent
+	}
+	scopes, err := r.store.ListQualityAgentDatabasesByAgent(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*activeAgent, 0, len(configs))
+	for _, config := range configs {
+		agent := byID[config.AgentID]
+		if agent == nil || !agent.Enabled || config.State != store.QualityAgentStateActive {
+			continue
+		}
+		databases := scopes[config.AgentID]
+		if len(databases) == 0 {
+			continue
+		}
+		out = append(out, &activeAgent{agent: agent, config: config, databases: databases})
+	}
+	return out, nil
+}
+
+// reconcileScope aligns one agent's queue with its database scope. It runs on every
+// tick so a settings save is observed without a notification hook.
+func (r *Runner) reconcileScope(ctx context.Context, workspaceID string, current *activeAgent, now time.Time) {
+	if r.scopeFingerprints == nil {
+		r.scopeFingerprints = map[int64]string{}
+	}
+	if r.lastScan == nil {
+		r.lastScan = map[string]time.Time{}
+	}
+	fingerprint := strings.Join(current.databases, "\x00")
+	if r.scopeInitialized {
+		if previous, ok := r.scopeFingerprints[current.agent.ID]; ok && previous == fingerprint {
+			return
+		}
+	}
+	outOfScope, restored, err := r.store.ReconcileQualityAgentEnrollmentScope(ctx, workspaceID, current.agent.ID, current.databases)
+	if err != nil {
+		slog.Error("failed to reconcile the enrollment scope",
+			slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
-	// A removed database's scan state goes away so a re-added database is scanned at
-	// once rather than waiting for its old cadence.
-	inScope := make(map[string]bool, len(settings.AgentRunnerDatabases))
-	for _, database := range settings.AgentRunnerDatabases {
+	inScope := make(map[string]bool, len(current.databases))
+	for _, database := range current.databases {
 		inScope[database] = true
 	}
-	for database := range r.lastScan {
+	prefix := fmt.Sprintf("%d|", current.agent.ID)
+	for key := range r.lastScan {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		database := strings.TrimPrefix(key, prefix)
 		if !inScope[database] {
-			delete(r.lastScan, database)
+			delete(r.lastScan, key)
 		}
 	}
 	r.scopeInitialized = true
-	r.scopeFingerprint = fingerprint
+	r.scopeFingerprints[current.agent.ID] = fingerprint
 	if outOfScope > 0 || restored > 0 {
 		slog.Info("reconciled the quality agent enrollment scope",
-			slog.Int64("out_of_scope", outOfScope), slog.Int64("restored", restored), slog.Time("now", now))
+			slog.Int64("agent", current.agent.ID), slog.Int64("out_of_scope", outOfScope),
+			slog.Int64("restored", restored), slog.Time("now", now))
 	}
 }
 
 // requeueDueReviews puts dormant rows whose review is due back in the pending set.
-func (r *Runner) requeueDueReviews(ctx context.Context, workspaceID string, now time.Time) {
-	due, err := r.store.ListDueDormantQualityAgentEnrollments(ctx, workspaceID, now, dueDormantBatch)
+func (r *Runner) requeueDueReviews(ctx context.Context, workspaceID string, agentID int64, now time.Time) {
+	due, err := r.store.ListDueDormantQualityAgentEnrollments(ctx, workspaceID, agentID, now, dueDormantBatch)
 	if err != nil {
 		slog.Error("failed to read the due enrollment reviews", log.WithError(err))
 		return
@@ -250,8 +329,8 @@ func (r *Runner) requeueDueReviews(ctx context.Context, workspaceID string, now 
 }
 
 // promoteCovered moves a dormant target back to monitoring once it has coverage.
-func (r *Runner) promoteCovered(ctx context.Context, workspaceID string, now time.Time) {
-	covered, err := r.store.ListCoveredDormantQualityAgentEnrollments(ctx, workspaceID, coveredDormantBatch)
+func (r *Runner) promoteCovered(ctx context.Context, workspaceID string, agentID int64, now time.Time) {
+	covered, err := r.store.ListCoveredDormantQualityAgentEnrollments(ctx, workspaceID, agentID, coveredDormantBatch)
 	if err != nil {
 		slog.Error("failed to read the newly covered enrollments", log.WithError(err))
 		return
@@ -266,7 +345,7 @@ func (r *Runner) promoteCovered(ctx context.Context, workspaceID string, now tim
 
 // promote wakes a covered target's session in monitor mode.
 func (r *Runner) promote(ctx context.Context, workspaceID string, enrollment *store.QualityAgentEnrollmentMessage, now time.Time) error {
-	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.TargetGUID)
+	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.AgentID, enrollment.TargetGUID)
 	if err != nil {
 		return err
 	}
@@ -278,21 +357,22 @@ func (r *Runner) promote(ctx context.Context, workspaceID string, enrollment *st
 	if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "paused-by-human")
 	}
-	if _, err := r.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID,
-		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR); err != nil {
-		return err
+	_, modeErr := r.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID,
+		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)
+	if modeErr != nil {
+		return modeErr
 	}
 	if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED {
-		if _, applied, err := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
-			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now); err != nil {
-			return err
-		} else if !applied {
+		_, applied, enableErr := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
+			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now)
+		if enableErr != nil {
+			return enableErr
+		}
+		if !applied {
 			return nil
 		}
-	} else {
-		if _, err := r.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {
-			return err
-		}
+	} else if _, err := r.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {
+		return err
 	}
 	_, _, err = r.store.PromoteQualityAgentEnrollment(ctx, enrollment.ResourceID,
 		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)
@@ -300,8 +380,8 @@ func (r *Runner) promote(ctx context.Context, workspaceID string, enrollment *st
 }
 
 // recoverBlocked re-enables sessions that a reversible scope or agent change blocked.
-func (r *Runner) recoverBlocked(ctx context.Context, workspaceID string, settings dataquality.Settings) {
-	recoverable, err := r.store.ListRecoverableQualityAgentEnrollments(ctx, workspaceID, recoverableBatch)
+func (r *Runner) recoverBlocked(ctx context.Context, workspaceID string, current *activeAgent) {
+	recoverable, err := r.store.ListRecoverableQualityAgentEnrollments(ctx, workspaceID, current.agent.ID, recoverableBatch)
 	if err != nil {
 		slog.Error("failed to read the recoverable enrollments", log.WithError(err))
 		return
@@ -309,62 +389,56 @@ func (r *Runner) recoverBlocked(ctx context.Context, workspaceID string, setting
 	if len(recoverable) == 0 {
 		return
 	}
-	agent, agentErr := r.firstEnabledAgent(ctx)
-	if agentErr != nil {
-		slog.Error("failed to read the quality agents", log.WithError(agentErr))
-		return
-	}
 	now := r.now()
+	inScope := make(map[string]bool, len(current.databases))
+	for _, database := range current.databases {
+		inScope[database] = true
+	}
 	for _, enrollment := range recoverable {
-		session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.TargetGUID)
+		session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.AgentID, enrollment.TargetGUID)
 		if err != nil || session == nil || session.ArchivedAt != nil {
 			continue
 		}
 		switch session.BlockedCode {
 		case "out-of-scope":
-			if !settings.AgentRunnerDatabaseEnabled(session.DatabaseRef) {
+			if !inScope[session.DatabaseRef] {
 				continue
 			}
 		case "agent-disabled":
-			if agent == nil {
+			if !current.agent.Enabled || current.config.State != store.QualityAgentStateActive {
 				continue
 			}
 		default:
 			continue
 		}
-		if _, applied, err := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
-			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now); err != nil {
-			slog.Warn("failed to recover a blocked session", slog.String("session", session.ResourceID), log.WithError(err))
+		_, applied, enableErr := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
+			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now)
+		if enableErr != nil {
+			slog.Warn("failed to recover a blocked session", slog.String("session", session.ResourceID), log.WithError(enableErr))
 		} else if applied {
 			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "")
 		}
 	}
 }
 
-// scanDueDatabases discovers the registry objects of each database that is due.
-func (r *Runner) scanDueDatabases(ctx context.Context, workspaceID string, settings dataquality.Settings, now time.Time) {
-	scanned := 0
-	for _, databaseRef := range settings.AgentRunnerDatabases {
-		if scanned >= maxDatabaseScansPerTick {
-			return
-		}
-		if last, ok := r.lastScan[databaseRef]; ok && now.Sub(last) < r.scanInterval {
-			continue
-		}
-		if err := r.scanDatabase(ctx, workspaceID, databaseRef, now); err != nil {
-			slog.Warn("failed to scan a database for enrollment",
-				slog.String("database", databaseRef), log.WithError(err))
-			continue
-		}
-		r.lastScan[databaseRef] = now
-		r.lastEnrollmentScan.Store(now.UnixNano())
-		scanned++
+// scanDueDatabase discovers one agent's registry objects for one database.
+func (r *Runner) scanDueDatabase(ctx context.Context, workspaceID string, agentID int64, databaseRef string, now time.Time) {
+	key := fmt.Sprintf("%d|%s", agentID, databaseRef)
+	if last, ok := r.lastScan[key]; ok && now.Sub(last) < r.scanInterval {
+		return
 	}
+	if err := r.scanDatabase(ctx, workspaceID, agentID, databaseRef, now); err != nil {
+		slog.Warn("failed to scan a database for enrollment",
+			slog.Int64("agent", agentID), slog.String("database", databaseRef), log.WithError(err))
+		return
+	}
+	r.lastScan[key] = now
+	r.lastEnrollmentScan.Store(now.UnixNano())
 }
 
 // scanDatabase reads one database's monitorable objects, upserts them and recomputes
 // their priorities. Marking objects gone happens only after a complete scan.
-func (r *Runner) scanDatabase(ctx context.Context, workspaceID, databaseRef string, now time.Time) error {
+func (r *Runner) scanDatabase(ctx context.Context, workspaceID string, agentID int64, databaseRef string, now time.Time) error {
 	instance, database, err := common.GetInstanceDatabaseID(databaseRef)
 	if err != nil {
 		return err
@@ -395,6 +469,7 @@ func (r *Runner) scanDatabase(ctx context.Context, workspaceID, databaseRef stri
 		}
 		for _, resource := range page {
 			upserts = append(upserts, &store.QualityAgentEnrollmentUpsert{
+				AgentID:     agentID,
 				TargetGUID:  resource.GUID,
 				TargetType:  resource.ObjectType,
 				DatabaseRef: databaseRef,
@@ -408,19 +483,20 @@ func (r *Runner) scanDatabase(ctx context.Context, workspaceID, databaseRef stri
 	if _, err := r.store.UpsertQualityAgentEnrollments(ctx, workspaceID, upserts); err != nil {
 		return err
 	}
-	if _, err := r.store.MarkQualityAgentEnrollmentsGone(ctx, workspaceID, databaseRef, scanStarted); err != nil {
+	if _, err := r.store.MarkQualityAgentEnrollmentsGone(ctx, workspaceID, agentID, databaseRef, scanStarted); err != nil {
 		return err
 	}
-	r.recomputePriorities(ctx, workspaceID, databaseRef, instance, database, now)
+	r.recomputePriorities(ctx, workspaceID, agentID, databaseRef, instance, database, now)
 	return nil
 }
 
 // recomputePriorities ranks one database's queue. The reads are batched: one rules
 // query per database, one contracts read, and the rest are key-set batch reads, so the
 // pass is proportional to the number of targets and not to their execution history.
-func (r *Runner) recomputePriorities(ctx context.Context, workspaceID, databaseRef, instance, database string, now time.Time) {
+func (r *Runner) recomputePriorities(ctx context.Context, workspaceID string, agentID int64, databaseRef, instance, database string, now time.Time) {
 	enrollments, err := r.store.ListQualityAgentEnrollments(ctx, &store.FindQualityAgentEnrollmentMessage{
 		WorkspaceID: workspaceID,
+		AgentID:     agentID,
 		DatabaseRef: &databaseRef,
 		Limit:       intPointer(maxPriorityRowsPerDatabase),
 	})
@@ -577,90 +653,94 @@ func computePriority(signals prioritySignals) (int32, string) {
 	return score, strings.Join(reasons, ",")
 }
 
-// admit creates or resumes sessions for pending enrollments, within the configured
-// rate, active-set and event-reserve limits.
-func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataquality.Settings, now time.Time) {
-	if !settings.AgentRunnerAutoEnroll {
-		return
-	}
+// admit creates or resumes sessions for one agent's pending enrollments, within its
+// own rate, active-set and event-reserve limits. The workspace hard caps still apply
+// in the session runner's token/wake checks.
+func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataquality.Settings, current *activeAgent, now time.Time) {
 	if !settings.AgentAutonomyEnabled {
-		r.reasonCandidates(ctx, workspaceID, "autonomy-off")
+		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "autonomy-off")
 		return
 	}
-	agent, err := r.firstEnabledAgent(ctx)
-	if err != nil {
-		slog.Error("failed to read the quality agents for admission", log.WithError(err))
-		return
+	maxNew := int(current.config.MaxNewSessionsPerHour)
+	if maxNew <= 0 {
+		maxNew = settings.AgentRunnerMaxNewSessionsPerHour
 	}
-	if agent == nil {
-		r.reasonCandidates(ctx, workspaceID, "no-agent")
-		return
+	maxActive := int(current.config.MaxActiveSessions)
+	if maxActive <= 0 {
+		maxActive = settings.AgentRunnerMaxActiveSessions
 	}
-	created, err := r.store.CountQualityAgentSessionsCreatedSince(ctx, workspaceID,
+	created, err := r.store.CountQualityAgentSessionsCreatedSince(ctx, workspaceID, current.agent.ID,
 		storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_AUTO, now.Add(-time.Hour))
 	if err != nil {
-		slog.Error("failed to count the automatic sessions", log.WithError(err))
+		slog.Error("failed to count the automatic sessions", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
-	active, err := r.store.CountActiveQualityAgentEnrollments(ctx, workspaceID)
+	active, err := r.store.CountActiveQualityAgentEnrollments(ctx, workspaceID, current.agent.ID)
 	if err != nil {
-		slog.Error("failed to count the active enrollments", log.WithError(err))
+		slog.Error("failed to count the active enrollments", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
-	if created >= settings.AgentRunnerMaxNewSessionsPerHour {
-		r.reasonCandidates(ctx, workspaceID, "admission-limit")
+	if created >= maxNew {
+		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "admission-limit")
 		return
 	}
-	if active >= settings.AgentRunnerMaxActiveSessions {
-		r.reasonCandidates(ctx, workspaceID, "active-limit")
+	if active >= maxActive {
+		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "active-limit")
 		return
 	}
 	// Automated admission may only spend the share of the wake budget that is not
 	// reserved for failed checks and people.
-	wakeLimit := settings.AgentRunnerWakesPerHour
+	wakeLimit := current.config.WakesPerHour
 	if wakeLimit <= 0 {
-		wakeLimit = dataquality.DefaultAgentRunnerWakesPerHour
+		wakeLimit = int32(settings.AgentRunnerWakesPerHour)
 	}
-	automaticShare := wakeLimit * (100 - settings.AgentRunnerEventBudgetPercent) / 100
+	if wakeLimit <= 0 {
+		wakeLimit = int32(dataquality.DefaultAgentRunnerWakesPerHour)
+	}
+	automaticShare := int(wakeLimit) * (100 - settings.AgentRunnerEventBudgetPercent) / 100
 	if automaticShare < 1 {
 		automaticShare = 1
 	}
-	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, workspaceID, now.Add(-time.Hour))
+	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, workspaceID, current.agent.ID, now.Add(-time.Hour))
 	if err != nil {
-		slog.Error("failed to count the session wakes", log.WithError(err))
+		slog.Error("failed to count the session wakes", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
 	if wakes >= int64(automaticShare) {
-		r.reasonCandidates(ctx, workspaceID, "event-budget")
+		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "event-budget")
 		return
 	}
-	remaining := settings.AgentRunnerMaxNewSessionsPerHour - created
-	if activeRemaining := settings.AgentRunnerMaxActiveSessions - active; activeRemaining < remaining {
+	remaining := maxNew - created
+	if activeRemaining := maxActive - active; activeRemaining < remaining {
 		remaining = activeRemaining
 	}
 	if remaining <= 0 {
-		r.reasonCandidates(ctx, workspaceID, "active-limit")
+		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "active-limit")
 		return
 	}
 	limit := admitBatch
 	if remaining < limit {
 		limit = remaining
 	}
-	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, limit)
+	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, current.agent.ID, limit)
 	if err != nil {
-		slog.Error("failed to read the admissible enrollments", log.WithError(err))
+		slog.Error("failed to read the admissible enrollments", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
+	inScope := make(map[string]bool, len(current.databases))
+	for _, database := range current.databases {
+		inScope[database] = true
+	}
 	for index, enrollment := range candidates {
-		if active+index >= settings.AgentRunnerMaxActiveSessions {
+		if active+index >= maxActive {
 			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "active-limit")
 			continue
 		}
-		if !settings.AgentRunnerDatabaseEnabled(enrollment.DatabaseRef) {
+		if !inScope[enrollment.DatabaseRef] {
 			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "out-of-scope")
 			continue
 		}
-		if err := r.admitOne(ctx, workspaceID, agent, enrollment, index, now); err != nil {
+		if err := r.admitOne(ctx, workspaceID, current, enrollment, index, now); err != nil {
 			slog.Warn("failed to admit an enrollment",
 				slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
 		}
@@ -669,8 +749,8 @@ func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataqua
 
 // reasonCandidates records on a few rows why admission is not progressing, so the queue
 // page can explain a stalled run instead of showing an unexplained PENDING.
-func (r *Runner) reasonCandidates(ctx context.Context, workspaceID, reason string) {
-	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, 5)
+func (r *Runner) reasonCandidates(ctx context.Context, workspaceID string, agentID int64, reason string) {
+	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, agentID, 5)
 	if err != nil {
 		return
 	}
@@ -681,15 +761,24 @@ func (r *Runner) reasonCandidates(ctx context.Context, workspaceID, reason strin
 
 // admitOne creates the target's session or resumes an existing one, then links the
 // enrollment to it.
-func (r *Runner) admitOne(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, enrollment *store.QualityAgentEnrollmentMessage, index int, now time.Time) error {
+func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *activeAgent, enrollment *store.QualityAgentEnrollmentMessage, index int, now time.Time) error {
+	agentID := current.agent.ID
 	mode := enrollment.Mode
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
 	}
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
+		!slices.Contains(current.config.Capabilities, "suggest") {
+		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-suggest-disabled")
+	}
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR &&
+		!slices.Contains(current.config.Capabilities, "patrol") {
+		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-patrol-disabled")
+	}
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx) {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "no-model")
 	}
-	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.TargetGUID)
+	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, enrollment.TargetGUID)
 	if err != nil {
 		return err
 	}
@@ -700,17 +789,22 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, agent *store.
 		if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED {
 			switch session.BlockedCode {
 			case "out-of-scope", "agent-disabled":
-				if _, applied, err := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
-					storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now); err != nil {
-					return err
-				} else if !applied {
+				_, applied, enableErr := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
+					storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now)
+				if enableErr != nil {
+					return enableErr
+				}
+				if !applied {
 					return nil
 				}
 			default:
 				return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "session-blocked")
 			}
-		} else if _, err := r.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {
-			return err
+		} else {
+			_, wakeErr := r.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now)
+			if wakeErr != nil {
+				return wakeErr
+			}
 		}
 		if _, err := r.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID, mode); err != nil {
 			return err
@@ -724,18 +818,17 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, agent *store.
 		TargetGUID:  enrollment.TargetGUID,
 		TargetType:  enrollment.TargetType,
 		DatabaseRef: enrollment.DatabaseRef,
-		AgentID:     agent.ID,
+		AgentID:     agentID,
 		Objective:   objectiveFor(mode),
 		Source:      storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_AUTO,
 		Mode:        mode,
 		NextWakeAt:  &nextWake,
 	})
 	if err != nil {
-		// A concurrent manual create wins the unique target index; adopt its row.
 		if common.ErrorCode(err) != common.Conflict {
 			return err
 		}
-		existing, findErr := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.TargetGUID)
+		existing, findErr := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, enrollment.TargetGUID)
 		if findErr != nil {
 			return findErr
 		}
@@ -746,21 +839,6 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, agent *store.
 	}
 	_, _, err = r.store.LinkQualityAgentEnrollmentSession(ctx, enrollment.ResourceID, session.ID, mode)
 	return err
-}
-
-// firstEnabledAgent returns the agent automatic sessions run as, or nil when none is
-// enabled. The choice matches the create RPC's "first enabled agent" rule.
-func (r *Runner) firstEnabledAgent(ctx context.Context) (*store.QualityAgentMessage, error) {
-	agents, err := r.store.ListQualityAgents(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, agent := range agents {
-		if agent.Enabled {
-			return agent, nil
-		}
-	}
-	return nil, nil
 }
 
 // llmConfiguredFor reports whether triage can call a model.

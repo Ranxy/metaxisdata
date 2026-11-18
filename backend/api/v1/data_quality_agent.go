@@ -7,7 +7,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -43,6 +42,18 @@ func (s *DataQualityService) CreateQualityAgent(ctx context.Context, req *connec
 	if len(description) > maxQualityAgentDescBytes {
 		return nil, connectErrorInvalid("an agent description is too long (max %d bytes)", maxQualityAgentDescBytes)
 	}
+	config, databases, err := parseQualityAgentConfig(&v1pb.QualityAgent{
+		Owner:           req.Msg.GetOwner(),
+		Databases:       req.Msg.GetDatabases(),
+		Capabilities:    req.Msg.GetCapabilities(),
+		ReportSchedule:  req.Msg.GetReportSchedule(),
+		Adoption:        req.Msg.GetAdoption(),
+		Budget:          req.Msg.GetBudget(),
+		ProviderProfile: "",
+	})
+	if err != nil {
+		return nil, err
+	}
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate the agent id")
@@ -52,12 +63,31 @@ func (s *DataQualityService) CreateQualityAgent(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
+	config.AgentID = agent.ID
+	config.State = store.QualityAgentStateDraft
+	if req.Msg.GetStart() {
+		config.State = store.QualityAgentStateActive
+	}
+	if _, err := s.store.CreateQualityAgentConfig(ctx, config); err != nil {
+		// The identity already exists; deactivate it so a failed creation does not
+		// leave a usable token behind. The row stays for the audit trail.
+		_, _ = s.store.DisableQualityAgent(ctx, resourceID)
+		return nil, err
+	}
+	if err := s.store.ReplaceQualityAgentDatabases(ctx, agent.ID, databases); err != nil {
+		_, _ = s.store.DisableQualityAgent(ctx, resourceID)
+		return nil, err
+	}
 	token, err := s.mintQualityAgentToken(agent)
 	if err != nil {
 		return nil, err
 	}
+	view, err := s.qualityAgentView(ctx, workspaceID, agent)
+	if err != nil {
+		return nil, err
+	}
 	return connect.NewResponse(&v1pb.CreateQualityAgentResponse{
-		Agent: convertQualityAgentToV1(workspaceID, agent),
+		Agent: view,
 		Token: token,
 	}), nil
 }
@@ -82,15 +112,38 @@ func (s *DataQualityService) ListQualityAgents(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	page, next, err := paginateInMemory(agents, offset)
+	admin, err := s.callerIsQualityAgentAdmin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	response := &v1pb.ListQualityAgentsResponse{NextPageToken: next}
-	for _, agent := range page {
-		response.QualityAgents = append(response.QualityAgents, convertQualityAgentToV1(workspaceID, agent))
+	// Non-administrators see only the agents they own. The ACL grants every member
+	// the list permission so an owner can open their own agents; this filter is the
+	// ownership check.
+	visible := make([]*v1pb.QualityAgent, 0, len(agents))
+	for _, agent := range agents {
+		config, err := s.store.GetQualityAgentConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !admin {
+			if config == nil || config.OwnerPrincipalID == nil || int32(currentUserID(ctx)) != *config.OwnerPrincipalID {
+				continue
+			}
+		}
+		view, err := s.qualityAgentView(ctx, workspaceID, agent)
+		if err != nil {
+			return nil, err
+		}
+		visible = append(visible, view)
 	}
-	return connect.NewResponse(response), nil
+	items, nextPage, err := paginateInMemory(visible, offset)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&v1pb.ListQualityAgentsResponse{
+		QualityAgents: items,
+		NextPageToken: nextPage,
+	}), nil
 }
 
 // DisableQualityAgent disables one agent and deactivates its principal.
@@ -107,7 +160,18 @@ func (s *DataQualityService) DisableQualityAgent(ctx context.Context, req *conne
 		return nil, connect.NewError(connect.CodeNotFound,
 			errors.Errorf("quality agent %q not found", resourceID))
 	}
-	return connect.NewResponse(convertQualityAgentToV1(workspaceID, agent)), nil
+	if config, err := s.store.GetQualityAgentConfig(ctx, agent.ID); err != nil {
+		return nil, err
+	} else if config != nil {
+		if _, err := s.store.UpdateQualityAgentState(ctx, agent.ID, store.QualityAgentStateDisabled); err != nil {
+			return nil, err
+		}
+	}
+	view, err := s.qualityAgentView(ctx, workspaceID, agent)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(view), nil
 }
 
 // RotateQualityAgentToken mints a new token and invalidates every token minted
@@ -132,8 +196,12 @@ func (s *DataQualityService) RotateQualityAgentToken(ctx context.Context, req *c
 	if err != nil {
 		return nil, err
 	}
+	view, err := s.qualityAgentView(ctx, workspaceID, agent)
+	if err != nil {
+		return nil, err
+	}
 	return connect.NewResponse(&v1pb.RotateQualityAgentTokenResponse{
-		Agent: convertQualityAgentToV1(workspaceID, agent),
+		Agent: view,
 		Token: token,
 	}), nil
 }
@@ -219,9 +287,10 @@ func (s *DataQualityService) StageQualityPlan(ctx context.Context, req *connect.
 	// Re-evaluate with the target's real criticality now that it is known: the
 	// amplifier may only fire after the read, still before the write.
 	if agent != nil {
-		if _, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, 0,
-			qualityChangeRequestCriticality(existing, rules)); err != nil {
-			return nil, err
+		_, authErr := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, 0,
+			qualityChangeRequestCriticality(existing, rules))
+		if authErr != nil {
+			return nil, authErr
 		}
 	}
 	if existing == nil {
@@ -265,10 +334,28 @@ func (s *DataQualityService) qualityAgentResourceID(ctx context.Context, name st
 	if err != nil {
 		return "", "", connectErrorInvalid("%v", err)
 	}
+	workspace, err = s.canonicalAgentWorkspace(ctx, workspace)
+	if err != nil {
+		return "", "", err
+	}
 	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
 		return "", "", err
 	}
 	return workspace, resourceID, nil
+}
+
+// canonicalAgentWorkspace resolves the AIP wildcard workspace on the agent family
+// of RPCs. Unlike a list parent, a single-resource name may still be addressed with
+// - by an older deep link; the rest of data quality canonicalizes the same way.
+func (s *DataQualityService) canonicalAgentWorkspace(ctx context.Context, workspace string) (string, error) {
+	if workspace != "-" {
+		return workspace, nil
+	}
+	workspaceID, err := s.store.GetWorkspaceID(ctx)
+	if err != nil {
+		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve the workspace"))
+	}
+	return workspaceID, nil
 }
 
 func parseQualityAgentName(name string) (string, string, error) {
@@ -289,19 +376,4 @@ func (s *DataQualityService) fetchQualityAgent(ctx context.Context, resourceID s
 			errors.Errorf("quality agent %q not found", resourceID))
 	}
 	return agent, nil
-}
-
-// convertQualityAgentToV1 renders one agent. The token is never part of this shape.
-func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessage) *v1pb.QualityAgent {
-	if agent == nil {
-		return nil
-	}
-	return &v1pb.QualityAgent{
-		Name:        common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
-		DisplayName: agent.DisplayName,
-		Description: agent.Description,
-		Enabled:     agent.Enabled,
-		CreatedBy:   formatQualityContractPublisher(agent.CreatedBy),
-		CreateTime:  timestamppb.New(agent.CreatedAt),
-	}
 }

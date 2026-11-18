@@ -287,10 +287,18 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		if err != nil {
 			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
 		}
+		var agentID *int64
+		if createdBy != nil {
+			if agent, agentErr := s.store.GetQualityAgentByPrincipalID(ctx, int(*createdBy)); agentErr == nil && agent != nil {
+				id := agent.ID
+				agentID = &id
+			}
+		}
 		suggestion, created, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,
 			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
 			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+			AgentID:    agentID,
 			TargetGUID: targetGUID,
 			TargetType: metaType,
 			Signature:  candidate.signature,
@@ -303,6 +311,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			PromptVersion: promptVersion,
 			CreatedBy:     createdBy,
 			CreatedAt:     now,
+			Confidence:    candidate.confidence,
 		})
 		if err != nil {
 			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
