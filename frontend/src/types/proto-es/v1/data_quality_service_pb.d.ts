@@ -15201,7 +15201,8 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityAgentSchema;
   },
   /**
-   * Pause an ACTIVE agent. Administrator only.
+   * Pause an ACTIVE agent. The owner and administrators may pause; only an
+   * administrator may edit the configuration.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.PauseQualityAgent
    */

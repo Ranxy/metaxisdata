@@ -13,6 +13,10 @@ import {
 } from "@/types/proto-es/v1/notification_service_pb";
 import { formatObservedValue as formatDataQualityValue } from "@/utils/dataQuality";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  qualityAgentPath,
+  qualityAgentRouteParams,
+} from "@/utils/qualityAgent";
 
 /**
  * Everything the UI needs to render one message, as i18n keys and parameters
@@ -247,10 +251,8 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
 function qualityAgentAttentionText(
   detail: QualityAgentAttentionDetail
 ): NotificationText {
-  const parts = detail.agent.split("/");
-  const workspace = parts[1] ?? "";
-  const agentID = parts[3] ?? "";
   const question = detail.question.trim();
+  const agentID = qualityAgentRouteParams(detail.agent)?.agentId ?? "";
   return {
     titleKey:
       question === ""
@@ -262,10 +264,7 @@ function qualityAgentAttentionText(
     },
     messageKey: "notifications.qualityAgentMessage",
     messageParams: { agent: agentID },
-    href:
-      workspace === "" || agentID === ""
-        ? undefined
-        : `/data-quality/agents/${workspace}/${agentID}`,
+    href: detail.agent === "" ? undefined : qualityAgentPath(detail.agent),
   };
 }
 

@@ -463,7 +463,7 @@
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
 import { AlertTriangle, Loader2, Plus, RefreshCcw } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createQualityAgent,
@@ -532,6 +532,7 @@ import type { DataQualitySetting } from "@/types/proto-es/v1/setting_service_pb"
 import { DataQualitySettingSchema } from "@/types/proto-es/v1/setting_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { qualityRuleTypeKey } from "@/utils/dataQuality";
+import { qualityAgentRoute } from "@/utils/qualityAgent";
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
@@ -604,6 +605,11 @@ const createError = ref("");
 const overlapAcknowledged = ref(false);
 const tokenOpen = ref(false);
 const issuedToken = ref("");
+watch(tokenOpen, (open) => {
+  if (!open) {
+    issuedToken.value = "";
+  }
+});
 const form = ref({
   displayName: "",
   description: "",
@@ -684,11 +690,7 @@ function stateVariant(state: QualityAgentState) {
 }
 
 function agentHomeRoute(name: string) {
-  const parts = name.split("/");
-  return {
-    name: "QualityAgent",
-    params: { workspace: parts[1], agentId: parts[3] },
-  };
+  return qualityAgentRoute(name);
 }
 
 function toggleAdoptionRuleType(ruleType: number, checked: boolean) {
