@@ -785,6 +785,17 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
+  // Let the owner turn automatic adoption off or back to paused; administrators may
+  // also set ACTIVE. The rest of the configuration stays administrator-managed.
+  rpc SetQualityAgentAdoption(SetQualityAgentAdoptionRequest) returns (QualityAgent) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:setAdoption"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
   // Replace the masked configuration of one agent. Administrator only.
   rpc UpdateQualityAgent(UpdateQualityAgentRequest) returns (QualityAgent) {
     option (google.api.http) = {
@@ -4589,6 +4600,15 @@ message DismissQualityAgentAttentionRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAttention"}
   ];
+}
+
+message SetQualityAgentAdoptionRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  QualityAgentAdoptionSetting adoption = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // UpdateQualityAgentRequest replaces the masked configuration fields.

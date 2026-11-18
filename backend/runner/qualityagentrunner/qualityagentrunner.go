@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentreport"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -37,6 +38,7 @@ type Store interface {
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	CreateQualityAgentAttention(ctx context.Context, message *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error)
 }
 
@@ -148,7 +150,8 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 	if err != nil {
 		return err
 	}
-	body := agentreport.Render(snapshot, schedule.periodStart, schedule.periodEnd, schedule.location)
+	language := r.ownerLanguage(ctx, config)
+	body := agentreport.Render(snapshot, schedule.periodStart, schedule.periodEnd, schedule.location, language)
 	report, created, err := r.store.CreateQualityAgentReport(ctx, &store.QualityAgentReportMessage{
 		WorkspaceID:          workspaceID,
 		AgentID:              config.AgentID,
@@ -180,7 +183,7 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 	if err != nil {
 		return err
 	}
-	content := fmt.Sprintf("Patrol report ready for %s to %s. Open the Reports tab to read it.",
+	content := agentlang.ReportReady(language,
 		schedule.periodStart.Format("2006-01-02"), schedule.periodEnd.Format("2006-01-02"))
 	_, appendErr := r.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
 		SessionID:      conversation.ID,
@@ -202,6 +205,19 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 	return nil
 }
 
+// ownerLanguage reads the owner's chosen server-prose language; an absent owner or
+// profile falls back to English.
+func (r *Runner) ownerLanguage(ctx context.Context, config *store.QualityAgentConfigMessage) string {
+	if config == nil || config.OwnerPrincipalID == nil {
+		return agentlang.English
+	}
+	owner, err := r.store.GetUserByID(ctx, int(*config.OwnerPrincipalID))
+	if err != nil {
+		return agentlang.English
+	}
+	return agentlang.Of(owner)
+}
+
 // escalateAnomaly opens one owner attention when a report has failures or new
 // issues. The report itself is the reference; the notification is the doorbell.
 func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config *store.QualityAgentConfigMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot) {
@@ -215,16 +231,16 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config
 	if err != nil || agent == nil {
 		return
 	}
+	language := r.ownerLanguage(ctx, config)
 	attention, created, err := r.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 		WorkspaceID: workspaceID,
 		AgentID:     config.AgentID,
 		Kind:        store.QualityAgentAttentionKindReportAnomaly,
 		Reference:   "qualityAgentReports/" + report.ResourceID,
-		Title:       "A patrol report found anomalies",
-		Question: fmt.Sprintf("%d check(s) failed and %d new issue(s) opened in this period.",
-			snapshot.FailedCount, snapshot.NewIssueCount),
-		DedupeKey: "report:" + report.ResourceID,
-		CreatedAt: time.Now().UTC(),
+		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindReportAnomaly),
+		Question:    agentlang.ReportQuestion(language, snapshot.FailedCount, snapshot.NewIssueCount),
+		DedupeKey:   "report:" + report.ResourceID,
+		CreatedAt:   time.Now().UTC(),
 	})
 	if err != nil || !created {
 		return

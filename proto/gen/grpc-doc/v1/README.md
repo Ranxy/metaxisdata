@@ -484,6 +484,7 @@
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
     - [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest)
+    - [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest)
     - [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest)
     - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
     - [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest)
@@ -9378,6 +9379,22 @@ SendQualityAgentMessageRequest appends the owner&#39;s message and wakes the age
 
 
 
+<a name="metaxisdata-v1-SetQualityAgentAdoptionRequest"></a>
+
+### SetQualityAgentAdoptionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| adoption | [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StageQualityPlanRequest"></a>
 
 ### StageQualityPlanRequest
@@ -10909,6 +10926,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityAgentAttentions | [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest) | [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse) | List one agent&#39;s escalations. The owner and administrators may read. |
 | ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
 | DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
+| SetQualityAgentAdoption | [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Let the owner turn automatic adoption off or back to paused; administrators may also set ACTIVE. The rest of the configuration stays administrator-managed. |
 | UpdateQualityAgent | [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Replace the masked configuration of one agent. Administrator only. |
 | StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. Administrator only. |
 | PauseQualityAgent | [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Pause an ACTIVE agent. The owner and administrators may pause; only an administrator may edit the configuration. |
