@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -3720,12 +3721,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
 	require.NoError(t, err)
 	require.True(t, settings.Msg.GetDataQuality().GetAgentRunnerEnabled())
-	_, err = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
-		withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{AgentRunnerEnabled: false}},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-		}))
-	require.NoError(t, err)
+	setQualityAgentRunner(t, fixture, false)
 	settings, err = fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
 		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
 	require.NoError(t, err)
@@ -4134,22 +4130,35 @@ func createQualityAgentTestMember(t *testing.T, fixture *qualityFixture, label s
 	return created.Msg.GetName(), token
 }
 
+// setQualityAgentRunner flips the workspace's agent runner switch, preserving the
+// rest of the data-quality setting: the setting update replaces the whole message,
+// and a bare message would silently clear store_failure_samples and the limits for
+// every test sharing the server.
+func setQualityAgentRunner(t *testing.T, fixture *qualityFixture, enabled bool) {
+	t.Helper()
+
+	current, err := fixture.settings.GetWorkspaceProfileSetting(context.Background(),
+		withToken(fixture.env.AdminToken(), &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	setting := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
+	if setting == nil {
+		setting = &v1pb.DataQualitySetting{}
+	}
+	setting.AgentRunnerEnabled = enabled
+	_, err = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(),
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: setting},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	require.NoError(t, err)
+}
+
 // enableQualityAgentRunner turns the workspace's agent runner switch on and restores
 // it after the test.
 func enableQualityAgentRunner(t *testing.T, fixture *qualityFixture) {
 	t.Helper()
-
-	update := func(enabled bool) {
-		t.Helper()
-		_, err := fixture.settings.UpdateWorkspaceProfileSetting(context.Background(),
-			withToken(fixture.env.AdminToken(), &v1pb.UpdateWorkspaceProfileSettingRequest{
-				Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{AgentRunnerEnabled: enabled}},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-			}))
-		require.NoError(t, err)
-	}
-	t.Cleanup(func() { update(false) })
-	update(true)
+	t.Cleanup(func() { setQualityAgentRunner(t, fixture, false) })
+	setQualityAgentRunner(t, fixture, true)
 }
 
 // resourceIDFromName returns the last segment of a resource name.
