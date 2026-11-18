@@ -43,6 +43,7 @@ type Waker interface {
 
 type SessionStore interface {
 	ResetStaleQualityAgentSessionLeases(ctx context.Context, now time.Time, restartLimit int32) (int64, error)
+	ListQualityAgentSessionsByBlockedCode(ctx context.Context, code string, limit int) ([]*store.QualityAgentSessionMessage, error)
 	ClaimDueQualityAgentSessions(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]*store.QualityAgentSessionMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 	GetQualityAgentConfig(ctx context.Context, agentID int64) (*store.QualityAgentConfigMessage, error)

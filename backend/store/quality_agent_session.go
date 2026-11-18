@@ -1211,3 +1211,31 @@ func (s *Store) GetQualityAgentSessionByID(ctx context.Context, id int64) (*Qual
 	}
 	return message, nil
 }
+
+// ListQualityAgentSessionsByBlockedCode reads sessions parked with one code, used
+// by the runner to escalate restart-limit sessions that the lease sweep parked.
+func (s *Store) ListQualityAgentSessionsByBlockedCode(ctx context.Context, code string, limit int) ([]*QualityAgentSessionMessage, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.GetDB().QueryContext(ctx,
+		`SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
+		 WHERE archived_at IS NULL AND blocked_code = $1
+		 ORDER BY updated_at DESC LIMIT $2`, code, limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the blocked quality agent sessions")
+	}
+	defer rows.Close()
+	var sessions []*QualityAgentSessionMessage
+	for rows.Next() {
+		session, err := scanQualityAgentSession(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan a blocked quality agent session")
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the blocked quality agent sessions")
+	}
+	return sessions, nil
+}

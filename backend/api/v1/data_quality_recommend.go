@@ -114,7 +114,7 @@ func (s *DataQualityService) RecommendQualityChecks(ctx context.Context, req *co
 	for _, candidate := range candidates {
 		signatures = append(signatures, candidate.Signature)
 	}
-	states, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, signatures)
+	states, err := s.store.QualitySuggestionSignatureStates(ctx, guid, metaType, signatures, nil)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the target's suggestion history"))
 	}
@@ -127,7 +127,7 @@ func (s *DataQualityService) RecommendQualityChecks(ctx context.Context, req *co
 		// One statement closes every stale proposal this pass found; the returned count
 		// is what actually changed (a concurrent reviewer may have decided one).
 		superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
-			plan.Supersede, "a saved rule with the same identity exists", now)
+			plan.Supersede, "a saved rule with the same identity exists", nil, now)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale recommended check"))
 		}

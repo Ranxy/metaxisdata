@@ -427,4 +427,5 @@ func TestQualitySuggestionQueriesPinTheContractualPredicates(t *testing.T) {
 	require.Contains(t, queueQualitySuggestionQuery, "EXCLUDED.source = $15")
 	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = $16")
 	require.Contains(t, qualitySuggestionSignatureStatesQuery, "(array_agg(source) FILTER (WHERE status = $1))[1]")
+	require.Contains(t, qualitySuggestionSignatureStatesQuery, "($7::bigint IS NULL OR agent_id = $7)")
 }

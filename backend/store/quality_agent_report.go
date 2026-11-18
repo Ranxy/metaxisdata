@@ -197,41 +197,47 @@ type QualityAgentReportSnapshot struct {
 	PendingProposalCount int32
 }
 
-// BuildQualityAgentReportSnapshot aggregates one period over the agent's database
-// scope. Executions, rules and issues are filtered by the target GUID prefix of each
-// database, so the report covers exactly the databases the agent owns.
+// BuildQualityAgentReportSnapshot aggregates one period over the agent's enrolled
+// targets. The enrollment set, not the database prefix, is the scope: a target the
+// agent excluded or lost is not counted, and two agents covering the same database
+// do not double-count each other's targets.
 func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int64, databases []string, since, until time.Time) (*QualityAgentReportSnapshot, error) {
-	prefixes, err := databaseGUIDPrefixes(databases)
-	if err != nil {
-		return nil, err
-	}
 	snapshot := &QualityAgentReportSnapshot{Scope: append([]string(nil), databases...)}
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FILTER (WHERE state <> $3),
-			COUNT(*) FILTER (WHERE state = $4)
-		FROM quality_agent_enrollment
-		WHERE agent_id = $1 AND database_ref = ANY($2)`,
-		agentID, pq.Array(databases),
-		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE),
+	states := []int16{
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT),
+	}
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*),
+			COUNT(*) FILTER (WHERE EXISTS (
+				SELECT 1 FROM quality_rule r
+				WHERE r.target_guid = e.target_guid AND r.state = $3
+			))
+		FROM quality_agent_enrollment e
+		WHERE e.agent_id = $1 AND e.state = ANY($2)`,
+		agentID, pq.Array(states),
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
 	).Scan(&snapshot.TargetCount, &snapshot.CoveredTargetCount); err != nil {
 		return nil, errors.Wrap(err, "failed to count the report targets")
 	}
 	if err := s.GetDB().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM quality_rule
 		WHERE state = $2 AND EXISTS (
-			SELECT 1 FROM unnest($1::text[]) p WHERE left(target_guid, length(p)) = p
-		)`, pq.Array(prefixes), int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
+			SELECT 1 FROM quality_agent_enrollment e
+			WHERE e.agent_id = $1 AND e.target_guid = quality_rule.target_guid AND e.state = ANY($3)
+		)`, agentID, int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED), pq.Array(states),
 	).Scan(&snapshot.RuleCount); err != nil {
 		return nil, errors.Wrap(err, "failed to count the report rules")
 	}
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT status, COUNT(*) FROM quality_execution
-		WHERE state = $4 AND finished_at >= $2 AND finished_at < $3 AND EXISTS (
-			SELECT 1 FROM unnest($1::text[]) p WHERE left(target_guid, length(p)) = p
+		WHERE state = $2 AND finished_at >= $3 AND finished_at < $4 AND EXISTS (
+			SELECT 1 FROM quality_agent_enrollment e
+			WHERE e.agent_id = $1 AND e.target_guid = quality_execution.target_guid AND e.state = ANY($5)
 		) GROUP BY status`,
-		pq.Array(prefixes), since, until,
-		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED))
+		agentID, int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		since, until, pq.Array(states))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to count the report executions")
 	}
@@ -266,8 +272,9 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 			COUNT(*) FILTER (WHERE status <> 3)
 		FROM quality_issue
 		WHERE EXISTS (
-			SELECT 1 FROM unnest($1::text[]) p WHERE left(target_guid, length(p)) = p
-		)`, pq.Array(prefixes), since, until,
+			SELECT 1 FROM quality_agent_enrollment e
+			WHERE e.agent_id = $1 AND e.target_guid = quality_issue.target_guid AND e.state = ANY($4)
+		)`, agentID, since, until, pq.Array(states),
 	).Scan(&snapshot.NewIssueCount, &snapshot.OpenIssueCount); err != nil {
 		return nil, errors.Wrap(err, "failed to count the report issues")
 	}
@@ -279,18 +286,6 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 		return nil, errors.Wrap(err, "failed to count the report pending proposals")
 	}
 	return snapshot, nil
-}
-
-func databaseGUIDPrefixes(databases []string) ([]string, error) {
-	prefixes := make([]string, 0, len(databases))
-	for _, database := range databases {
-		instance, name, err := common.GetInstanceDatabaseID(database)
-		if err != nil {
-			return nil, errors.Wrapf(err, "invalid database scope %q", database)
-		}
-		prefixes = append(prefixes, common.BuildMetaGUID(instance, name)+common.MetaGUIDSplit)
-	}
-	return prefixes, nil
 }
 
 func scanQualityAgentReport(scanner interface{ Scan(dest ...any) error }) (*QualityAgentReportMessage, error) {
