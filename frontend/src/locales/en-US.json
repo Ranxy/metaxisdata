@@ -3569,7 +3569,6 @@
     "name": "Name",
     "noDatabases": "No synced databases yet.",
     "open": "Open",
-    "openSettings": "Open quality agent settings",
     "overlapAcknowledge": "I understand these databases will be processed by more than one agent.",
     "overlapBadge": "Also covered by {agents}",
     "owner": "Owner",
