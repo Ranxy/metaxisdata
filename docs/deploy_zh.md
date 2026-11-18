@@ -12,8 +12,7 @@ Metaxisdata 以一个自包含的二进制交付：服务端内嵌 Web 应用，
 - 一个可在该库中创建表**和扩展**的数据库用户：迁移会执行 `CREATE EXTENSION IF NOT EXISTS pg_trgm`，用于元数据搜索索引（第 2 步）。
 - Docker——没有其他宿主机依赖，运行所需的一切都在镜像内。
 - 使用预编译二进制时同样不需要 Docker，也没有其他运行时依赖：二进制是静态的、内嵌 Web 应用。出站 TLS 需要 CA 证书包；仅当 MSSQL 数据源配置了 `timezone` 参数时还需要时区数据库（IANA tzdata）。镜像安装 `ca-certificates` 与 `tzdata` 正是这两个用途；主流发行版默认都已提供。
-- 如需自行构建镜像：还需要启用 BuildKit 的 Docker（Docker 20.10+；较新的 Docker Desktop 与 Engine 默认已启用），以及能访问 Go module 与 npm install 的网络。
-- 如需自行构建二进制：需要 Go 工具链、Node 24（前端 `engines` 字段）与前端钉钉的 pnpm 版本（脚本会经 corepack 解析它），以及能访问 Go module 与 npm install 的网络。
+- 如需自行构建产物：`scripts/` 下的脚本在自己的注释头里说明工具链要求，以及版本、代理与镜像源等设置。镜像构建需要启用 BuildKit 的 Docker（Docker 20.10+）；二进制构建需要 Go 工具链、Node 24（前端 `engines` 字段）与前端锁定的 pnpm 版本（[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 会经 corepack 解析它）。
 
 ## 1. 获取服务端
 
@@ -21,47 +20,17 @@ Metaxisdata 以一个自包含的二进制交付：服务端内嵌 Web 应用，
 
 ### 拉取已发布的镜像
 
-每次 release 都会把镜像发布到 GHCR，覆盖 `linux/amd64` 与 `linux/arm64`。以下是最新 release `v0.1.0` 发布的标签，按你想跟踪的标签拉取：
+每次 release 都会把镜像发布到 GHCR，覆盖 `linux/amd64` 与 `linux/arm64`。按你想跟踪的别名拉取：
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v0.1.0   # 发布时的 release 标签
-docker pull ghcr.io/ranxy/metaxisdata:0.1.0    # 去掉 v 的语义化版本
-docker pull ghcr.io/ranxy/metaxisdata:0.1      # 次版本线
-docker pull ghcr.io/ranxy/metaxisdata:latest   # 最新的非预发布版本
+docker pull ghcr.io/ranxy/metaxisdata:latest
 ```
 
-- `v0.1.0` 与 `0.1.0` 指向同一个确切的 release。
-- `0.1` 跟踪次版本线上最新的 release。
-- `latest` 跟踪最新的非预发布 release。预发布版本会发布自己的标签（如 `v0.2.0-rc.1`），但从不移动别名——跟踪 `latest` 的部署绝不会拿到候选版本。
-- 每个 release 还携带一个 `sha-<commit>` 标签，对应确切的提交。
+`latest` 跟踪最新的非预发布 release。每次 release 还会发布 release 标签、去掉 `v` 的语义化版本、次版本线与 `sha-<commit>` 标签；[releases 页面](https://github.com/Ranxy/metaxisdata/releases) 列出最新 release，用它的标签替换 `latest` 即可固定版本。预发布版本会发布自己的标签，但从不移动别名。
 
 ### 自行构建镜像
 
-镜像由 [scripts/build_metaxisdata_docker.sh](../scripts/build_metaxisdata_docker.sh) 依据 [scripts/docker/Dockerfile.server](../scripts/docker/Dockerfile.server) 构建；`make docker-build` 运行的就是同一个脚本：
-
-```bash
-scripts/build_metaxisdata_docker.sh                  # release profile -> :dev 与 :latest
-VERSION=v0.1.0 scripts/build_metaxisdata_docker.sh   # release profile -> :v0.1.0 与 :latest
-make docker-build                                    # 等同于第一条命令
-
-scripts/build_metaxisdata_docker.sh --dev            # dev profile，仅用于本地试验
-make docker-build-dev
-```
-
-每次构建都会把镜像打在 `IMAGE`（默认 `metaxisdata/metaxisdata`）下；只有 release 构建才会附加 `:latest`。镜像内只包含服务端二进制——`mxd` CLI 是独立产物，用 `make build-cli` 构建。
-
-构建参数：
-
-| 变量 | 作用 |
-| --- | --- |
-| `VERSION` | 镜像标签，同时也是二进制对外报告的版本。默认 `dev`。 |
-| `IMAGE` | 镜像名。默认 `metaxisdata/metaxisdata`。 |
-| `BUILD_PROXY` | Go module 下载与 npm install 所用的代理。 |
-| `GOPROXY` | Go module 代理。默认取本机 `go env GOPROXY`。 |
-| `NPM_REGISTRY` | npm registry。默认取本机 `npm config get registry`。 |
-| `APK_MIRROR` | Alpine CDN 的替换地址，例如 `https://mirrors.aliyun.com/alpine`。该值会被原样写入镜像内的 `/etc/apk/repositories`，并可通过 `docker history` 看到，因此绝不能包含凭据。 |
-
-不要为构建全局 export `HTTPS_PROXY`：BuildKit 会把标准代理变量注入每个构建阶段，运行时阶段也在内，凭据会一并带过去。`BUILD_PROXY` 是只有构建阶段声明的自定义参数，因此传入的值只停留在构建之内。
+镜像由 [scripts/build_metaxisdata_docker.sh](../scripts/build_metaxisdata_docker.sh) 依据 [scripts/docker/Dockerfile.server](../scripts/docker/Dockerfile.server) 构建；`make docker-build` 运行的就是同一个脚本。release 构建会把镜像打上 `VERSION` 标签并同时占用 `:latest`；`--dev` 构建 dev profile，仅用于本地试验。镜像内只包含服务端二进制——`mxd` CLI 是独立产物，用 `make build-cli` 构建。代理、registry 与镜像源参数记录在脚本的注释头里；`APK_MIRROR` 会被原样写入镜像内的 `/etc/apk/repositories` 并出现在 `docker history` 中，因此绝不能包含凭据。
 
 ### 下载预编译二进制
 
@@ -75,48 +44,21 @@ make docker-build-dev
 | macOS (Intel) | `metaxisdata-darwin-amd64` |
 | Windows (amd64) | `metaxisdata-windows-amd64.exe` |
 
+从该 release 的下载路径取对应平台的资产：
+
 ```bash
-# Linux (amd64)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
-chmod +x metaxisdata
-
-# Linux (arm64)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-arm64
-chmod +x metaxisdata
-
-# macOS (Apple Silicon)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-arm64
-chmod +x metaxisdata
-
-# macOS (Intel)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-amd64
+curl -fsSL -o metaxisdata \
+  https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
 chmod +x metaxisdata
 ```
 
-```powershell
-# Windows（PowerShell）
-curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-windows-amd64.exe
-```
-
-`releases/latest/download/…` 指向最新的**非预发布** release，预发布版本不会应答这个 URL；预发布请在 URL 里带 tag——`…/releases/download/<tag>/metaxisdata-linux-amd64`。
+`releases/latest/download/…` 指向最新的**非预发布** release，预发布版本不会应答这个 URL；预发布请在 URL 里带 tag——`…/releases/download/<tag>/<asset>`。Windows 上请用 `curl.exe` 与 `.exe` 资产。
 
 下载的二进制与 [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 产出的一致：SPA 已内嵌、prod profile，`metaxisdata --version` 会报告 release 标签。
 
 ### 自行构建二进制
 
-[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 构建前端 SPA 并编译出自包含二进制（`make build-binary` 运行的就是同一个脚本）：
-
-```bash
-scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
-VERSION=v0.1.0 scripts/build_metaxisdata.sh
-make build-binary                           # 等同于第一条命令
-
-scripts/build_metaxisdata.sh --dev          # dev profile，仅用于本地试验
-
-scripts/build_metaxisdata.sh --release-assets   # 五个 release 平台的资产 + SHA256SUMS -> build/
-```
-
-二进制对外报告的版本、提交与构建时间来自 `VERSION`、`GIT_COMMIT` 与 `BUILD_TIME` 环境变量；带 release 标签运行最后一条命令，即可在本地逐资产复现 [release-binaries.yml](../.github/workflows/release-binaries.yml) 上传的内容——该工作流就是一次脚本调用加上传；`--dev` 构建仅用于本地试验。
+[scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) 构建前端 SPA 并编译出自包含二进制（`make build-binary` 运行的就是同一个脚本）。`--release-assets` 一次产出五个 release 平台的资产与 `SHA256SUMS`，每个目标都显式指定 `GOOS`/`GOARCH`；`--dev` 构建 dev profile，仅用于本地试验。脚本的注释头说明了它读取的构建元数据与网络设置。
 
 ## 2. 准备 PostgreSQL
 
@@ -140,7 +82,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 docker run -d --name metaxisdata \
   -p 8083:8083 \
   -e PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
-  ghcr.io/ranxy/metaxisdata:v0.1.0
+  ghcr.io/ranxy/metaxisdata:latest
 ```
 
 容器以 uid 1001 运行，健康状态在 `/healthz` 上报告：
@@ -158,9 +100,9 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
   ./metaxisdata --port 8083
 ```
 
-`metaxisdata --version` 会打印版本、提交与构建时间。升级就是替换二进制并重启：待执行的迁移会在启动时自动应用，因此备份纪律仍按下文的运维说明执行（面向容器的部分）。
+`metaxisdata --version` 会打印版本、提交与构建时间。升级就是替换二进制并重启：待执行的迁移会在启动时自动应用，因此仍按下文运维说明的备份纪律执行。
 
-**本 release 必须一次性切换，不能滚动升级。** 它把 MCP 刷新凭据改成原地轮换，并把连接 id 写进 access token；请先停掉所有旧副本，再启动新二进制。旧副本若继续服务 `/oauth/token`，会删除并重新插入授权行，把已吊销的连接静默恢复成未吊销；回滚到旧二进制也是同样的效果。如果必须回滚，请恢复升级前的数据库备份，并轮换部署的签名密钥（`AUTH_SECRET` setting）：所有未过期的令牌都会停止验签，而备份之后做出的吊销也随备份一起丢失，需要重新吊销受影响的已连接应用。
+**绝不能让新旧二进制并行运行。** 早于 connected-app 刷新凭据的二进制在刷新时会删除并重新插入授权行，把已吊销的连接静默恢复成未吊销。请先停掉所有旧副本，再启动新二进制。回滚到旧二进制也是同样的效果：如果必须回滚，请恢复升级前的数据库备份，并轮换部署的签名密钥（`AUTH_SECRET` setting）——所有未过期的令牌都会停止验签，而备份之后做出的吊销也随备份一起丢失，需要重新吊销受影响的已连接应用。
 
 `PG_URL` 与加密密钥两个变量由服务端自身读取，对二进制同样有效。其余 `METAXISDATA_*` 变量属于镜像入口脚本的映射——在裸宿主机上请改用与之对应的 flag：`--port`、`--debug`、`--enable-json-logging`、`--cors-allow-origins`、`--trusted-proxies`、`--metrics-addr`。
 
@@ -168,6 +110,10 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
   ./metaxisdata --trusted-proxies 10.0.0.0/8 --cors-allow-origins https://metaxisdata.example.com
 ```
+
+### 每个元数据库只跑一个服务端进程
+
+每个元数据库只运行一个服务端进程。后台 runner（schema 同步、血缘分析、摄取血缘的重新校验、维护任务）把队列、按库的同步闸门、用户可见的同步操作与重新校验状态都保存在内存里，第二个副本会对同一批实例重复每次同步与分析，并把每个用户的同步结果消息拆到不同进程。扩容元数据库不会让服务端变成可复制的角色；要扩展请扩 PostgreSQL，而不是进程。重启会丢失排队中的工作，但下次扫描会收敛。见 [security-posture.md](security-posture.md)。
 
 ### 首次启动
 
@@ -190,6 +136,8 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
 | `METAXISDATA_TRUSTED_PROXIES` | 记录审计来源地址时可以采信其 `X-Forwarded-For` 的 peer IP/CIDR，逗号分隔（第 4 步）。 |
 | `METAXISDATA_METRICS_ADDR` | 可选。Prometheus 指标端点的监听地址，例如 `127.0.0.1:9090`；不设置则关闭。该端点匿名且**从不在 API 端口**提供服务，请只绑到抓取方能访问的接口。见 [Prometheus 指标](#prometheus-指标)。 |
 
+另有两个变量属于宿主机设置而非部署配置，服务端会从环境中读取：`SSH_AUTH_SOCK`，当数据源没有内联 SSH 私钥时 SSH 隧道使用的 ssh-agent socket；以及 `TZ`，日志时间戳所遵循的进程时区（不设置即为 UTC）。
+
 ### 健康检查与构建元数据
 
 | 端点 | 回答 |
@@ -208,18 +156,17 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
   ./metaxisdata --port 8083 --metrics-addr 127.0.0.1:9090
 ```
 
-API 端口不再提供 `/metrics`，`--debug` 只控制日志与 pprof。该端点只支持拉取且匿名：把 Prometheus 指向
-`http://<metrics-addr>/metrics`，并让该地址只存在于可信接口或内网。它上报运营计数与耗时——schema 同步、
-血缘分析、OpenLineage 摄取、数据质量 run、LLM 调用、HTTP/RPC 流量、队列深度与元数据库连接池——标签只使用
-有界枚举；实例、库、表、GUID、SQL 和用户数据不会出现在标签里。指标目录、标签规则与节奏见
-[.agents/docs/metrics.md](../.agents/docs/metrics.md)。
+该监听端口只在 `/metrics` 上提供 `GET` 与 `HEAD`；它不是第二个 API，API 端口也从不提供指标。该端点只支持拉取且匿名，请把它放在可信接口或内网上，并让 Prometheus 指向 `http://<metrics-addr>/metrics`。`--debug` 只控制日志与 pprof。
+
+端点会导出标准 Go 与进程指标、带发布版本与提交的 `metaxisdata_build_info`，以及服务端自己的 `metaxisdata_*` 系列：schema 同步、血缘分析、OpenLineage 摄取、数据质量 run、LLM 调用、HTTP/RPC 流量、队列深度与元数据库连接池。标签只使用有界枚举，例如 engine、status、result、reason、method 与 route；实例、库、表、GUID、SQL 和用户数据不会出现在标签里，因此标签集合不会随注册中心增长。
+
+计数器是进程本地的：重启会归零，而部署只有一个服务端进程，没有第二个副本可以汇总。
 
 ### 运维说明
 
 - 要备份的是数据库，而不是容器：容器不挂载任何卷，也不保存本地状态。
 - 镜像需要一个可写路径 `/tmp`，MSSQL 驱动会用到其中的临时文件。加固部署请使用 `--read-only --tmpfs /tmp`；裸的 `--read-only` 会移除镜像里唯一可写的目录。
-- 不设置 `TZ` 时，时钟与所有日志时间戳都是 UTC。
-- 入口脚本把上述环境变量映射为服务端 flag，其余命令参数原样向后传递。显式参数优先于映射来的参数，因此 `docker run … ghcr.io/ranxy/metaxisdata:v0.1.0 --debug` 依然有效。
+- 入口脚本把上述环境变量映射为服务端 flag，其余命令参数原样向后传递。显式参数优先于映射来的参数，因此 `docker run … ghcr.io/ranxy/metaxisdata:latest --debug` 依然有效。
 
 ## 4. 用反向代理终止 HTTPS
 

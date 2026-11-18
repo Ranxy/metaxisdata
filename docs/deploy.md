@@ -25,13 +25,13 @@ in a reverse proxy in front of it — step 4.
   certificate bundle, and an MSSQL source configured with a `timezone`
   parameter needs a zone database (IANA tzdata) — the image ships both for
   these two reasons; mainstream distributions provide them already.
-- To build the image yourself: BuildKit (Docker 20.10+; recent Docker Desktop
-  and Engine enable it by default) and outbound access for the Go modules and
-  the npm install.
-- To build the binary yourself: the Go toolchain, Node 24 (the frontend's
-  `engines` field) and the frontend's pinned pnpm release
-  (scripts/build_metaxisdata.sh resolves it via corepack), with outbound access
-  for the Go modules and the npm install.
+- To build either artifact yourself: the scripts under [scripts/](../scripts/)
+  describe their toolchain requirements and their version, proxy and mirror
+  settings in their own headers. The image build needs BuildKit (Docker
+  20.10+); the binary build needs the Go toolchain, Node 24 (the frontend's
+  `engines` field) and the frontend's pinned pnpm release, which
+  [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) resolves via
+  corepack.
 
 ## 1. Get the server
 
@@ -42,59 +42,30 @@ came from. Pick the one that fits the host.
 ### Pull the released image
 
 Every release publishes the image to GHCR for `linux/amd64` and `linux/arm64`.
-These are the tags the newest release, `v0.1.0`, published; pull the one you
-want to track:
+Pull the alias you want to track:
 
 ```bash
-docker pull ghcr.io/ranxy/metaxisdata:v0.1.0   # the release tag as published
-docker pull ghcr.io/ranxy/metaxisdata:0.1.0    # the bare semver
-docker pull ghcr.io/ranxy/metaxisdata:0.1      # the minor line
-docker pull ghcr.io/ranxy/metaxisdata:latest   # the newest non-prerelease
+docker pull ghcr.io/ranxy/metaxisdata:latest
 ```
 
-- `v0.1.0` and `0.1.0` name that exact release.
-- `0.1` follows the newest release on the minor line.
-- `latest` follows the newest release that is not a prerelease. Prereleases
-  publish their own tags, such as `v0.2.0-rc.1`, but never move an alias — a
-  deployment tracking `latest` never receives a release candidate.
-- Every release also carries a `sha-<commit>` tag, pinned to its exact commit.
+`latest` follows the newest release that is not a prerelease. Every release
+also publishes its release tag, the bare semver, the minor line and a
+`sha-<commit>` tag; the [releases page](https://github.com/Ranxy/metaxisdata/releases)
+names the newest release, and its tag can replace `latest` to pin a version.
+A prerelease publishes its own tags but never moves an alias.
 
 ### Build the image yourself
 
 [scripts/build_metaxisdata_docker.sh](../scripts/build_metaxisdata_docker.sh)
 builds the image from
 [scripts/docker/Dockerfile.server](../scripts/docker/Dockerfile.server), and
-`make docker-build` runs the same script:
-
-```bash
-scripts/build_metaxisdata_docker.sh                  # release profile -> :dev and :latest
-VERSION=v0.1.0 scripts/build_metaxisdata_docker.sh   # release profile -> :v0.1.0 and :latest
-make docker-build                                    # same as the first command
-
-scripts/build_metaxisdata_docker.sh --dev            # dev profile, local experiments only
-make docker-build-dev
-```
-
-Every build tags the image under `IMAGE` (default `metaxisdata/metaxisdata`);
-only a release build also applies `:latest`. The image contains the server
-binary only — the `mxd` CLI is a separate artifact, built with
-`make build-cli`.
-
-Build options:
-
-| Variable | Effect |
-| --- | --- |
-| `VERSION` | Image tag, and the version the binary reports. Default `dev`. |
-| `IMAGE` | Image name. Default `metaxisdata/metaxisdata`. |
-| `BUILD_PROXY` | Proxy for the Go module download and the npm install. |
-| `GOPROXY` | Go module proxy. Defaults to this machine's `go env GOPROXY`. |
-| `NPM_REGISTRY` | npm registry. Defaults to this machine's `npm config get registry`. |
-| `APK_MIRROR` | Alpine CDN replacement, e.g. `https://mirrors.aliyun.com/alpine`. The value is written verbatim into `/etc/apk/repositories` inside the image and is visible in `docker history`, so it must never contain credentials. |
-
-Do not export `HTTPS_PROXY` for the build: BuildKit injects the standard proxy
-variables into every stage, including the runtime stage, credentials included.
-`BUILD_PROXY` is a custom argument that only the build stages declare, so the
-value you pass stays confined to the build.
+`make docker-build` runs the same script. A release build tags the image with
+`VERSION` and also claims `:latest`; `--dev` builds the dev profile for local
+experiments only. The image contains the server binary only — the `mxd` CLI is
+a separate artifact, built with `make build-cli`. The proxy, registry and
+mirror knobs are documented in the script's header; `APK_MIRROR` is written
+verbatim into the image's `/etc/apk/repositories` and visible in
+`docker history`, so it must never contain credentials.
 
 ### Download the prebuilt binary
 
@@ -109,32 +80,18 @@ five platforms, plus a `SHA256SUMS` listing every asset's checksum:
 | macOS (Intel) | `metaxisdata-darwin-amd64` |
 | Windows (amd64) | `metaxisdata-windows-amd64.exe` |
 
+Download the asset for your platform from the release's download path:
+
 ```bash
-# Linux (amd64)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
-chmod +x metaxisdata
-
-# Linux (arm64)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-arm64
-chmod +x metaxisdata
-
-# macOS (Apple Silicon)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-arm64
-chmod +x metaxisdata
-
-# macOS (Intel)
-curl -fsSL -o metaxisdata https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-darwin-amd64
+curl -fsSL -o metaxisdata \
+  https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-linux-amd64
 chmod +x metaxisdata
 ```
 
-```powershell
-# Windows (PowerShell)
-curl.exe -fsSL -o metaxisdata.exe https://github.com/Ranxy/metaxisdata/releases/latest/download/metaxisdata-windows-amd64.exe
-```
-
-The `releases/latest/download/…` URL resolves to the newest release that is
-**not** a prerelease, so a prerelease will not answer it; name the tag in the
-URL instead — `…/releases/download/<tag>/metaxisdata-linux-amd64`.
+`releases/latest/download/…` resolves to the newest release that is **not** a
+prerelease, so a prerelease will not answer it; name the tag in the URL
+instead — `…/releases/download/<tag>/<asset>`. On Windows, use `curl.exe` and
+the `.exe` asset.
 
 The downloaded binary is the one [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh)
 produces: SPA embedded, prod profile, and `metaxisdata --version` reports the
@@ -144,24 +101,10 @@ release tag.
 
 [scripts/build_metaxisdata.sh](../scripts/build_metaxisdata.sh) builds the SPA
 and compiles the self-contained binary (`make build-binary` runs the same
-script):
-
-```bash
-scripts/build_metaxisdata.sh                # release profile -> build/metaxisdata
-VERSION=v0.1.0 scripts/build_metaxisdata.sh
-make build-binary                           # same as the first command
-
-scripts/build_metaxisdata.sh --dev          # dev profile, local experiments only
-
-scripts/build_metaxisdata.sh --release-assets   # the five release-platform assets + SHA256SUMS -> build/
-```
-
-The binary reports its version, commit, and build time from the
-`VERSION`, `GIT_COMMIT`, and `BUILD_TIME` environment variables, so the last
-command with the release tag set reproduces exactly what
-[release-binaries.yml](../.github/workflows/release-binaries.yml) uploads —
-that workflow is one script invocation plus the upload; `--dev` builds are
-for local experiments only.
+script). `--release-assets` produces the five release-platform assets and
+`SHA256SUMS` in one invocation, with an explicit `GOOS`/`GOARCH` per target;
+`--dev` builds the dev profile for local experiments only. The script's header
+documents the build metadata and network settings it reads.
 
 ## 2. Prepare PostgreSQL
 
@@ -189,7 +132,7 @@ present.
 docker run -d --name metaxisdata \
   -p 8083:8083 \
   -e PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' \
-  ghcr.io/ranxy/metaxisdata:v0.1.0
+  ghcr.io/ranxy/metaxisdata:latest
 ```
 
 The container runs as uid 1001 and reports health at `/healthz`:
@@ -215,16 +158,14 @@ is replacing the binary and restarting: pending migrations apply on startup,
 so keep the PostgreSQL backup discipline of the container flow (the notes
 below).
 
-**This release is a one-step cutover, not a rolling upgrade.** It changes the
-MCP refresh credential to rotate in place and carries the connection id in
-access tokens, so stop every old replica before starting the new binary. An old
-replica still serving `/oauth/token` deletes and reinserts the grant row, which
-silently turns a revoked connection back into an unrevoked one; rolling back to
-the previous binary has the same effect. If you must roll back, restore the
-pre-upgrade database backup and rotate the deployment's signing secret (the
-`AUTH_SECRET` setting): every outstanding token stops verifying, and revocations
-made after the backup are gone with it, so revoke the affected connected apps
-again.
+**Never run an old and a new binary side by side.** A binary that predates the
+connected-app refresh credential deletes and reinserts the grant row on a
+refresh, which silently turns a revoked connection back into an unrevoked one.
+Stop every old replica before starting the new binary. Rolling back has the
+same effect: if you must, restore the pre-upgrade database backup and rotate
+the deployment's signing secret (the `AUTH_SECRET` setting) — every outstanding
+token stops verifying, and revocations made after the backup are gone with it,
+so revoke the affected connected apps again.
 
 The `PG_URL` and encryption-key variables below are read by the server itself
 and work identically for the binary. The other `METAXISDATA_*` variables are
@@ -246,8 +187,7 @@ state in memory, so a second replica would duplicate every sync and analysis
 against the same instances and split each user's sync-result messages between
 processes. Scaling the metadata database does not make the server replicable;
 scale PostgreSQL, not the process. A restart loses queued work but converges on
-the next scan. See [security-posture.md](security-posture.md) and
-[.agents/docs/runner.md](../.agents/docs/runner.md).
+the next scan. See [security-posture.md](security-posture.md).
 
 ### First steps
 
@@ -273,6 +213,12 @@ the next scan. See [security-posture.md](security-posture.md) and
 | `METAXISDATA_TRUSTED_PROXIES` | Comma-separated peer IPs/CIDRs whose `X-Forwarded-For` may be believed when recording the audit source address (step 4). |
 | `METAXISDATA_METRICS_ADDR` | Optional. Address for the Prometheus endpoint, for example `127.0.0.1:9090`; unset disables it. The endpoint is anonymous and is **never** served on the API port, so bind it to an interface your scraper can reach and nothing else. See [Prometheus metrics](#prometheus-metrics). |
 
+Two further variables are host settings rather than deployment configuration,
+and the server reads them from its environment: `SSH_AUTH_SOCK`, the ssh-agent
+socket the SSH tunnel uses when a data source carries no inline SSH private
+key, and `TZ`, the process time zone that log timestamps follow (unset means
+UTC).
+
 ### Health and build metadata
 
 | Endpoint | Answers |
@@ -293,15 +239,22 @@ PG_URL='postgres://<user>:<password>@<db-host>:5432/<database>?sslmode=disable' 
   ./metaxisdata --port 8083 --metrics-addr 127.0.0.1:9090
 ```
 
-The API port never serves `/metrics`, and `--debug` only controls logging and
-pprof. The endpoint is pull-only and anonymous: point Prometheus at
-`http://<metrics-addr>/metrics` and keep that address on a trusted interface or
-an internal network. It reports operational counts and latencies — schema syncs,
-lineage analyses, OpenLineage ingestion, data-quality executions, LLM calls, HTTP/RPC
-traffic, queue depths and the metadata connection pool — using bounded enum
-labels only; instance, database, table, GUID, SQL and user data never appear in a
-label. The metric catalogue, label rules and cadence live in
-[.agents/docs/metrics.md](../.agents/docs/metrics.md).
+The listener serves only `GET` and `HEAD` on `/metrics`; it is not a second API,
+and the API port never serves metrics. The endpoint is pull-only and anonymous,
+so keep the address on a trusted interface or an internal network, and point
+Prometheus at `http://<metrics-addr>/metrics`. `--debug` only controls logging
+and pprof.
+
+The endpoint exports the standard Go and process metrics, `metaxisdata_build_info`
+with the release version and commit, and the server's own `metaxisdata_*`
+series: schema syncs, lineage analyses, OpenLineage ingestion, data-quality
+executions, LLM calls, HTTP/RPC traffic, queue depths and the metadata
+connection pool. Labels are bounded enums such as engine, status, result, reason,
+method and route; instance, database, table, GUID, SQL and user data never appear
+in a label, so the label set cannot grow with the registry.
+
+Counters are process-local: a restart resets them, and because the deployment is
+one server process there is no second replica to sum with.
 
 ### Operational notes
 
@@ -310,10 +263,9 @@ label. The metric catalogue, label rules and cadence live in
 - The image needs one writable path, `/tmp`, for a scratch file the MSSQL
   driver uses. On a hardened deployment, use `--read-only --tmpfs /tmp`; a
   bare `--read-only` removes the only writable directory the image has.
-- Without `TZ`, the clock and every log timestamp are UTC.
 - The entrypoint maps the environment variables above onto server flags and
   passes the rest of the command through unchanged. An explicit argument wins
-  over a mapped one, so `docker run … ghcr.io/ranxy/metaxisdata:v0.1.0 --debug`
+  over a mapped one, so `docker run … ghcr.io/ranxy/metaxisdata:latest --debug`
   still works.
 
 ## 4. Terminate HTTPS in a reverse proxy

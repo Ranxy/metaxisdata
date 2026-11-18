@@ -1,71 +1,48 @@
-# Per-Object DDL Storage (`meta_registry_resource_schema`) — Reference
+# Per-object DDL storage
 
-> Status: **implemented**. Maintenance reference for the per-object DDL store, the sync hook that fills it, and the `GetSchemaString` read path. Related: [starrocks-doris-driver.md](starrocks-doris-driver.md) — the drivers that produce this DDL.
+`meta_registry_resource_schema` stores the engine's own DDL for a metadata object, keyed by the same `(guid, object_type)` as `meta_registry_resource`. `GetSchemaString` and the metadata browser read it, falling back to reconstruction when a row is absent. It is display data, not the structure fingerprint: the fingerprint is derived from metadata on every engine and answers whether a data-quality target's shape moved, while this table exists only where the driver can produce DDL and nothing diffs or validates from it. See [schema-fingerprint.md](schema-fingerprint.md).
 
-## What it is
+Rebuilding DDL from metadata is lossy — StarRocks and Doris metadata carries no distribution, properties, partitioning or rollups, and those engines have no `plugin/schema` registration — so the syncer captures `SHOW CREATE …` and serves the engine's text verbatim. The metadata browser, Explain SQL and the schema dialog read it through `GetSchemaString`, so no proto, API or frontend change was needed.
 
-> 不要和**结构指纹**混淆：本表的 `schema`/`schema_hash` 是引擎自己的 DDL，只在抓得到 DDL 的引擎（StarRocks/Doris）上有行。`schema` 是**纯展示**数据；`schema_hash` 只在数据质量的结构比较里作为**升级前快照的兼容分支**被读（见 [data-quality.md](data-quality.md) D-24）。数据质量的“目标结构是否变了”用的是另一张表 `meta_registry_schema_fingerprint`（每个引擎都有，由元数据推导），见 [schema-fingerprint.md](schema-fingerprint.md)。
-
-`GetSchemaString` used to rebuild an object's DDL from structured metadata through `backend/plugin/schema`. That is lossy — StarRocks/Doris metadata carries no `DISTRIBUTED BY`, `PROPERTIES`, partitioning or rollups, and those engines have no `plugin/schema` registration at all, so the call failed with `engine STARROCKS is not supported`. This feature captures the engine's own DDL (`SHOW CREATE …`) during schema sync and stores it per object, keyed by the same `(guid, object_type)` as `meta_registry_resource`; `GetSchemaString` returns it verbatim and falls back to reconstruction when there is no row. No proto, API or frontend change: the metadata browser, `Explain SQL` and the schema dialog work unchanged.
+The table keeps the text plus a `sha256` hash of it: the hash is the write-diff key and the upsert's guard, so unchanged DDL is never shipped back to PostgreSQL.
 
 ## Decisions
 
 | Decision | Why |
 | --- | --- |
-| Per-object rows, not one database-level dump blob | The API addresses one object by GUID, so a blob would have to be parsed to serve it (a reference implementation stores the whole-database script and consequently cannot serve per-object DDL for these engines at all). |
-| Separate table, not a column on `meta_registry_resource` | That table is hot: a 65536-entry LRU holds its `MetaRegistryResource` values, and three readers select explicit columns — a wide DDL column would have to be excluded from all of them. |
-| No FK to `meta_registry_resource.id`, and no history table | Deletion happens on several paths that already carry `(guid, object_type)`, and cascading from an id would force every read to fetch the metadata row first. No consumer needs a past version's DDL (`ListMetadataHistory` and `buildDatabaseSchemaAtTime` diff *metadata*; `GetSchemaString` has no version parameter) — note that versioned DDL is then unrecoverable if wanted later. |
-| The **write** and the **fetch** are both diffed, on two cadences | A StarRocks property change does not move our metadata hash, so a metadata-gated fetch would leave the stored DDL stale forever; re-reading every object on every 15-minute sync, however, costs N `SHOW CREATE`s per database per interval for no change. A database re-reads every object **at most once per** `objectDefinitionFullRefreshInterval` (1h) through the process-local clock in `definitionRefreshDue`, and between refreshes reads only the objects this sync's metadata diff changed. The clock is consulted inside a database sync, so the real interval is the larger of one hour and the instance's `sync_interval`; a database whose sync is disabled never refreshes. The write is still diffed against stored hashes, so unchanged DDL is never shipped back to PostgreSQL. |
-| Optional driver interface | Keeps the `db.Driver` contract and the PostgreSQL/MSSQL/MySQL drivers untouched. |
-
-## Storage (`backend/migrator/migration/0.1/0010##meta_registry_resource_schema.sql`, mirrored at `LATEST.sql:231`; queries in `backend/store/meta_resource_schema.go`)
-
-| Column | Role |
-| --- | --- |
-| `guid`, `object_type` | `PRIMARY KEY (guid, object_type)` is exactly the read predicate: one index lookup, no join. No FK. |
-| `schema` | The engine's DDL, verbatim. Non-reserved in PostgreSQL, but every statement lists columns explicitly. |
-| `schema_hash` | `sha256` of `schema`; the write-diff key and the upsert's guard. |
-| `updated_at` | Row timestamp. No cache: the read is a single row by primary key. |
+| Per-object rows, not one database-level dump blob | The API addresses one object by GUID, so a blob would have to be parsed to serve it. |
+| A separate table, not a column on `meta_registry_resource` | That table is hot, LRU-cached and read column-by-column, so a wide DDL column would have to be excluded from every reader. |
+| No foreign key and no history table | Deletion paths already carry the key, and no consumer needs a past version of the DDL: versioned DDL is then unrecoverable, which is accepted. |
 
 ## Core mechanics
 
 | Mechanism | Contract |
 | --- | --- |
-| Fetch — driver capability, and what is fetched | `db.ObjectDefinitionReader` is optional and `db.Driver` is unchanged (`backend/plugin/db/driver.go:133`). `GetObjectDefinition(ctx, objectType, schema, name)` takes the schema too: the MySQL family stores `""` (one schema per database, and the driver is already connected to it), so StarRocks/Doris ignore it deliberately — the parameter exists so an engine with several schemas per database does not force a breaking change later. StarRocks/Doris implement it in `backend/plugin/db/starrocks/definition.go`: ``SHOW CREATE TABLE/VIEW/MATERIALIZED VIEW `db`.`name` ``; anything else returns `("", false, nil)` before touching the connection. Identifiers are backtick-quoted with `` ` `` doubled (they cannot be bound); the DDL column is found by name (``create `` prefix), not position, because `SHOW CREATE VIEW` returns four columns on MySQL/StarRocks and two on Doris. MySQL error 1051 (object dropped between listing and `SHOW CREATE`) is `ok=false`, not an error. `batchMetaCreate.planDefinitionFetch` (`backend/runner/schemasync/object_definition.go:63`) takes schema-bearing types only — `TABLE`, `VIEW`, `MATERIALIZED_VIEW`, plus `FUNCTION`/`PROCEDURE` so a MySQL-family driver can opt in later — never `COLUMN`/`DATABASE`/`SCHEMA`/`SEQUENCE`. A full refresh reads every such resource; between refreshes only the changed ones. Above `fullDefinitionObjectLimit = 2000` a full refresh reads one rotating GUID-sorted window of that size per refresh instead of everything (changed objects are always included), so a large database is swept completely over several refreshes instead of never. Fetches run at `definitionFetchConcurrency = 8` on the sync's `deadlineCtx`. |
-| Write diff | `ListMetaRegistrySchemaHashes` reads stored hashes for the candidates — one indexed query returning `guid, object_type, schema_hash`, never the DDL (`backend/store/meta_resource_schema.go:64`); the pure `diffDefinitions` (`object_definition.go:332`) drops unchanged (equal hash), upserts changed/new, and deletes only when the engine no longer has a definition **and** a row exists. A failed fetch or a non-UTF-8 definition never reaches it, so a transient failure cannot erase a good definition. The upsert's SQL guard stays as the safety net for concurrent writers. |
-| Read path | `GetSchemaString` (`backend/api/v1/database_metadata.go:20`) looks the stored DDL up right after the GUID is parsed and returns it on a hit, skipping the instance lookup and the JSONB unmarshal (`:36`); a miss falls through to the existing `plugin/schema` reconstruction. That is the normal path for PostgreSQL/MSSQL, for `MANUAL_SQL`, and for any object whose first sync has not run. |
-| Deletion | `BatchDeleteMetaRegistryAt` (`backend/store/meta_resource.go:516`) is the only path that deletes current meta registry rows, and it deletes the matching DDL rows too, keeping the table a strict subset of `meta_registry_resource`. Both bulk statements use the paired predicate `(guid, object_type::int) IN (SELECT * FROM unnest($1::text[], $2::int[]))`; `guid = ANY($1) AND object_type = ANY($2)` would match every cross combination. |
+| Fetch | `db.ObjectDefinitionReader` is optional and receives the object's schema segment from its GUID and the plain object name; StarRocks/Doris answer `SHOW CREATE TABLE/VIEW/MATERIALIZED VIEW`, and any other type reports no definition before touching the connection. Identifiers are backtick-quoted (they cannot be bound), the DDL column is found by name because `SHOW CREATE VIEW` returns a different arity per engine, and MySQL error 1051 (dropped between listing and `SHOW CREATE`) is "no definition". A full refresh reads every schema-bearing resource; between refreshes only the changed ones are read, and a database with more than `fullDefinitionObjectLimit` objects reads one rotating GUID-sorted window per refresh with changed objects always included. A full refresh happens at most once per `objectDefinitionFullRefreshInterval` (hourly, through the process-local clock in `definitionRefreshDue`); a database whose sync is disabled never refreshes. Fetches run at `definitionFetchConcurrency` on the sync's deadline context. |
+| Write diff | `ListMetaRegistrySchemaHashes` reads the stored hashes for the candidates — one indexed query, never the DDL — and the pure `diffDefinitions` drops unchanged DDL, upserts changed or new rows, and deletes a row only when the engine no longer has a definition and a row exists. A failed or non-UTF-8 fetch never reaches the diff, and the upsert's SQL guard is the safety net for concurrent writers. The write runs inside the metadata transaction after the metadata rows; the refresh clock and cursor advance only after a commit. |
+| Read path | `GetSchemaString` looks the stored DDL up right after parsing the GUID and returns it on a hit, skipping the instance lookup and the metadata parse; a miss falls through to the existing `plugin/schema` reconstruction. That is the normal path for PostgreSQL, MSSQL, `MANUAL_SQL`, and any object whose first sync has not run. The read is one primary-key lookup, so there is no cache to invalidate. |
+| Deletion | `BatchDeleteMetaRegistryAt` is the only path that deletes current metadata rows, and it deletes the matching DDL rows too, keeping this table a strict subset of `meta_registry_resource`. Both bulk statements pair `guid` with `object_type`; separate `ANY` predicates would match every cross combination. |
 
 ## Invariants
 
-1. A DDL row exists only while a metadata row with the same `(guid, object_type)` exists; both are created/updated/deleted inside the same transaction.
-2. The stored DDL is **display-only**. Nothing diffs, migrates or validates from it.
-3. A missing or unreadable definition degrades to reconstruction — it can never fail a sync or change what metadata is stored.
-4. A database's full refresh is never gated on the metadata hash; it happens at least once per `objectDefinitionFullRefreshInterval`. Between refreshes only changed objects are re-read, which is what keeps a StarRocks property change from being invisible forever without re-reading every object on every sync. The refresh clock/cursor advance only after a committed sync, so a rolled-back sync never skips objects.
-5. `db.Driver` stays unchanged; the capability is opt-in, and engines without it are skipped by a type assertion in `SyncDatabaseSchema` (`backend/runner/schemasync/database_sync.go`, `SyncDatabaseSchema`).
+1. A DDL row exists only while the same-key metadata row exists; both are created, updated and deleted in the same transaction.
+2. The stored DDL is display-only. Nothing diffs, migrates or validates from it.
+3. A missing or unreadable definition degrades to reconstruction and never fails a sync or changes what metadata is stored.
+4. A full refresh is never gated on the metadata hash, and the clock advances only after a commit, so a rolled-back sync never skips objects.
+5. `db.Driver` is unchanged; an engine opts in by implementing `db.ObjectDefinitionReader`.
 
 ## Failure modes
 
-| Scenario | Behaviour |
+| Scenario | Behavior |
 | --- | --- |
-| `SHOW CREATE` errors (permissions, timeout) | Object counted as failed, stored definition untouched, one `Warn` per sync with failure/total counts |
-| Object dropped between listing and `SHOW CREATE` | Reader reports `ok=false`; the stored row is deleted if present |
-| Definition is not valid UTF-8 | Skipped and counted — a PostgreSQL `text` column would reject the row and abort the whole metadata transaction |
-| Database exceeds `fullDefinitionObjectLimit` | A full refresh reads a rotating window of that size (changed objects always included) and logs how many objects it covered; every object is swept over consecutive hourly refreshes |
-| Engine does not implement the reader | `syncObjectDefinitions` is never called; no extra queries |
-| Object removed from the snapshot | Its meta registry row is deleted, which deletes the DDL row in the same transaction |
+| `SHOW CREATE` errors | The object is counted as failed, its stored DDL is untouched, and the sync warns with failure/total counts. |
+| Object dropped between listing and `SHOW CREATE` | The reader reports no definition, and the stored row, if any, is deleted. |
+| Definition is not valid UTF-8 | Skipped and counted; a PostgreSQL text column would reject it and abort the whole metadata transaction. |
+| Engine does not implement the reader | No extra query is issued. |
+| Object removed from the snapshot | Its metadata row is deleted, which deletes the DDL row in the same transaction. |
 
 ## Where things live
 
-- Table, migration and store: `backend/migrator/migration/0.1/0010##meta_registry_resource_schema.sql`, `LATEST.sql:231`, `backend/store/meta_resource_schema.go`; guard `TestMigrateSchemaLATESTMatchesTheIncrementChain` (integration-tagged, `backend/migrator/migrator_integration_test.go:100`) and query-shape guards in `backend/store/meta_resource_schema_test.go`.
-- Fetch + write diff + sync call site: `backend/runner/schemasync/object_definition.go`, `backend/runner/schemasync/database_sync.go` (`SyncDatabaseSchema`, guarded by `driver.(db.ObjectDefinitionReader)`; the refresh clock is `definitionRefreshDue`/`recordDefinitionRefresh` in `refresh.go`); hermetic tests `object_definition_test.go`. The schema a reader is handed comes from the object's GUID (`metaObjectSchema`), because the metadata row does not otherwise carry its container.
-- Delete hook: `backend/store/meta_resource.go:516`. Read path: `backend/api/v1/database_metadata.go:20`. Driver capability: `backend/plugin/db/driver.go:133` with the impl + tests in `backend/plugin/db/starrocks/definition.go` / `definition_test.go`.
-- Gate: `gofmt`, `golangci-lint run --allow-parallel-runners`, `go test ./...`, build; `make test-integration-smoke` (migration guard).
-- Nothing to enable: an engine gains the behaviour by implementing `db.ObjectDefinitionReader` and nothing else.
+Table and store: `backend/migrator/migration/` and `backend/store/meta_resource_schema.go`. Fetch, diff and call site: `backend/runner/schemasync/object_definition.go` and `database_sync.go`, with the refresh clock in `refresh.go`; hermetic tests in `object_definition_test.go`. Deletion: `BatchDeleteMetaRegistryAt`. Read: `backend/api/v1/database_metadata.go`. Driver capability: `backend/plugin/db/driver.go`, implemented by `backend/plugin/db/starrocks/definition.go`. Gate: `gofmt`, `golangci-lint`, `go test ./...`, build, `make test-integration-smoke`.
 
-## Open gaps
-
-- The StarRocks/Doris `SHOW CREATE` path has only been exercised hermetically (quoting, column lookup, unsupported types): there is no integration coverage for it, because the integration harness ships only PostgreSQL and MySQL. A first real run has to confirm the output against a live instance.
-- `DiffMetadata` on a StarRocks/Doris object still answers "engine not supported" (`backend/api/v1/database_metadata.go:197` → `backend/plugin/schema/schema.go:46`): it needs `schema.GenerateMigration`, which is unrelated to this store.
-
-Non-goals: no DDL history/versioning, no whole-database dump RPC, no SDL export, no `DiffMetadata` support, no change to any existing engine's behaviour.
+The StarRocks/Doris `SHOW CREATE` path is covered only hermetically — the integration harness ships PostgreSQL and MySQL only — so a first real deployment must confirm the output against a live instance. `DiffMetadata` on a StarRocks/Doris object still answers "engine not supported", because it needs `schema.GenerateMigration`, which is unrelated to this store.

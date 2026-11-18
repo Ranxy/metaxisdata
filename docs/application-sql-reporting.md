@@ -4,9 +4,8 @@ How an application sends the SQL it actually ran, so that this deployment can sh
 applications read and write which tables.
 
 An application reports **parameterized** statements: the SQL text with every literal replaced by a
-question mark. The server replaces any literal it still finds, so a mistake cannot leak a value —
-but the contract is that you do the replacement, because only the application knows which values
-are sensitive.
+question mark. The server replaces any literal it still finds, so a mistake cannot leak a value — but the
+replacement is your job, because only the application knows which values are sensitive.
 
 ## 1. Register the application and issue a key
 
@@ -16,8 +15,7 @@ cannot be retrieved again. Issue another from **Keys** to rotate one, and revoke
 afterwards.
 
 A key belongs to exactly one application. Reports are attributed to the key, never to anything in
-the request body, so a leaked key can only impersonate its own application — revoke it and issue a
-new one.
+the request body, so a leaked key can only impersonate its own application — revoke and reissue.
 
 The key looks like `asql_...` and is sent as a bearer token:
 
@@ -94,30 +92,28 @@ Rules worth knowing:
 ```
 
 `accepted` and `rejected` count **entries**, so the counts add up to `results`. The per-key counters
-on the Applications page count the **statements** inside those entries, so a report whose entry
-carried a script contributes more than one there.
+on the Applications page count the **statements** inside those entries, so an entry carrying a
+script contributes more than one there.
 
 A refused entry carries a reason:
 
 | `reason` | Meaning |
 | --- | --- |
-| `PARSE_ERROR` | The statement could not be tokenized to its end, or this deployment's SQL analyzer cannot parse it at all. Usually a dialect the instance does not match or an escape the dialect does not accept. An unterminated string is refused in PostgreSQL and StarRocks; the MySQL family's lexer reads one as a single literal token, so there it is stored as `?` instead. |
+| `PARSE_ERROR` | The statement could not be tokenized to its end, or this deployment's SQL analyzer cannot parse it at all — usually a dialect the instance does not match. |
 | `EMPTY_STATEMENT` | The entry's `sql` was empty. |
 | `STORE_FAILED` | The server failed to store it. Retry the report. |
 
 Whole-request failures use HTTP status codes: `401` for a missing, unknown, revoked or stopped key;
 `400` for a malformed body, a malformed instance name, more than 1000 statements, or an instance
-whose engine has no SQL analyzer; `404` for an unknown instance; `413` for a body over 8 MiB.
-
-A refused statement is never stored, and the server logs a warning naming the application, the
-engine and the reason. The warning names the statement only in its sanitized form; when the server
-could not sanitize it, the line carries no statement text at all.
+whose engine has no SQL analyzer; `404` for an unknown instance; `413` for a body over 8 MiB. A
+refused statement is never stored, and the server logs a warning naming the application, the engine
+and the reason, with no statement text when the server could not sanitize it.
 
 ## 4. Retries
 
-Reports are counted, so a retry that is processed twice reports everything twice. An **entry**
-(one element of `statements`) is the unit that is stored: either every statement in it lands or none
-does, so a refusal never leaves a statement counted behind it.
+Reports are counted, so a retry processed twice reports everything twice. An **entry** (one element
+of `statements`) is the unit stored: either every statement in it lands or none does, so a refusal
+never leaves a statement counted behind it.
 
 - **Send a `reportId`.** Repeating the `reportId` of a report that landed **whole** is answered with
   `{"duplicate": true}` and changes nothing. This covers a client that retries a request it did not
@@ -138,16 +134,16 @@ free text, with how often it ran and when it was first and last seen. Its detail
 stored text exactly as the server kept it — literals replaced — and which applications reported it.
 
 If the statement writes to a table, it also appears on the **Lineage** canvas as a node of its own,
-connected to the tables it reads and writes, drawn in the application-SQL colour. A statement that
-only reads appears with an incoming edge and nothing outgoing; a statement that neither reads a
-column nor names a write target (`SELECT 1`, `SET`) is stored but not drawn.
+connected to the tables it reads and writes, drawn in the application-SQL color. A statement that
+only reads appears with an incoming edge and nothing outgoing; one that neither reads a column nor
+names a write target (`SELECT 1`, `SET`) is stored but not drawn.
 
-Deleting an application removes every statement no other application has reported, together with
-its lineage. Stopping one keeps everything and simply refuses its keys.
+Deleting an application removes every statement no other application has reported, with its
+lineage; stopping one keeps everything and simply refuses its keys.
 
 ## 6. Privacy
 
-The only form of a statement that reaches the database is the server's own sanitized output: every
+The only form of a statement that reaches the database is the server's sanitized output: every
 literal replaced, comments removed. The text you send is never stored, so a value that slips
 through your own replacement is replaced again before it is written.
 
