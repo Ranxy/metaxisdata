@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -42,18 +43,6 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 	if limit <= 0 {
 		limit = defaultConversationMessagesHour
 	}
-	count, err := s.store.CountQualityAgentConversationMessagesSince(ctx, agent.ID, time.Now().UTC().Add(-time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	if count >= int64(limit) {
-		return nil, connect.NewError(connect.CodeResourceExhausted,
-			errors.New("the agent conversation reached its hourly message limit"))
-	}
-	conversation, err := s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
-	if err != nil {
-		return nil, err
-	}
 	requestID := strings.TrimSpace(req.Msg.GetRequestId())
 	if len(requestID) > 128 {
 		return nil, connectErrorInvalid("request_id is too long (max 128 bytes)")
@@ -66,21 +55,43 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		}
 		key = "ask:" + random
 	}
-	message, err := s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
-		SessionID:      conversation.ID,
-		WorkspaceID:    workspaceID,
-		Wake:           conversation.WakeCount + 1,
-		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
-		Content:        content,
-		CreatedBy:      principalIDPointer(currentUserID(ctx)),
-		IdempotencyKey: key,
+	var conversation *store.QualityAgentSessionMessage
+	var message *store.QualityAgentTranscriptMessage
+	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqchat:%d", agent.ID), func() error {
+		count, err := s.store.CountQualityAgentConversationMessagesSince(ctx, agent.ID, time.Now().UTC().Add(-time.Hour))
+		if err != nil {
+			return err
+		}
+		if count >= int64(limit) {
+			return connect.NewError(connect.CodeResourceExhausted,
+				errors.New("the agent conversation reached its hourly message limit"))
+		}
+		conversation, err = s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
+		if err != nil {
+			return err
+		}
+		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
+			SessionID:      conversation.ID,
+			WorkspaceID:    workspaceID,
+			Wake:           conversation.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			Content:        content,
+			CreatedBy:      principalIDPointer(currentUserID(ctx)),
+			IdempotencyKey: key,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC())
+		return err
 	})
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC()); err != nil {
-		return nil, err
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrQualityAgentBusy) {
+			return nil, connect.NewError(connect.CodeAborted,
+				errors.New("another message is being sent; retry"))
+		}
+		return nil, lockErr
 	}
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
 }

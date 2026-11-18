@@ -35,6 +35,10 @@ type fakeStore struct {
 	enrollmentNextReview time.Time
 }
 
+func (*fakeStore) ListQualityAgentSessionsByBlockedCode(context.Context, string, int) ([]*store.QualityAgentSessionMessage, error) {
+	return nil, nil
+}
+
 func (*fakeStore) ResetStaleQualityAgentSessionLeases(context.Context, time.Time, int32) (int64, error) {
 	return 0, nil
 }

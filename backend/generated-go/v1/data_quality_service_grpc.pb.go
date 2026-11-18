@@ -97,6 +97,7 @@ const (
 	DataQualityService_ListQualityAgentAttentions_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityAgentAttentions"
 	DataQualityService_ReplyQualityAgentAttention_FullMethodName           = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
 	DataQualityService_DismissQualityAgentAttention_FullMethodName         = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
+	DataQualityService_SetQualityAgentAdoption_FullMethodName              = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
 	DataQualityService_UpdateQualityAgent_FullMethodName                   = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
 	DataQualityService_StartQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/StartQualityAgent"
 	DataQualityService_PauseQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/PauseQualityAgent"
@@ -428,6 +429,9 @@ type DataQualityServiceClient interface {
 	ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
+	// Let the owner turn automatic adoption off or back to paused; administrators may
+	// also set ACTIVE. The rest of the configuration stays administrator-managed.
+	SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
@@ -1293,6 +1297,16 @@ func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Cont
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_SetQualityAgentAdoption_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgent)
@@ -1784,6 +1798,9 @@ type DataQualityServiceServer interface {
 	ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error)
+	// Let the owner turn automatic adoption off or back to paused; administrators may
+	// also set ACTIVE. The rest of the configuration stays administrator-managed.
+	SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
@@ -2073,6 +2090,9 @@ func (UnimplementedDataQualityServiceServer) ReplyQualityAgentAttention(context.
 }
 func (UnimplementedDataQualityServiceServer) DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
 	return nil, status.Error(codes.Unimplemented, "method DismissQualityAgentAttention not implemented")
+}
+func (UnimplementedDataQualityServiceServer) SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetQualityAgentAdoption not implemented")
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityAgent not implemented")
@@ -3507,6 +3527,24 @@ func _DataQualityService_DismissQualityAgentAttention_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_SetQualityAgentAdoption_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetQualityAgentAdoptionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).SetQualityAgentAdoption(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_SetQualityAgentAdoption_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).SetQualityAgentAdoption(ctx, req.(*SetQualityAgentAdoptionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_UpdateQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateQualityAgentRequest)
 	if err := dec(in); err != nil {
@@ -4129,6 +4167,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DismissQualityAgentAttention",
 			Handler:    _DataQualityService_DismissQualityAgentAttention_Handler,
+		},
+		{
+			MethodName: "SetQualityAgentAdoption",
+			Handler:    _DataQualityService_SetQualityAgentAdoption_Handler,
 		},
 		{
 			MethodName: "UpdateQualityAgent",

@@ -252,7 +252,14 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	for _, candidate := range candidates {
 		signatures = append(signatures, candidate.signature)
 	}
-	states, err := s.store.QualitySuggestionSignatureStates(ctx, targetGUID, metaType, signatures)
+	var agentID *int64
+	if createdBy != nil {
+		if agent, agentErr := s.store.GetQualityAgentByPrincipalID(ctx, int(*createdBy)); agentErr == nil && agent != nil {
+			id := agent.ID
+			agentID = &id
+		}
+	}
+	states, err := s.store.QualitySuggestionSignatureStates(ctx, targetGUID, metaType, signatures, agentID)
 	if err != nil {
 		return nil, summary, nil, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "failed to read the target's suggestion history"))
@@ -268,7 +275,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			// than leave the queue contradicting the saved rules.
 			if states[candidate.signature].Pending {
 				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, targetGUID, metaType,
-					[]string{candidate.signature}, "a saved rule with the same identity exists", now)
+					[]string{candidate.signature}, "a saved rule with the same identity exists", agentID, now)
 				if err != nil {
 					return nil, summary, nil, connect.NewError(connect.CodeInternal,
 						errors.Wrap(err, "failed to close a stale rule draft suggestion"))
@@ -286,13 +293,6 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		resourceID, err := common.RandomString(12)
 		if err != nil {
 			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
-		}
-		var agentID *int64
-		if createdBy != nil {
-			if agent, agentErr := s.store.GetQualityAgentByPrincipalID(ctx, int(*createdBy)); agentErr == nil && agent != nil {
-				id := agent.ID
-				agentID = &id
-			}
 		}
 		suggestion, created, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,

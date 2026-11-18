@@ -6024,6 +6024,46 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:setAdoption:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Let the owner turn automatic adoption off or back to paused; administrators may
+                 also set ACTIVE. The rest of the configuration stays administrator-managed.
+            operationId: DataQualityService_SetQualityAgentAdoption
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetQualityAgentAdoptionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:start:
         post:
             tags:
@@ -18975,6 +19015,17 @@ components:
                     type: string
                 skipDump:
                     type: boolean
+        SetQualityAgentAdoptionRequest:
+            required:
+                - name
+                - adoption
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                adoption:
+                    $ref: '#/components/schemas/QualityAgentAdoptionSetting'
         SetWorkspaceIamPolicyRequest:
             required:
                 - policy

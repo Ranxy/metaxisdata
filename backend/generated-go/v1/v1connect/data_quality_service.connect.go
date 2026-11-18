@@ -265,6 +265,9 @@ const (
 	// DataQualityServiceDismissQualityAgentAttentionProcedure is the fully-qualified name of the
 	// DataQualityService's DismissQualityAgentAttention RPC.
 	DataQualityServiceDismissQualityAgentAttentionProcedure = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
+	// DataQualityServiceSetQualityAgentAdoptionProcedure is the fully-qualified name of the
+	// DataQualityService's SetQualityAgentAdoption RPC.
+	DataQualityServiceSetQualityAgentAdoptionProcedure = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
 	// DataQualityServiceUpdateQualityAgentProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityAgent RPC.
 	DataQualityServiceUpdateQualityAgentProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
@@ -619,6 +622,9 @@ type DataQualityServiceClient interface {
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
+	// Let the owner turn automatic adoption off or back to paused; administrators may
+	// also set ACTIVE. The rest of the configuration stays administrator-managed.
+	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
@@ -1143,6 +1149,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("DismissQualityAgentAttention")),
 			connect.WithClientOptions(opts...),
 		),
+		setQualityAgentAdoption: connect.NewClient[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent](
+			httpClient,
+			baseURL+DataQualityServiceSetQualityAgentAdoptionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("SetQualityAgentAdoption")),
+			connect.WithClientOptions(opts...),
+		),
 		updateQualityAgent: connect.NewClient[v1.UpdateQualityAgentRequest, v1.QualityAgent](
 			httpClient,
 			baseURL+DataQualityServiceUpdateQualityAgentProcedure,
@@ -1333,6 +1345,7 @@ type dataQualityServiceClient struct {
 	listQualityAgentAttentions           *connect.Client[v1.ListQualityAgentAttentionsRequest, v1.ListQualityAgentAttentionsResponse]
 	replyQualityAgentAttention           *connect.Client[v1.ReplyQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	dismissQualityAgentAttention         *connect.Client[v1.DismissQualityAgentAttentionRequest, v1.QualityAgentAttention]
+	setQualityAgentAdoption              *connect.Client[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent]
 	updateQualityAgent                   *connect.Client[v1.UpdateQualityAgentRequest, v1.QualityAgent]
 	startQualityAgent                    *connect.Client[v1.StartQualityAgentRequest, v1.QualityAgent]
 	pauseQualityAgent                    *connect.Client[v1.PauseQualityAgentRequest, v1.QualityAgent]
@@ -1743,6 +1756,11 @@ func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Cont
 	return c.dismissQualityAgentAttention.CallUnary(ctx, req)
 }
 
+// SetQualityAgentAdoption calls metaxisdata.v1.DataQualityService.SetQualityAgentAdoption.
+func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, req *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error) {
+	return c.setQualityAgentAdoption.CallUnary(ctx, req)
+}
+
 // UpdateQualityAgent calls metaxisdata.v1.DataQualityService.UpdateQualityAgent.
 func (c *dataQualityServiceClient) UpdateQualityAgent(ctx context.Context, req *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {
 	return c.updateQualityAgent.CallUnary(ctx, req)
@@ -2134,6 +2152,9 @@ type DataQualityServiceHandler interface {
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
+	// Let the owner turn automatic adoption off or back to paused; administrators may
+	// also set ACTIVE. The rest of the configuration stays administrator-managed.
+	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
@@ -2654,6 +2675,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("DismissQualityAgentAttention")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceSetQualityAgentAdoptionHandler := connect.NewUnaryHandler(
+		DataQualityServiceSetQualityAgentAdoptionProcedure,
+		svc.SetQualityAgentAdoption,
+		connect.WithSchema(dataQualityServiceMethods.ByName("SetQualityAgentAdoption")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceUpdateQualityAgentHandler := connect.NewUnaryHandler(
 		DataQualityServiceUpdateQualityAgentProcedure,
 		svc.UpdateQualityAgent,
@@ -2918,6 +2945,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceReplyQualityAgentAttentionHandler.ServeHTTP(w, r)
 		case DataQualityServiceDismissQualityAgentAttentionProcedure:
 			dataQualityServiceDismissQualityAgentAttentionHandler.ServeHTTP(w, r)
+		case DataQualityServiceSetQualityAgentAdoptionProcedure:
+			dataQualityServiceSetQualityAgentAdoptionHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityAgentProcedure:
 			dataQualityServiceUpdateQualityAgentHandler.ServeHTTP(w, r)
 		case DataQualityServiceStartQualityAgentProcedure:
@@ -3269,6 +3298,10 @@ func (UnimplementedDataQualityServiceHandler) ReplyQualityAgentAttention(context
 
 func (UnimplementedDataQualityServiceHandler) DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DismissQualityAgentAttention is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.SetQualityAgentAdoption is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {

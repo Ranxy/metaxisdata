@@ -595,7 +595,7 @@ func (s *DataQualityService) supersedeMatchingRuleDrafts(ctx context.Context, ru
 	}
 	signature := dataquality.RuleSignature(rule.RuleType, rule.Config)
 	_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
-		[]string{signature}, "a saved rule with the same identity exists", time.Now())
+		[]string{signature}, "a saved rule with the same identity exists", nil, time.Now())
 	if supersedeErr != nil {
 		slog.Warn("failed to close a pending rule draft covered by a saved rule",
 			slog.String("rule", rule.ResourceID),
@@ -2585,7 +2585,7 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 		// keep asking to assert a label that is already there.
 		_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, update.tableGUID, update.metaType,
 			[]string{dataquality.LabelSuggestionSignature(update.column)},
-			"the column label was set manually", time.Now())
+			"the column label was set manually", nil, time.Now())
 		if supersedeErr != nil {
 			slog.Warn("failed to close a pending label suggestion after a manual label write",
 				slog.String("table_guid", update.tableGUID),

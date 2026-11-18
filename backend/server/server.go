@@ -20,6 +20,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
@@ -317,14 +318,20 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		if err != nil || agent == nil {
 			return
 		}
+		language := agentlang.English
+		if config.OwnerPrincipalID != nil {
+			if owner, ownerErr := s.store.GetUserByID(ctx, int(*config.OwnerPrincipalID)); ownerErr == nil {
+				language = agentlang.Of(owner)
+			}
+		}
 		attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 			WorkspaceID: session.WorkspaceID,
 			AgentID:     session.AgentID,
 			Kind:        store.QualityAgentAttentionKindBlocked,
 			SessionID:   &session.ID,
 			Reference:   session.ResourceID,
-			Title:       "The agent needs help with a target session",
-			Question:    reason,
+			Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindBlocked),
+			Question:    agentlang.BlockedQuestion(language, reason),
 			DedupeKey:   "blocked:" + session.ResourceID + ":" + code,
 			CreatedAt:   time.Now().UTC(),
 		})

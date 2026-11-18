@@ -53,6 +53,10 @@ func (*fakeStore) ListQualitySuggestions(context.Context, *store.FindQualitySugg
 	return nil, nil
 }
 
+func (*fakeStore) GetQualityAgentConfig(context.Context, int64) (*store.QualityAgentConfigMessage, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) GetQualityAgentByID(context.Context, int64) (*store.QualityAgentMessage, error) {
 	return f.agent, nil
 }
