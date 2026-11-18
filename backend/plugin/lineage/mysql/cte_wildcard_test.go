@@ -25,8 +25,8 @@ func (catalogProvideForCTE) GetTable(_ context.Context, id model.ObjectIdentifie
 // attribute itself to, so the analyzer attributes it to the relation it reads.
 // When that relation is a CTE, the edge must be traced through to the relation
 // the CTE read: an edge naming the CTE points at an object that exists only in
-// the statement, which ingestion then stores as a phantom table (see
-// test/e2e_etl/FINDINGS.md F8, where PostgreSQL had the same defect).
+// the statement, which ingestion then stores as a phantom table. The same defect
+// exists in the PostgreSQL analyzer; this test is the MySQL regression guard.
 func TestWildcardAggregateOverACTEDoesNotNameTheCTE(t *testing.T) {
 	relations, err := analyzeSQL(`INSERT INTO summary (user_id, total)
 WITH base AS (

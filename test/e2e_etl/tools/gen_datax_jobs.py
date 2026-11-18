@@ -51,8 +51,8 @@ DORIS_READER_USER, DORIS_READER_PASSWORD = "e2e_reader", "e2e_reader"
 # qualified table whose database differs from the URL's therefore becomes a
 # three-part dataset name ("e2e_ods.e2e_ads.v_doris_kpi_daily"), and the resolver
 # reads three parts as database.schema.table: Doris has no schema, so that name
-# resolves to a GUID no synced object has. FINDINGS F10 records the run that found
-# it; verify_chain.sql sections 25 and 31 are the gates for the corrected name.
+# resolves to a GUID no synced object has. verify_chain.sql sections 25 and 31 are
+# the gates for the corrected name.
 DORIS_READER_JDBC_URL = (
     f"jdbc:mysql://{DORIS_HOST}:{DORIS_PORT}/e2e_ads"
     "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"

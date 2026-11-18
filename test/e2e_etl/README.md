@@ -78,7 +78,6 @@ them, and the view each of their last hops copies returns one row per region
 | `tools/trigger_sync.py` | syncs instances, so the objects the chain just created are discovered and analysed |
 | `verify_chain.sql` | lineage-chain verification queries (run against the metadata DB) |
 | `run_chain.sh` | triggers the eight DAGs in order and waits for each (no cross-DAG dependencies exist, so firing them together can copy a half-loaded table) |
-| `FINDINGS.md` | what the full runs proved, including the defects they exposed |
 
 ## Prerequisites
 
@@ -89,8 +88,8 @@ them, and the view each of their last hops copies returns one row per region
   (`airflow_provider_datax_openlineage`) and DataX at `/home/ran/source/datax`.
 - A `pg_e2e` Airflow connection pointing at PostgreSQL database `e2e`, login
   `dev` / `dev`. Its host must be the instance's registered data source host;
-  the loopback spellings (`localhost`, `127.0.0.1`, `::1`) are interchangeable
-  since F2 was fixed, but any other spelling still needs a namespace mapping.
+  the loopback spellings (`localhost`, `127.0.0.1`, `::1`) are interchangeable,
+  but any other spelling still needs a namespace mapping.
 - The MSSQL container `mssql` (`mcr.microsoft.com/mssql/server:2019-latest`, with
   `sqlcmd` at `/opt/mssql-tools18/bin/sqlcmd`) and the `sa` password. The DAGs read
   it from the `mssql_e2e` Airflow connection, and `install.sh --bootstrap` creates
@@ -186,17 +185,18 @@ happened on the first run of this hop; section 31 is now the gate for the shape 
 must stay empty) and section 25 reports the source it has to be on — the DataX reader's
 JDBC URL named `e2e_ods` while its table was written as `e2e_ads.v_doris_kpi_daily`, the
 provider's MySQL plugin prefixed the URL's database to the qualified table, and the
-resulting three-part dataset name resolved to `doris-dev-1;e2e_ods;e2e_ads;…` (F10).
+resulting three-part dataset name resolved to `doris-dev-1;e2e_ods;e2e_ads;…`, a GUID no sync registers.
 The fixture now names the database once, in the reader URL, and the hop lands on the
 GUID the analyzer owns.
 
-Three engine facts shape the fixture:
+Four engine facts shape the fixture:
 
 | Fact | What it means here |
 | --- | --- |
 | Doris stores a view body with every column qualified by catalog and database (`internal`.`e2e_ods`.`t`.`c`) | the analyzer has to read that back as a relation in the same database; the definitions in `doris/20_ads_ddl.sql` are the ones the engine keeps, not the ones written |
 | `information_schema.tables` reports an async materialized view as `BASE TABLE`, and its body lives only in `mv_infos()` | the schema sync branches on the engine for it, and a fresh MV is empty until it refreshes — the DAG refreshes it and waits before the copy |
 | A DataX rdbms reader refuses an empty password, and Stream Load is an HTTP API that redirects to a BE | the fixture creates the read-only `e2e_reader` user, and the writer carries both the FE HTTP port (8031) and the MySQL port (9031) |
+| One FE and one BE refuse the engine's default three-way replication | every table `doris/*.sql` creates is `replication_num=1` / `BUCKETS 1`; the StarRocks tables are a different deployment and keep three buckets |
 
 The analysable layer is engine-valid SQL only; the shapes it adds are the ones that
 are Doris's own: a VARIANT subcolumn path (`props['user']['name']`), an ARRAY LATERAL
