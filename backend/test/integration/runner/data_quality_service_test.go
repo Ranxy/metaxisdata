@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -75,6 +76,17 @@ func setupQualityMySQLFixture(t *testing.T, withReadOnlyDataSource bool) *qualit
 		notifications:  v1connect.NewNotificationServiceClient(httpClient, env.BaseURL),
 		settings:       v1connect.NewSettingServiceClient(httpClient, env.BaseURL),
 	}
+}
+
+// qualityAdminUserName resolves the bootstrapped administrator's resource name,
+// which every agent created by the scenarios must name as its owner.
+func qualityAdminUserName(t *testing.T, fixture *qualityFixture) string {
+	t.Helper()
+	client := v1connect.NewUserServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+	response, err := client.GetCurrentUser(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &emptypb.Empty{}))
+	require.NoError(t, err)
+	return response.Msg.GetName()
 }
 
 // createRule creates one table-level rule through the public API.
@@ -3734,9 +3746,12 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:      "workspaces/-",
-			DisplayName: "quality agent",
-			Description: "proposes plan declarations",
+			Parent:       "workspaces/-",
+			DisplayName:  "quality agent",
+			Description:  "proposes plan declarations",
+			Owner:        qualityAdminUserName(t, fixture),
+			Databases:    []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
+			Capabilities: []string{"suggest", "patrol"},
 		}))
 	require.NoError(t, err)
 	require.NotEmpty(t, created.Msg.GetToken(), "the token is returned once")
@@ -3751,9 +3766,9 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		withToken(created.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
 	require.NoError(t, err)
 
-	// Administration stays administrator-only: the agent holds no settings write.
-	_, err = agentClient.ListQualityAgents(fixture.ctx,
-		withToken(created.Msg.GetToken(), &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-"}))
+	// Administration stays administrator-only: the diagnostics read needs agents.manage.
+	_, err = agentClient.ListQualityAgentSessions(fixture.ctx,
+		withToken(created.Msg.GetToken(), &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 
@@ -3836,8 +3851,11 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:      "workspaces/-",
-			DisplayName: "writing agent",
+			Parent:       "workspaces/-",
+			DisplayName:  "writing agent",
+			Owner:        qualityAdminUserName(t, fixture),
+			Databases:    []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
+			Capabilities: []string{"suggest", "patrol"},
 		}))
 	require.NoError(t, err)
 	agentToken := created.Msg.GetToken()
