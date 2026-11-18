@@ -13,7 +13,7 @@ What it proves, against a **running server** and two **real engines**:
   repairing the data resolves it `AUTO_RECOVERED`, `ERROR(NO_READ_ONLY_SOURCE)`
   opens no issue and pages the administrators;
 - the outbound webhook path: a failing check is delivered to a real HTTP endpoint
-  (and not to a channel that only subscribes to the weekly digest);
+  (and a channel subscribed to another event type receives nothing);
 - the scheduled tick: a due target is planned and executed by the runner, with
   the schedule advancing afterwards;
 - the single-target HTML report, and its redacted audit row;
@@ -50,8 +50,7 @@ The same local environment `test/e2e_etl` documents:
   can);
 - a workspace **administrator** e-mail and password (rules create, settings and
   instance data sources are administrator operations);
-- `python3` (3.10+), `psql`, `docker` and `curl` on the machine that runs the
-  scripts.
+- `python3`, `psql`, `docker` and `curl` on the machine that runs the scripts.
 
 The server and the driver must share the loopback interface: S10 starts a local
 HTTP receiver and configures the webhook endpoint as `http://127.0.0.1:<port>`,
@@ -82,9 +81,8 @@ touching the instances the ETL fixture uses.
 | `mysql/80_segment_lose_region.sql`, `81_segment_restore_region.sql` | lose/restore a segment |
 | `pg/10_schema.sql`, `20_seed.sql` | the PostgreSQL fixture |
 | `pg/30_ref_schema.sql`, `40_ref_seed.sql` | the reference database for cross-database reconciliation |
-| `rules/mysql.json`, `rules/postgres.json` | the rule suite and the expected verdict matrix |
+| `rules/mysql.json`, `rules/postgres.json` | the rule suite and the expected verdicts the driver asserts |
 | `verify_quality.sql` | 10 sections of `psql` evidence; section 10 must be all zeros |
-| `README.md` | this file |
 
 ## Run
 
@@ -131,58 +129,19 @@ and `DQ_REGISTRY_TIMEOUT` (default 240 s) bounds the registry wait after a sync.
 
 | Section | What it does | What it asserts |
 | --- | --- | --- |
-| S0 | create the suite | every rule is accepted; the fixture owns exactly its 22 MySQL rules |
+| S0 | create the suite | every rule is accepted; the fixture owns exactly its 22 MySQL rules (and creates its 4 PostgreSQL rules) |
 | S1 | save-time gates (no execution) | mismatched config arm, range on a view, unknown GUID, stale revision (`aborted`), PERCENTILE on MySQL, range on `jsonb` are all rejected; archiving keeps history readable |
-| S2 | verdict matrix on `dq_orders` + helper tables | the exact matrix below, plus each run creating one batch for its single target, one issue and one `ISSUE_OPENED` per FAIL, failure/passing evidence, a valid target schedule |
+| S2 | verdict matrix on `dq_orders` + helper tables | the verdicts and evidence recorded in `rules/mysql.json`; each run creates one batch for its single target, one issue and one `ISSUE_OPENED` per FAIL; failure samples carry the grouping key for duplicates and the primary key plus checked column for row checks; a sampled SQL NULL is marked; a valid target schedule |
 | S3 | `row_count_change` | first run records the baseline; +50 % fails a 20 % bound; an unchanged count passes against the new baseline |
 | S4 | `segment_check` | first run stores the observed segments; losing one FAILs with one disappeared segment; restoring it recovers |
-| S5 | repair | every repaired rule passes, every issue is `RESOLVED(AUTO_RECOVERED)`, the overview/directory/workspace/trend read models agree |
+| S5 | repair | every repaired rule passes, every issue is `RESOLVED(AUTO_RECOVERED)`, and the workspace overview, coverage, target directory/workspace and trend read models agree |
 | S6 | `schema_drift` | passes, an added column FAILs with one drift item, `target_schema_changed` lights up, `Acknowledge` clears it, reverting the DDL recovers |
 | S7 | orphan | after the table is dropped and the registry is refreshed the run is `SKIPPED(ORPHANED)`, not `ERROR`, and opens no issue |
 | S8 | missing READ_ONLY source | creating a query rule is `failed_precondition`; running one is `ERROR(NO_READ_ONLY_SOURCE)`; no issue; `EXECUTION_FAILED` reaches the administrators; restoring the source passes |
-| S9 | scheduled tick | the target's schedule starts at 1 h; with the one metadata-DB seam (`next_run_at` moved into the past) the runner executes it as `SCHEDULED` with no initiator, and the schedule advances |
-| S10 | outbound webhook | a real local HTTP endpoint receives the FAIL event; a channel subscribed only to the digest receives nothing |
+| S9 | scheduled tick | the target has a next run; with the one metadata-DB seam (`next_run_at` moved into the past) the runner executes it as `SCHEDULED` with no initiator, and the schedule advances |
+| S10 | outbound webhook | a real local HTTP endpoint receives the FAIL event; a channel subscribed only to a different event type receives nothing |
 | S11 | report | the HTML is self-contained, names the target, has no script tag; the audit row exists with the body redacted |
-| S12 | PostgreSQL | the sampled range is `sampled` with a non-empty sample and records `"`+`$` SQL; `PERCENTILE` passes; a cross-database reconciliation records its reference statement; repair recovers |
-
-### The verdict matrix
-
-Every row is a rule in `rules/mysql.json` unless marked PG. `failed/total` is the
-evidence the driver asserts; where a row lists a value the driver checks that
-field, and where it shows a verdict sequence the sequence is asserted by the
-scenario function (the counts behind PASS/`observed` are shown for the reviewer,
-not all of them are re-asserted).
-
-| Rule type | Fixture | Verdict | failed/total |
-| --- | --- | --- | --- |
-| `row_count` | `dq_orders` = 10 rows | PASS | 0/10 |
-| `row_count_change` | +50 % against a 20 % bound | PASS → PASS → FAIL → PASS | — |
-| `null_percent` | 2 NULL e-mails, warn 1 / max 3 | WARN | 2/10 |
-| `unique` | `external_ref` `R-4` twice | FAIL | 1/10 |
-| `unique_combination` | `(customer_id, product_code)` duplicate | FAIL | 1/10 |
-| `accepted_values` | `status = 'cancelled'` | FAIL | 1/10 |
-| `range` | `amount = -5.00`, bounds 0..1000 | FAIL | 1/10 |
-| `regex` | `product_code = 'AB'` | FAIL | 1/10 |
-| `string_length` | `product_code = 'AB'`, min 3 | FAIL | 1/10 |
-| `referential_integrity` | `customer_id = 999` has no parent | FAIL | 1/10 |
-| `cross_column` | `shipped_quantity 7 > quantity 6` | FAIL | 1/10 |
-| `custom_sql` | `amount < 0` returns one row | FAIL | observed 1 |
-| `cel_expression` | `amount >= 0.0` fails on -5 | FAIL | 1/10 |
-| `schema_drift` | one column added after the snapshot | PASS → FAIL → PASS | 1/2 drift items |
-| `group_check` | bucket `a` has 3 rows, max 2 | FAIL | 1/3 groups |
-| `aggregate` | `AVG(amount)` between 0 and 100 | PASS | observed 50.5 |
-| `cross_table` | `dq_orders` vs `dq_orders_rollup` counts | PASS | observed 0 |
-| `standard_code` | one invalid USCC | FAIL | 1/10 |
-| `segment_check` | `east` disappears, then returns | NOT_EVALUATED → FAIL → PASS | 1/3 expected |
-| `freshness` (`dq_heartbeat`) | every timestamp is from 2020 | FAIL | — |
-| `aggregate` (`dq_empty`, six-state) | SUM over an empty table | NOT_EVALUATED | — |
-| `row_count` (`dq_orphan_target`) | table dropped under the rule | SKIPPED(ORPHANED) | — |
-
-PostgreSQL: `percent`-sampled `range` on `dq_big` (all 5000 rows out of bounds →
-FAIL, then repaired to PASS), `aggregate PERCENTILE` (PASS, 30), `null_percent`
-(FAIL 2/5, then repaired), cross-database `cross_table` (PASS, one statement per
-side). The driver also asserts the two engine gates above (PERCENTILE refused on
-MySQL, range refused on `jsonb`).
+| S12 | PostgreSQL | the sampled range is `sampled` with a non-empty sample and records quoted, dollar-style SQL; `PERCENTILE` passes; a cross-database reconciliation records its reference statement; repair recovers |
 
 ## Evidence (`verify_quality.sql`)
 
@@ -207,7 +166,7 @@ Section 10 is the gate. Every `must_be_zero` must be 0:
 | enabled checks but no next run | every live target has a schedule |
 | rule with more than one unresolved issue | the per-rule partial unique index holds |
 | report audit row with an unredacted body | report bodies never enter the permanent ledger |
-| fewer than 20 distinct rule types | the matrix covers all 20 types |
+| fewer than 20 distinct rule types | the suite covers all 20 types |
 
 ## Seams and limitations
 

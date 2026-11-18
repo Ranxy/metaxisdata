@@ -25,6 +25,5 @@ go generate ./backend/plugin/lineage/mysql
 - [.agents/docs/lineage-analyzer.md](../../../.agents/docs/lineage-analyzer.md) — package layout, assembly, runner lifecycle, the MySQL-family generator, and the AST coverage audit method.
 - [.agents/docs/lineage-semantics.md](../../../.agents/docs/lineage-semantics.md) — what each dialect must keep producing: the transformation model, per-dialect semantics, engine-measured clause visibility.
 - [.agents/docs/lineage-graph.md](../../../.agents/docs/lineage-graph.md) — the field trail and field-scoped expansion on the graph page.
-- [.agents/docs/mssql-lineage.md](../../../.agents/docs/mssql-lineage.md) — the T-SQL dialect: its AST shape, what it models, its script splitter and its gaps.
-- [.agents/docs/doris-lineage.md](../../../.agents/docs/doris-lineage.md) — the Doris dialect: how its AST differs from StarRocks', its LATERAL VIEW lineage and its input paths.
+- [.agents/docs/lineage-dialects.md](../../../.agents/docs/lineage-dialects.md) — the engine-specific analyzers (StarRocks, Doris, MSSQL): what each AST and parser forces, the decisions that follow, and what each reports as a gap.
 - [.agents/docs/omni-upstream-defects.md](../../../.agents/docs/omni-upstream-defects.md) — upstream parser/AST defects and the deliberate no-patch policy.

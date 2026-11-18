@@ -1,54 +1,51 @@
-# Schema Sync（schemasync）— Reference
+# Schema sync (schemasync)
 
-> Status：**implemented**，代码评审结论。本文件只记录**今天仍然成立**的已知问题与不变量；评审当时列出的 1–6 号问题均已修复，修复过程不在此保留。2026-10-18 的 runner 评审第 4 步又收敛了三处：统计刷新独立于 history/fingerprint（旧 R-09）、血缘清理批量化（旧 R-10，即下文已删的已知问题 3）、DDL 刷新按小时节奏 + 大库轮换（旧 R-20，即下文已删的已知问题 6）。
-> 范围：`backend/runner/schemasync`。
-> Related：`docs/security-posture.md`（破坏性 sync 仅记日志；数据库 `deleted` 标记单向权威）。
+Maintenance reference for the schema syncer: the invariants a change must preserve, the known problems that remain, and the API-triggered sync semantics. Destructive sync being log-only and the `deleted` flag's direction are stated in [docs/security-posture.md](../../docs/security-posture.md) and not repeated here. Scope: `backend/runner/schemasync`.
 
-## 仍然成立的不变量
+## Invariants
 
-| 不变量 | 位置 | 破坏后果 |
+| Invariant | Where | Consequence if broken |
 | --- | --- | --- |
-| 元数据事务内只做纯写：digest 读取、`bmc.prepare()` 的 diff、DDL 抓取与 DDL diff 全部在 `BeginTx` 之前 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema`） | 否则 `meta_registry_resource` 的行锁会横跨对目标实例的全部网络往返，大库上一次同步可让事务开启数分钟，放大 vacuum 膨胀与锁等待。 |
-| 缓存失效严格在 `Commit` 之后（含 stats-only 更新过的行） | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的提交后缓存失效） | 回滚的同步会留下未提交的缓存条目。 |
-| DDL 行严格是 meta 行的子集，且写在同一次事务里 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema`） | 回滚后会留下一条没有对应元数据行的 DDL。 |
-| 统计刷新只写 `metadata` 列且是 best-effort：不写 `meta_registry_resource_history`、不改 `meta_hash`、不进入 `bmc.updates`（因此不重排血缘、不触发 revalidation）；读失败只 Warn 并记录本次刷新，写失败只 Warn（在元数据事务**之外**执行） | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的 `ListMetaRegistryStatistics` 调用与提交后的 `BatchUpdateMetaRegistryStatistics`）；`backend/store/meta_resource_statistics.go` | 统计被 `normalizeMetadataForHash` 排除在 fingerprint 之外；若把它当作普通更新，每次行数变化都会产生历史版本并重算血缘；若放在元数据事务里，一次统计写失败会回滚真正的 schema 变更，持久坏值还会让该库的同步永久失败。 |
-| 统计与 DDL 的全量刷新各有独立节奏（每库每小时；DDL 大库轮换窗口），clock/cursor 只在 commit 后推进 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 提交后调用 `recordDefinitionRefresh`/`recordStatisticsRefresh`）；`backend/runner/schemasync/{refresh.go,object_definition.go}` | 若跟随每 15 分钟的 schema 同步，会把「行数估计」变成每次全表 JSONB 重写，并对目标库产生与变更无关的 SHOW CREATE 压力；回滚时推进 clock 会跳过从未刷新的对象。 |
-| 元数据指纹用自有 canonical 编码，不走 protojson | `backend/store/meta_hash.go`（`CalcMetaHash` / `encodeCanonicalMessage`） | protojson 按镜像随机化 map 字段顺序，会导致全表重写。 |
-| 结构指纹行（`meta_registry_schema_fingerprint`）严格是 metadata 行的子集，在同一事务里写在 metadata 行**之后**；计算与 diff 在 `BeginTx` 之前；删除只经 `BatchDeleteMetaRegistryAt` 级联 | `backend/runner/schemasync/schema_fingerprint.go`（`prepareSchemaFingerprints`）、`database_sync.go`（`SyncDatabaseSchema`）、`backend/store/meta_resource.go`（`BatchDeleteMetaRegistryAt`） | 否则回滚会留下没有 metadata 行的指纹；事务内做全库计算会拉长锁持有时间。详见 [schema-fingerprint.md](schema-fingerprint.md)。 |
-| 指纹变化只在**提交后**通知数据质量的检查 owner，且只对"旧行存在且值不同"的对象发 | `backend/runner/schemasync/schema_fingerprint.go`（`reportSchemaFingerprintChanges`）、`backend/store/quality_schema_change.go` | 回滚不能通知；首次回填/新对象/已删除对象不是"结构变更"，通知它们会制造噪声。 |
-| 破坏性删除只记日志，没有收缩阈值或确认开关；`logSchemaSyncDeletion` 是唯一痕迹 | `backend/runner/schemasync/metadata_batch.go`（`logSchemaSyncDeletion`）、`backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的调用点） | 有意为之：MySQL 的 `information_schema` 只列连接用户可见的对象，权限变更可以清空快照。详见 `docs/security-posture.md`。 |
-| `deleted = true` 可由任何“目标说这个库没了”的观测写入，`deleted = false` 只能由实例枚举写入；单库同步的成功路径不写 `deleted` | `backend/runner/schemasync/instance_sync.go`（`SyncInstance` 的实例枚举）、`backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的 NotFound 隐藏路径） | 一次“读到了某个库的内容”不是一次实例枚举；写成双向就会 flap。详见 `docs/security-posture.md`。 |
-| 每个 driver 打开点都经过实例连接限流：sync 走 `acquireInstanceConnection`（`TryAcquire`，拿不到就把库放回队列），连通性测试走 `Acquire`（Interactive，5s 预算）；排队与优先级见 [instance-connections.md](instance-connections.md) | `backend/runner/schemasync/instance_sync.go`（`acquireInstanceConnection`）；`backend/api/v1/instance_service.go`；`backend/component/state/connection.go` | 绕过限流会让 `maximum_connections` 形同虚设，调用方可以对着一个只握手不响应的目标堆叠无界尝试；若 sync 改成阻塞等待，checker 的 tick 会被拖住。 |
-| 实例元数据只写定向 patch：runner 与 API（UpdateInstance、数据源增删改）都用 `UpdateInstanceMessage.MetadataUpdates`，在 store 的行锁内合并；`last_sync_time` / `version` / `mysql_lower_case_table_names` 只由 runner 的 patch 写 | `backend/store/instance.go` 的 `patchInstanceMetadata`；`backend/api/v1/instance_service.go`；`backend/runner/schemasync/instance_sync.go` 的 `SyncInstance` | 任何调用方整份写回自己读到的 metadata 克隆，都会把并发写入的另一半静默回滚（最坏是刚加的数据源/凭据）。 |
+| The metadata transaction does only writes: the digest read, the `bmc.prepare()` diff, and the DDL fetch and diff all happen before `BeginTx` | `SyncDatabaseSchema` in `backend/runner/schemasync/database_sync.go` | Otherwise the `meta_registry_resource` row locks span every network round trip to the target instance, so one large-database sync can hold a transaction open for minutes and amplify vacuum bloat and lock waits. |
+| Cache invalidation happens strictly after `Commit`, including rows a stats-only update touched | `SyncDatabaseSchema` (the post-commit invalidation) | A rolled-back sync leaves uncommitted cache entries behind. |
+| DDL rows are a strict subset of metadata rows and are written in the same transaction | `SyncDatabaseSchema` | A rollback leaves a DDL row with no metadata row. |
+| The statistics refresh writes only the `metadata` column and is best effort: no `meta_registry_resource_history` row, no `meta_hash` change, no entry in `bmc.updates` (so no lineage requeue and no revalidation trigger), a read failure only warns and still records the refresh, and a write failure only warns (outside the metadata transaction) | `SyncDatabaseSchema` (`ListMetaRegistryStatistics` and the post-commit `BatchUpdateMetaRegistryStatistics`); `backend/store/meta_resource_statistics.go` | Statistics are excluded from the fingerprint by `normalizeMetadataForHash`; treating them as an ordinary update produces a history version and a lineage recomputation on every row-count change, and putting them inside the metadata transaction would let one failed estimate roll back real schema changes and a persistent bad value fail that database's sync forever. |
+| Statistics and the full DDL refresh have independent cadences (hourly per database, with a rotating window above the fetch limit), and the clock/cursor advance only after a commit | `SyncDatabaseSchema` (post-commit `recordStatisticsRefresh`/`recordDefinitionRefresh`); `backend/runner/schemasync/refresh.go`, `object_definition.go` | Following the 15-minute schema sync would turn a row-count estimate into a full JSONB rewrite every time and put `SHOW CREATE` pressure on the target for no change; advancing the clock on rollback skips objects that were never refreshed. |
+| The metadata fingerprint uses a canonical encoding, not `protojson` | `backend/store/meta_hash.go` (`CalcMetaHash`/`encodeCanonicalMessage`) | `protojson` randomizes map field order, which rewrites the whole table. |
+| Structure-fingerprint rows are a strict subset of metadata rows, written after them in the same transaction; computation and diff happen before `BeginTx`; deletion cascades only through `BatchDeleteMetaRegistryAt` | `prepareSchemaFingerprints` in `backend/runner/schemasync/schema_fingerprint.go`, `SyncDatabaseSchema`, `BatchDeleteMetaRegistryAt` in `backend/store/meta_resource.go` | A rollback leaves a fingerprint with no metadata row, and computing the whole database inside the transaction lengthens lock holds. See [schema-fingerprint.md](schema-fingerprint.md). |
+| Fingerprint changes notify the data-quality check owners only after the commit, and only for objects whose previous row existed and differed | `reportSchemaFingerprintChanges`; `backend/store/quality_schema_change.go` | A rollback must not notify; a first backfill, a new object and a deleted object are not structure changes, and notifying them is noise. |
+| Destructive deletes are log-only: no shrink threshold and no confirmation switch, and `logSchemaSyncDeletion` is the only trace | `logSchemaSyncDeletion` in `metadata_batch.go`, called from `SyncDatabaseSchema` | Deliberate: MySQL's `information_schema` lists only what the connected user may see, so a privilege change can empty the snapshot. See `docs/security-posture.md`. |
+| `deleted = true` may be written by any observation that the target no longer has the database; `deleted = false` only by instance enumeration; a successful single-database sync never writes `deleted` | `SyncInstance` in `instance_sync.go`; the NotFound path of `SyncDatabaseSchema` | Reading a database's content is not an instance enumeration; a bidirectional write flaps. |
+| Every driver open goes through the instance connection budget: sync uses `acquireInstanceConnection` (`TryAcquire`; on failure the database stays queued), and the connectivity test uses `Acquire` (Interactive, 5s). Queuing and priorities are in [instance-connections.md](instance-connections.md) | `acquireInstanceConnection` in `instance_sync.go`; `backend/api/v1/instance_service.go`; `backend/component/state/connection.go` | Bypassing the budget makes `maximum_connections` meaningless, lets a caller stack unbounded attempts at a target that only completes the TCP handshake, and a blocking sync would stall the checker's tick. |
+| Instance metadata is written only as targeted patches: the runner and the API (UpdateInstance, data-source add/update/delete) all use `UpdateInstanceMessage.MetadataUpdates`, merged under the store's row lock; `last_sync_time`, `version` and `mysql_lower_case_table_names` are written only by the runner's patch | `patchInstanceMetadata` in `backend/store/instance.go`; `backend/api/v1/instance_service.go`; `SyncInstance` in `instance_sync.go` | A caller that writes back a whole metadata clone silently reverts the other half of a concurrent write — at worst a just-added data source or credential. |
 
-## 已知问题
+## Known problems
 
-| # | 严重度 | 问题 | 位置 / 证据 |
+| # | Severity | Problem | Where |
 | --- | --- | --- | --- |
-| 1 | 中 | **API 触发的单实例同步最长可挂 15 分钟。** `SyncInstance`/`SyncDatabase` 都在请求 goroutine 里同步执行，内部 deadline 是 `syncTimeout = 15 * time.Minute`；目标库 hang 时 HTTP 请求就挂满 15 分钟（`BatchSyncInstances` 已有 5 分钟总预算，单实例 RPC 未改语义）。入口为 `backend/api/v1/instance_service.go`（`SyncInstance`）与 `backend/api/v1/database_service.go`（`SyncDatabase` → `SyncDatabaseForUser`，后者在 `backend/runner/schemasync/operation.go` 直接调用 `SyncDatabaseSchema`）。建议 API 路径用更短超时，或改异步 + 轮询。 | `backend/runner/schemasync/syncer.go`（`syncTimeout` 常量）、`backend/runner/schemasync/instance_sync.go`（`GetInstanceMeta`）、`backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema`） |
-| 2 | 低 | checker 每 10s 无条件 `ListInstances`，队列为空时纯浪费；可先 `Range` 判空再查。 | `backend/runner/schemasync/queue.go`（`trySyncAll`） |
-| 3 | 低 | 7 段近乎相同的类型循环可表驱动化；其中物化视图那一段未复用 `schemaGUIDPrefix`，与邻居不一致。 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的类型循环） |
-| 4 | 低 | 每列一次多余的 `proto.Clone`：`CalcMetaHash` 内部已经 Clone，之后无可变路径。 | `backend/runner/schemasync/metadata_batch.go`（`buildColumnMetadataResources`） |
+| 1 | Medium | **An API-triggered single-instance sync can hang for 15 minutes.** `SyncInstance` and `SyncDatabase` run synchronously in the request goroutine with an internal `syncTimeout` of 15 minutes, so a hung target holds the HTTP request that long (`BatchSyncInstances` already has a 5-minute total budget; the single-instance RPC was not changed). A shorter API timeout or an async-plus-poll API would fix it. | `syncTimeout` in `syncer.go`; `GetInstanceMeta` in `instance_sync.go`; `SyncDatabaseSchema` in `database_sync.go` |
+| 2 | Low | The checker calls `ListInstances` unconditionally every 10 seconds; with an empty queue that is pure waste, and a cheap `Range` check could come first. | `trySyncAll` in `queue.go` |
+| 3 | Low | Seven near-identical type loops could be table-driven; the materialized-view one does not reuse `schemaGUIDPrefix` like its neighbors. | the type loop in `SyncDatabaseSchema` |
+| 4 | Low | One redundant `proto.Clone` per column: `CalcMetaHash` already clones internally, and there is no mutable path afterwards. | `buildColumnMetadataResources` in `metadata_batch.go` |
 
-## API 触发的同步语义
+## API-triggered sync semantics
 
-`SyncInstance` 的 `enable_full_sync` 是 proto3 `optional`：**未设置 = 全量**（刷新实例元数据 + 入队并同步所有库，与后台扫描、`CreateInstance` 一致）；显式传 `false` 是「仅发现新库」的轻量模式（只入队本次枚举新出现的库，已有库交给后台扫描）。前端默认传 `true`；需要只发现新库的调用方必须显式传 `false`。
+`SyncInstance`'s `enable_full_sync` is proto3 `optional`: **unset means full** (refresh instance metadata, enqueue and sync every database, like the background scan and `CreateInstance`), while an explicit `false` is the discovery-only mode that queues only databases this enumeration discovered and leaves existing ones to the background scan. The frontend sends `true`; a caller that wants discovery-only must pass `false` explicitly.
 
-## 历史债务（顺手清理，非 bug）
+## Known debt
 
-| 项 | 位置 |
+| Item | Where |
 | --- | --- |
-| `MaximumOutstanding` 导出但仅包内使用且无 doc，应为 `maximumOutstanding`。 | `backend/runner/schemasync/syncer.go`（`MaximumOutstanding`） |
-| `Run` 的注释仍写 “will run the schema syncer once”，实际是永久循环。 | `backend/runner/schemasync/syncer.go`（`Run`） |
-| deadline 写法与预算：`context.WithDeadline(time.Now().Add(syncTimeout))` 可简化为 `WithTimeout`；同一个 deadlineCtx 同时覆盖 `SyncDBSchema` 与 DDL 抓取，前者慢会挤压后者（失败保留旧 DDL，不致错，但值得知晓）。 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的 `deadlineCtx`） |
-| `SyncInstance` 返回 4 元组而调用方大量丢弃，签名演进后没收敛。 | `backend/runner/schemasync/instance_sync.go`（`SyncInstance` 的返回签名）；`backend/api/v1/instance_service.go:362` 是 `_, _, _, _` |
-| `supportsObjectDefinition` 预留了 FUNCTION/PROCEDURE，但目前只有 StarRocks 一个驱动实现了 `ObjectDefinitionReader`。 | `backend/runner/schemasync/object_definition.go:124-134`；`backend/plugin/db/starrocks/definition.go:20` |
-| 结构指纹每次 sync 对全库对象做一次 hash 读（O(对象数) 行），与已有 digest 读同量级；只有大库才值得为它加"按变化集合 + 周期全量"的刷新节奏。 | `backend/runner/schemasync/schema_fingerprint.go`（`prepareSchemaFingerprints`） |
-| 多处 “used to … / instead of …” 修复叙事型注释：对理解有帮助，但也说明这是事故驱动的热点区域——每次修 bug 都在旧结构上叠加而非重构。 | `backend/runner/schemasync/`，例如 `backend/runner/schemasync/instance_sync.go`（`SyncInstance`）、`backend/runner/schemasync/operation.go` |
+| `MaximumOutstanding` (the checker's 100-goroutine cap) is exported but used only in-package and undocumented; it should be `maximumOutstanding`. | `syncer.go` |
+| `Run`'s comment still says it "will run the schema syncer once", but it is a permanent loop. | `syncer.go` |
+| The deadline is written as `context.WithDeadline(time.Now().Add(syncTimeout))` where `WithTimeout` would do; the same `deadlineCtx` covers both `SyncDBSchema` and the DDL fetch, so a slow first phase squeezes the second (it fails safe by keeping the old DDL, but it is worth knowing). | `SyncDatabaseSchema` |
+| `SyncInstance` returns four values that most callers discard; the signature never converged after its evolution. | `SyncInstance` in `instance_sync.go`; the API's `_, _, _, _` |
+| `supportsObjectDefinition` reserves FUNCTION/PROCEDURE, but only the StarRocks driver implements `ObjectDefinitionReader` today. | `mergeDefinitionResources` and `supportsObjectDefinition` in `object_definition.go` |
+| Structure fingerprints hash every object in the database once per sync (O(objects) rows), the same order as the digest read; only a very large database is worth a change-set-plus-periodic-full refresh. | `prepareSchemaFingerprints` |
+| Several "used to … / instead of …" comments explain a fix; they aid understanding but mark this as an incident-driven hot spot where fixes stack on the old structure instead of refactoring it. | `instance_sync.go` (`SyncInstance`), `operation.go` |
 
-## 测试与门禁
+## Tests and gate
 
-- 单测（hermetic）：`backend/runner/schemasync/syncer_test.go`（digest diff、stats-only 刷新、统计/DDL 刷新节奏、限流、gate 串行、退避阶梯、`shouldSyncNow` 边界）、`backend/runner/schemasync/object_definition_test.go`（changed/full/轮换窗口）、`backend/runner/schemasync/schema_fingerprint_test.go`（指纹写集/回填不算变更/通知对象与去重键/路径渲染）、`backend/runner/schemasync/operation_test.go`、`backend/store/meta_resource_statistics_test.go`（统计读取/更新语句形态）、`backend/store/meta_schema_fingerprint_test.go`（指纹表查询形态）。
-- 集成补充（2026-10-18）：`TestMySQLMetaRegistryStatisticsRefreshKeepsHistoryRealServerIntegration`（统计刷新不改 fingerprint/history）、`TestMySQLDeleteColumnLineageByMetaGUIDsRealServerIntegration`（批量血缘清理）。
-- 集成：`make test-integration-smoke`、`make test-integration`、`make test-integration-mysql`（见 `backend/test/integration/README.md`）。
-- 门禁：`gofmt`、`golangci-lint run --allow-parallel-runners`、`go test ./backend/runner/schemasync/...`；改动触及 schema sync 时补集成套件。
+- Hermetic: `syncer_test.go` (digest diff, stats-only refresh, statistics/DDL refresh cadence, connection limiting, gate serialization, backoff ladder, `shouldSyncNow` boundaries), `object_definition_test.go` (changed/full/rotating windows), `schema_fingerprint_test.go` (fingerprint write set, backfill is not a change, notification targets and dedupe key, path rendering), `operation_test.go`, `meta_resource_statistics_test.go` (read/update statement shapes) and `meta_schema_fingerprint_test.go` (fingerprint query shapes).
+- Integration: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql` (see `backend/test/integration/README.md`).
+- Gate: `gofmt`, `golangci-lint run --allow-parallel-runners`, `go test ./backend/runner/schemasync/...`; add the integration suites when a change touches schema sync.

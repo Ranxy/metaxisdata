@@ -307,7 +307,7 @@ Gathered while writing `backend/plugin/lineage/mssql` against the same pin, with
 throwaway probe package (`.probe-mssql/`, deleted afterwards: 87 numbered statements
 plus 105 extra shapes) and by reading `mssql/parser` and `mssql/ast` in the module
 cache. The dialect's own record of what it does about each item is
-[mssql-lineage.md](mssql-lineage.md).
+[lineage-dialects.md](lineage-dialects.md).
 
 ### 9.1 Two keywords are consumed as a table alias
 
@@ -384,7 +384,7 @@ wrong tree.
 - A four-part name keeps its server: `SELECT a FROM srv.db.dbo.t` parses to
   `Server "srv"`, `Database "db"`, `Schema "dbo"`, `Object "t"`. The dialect decides
   what to do with the server — it drops it, on purpose (see
-  [mssql-lineage.md](mssql-lineage.md)) — rather than the parser hiding it.
+  [lineage-dialects.md](lineage-dialects.md)) — rather than the parser hiding it.
 - `parser.Parse` returns `(*ast.List, error)`; there is **no** `ast.File` and **no**
   `mssql.Split` or `mssql.Tokenize` (the one-shot tokenizer is `parser.Tokenize`,
   and `parser.TokenName` names a token type). `mssql.Parse` splits and parses in one
@@ -518,7 +518,7 @@ Gathered while writing `backend/plugin/lineage/doris` against the same pin, with
 throwaway probe deleted afterwards, and confirmed against the official data-type
 reference (the Schema Template form is documented there, so the input is valid
 Doris, not a dialect mistake). The dialect's own record is
-[doris-lineage.md](doris-lineage.md).
+[lineage-dialects.md](lineage-dialects.md).
 
 ### 12.1 A VARIANT schema template does not parse
 
@@ -629,7 +629,7 @@ upstream defect stands and is not patched.
   not valid 4.x SQL; the accepted header is `REFRESH AUTO ON SCHEDULE EVERY 1 DAY
   STARTS '…'`, which omni parses. omni and this engine agree, so there is nothing to
   record as an omni defect — only the analyzer's own guard, which refuses to build a
-  name out of such a header (see doris-lineage.md).
+  name out of such a header (see [lineage-dialects.md](lineage-dialects.md)).
 - `SELECT * FROM t TABLESAMPLE(1000 ROWS) REPEATABLE 1` parses, while the
   parenthesized `REPEATABLE(1)` is rejected. The engine agrees: the unparenthesized
   spelling is the valid one, so `TableRef.Sample.Seed` is reachable exactly where
@@ -658,7 +658,7 @@ parsed text: `WITH c AS (SELECT 1 AS a) UPDATE t SET b = 9 WHERE a = 1` leaves `
 row, the INSERT leaves its row behind, the DELETE removes one, and a clause the statement
 reads (`SET b = (SELECT m FROM c)`) takes effect too — each read back from the table after
 the statement. This was recorded in this repository as "the shape does not exist at the
-syntax level" (doris-lineage.md invariant 5) until the engine was asked; it does exist, and
+syntax level" until the engine was asked; it does exist, and
 only omni lacks it.
 
 **The Doris analyzer recovers what it can.**
@@ -671,7 +671,7 @@ SELECT …` and omni parses it, so the clause moves after the partition list. UP
 and an INSERT whose source is `VALUES` have no such place — omni's grammar takes a `WITH`
 only in front of a `SELECT` — so their clause is dropped only when the statement reads none
 of the names it defines, since an unused CTE writes nothing; a clause the statement does read
-keeps the statement's hard failure, recorded as an open item in doris-lineage.md. The read
+keeps the statement's hard failure, recorded in [lineage-dialects.md](lineage-dialects.md). The read
 check counts *every* token, whatever kind it has, because a CTE may be named with a word that
 lexes as a keyword: `WITH `type` AS (…) UPDATE t SET b = (SELECT a FROM type)` really reads
 the clause on the engine, and a bare reference to it lexes as that keyword. A `WITH LABEL`

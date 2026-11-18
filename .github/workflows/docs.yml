@@ -1,0 +1,30 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - scripts/check-docs.mjs
+      - .github/workflows/docs.yml
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.md"
+      - scripts/check-docs.mjs
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # The gate itself. It needs no install: it shells out to git and reads files.
+      - run: node scripts/check-docs.mjs

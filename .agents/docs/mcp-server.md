@@ -1,222 +1,150 @@
-# 服务端内置 MCP（Model Context Protocol）+ OAuth 2.1 授权 — Reference
+# MCP server and OAuth 2.1 authorization — reference
 
-> Status: **implemented**。Maintenance reference for `backend/mcp/`、`backend/api/oauth/`、`backend/api/v1/oauth_service.go`、`backend/api/v1/connected_app_service.go` 与 `/mcp` 的挂载点。
-> Related: [agent-platform.md](agent-platform.md)（17 个工具的实现在 `component/tools/*`，MCP 只保留传输/鉴权/审计/指标）；使用者接入指南 [docs/mcp.md](../../docs/mcp.md)（不要重复它）;刻意决策 [docs/security-posture.md](../../docs/security-posture.md);目录内规则 `backend/mcp/AGENTS.md`。
-> SDK: `github.com/modelcontextprotocol/go-sdk v1.8.0`（`go.mod`）。
+One process is both the MCP resource server (`/mcp`) and the OAuth 2.1 authorization server those clients register and authorize against. The resource server exposes the metadata registry,
+column-level lineage and data-quality surface as read-only tools; the authorization server is plain HTTP, because OAuth clients do not speak ConnectRPC. Related: [agent-platform.md](agent-platform.md)
+(the tool bodies under `backend/component/tools/`), [docs/mcp.md](../../docs/mcp.md) (the operator and integrator guide, which this file must not duplicate),
+[security-posture.md](../../docs/security-posture.md) (accepted trade-offs), and [backend/mcp/AGENTS.md](../../backend/mcp/AGENTS.md). The SDK is `github.com/modelcontextprotocol/go-sdk` v1.8.0.
 
-## What it is
+## Shape and decisions
 
-同一进程既是 MCP 资源服务器（RS）又是 OAuth 2.1 授权服务器（AS）。RS 是 `/mcp` 上的 **Streamable HTTP、无状态**端点，暴露 17 个只读工具；**数据面零新增 RPC** —— 工具在进程内直接调用现有 ConnectRPC handler 方法。AS 提供 PRM（RFC 9728）、AS metadata（RFC 8414）、Authorization Code + PKCE(S256)、RFC 8707 `resource`、DCR（RFC 7591）。整个面由工作区开关 `mcp_enabled`（默认 `false`）控制。同一进程还提供 `ConnectedAppService`：把「用户 × 客户端的一次授权」作为**已连接应用**列出来并撤销，它不改变 MCP 端点本身的能力面，也不受 `mcp_enabled` 影响（关闭后它仍是清理存量授权的入口）。
+`/mcp` is one stateless Streamable HTTP endpoint answering JSON: the 2026-07-28 protocol revision requires statelessness, which removes session hijacking and replica affinity, at the cost of the
+server-to-client requests a session would allow. The data plane adds no new RPC: a tool calls the existing ConnectRPC handler in-process, against the same service instance the API mounts. The chain is
+401 challenge → protected-resource metadata → authorization-server metadata → dynamic registration → browser authorization with PKCE and `resource` → consent → code → token exchange → per-request
+bearer verification → tool (addressing, IAM, handler, rendering, audit).
 
-调用链：无令牌 `/mcp` → 401 + `WWW-Authenticate: Bearer resource_metadata=…` → PRM → AS metadata → (DCR) → 带 PKCE+`resource` 打开浏览器 → 已登录用户在 `/oauth/consent` 确认 → `/oauth/authorize/complete` 生成授权码并 302 回客户端 → `code_verifier`+`resource` 换令牌 → 带令牌请求 `/mcp`，每请求独立验令牌 → 工具（寻址 → IAM → 调 handler → 渲染 → 审计）。
-
-## Decisions
-
-| 决策 | 选择 | 为什么 |
+| Decision | Choice | Why |
 | --- | --- | --- |
-| 交付形态 | 服务端内置，挂 `/mcp` | 工具直接复用 store/service，无客户端装配 |
-| 传输 | 仅 Streamable HTTP | 服务端无 stdio 语义 |
-| 会话 | **无状态**（`Stateless: true`, `JSONResponse: true`） | 协议 2026-07-28 只在无状态下被接受；无会话存储、无可劫持会话、天然多副本。代价：无 server→client 请求；工具级确认改用 MRTR |
-| AS 归属 | metaxisdata 自身同时是 AS 与 RS | 自托管零外部依赖；SSO 是可选功能，外部 IdP 普遍不支持 RFC 8707 |
-| 客户端注册 | DCR（RFC 7591）public client（`none`） | 主流客户端仍走 DCR；CIMD 需 AS 抓 URL（SSRF 面），留后续 |
-| 令牌 | 复用 JWT + MCP audience（资源 URI）+ `scope`；**另发轮换式 refresh token** | 原决策「7 天、不发 refresh token」已被推翻；见下 |
-| OAuth scope | 单一粗粒度 `metaxisdata.mcp.read` | 真正的授权仍是平台 IAM；把 IAM 权限串当 scope 会造出第二套 ACL |
-| 开关 | `WorkspaceProfileSetting.mcp_enabled`，默认 `false` | 新攻击面由管理员显式开启；JSONB 加字段无需 migration |
-| Audience 纪律 | `/mcp` 只认 `<external_url 规范化>/mcp`；Connect 侧沿用 `mt.user.access.<mode>` | 规范 MUST audience 绑定、MUST NOT passthrough；双向隔离由 `backend/api/auth/authenticator_test.go` 钉住 |
-| 工具实现 | 进程内直接调用现有 handler 方法（`connect.NewRequest` 传参），不抽 service 函数 | 这 17 个只读 handler 不依赖拦截器 context，因此同一份代码、零漂移；代价是 MCP 层自己放用户进 ctx、自己做权限与审计 |
-| 权限一致性 | 守卫测试：工具权限串 == 对应 RPC 注解值，且只引用只读权限 | `backend/mcp/tool_guard_test.go` |
-| 输出契约 | 与 CLI 共享语义（字段名、enum 名、错误码词表），**不共享渲染选项** | 省略空字段 + 紧凑 JSON + 投影 |
-| 审计 | 每次工具调用一条审计行（**含被拒的调用**），OAuth 事件同样 | `audit_log` 永久保留，量会上升 |
-| 能力面 | 只读 17 个工具 | 写操作需要确认语义，走 MRTR，另立方案 |
-| 质量工具的范围 | 目标目录、单目标工作台、问题台账、执行列表、单条执行证据、单目标血缘影响面、工作区消费覆盖率七个只读工具；**不暴露 LLM explain** | 调用 MCP 的本身就是 LLM agent，解释应由它基于证据完成；只读面因此不引入 LLM 配额、`/mcp` 60s 端到端超时与“工具会写解释缓存”的语义冲突（`.agents/docs/data-quality.md` D-91） |
-| 连接管理 | `ConnectedAppService.List/Revoke`（无 permission 注解，handler 先收窄再按权限放宽；revoke `audit=true`） | 一条授权 = 一条已连接应用；`connectedApps.list`/`.revoke` 只决定能否看全工作区、撤销他人，自助撤销自己的不需要权限 |
+| Transport | Streamable HTTP only, stateless | no stdio semantics; statelessness is a protocol requirement and needs no replica affinity |
+| Authorization server | same process as the resource server | self-hosted with no external dependency; one process mints the audience-bound token, verifies it and revokes it |
+| Registration | dynamic (RFC 7591), public clients (`none`) | DCR needs no pre-shared secret, and the token endpoint requires PKCE, so a client secret would only add a credential that can leak |
+| Credentials | JWT access token bound to the MCP resource, plus an opaque rotating refresh token | one audience-bound access credential, one renewable credential |
+| OAuth scope | one coarse `metaxisdata.mcp.read` | the real authorization is platform IAM per tool call; finer scopes would create a second ACL |
+| Audience | `/mcp` accepts only `<canonical external_url>/mcp`; ConnectRPC keeps `mt.user.access.<mode>` | RFC 8707 requires audience binding; the two directions stay isolated |
+| Tool implementation | in-process call of the existing handler methods | those read handlers do not depend on interceptor context, so MCP runs the same code; MCP supplies the context user, the IAM check and the audit row itself |
+| Capability surface | read-only, gated by `mcp_enabled` (default false) | a new attack surface is opt-in; writes need confirmation semantics and a separate design |
+| Quality surface | eight read-only tools: the per-object signal plus the directory, one target, the issues ledger, executions, one run's evidence, lineage impact and consumption coverage; no LLM explain | the MCP caller is the model, so it reasons over the evidence itself; an explain tool would add LLM quota and fight the endpoint's time budget |
+| Consistency guards | a tool's permission must equal its RPC annotation and be read-only; output shares field and enum names with the CLI but not its rendering | `backend/mcp/tool_guard_test.go`; omit unset fields and return projection rows |
 
-**refresh token（推翻决策 #4 的原因与形状）**：token 端点支持 `refresh_token` grant；access token 仍用 `auth.GetTokenDuration`（7 天），refresh token 是**不透明、单次使用、每次轮换**的凭据，只存 SHA-256 摘要，落库 `oauth_refresh_token`（历史表名；Go 语义是 `OAuthGrant`，`backend/store/oauth_grant.go`）。轮换是**原地 `UPDATE ... RETURNING id`**（`token.go` 的 `rotateGrant`）：行 id 稳定，既是已连接应用的对外身份，也是 access token 的 `gid` claim；并发刷新只有一个赢家，撤销与轮换在同一行上串行化。grant 钉在同意时的 resource 与 scope 上，每次轮换复查 principal（存在、未停用、未早于上次改密）；principal 复核失败时显式把行置为已撤销，不再靠删除行隐式结束授权。`Logout` 按 `cid` claim **撤销**该用户该 client 的全部连接（行保留，供管理页与审计），不再是删除刷新凭据；maintenance 在过期 7 天后清理行。存量行即授权，升级后立刻出现在管理页，无需回填。
+The refresh token is the durable half of an authorization: opaque, single-use, rotated on every use, stored only as a SHA-256 digest. Rotation updates the grant row in place, so its id survives and
+serves as both the connected app's public identity and the access token's `gid` claim; concurrent refreshes serialize on that row and exactly one wins. The grant is pinned to the consented resource
+and scope, and every rotation re-checks the principal (exists, not deactivated, not older than the last password change), revoking the row explicitly when that fails. `Logout` revokes rather than
+deletes every connection the token's client holds for the user, and maintenance prunes rows once the refresh credential has been expired for a week.
 
-## 已知偏差（原计划 → 实际，勿再当作遗漏）
+## Tool surface
 
-| 原计划 | 实际 | 理由 |
-| --- | --- | --- |
-| 决策 #9：输出用 `outputSchema` + `structuredContent` | 只声明 `InputSchema`，输出只走 `structuredContent`（`backend/mcp/server.go:276-279`） | 结果里嵌的是 proto 消息的 protojson，手写 output schema 会成为第二个会漂移的真源；要做应从 proto 生成 |
-| 不变量 8：注册后按 client 计数 | 只按来源地址计数（`backend/server/oauth_endpoints.go`） | 匿名注册下 `client_id` 是调用方自报的，按它分桶等于给攻击者一把新钥匙 |
-| 分页返回 `hasMore` | 只回 `nextPageToken`（各列表工具原样透传 RPC 的 `next_page_token`） | token 非空即「还有」，多一个字段没有信息量 |
-| consent 页展示客户端名**与版本** | 只展示客户端名（`proto/v1/v1/oauth_service.proto` 的 `client_name`） | RFC 7591 的客户端元数据没有版本字段 |
-| 审计记录 response 摘要 | 只记 status（code + message，`backend/mcp/server.go:402-431`） | 行里已写明结果；把模型看到的载荷再抄进永久账本等于双写 |
-| 工具调用审计只在成功路径 | 含**被拒的调用**（`dispatch` 在 `invoke` 之后无条件写行，`backend/mcp/server.go:302-311`） | 拒绝恰恰是最该留痕的 |
-| MCP 令牌可吊销 | 按签发来源（签名/kid/issuer/expiry，不带 audience）校验 | 原 `Logout` 只认 user audience，MCP 令牌就没有自助补救 |
-| 授权响应「含错误响应」带 `iss` | 错误路径也带（`RedirectWithError`，`backend/api/oauth/authorize.go:175`） | 拒绝路径可能是客户端唯一看到的那次响应；RFC 9207 的 mix-up 防护必须在那里成立 |
+The 17 read-only tools are defined by `toolDefinitions` in `backend/mcp/tool.go`: name, description, input schema, required permission, the RPC it wraps and its projection. Tool bodies live in
+`backend/component/tools/{metadata,lineage,quality}` and are shared with other consumers. The catalog and model-facing semantics belong to the guide prompt and [docs/mcp.md](../../docs/mcp.md); do not
+restate them here. Addressing is shared: an object is `{instance, database, schema?, name}` or a returned `guid`, resolved by `metadata.Resolver`, which returns candidates rather than guessing and
+also drives scope resolution.
 
-其余 review 修复已并入代码，不再是待办：`authorization_code` 脱敏补齐（含 snake_case）、工具参数按 8 KiB 单串 / 256 KiB 整体截断（参数树 >64 KiB 只记 marker）、被禁用部署的 404 不写账本、`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流、consent 拒绝后导航到 complete（客户端才收得到 `access_denied`）、`external_url` 的重复 `/` 与 `:0443` 归一化、redirect URI 拒绝 userinfo、注册时重复 `redirect_uri` 去重、`last_used_at` 在兑换成功后更新、`resolveDatabase` 拒绝跨实例 GUID、`analyze_sql` 图展开上限 20（`backend/component/tools/lineage/tools.go` 的 `maxExpandedTargets`）、列表型字段空值输出 `[]` 而非 `null`、MCP 实现不广播空版本、守卫测试钉住工具集合。
+## Authorization endpoints
 
-## SDK 契约（实测）
-
-`backend/mcp/sdk_contract_test.go` 是这批假设的第一道防线 —— SDK 升级时它会失败。8 个测试只碰 SDK、不碰 Backend 代码。
-
-| 断言 | 结果 | 对实现的影响 |
-| --- | --- | --- |
-| `mcp.SupportedProtocolVersions()` | 含 `2026-07-28 2025-11-25 2025-06-18 2025-03-26 2024-11-05` | 无状态设计成立 |
-| handler 拿到已验证身份 | 无状态 + `RequireBearerToken` 下经 `req.Extra.TokenInfo` 看到 `UserId`/`Scopes`，经 `req.Extra.Header` 看到原始头 | 身份注入、IAM、审计可行，不必自己解析 header |
-| 协商后的协议版本可读 | `req.Session.InitializeParams().ProtocolVersion` 按请求填充 | 「老客户端补文本副本」是可实现分支（当前未做） |
-| 缺凭据/缺 scope 的失败形态 | 401 带 `WWW-Authenticate: Bearer resource_metadata=…, scope=…`；403 同形。**SDK 不写 RFC 6750 的 `error=`** | 由 `challengeWriter` 补全（见下） |
-| 一个无状态 handler 服务新旧协议 | 新版与 `2025-06-18` 都成功；裸 `initialize` 不返回 `Mcp-Session-Id` | 无需为老客户端降级部署 |
-| 结构化输出的线上形状 | SDK 的 generic typed `AddTool` 会**再补一份 TextContent JSON 副本** | 工具一律 raw handler、只写 `StructuredContent`，不设 `Content` |
-| standalone SSE | 客户端保持默认也能 `tools/call`（GET 405 被容忍） | 不要求客户端 `DisableStandaloneSSE` |
-| `oauthex.MatchesResource` 的归一化边界 | 只容忍尾部斜杠；大小写、默认端口都不归一 | `external_url` 必须先规范化一次，PRM/JWT `aud` 用同一份结果 |
-
-## MCP 原生设计（刻意偏离 CLI 的地方）
-
-| 议题 | CLI | MCP |
-| --- | --- | --- |
-| 对象寻址 | 只接受不透明 GUID，要求「复制、不许手拼」 | **名字路径** `{instance, database?, schema?, name?}`，也接受已拿到的 `guid` |
-| SQL 分析作用域 | 进程级 `METAXISDATA_SCOPES` + `--scope` | 入参 `scopes: [{instance, database, schema?}]`；缺失时返回结构化候选 |
-| 缺失 scope 的失败 | `code=scope_required` + 文字 hint | 同 code，`details` 里带可选库清单（实例名+库名+guid） |
-| 输出渲染 | `protojson` + `EmitUnpopulated` + 2 空格缩进 | **省略未设字段 + 紧凑 JSON**；只共享字段名风格与 enum 名 |
-| 列表类结果 | 完整 `StoredMetadata` | 只回**投影行**（`guid`/`name`/`metaType`/`parentGuid`）；详情走 `get_metadata` |
-| 临时关系 | 默认隐藏，`--include-temp` 打开 | **一次返回**，分成 `relations` 与 `temporaryRelations` |
-| 图与列过滤 | 客户端 N+1 展开/过滤 | 服务端组合（调用方只给 `depth`）；`column` 在工具层过滤（`backend/component/tools/lineage/tools.go` 的 `filterGraphByColumn`） |
-| 分页 | 默认 1000 条，触顶给 `truncated` | `page_size`（默认 25、上限 200）+ `page_token`，响应给 `nextPageToken` |
-| 错误 | `code` + 文字 hint + 退出码 | 保留 `code` 词表（去掉退出码），加结构化 `details` |
-| 两层授权 | 退出码 1/2/4 | 传输层（401/403 + `WWW-Authenticate`）vs 工具层（`isError` + `permission_denied`） |
-| 引导文档 | 二进制内嵌 `SKILL.md` | `ServerOptions.Instructions`（短）+ MCP prompt `metaxisdata_guide`（`backend/mcp/guide.md`）。**不与 CLI 的 SKILL.md 共用** |
-| 工具命名 | 命令树 `meta search` | MCP 习惯 `search_metadata` / `analyze_sql`（`list_*`/`get_*`） |
-| 作用域命名标签 | `dev=1;shop` 的 `dev` | 不存在（scope 就是库本身） |
-| scope 数量上限 | 服务端 10 + 客户端分批 | 保留服务端上限，超限直接报错 |
-
-**保留的 CLI 遗产**（只与平台有关）：错误码词表、proto 字段命名、enum 名、workspace-scoped 授权、审计姿态、`external_url` 是唯一地址来源。
-
-## 工具表
-
-17 个只读工具，**定义**在 `backend/mcp/tool.go` 的 `toolDefinitions`（名称/schema/权限/RPC/投影），**工具体**在 `backend/component/tools/{metadata,lineage,quality}`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
-
-| 工具 | RPC | 权限 | 入参要点 |
+| Endpoint | Method | Authentication | Notes |
 | --- | --- | --- | --- |
-| `list_instances` | `InstanceService.ListInstances` | `metaxisdata.instances.list` | `page_size`(25/200)、`page_token`；投影行 |
-| `list_databases` | `DatabaseService.ListDatabases` | `metaxisdata.databases.list` | `instance` + 分页；投影行 |
-| `search_metadata` | `DatabaseService.SearchMetadata` | `metaxisdata.databases.read` | `keyword`、`meta_type?`、`instance?`/`database?`/`schema?` 限定子树、分页 |
-| `list_metadata` | `DatabaseService.ListMetadata` | `metaxisdata.databases.read` | `parent`(object_ref)、`meta_type?`、分页 |
-| `get_metadata` | `DatabaseService.GetMetadata` | `metaxisdata.databases.read` | `object`(object_ref)、`meta_type?`；完整结构 |
-| `get_ddl` | `DatabaseService.GetSchemaString` | `metaxisdata.databases.read` | `object`、`meta_type?` |
-| `analyze_sql` | `LineageService.AnalyzeSQL` | `metaxisdata.lineage.get` | `sql`(≤1 MiB)、`scopes`(1..10)、`depth`(0..10，默认 0) |
-| `get_lineage_graph` | `LineageService.GetLineageGraph` | `metaxisdata.lineage.get` | `object`、`depth`(1..10，默认 3)、`direction`(up/down/both)、`column?` |
-| `get_quality_signal` | `DataQualityService.ListQualityTargets`（`targets` 精确选择） | `metaxisdata.dataQuality.rules.list` | `object`(object_ref)、`meta_type?`；返回状态点/质量分/最近通过率/字段覆盖/最近运行，未监控为 `monitored=false`（非错误） |
-| `list_quality_targets` | `DataQualityService.ListQualityTargets` | `metaxisdata.dataQuality.rules.list` | `search?`、`worst_status?`、`has_open_issue?`、分页；投影行（路径/健康/分数/覆盖/最近 run/调度） |
-| `get_quality_target` | `DataQualityService.GetQualityTarget` | `metaxisdata.dataQuality.rules.list` | `object`(object_ref)、`meta_type?`；summary + 规则（含 config/lastResult）+ 未解决问题；**不含** `rule_history`/`target_columns` |
-| `list_quality_issues` | `DataQualityService.ListQualityIssues` | `metaxisdata.dataQuality.issues.list` | `object?`/`rule?`/`status?`/`severity?`、分页；问题行（含 `target.path`，由一次批量目标选择补全）、ack/解决/静音字段 |
-| `list_quality_executions` | `DataQualityService.ListQualityExecutions` | `metaxisdata.dataQuality.executions.list` | `object?`/`rule?`/`state?`/`outcome?`/`trigger?`、分页；投影行，**不含**失败样本与 executed SQL |
-| `get_quality_execution` | `DataQualityService.GetQualityExecution` | `metaxisdata.dataQuality.executions.get` | `execution`(资源名)；单条执行完整证据（executed SQL/失败样本/阈值/基线/flags） |
-| `get_quality_impact` | `DataQualityService.GetQualityTargetImpact` | `metaxisdata.dataQuality.rules.list` | `object`(object_ref)、`meta_type?`、`depth?`(0..3，默认 2)、`window_hours?`(0..168，默认 24)；整个响应即 protojson（下游资产 + 上游根因候选 + 窗口 + 截断标记），证据由 agent 自己解释 |
-| `get_quality_consumption_coverage` | `DataQualityService.GetQualityConsumptionCoverage` | `metaxisdata.dataQuality.rules.list` | `page_size`(20/100)；被消费资产/已监控数/未监控数与按下游数排序的未监控清单 |
-| `whoami` | `UserService.GetCurrentUser` | 无（该 RPC 无注解，已白名单） | 回显身份与 `permissions` |
+| `/.well-known/oauth-protected-resource` (and path-insertion form) | GET | anonymous | RFC 9728; `resource` is the canonical external URL plus `/mcp`, one authorization server, one scope, bearer transport `header` |
+| `/.well-known/oauth-authorization-server` | GET | anonymous | RFC 8414; both grants, S256 only, `none` client authentication, RFC 9207 `iss` declared; deliberately no `jwks_uri` |
+| `/oauth/authorize` | GET | browser session | validates client and redirect URI first, then response type, PKCE, `resource` and scope; records a pending request and redirects to the SPA consent page |
+| `/oauth/authorize/complete` | GET | browser session | mints the code and redirects it to the client; denial returns `access_denied`; only the approving user may complete |
+| `/oauth/token` | POST (form) | anonymous, PKCE | `authorization_code` and `refresh_token`; `resource` is required and must match this deployment; errors follow RFC 6749 |
+| `/oauth/register` | POST (JSON) | anonymous, rate-limited | RFC 7591, public clients only, redirect URIs https or loopback; no registration access token |
+| `OAuthService.GetOAuthAuthorizationRequest` / `.ApproveOAuthAuthorizationRequest` | ConnectRPC | signed-in, no permission annotation; approve is audited | what the consent page reads and writes; no code, PKCE challenge or client state in the read; approver eligibility uses the device-login rule |
 
-每条 `Description` 说明它回答什么问题、并指明什么时候该换另一个工具（`toolDefinitions` 的 `Description` 字段）；守卫测试要求非空（`backend/mcp/tool_guard_test.go` 的 `TestEveryToolMatchesItsRPC`）。
+Both consent RPCs must stay in `unannotatedMethods` in `backend/api/v1/acl_interceptor_test.go`, or `TestEveryMethodIsPermissionGated` fails.
 
-**名字寻址（`object_ref`）** 是共用输入形状：`{"instance": "prod-mysql", "database": "shop", "schema": "public", "name": "orders"}`，每个字段接受名字或资源 id（`instances/1`）；`schema` 可省；也可直接给 `{"guid": "1;shop;;orders"}`（文档不要求模型构造）。`guid` 优先，否则拼路径；拼不出/歧义/不存在 → `not_found`/`ambiguous` 并在 `details.candidates` 列候选。解析器只有一个（`backend/component/tools/metadata/resolve.go`，`backend/mcp/ref.go` 只做类型 alias 与错误信封映射），解析结果同时驱动 scope 解析。
+## Tokens and claims
 
-## 授权端点
-
-| 端点 | 方法 | 认证 | 要点 |
-| --- | --- | --- | --- |
-| `/.well-known/oauth-protected-resource`（含路径插入形式） | GET | 匿名 | RFC 9728 PRM；`resource`=规范化 external_url + `/mcp`，`authorization_servers`=[issuer]，`scopes_supported`=[`metaxisdata.mcp.read`]，`bearer_methods_supported`=["header"] |
-| `/.well-known/oauth-authorization-server` | GET | 匿名 | RFC 8414；`grant_types_supported`=["authorization_code","refresh_token"]，只接受 S256 与 `none`，`authorization_response_iss_parameter_supported=true`，**不发 `jwks_uri`** |
-| `/oauth/authorize` | GET | 浏览器登录态 | 先验 `client_id`+`redirect_uri`（精确匹配，loopback 允许端口不同），再验 `response_type=code`/`code_challenge`+S256/`resource`；记 pending 请求并 302 到 SPA `/oauth/consent?request_id=…` |
-| `/oauth/authorize/complete` | GET | 浏览器会话 | 按 `request_id` 生成授权码并 302 回 `redirect_uri`（`code`+`state`+`iss`）；拒绝路径回 `access_denied`；**只有批准者本人能完成** |
-| `/oauth/token` | POST(form) | 匿名 + PKCE | `authorization_code` 与 `refresh_token` 两个 grant；`resource` 必填且必须等于本部署；错误按 RFC 6749 JSON |
-| `/oauth/register` | POST(JSON) | 匿名 + 限流 | RFC 7591 DCR，只接受 public client；`redirect_uris` 必须 https 或 loopback；返回 `client_id`；无 registration access token |
-| `OAuthService.GetOAuthAuthorizationRequest` | ConnectRPC | 需登录，无 permission 注解 | consent 页取详情；**响应不含 code/PKCE challenge/client state** |
-| `OAuthService.ApproveOAuthAuthorizationRequest` | ConnectRPC | 需登录，无 permission 注解，`audit=true` | 只接受一个决定；批准者资格走与 device login 同一个 `validateApprover` |
-
-两个 consent RPC 必须留在 `backend/api/v1/acl_interceptor_test.go` 的 `unannotatedMethods`，否则 `TestEveryMethodIsPermissionGated` 失败。
-
-## 令牌与 claims
-
-用 `generateToken` 内核，新增 `GenerateMCPAccessToken`。
-
-| claim | 值 | 强制点 |
+| Claim | Value | Enforced by |
 | --- | --- | --- |
-| `aud` | MCP 资源的规范化 URI（`<external_url>/mcp`） | `/mcp` 用同一套 audience 校验；`VerifyAccessToken` 只认用户 audience，所以 MCP 令牌天然无法用于 ConnectRPC（反之亦然） |
-| `scope` | 签发时传入（现为 `metaxisdata.mcp.read`） | `RequireBearerTokenOptions.Scopes` 校验**令牌自带** scope；不足 → 403 |
-| `cid` | client_id | `Logout` 据此撤销该用户该 client 的全部已连接应用 |
-| `gid` | 连接（`oauth_refresh_token` 行）id | `/mcp` 每请求校验连接是否仍存活（30s 缓存的 `GrantRevocationCache`）；verifier 把它放进 `TokenInfo.Extra` 的 `metaxisdata.grant`，工具路径据此更新 `last_tool_call_at`。**没有 `gid` 的 MCP access token 一律 401**（升级前的旧令牌，客户端 refresh 一次换新） |
-| `iss` | 常量 `"metaxisdata"` | 与 AS metadata / RFC 9207 授权响应的 `iss`（=external_url）不是一回事 |
-| `sub` | 现有身份（`strconv.Itoa(userID)`） | `TokenInfo.UserID` |
-| `exp` | `GetTokenDuration`（7 天） | 中间件校验 + 30s `ClockSkew` |
-| `rst` | 不用 | 留给改密/重置类受限令牌 |
+| `aud` | canonical MCP resource URI | `/mcp` verifies it; the user-API verifier accepts only its own audience, so neither token works on the other surface |
+| `scope` | the granted scopes | the transport middleware checks the token's own scope; a missing scope is 403 |
+| `cid` | client id | `Logout` revokes every connection that client holds for the user |
+| `gid` | grant row id | per-request liveness check; an MCP token without `gid` is refused |
+| `iss` | the constant `metaxisdata` | distinct from the RFC 8414 issuer and the RFC 9207 `iss`, which are the external URL |
 
-**MCP 令牌校验复用现有身份解析链**：签名/算法/issuer/audience/过期 → jti 吊销 → **连接（grant）存活** → 用户存在 → 未停用 → 改密截断，实现在 `backend/api/auth/authenticator.go` 的 `TokenAuthenticator.Resolve`（RPC 与 MCP 共用）。连接检查只对带 `gid` 的令牌执行（`identity.GrantID != 0`），先查 `state.GrantRevocationCache`（30s TTL，独立实例），未命中再查 `IsOAuthGrantLive`（绑定该令牌的 id + user + client，且 `revoked_at IS NULL AND expires_at > NOW()`；行不存在视为不存活，读失败按失败关闭处理）。少了这条链就会出现「网页上已停用/已改密的用户，MCP 令牌仍可用」或「已撤销的连接其 access token 还能用到过期」。
+`sub` is the user id and becomes `TokenInfo.UserID`; `exp` is the access-token lifetime, checked with a 30-second clock skew; `rst` is unused for MCP and reserved for restricted tokens such as a
+password-reset credential. Verification reuses the identity chain in `backend/api/auth/authenticator.go`: signature, algorithm, issuer, audience and expiry → `jti` revocation → connection liveness →
+user exists → not deactivated → password-change cutoff. The connection check runs only for tokens carrying `gid`: first the process-local `GrantRevocationCache` (30-second TTL), then
+`IsOAuthGrantLive` bounded by grant id, user and client, requiring neither revoked nor expired; a missing row is not live, and a read failure fails closed. Without this chain a deactivated user's MCP
+token would keep working, and a revoked connection's access token would remain valid until expiry.
 
-## Pending 授权请求与授权码 / 客户端注册表
+## Pending requests and registrations
 
-- **进程内**（`backend/component/state/oauth_authorization_request.go`）：一条记录同时承载待批准请求与已签发授权码，状态机 `PENDING → APPROVED → COMPLETED` / `DENIED`；`request_id` 不透明、`code` 在 complete 时生成、一次性、TTL 60 秒、**只经 302 回给客户端**；`complete` 校验会话用户 == 批准者；换令牌时逐项复核（client/redirect_uri/PKCE/resource）并**立刻删除**，重复使用视为攻击拒绝。进程内 = 多副本必须粘性路由。
-- **落库**：`oauth_client`（`backend/migrator/migration/0.1/0011##oauth_client.sql`、`backend/store/oauth_client.go`）保存注册；`oauth_refresh_token`（历史表名；`0014##refresh_tokens.sql` 建表，`0023##connected_apps.sql` 增加 `last_tool_call_at` / `revoked_at` / `revoked_by` 与 `(user_id, created_at DESC)` 索引）保存**一条授权 = 一条已连接应用**，Go 侧 `backend/store/oauth_grant.go`。管理面是 `backend/api/v1/connected_app_service.go`（proto `proto/v1/v1/connected_app_service.proto`），直接读这张表并 `LEFT JOIN oauth_client` 取展示名。
+- **Process-local**: `backend/component/state/oauth_authorization_request.go` holds pending requests and issued codes with the lifecycle `PENDING → APPROVED → COMPLETED` or `DENIED`. A request lives
+  ten minutes and the store is bounded. The code is minted at completion, single-use, valid for 60 seconds and delivered only through a 302 redirect; completion requires the approving user, the
+  exchange re-checks client, redirect URI, PKCE and resource, and reuse is refused as an attack. Approval and completion must reach the same replica.
+- **Persisted**: `oauth_client` through `backend/store/oauth_client.go`, and the grant row through `backend/store/oauth_grant.go` (its table predates the Go name and is still `oauth_refresh_token`).
+  One row is one authorization and one connected app; `ConnectedAppService` reads the table and joins the client for its display name. Anonymous input is bounded: redirect URI 2 KiB, client `state`
+  512 bytes, PKCE challenge exactly the 43-character S256 digest, scope 256 bytes.
 
-## 挂载与横切关注点
+## Mounting and cross-cutting concerns
 
-- 纯 HTTP 路由**不经过 Connect 拦截器链**（`APIAuthInterceptor`/审计/ACL 只包 Connect handler），所以这些路径自己做认证、限流、审计、日志。挂载点 `backend/server/grpc_routes.go:308-346`。
-- 每请求读工作区设置（`oauth.WorkspaceEndpoints`），因此开关与地址变更无需重启。关闭 → 404；开启但 `external_url` 缺失/非法 → 503（`writeUnavailable`）。
-- 匿名端点各自独立按来源地址限流 + 超时（`backend/server/oauth_endpoints.go`：10 rps / burst 20 / 30s）。
-- `/mcp` 用标准库 `http.NewCrossOriginProtection()` 包裹，再套 `http.TimeoutHandler`（60s）。
-- **挑战头由我们补全**：SDK 只在构造时取一次 `resource_metadata` URL 且不写 `error=`，所以 `challengeWriter`（`backend/mcp/server.go:229`）在 401/403 上按当前设置写 `Bearer resource_metadata="…", scope="…", error="invalid_token|insufficient_scope"`。
-- **审计**：工具调用一条行（`method="mcp/tools/call:<tool>"`），身份、状态/severity、latency、request metadata（IP 只在 `isTrustedProxy` 通过时才信 `X-Forwarded-For`）；入参脱敏，参数树 >64 KiB 只记 marker。OAuth 每个协议端点一条行，code/token 永不入账本。
+Plain HTTP routes sit outside the Connect interceptor chain and do their own authentication, rate limiting, audit and logging. Routes are mounted in `backend/server/grpc_routes.go`; identifiers come
+from `oauth.WorkspaceEndpoints`, read per request, so toggling the surface or moving the external URL needs no restart. Off means 404; on with a missing or invalid `external_url` means 503 and no
+metadata.
 
-## Invariants
+- The anonymous OAuth routes each carry their own per-address ceiling (10 requests per second, burst 20, 30-second timeout); metadata documents are not rate-limited.
+- `/mcp` counts requests against the source address before the bearer check, then runs the SDK bearer middleware; `challengeWriter` supplies the per-request `resource_metadata` URL and the RFC 6750
+  error code the SDK cannot know. The handler is wrapped in `http.NewCrossOriginProtection` and a 60-second `http.TimeoutHandler`.
+- Audit: one row per tool call with method `mcp/tools/call:<tool>`, the actor, status and severity, latency and request metadata. Arguments are redacted and bounded (8 KiB per string, 256 KiB per
+  payload, and an argument tree over 64 KiB replaced by a marker). Each of the four `/oauth/*` routes writes one row per request, except that a 404 for a switched-off surface writes none; codes and
+  tokens are never recorded. A tool call also updates the connected app's `last_tool_call_at`, throttled to one write per five minutes.
 
-1. **Audience 绑定**：`/mcp` 只接受 MCP audience；CLI/web 令牌在 `/mcp` 必须 401，MCP 令牌在 `/v1/*` 必须 401。两条都有测试。
-2. **禁止 token passthrough**：入站令牌绝不转发给上游；工具只在本进程内查 store。
-3. **PKCE 强制**：只接受 `S256`，`plain` 一律拒绝。
-4. **重定向 URI 精确匹配**：唯一例外是 loopback 允许端口不同；禁止通配符域、userinfo、fragment。
-5. **`external_url` 是 issuer/resource 的唯一来源**：缺失即明确失败，**绝不**用请求 `Host`；仅允许 loopback 的 http，非 loopback 必须 https。
-6. **`iss` 参数**：授权响应（含错误/拒绝响应）都带 RFC 9207 `iss`，metadata 声明支持。
-7. **两层授权分开报错**：传输层 → HTTP 401/403 + `WWW-Authenticate`；平台层 IAM 拒绝 → `isError` + `permission_denied`。否则客户端无法触发重新授权，模型也看不到原因。
-8. **匿名端点限流**：`/oauth/register`、`/oauth/token`、`/oauth/authorize`、`/oauth/authorize/complete` 各按来源地址计数（**不是**按 client —— 见已知偏差）。
-9. **确认必须显式**：consent 页展示客户端名、重定向目标、resource、scope、时间、来源 IP；批准者资格同 device login；页面**永不**展示 token 与授权码。
-10. **审计**：OAuth 事件与**每次工具调用**（含被拒）都进审计；脱敏名单含 `code_verifier`、`client_secret`、`authorizationcode`、`deviceCode`。授权码只经 302 传递，审计行天然不含凭据。
-11. **不跨域暴露 `/mcp`**：生产不放开 MCP CORS；仅元数据文档可 `Access-Control-Allow-Origin: *`。v1.8.0 起必须**显式**用 `http.NewCrossOriginProtection()` 包裹（`nil` 等于不校验）；DNS rebinding 保护保持默认开启。
-12. **令牌与连接撤销**：MCP 令牌可按签发来源（签名/kid/issuer/expiry，不带 audience）吊销；access token 还携带 `gid`，共享校验链按 30s 缓存的连接存活检查拒绝已撤销的连接（执行撤销的副本立即拒绝，其他副本 ≤30s）。`Logout` **撤销**该用户该 client 的全部连接，而不是删除刷新凭据；`/mcp` 拒绝没有 `gid` 的旧 MCP access token（升级后客户端 refresh 一次即可恢复）。撤销与轮换在同一行上串行化，先提交的撤销优先。
-13. **开关关闭时不发布**：`mcp_enabled=false` 时 `/mcp`、PRM、AS metadata、`/oauth/*` 一律 404，不泄漏任何端点存在性。
+## Security invariants
+
+1. **Audience binding.** `/mcp` accepts only the MCP audience; a CLI or web token there is 401, and an MCP token on the user API is 401.
+2. **No token passthrough.** An inbound token is never forwarded upstream; tools read the local store.
+3. **PKCE is mandatory and S256-only.**
+4. **Redirect URIs match exactly.** The only relaxation is a loopback port; wildcards, userinfo and fragments are refused.
+5. **`external_url` is the only source of issuer and resource.** It is never derived from the request `Host`; plain `http` is allowed only on loopback, and a missing setting fails loudly instead of
+   guessing.
+6. **`iss` travels with every authorization response**, success and error alike, and the metadata document declares support.
+7. **The two authorization layers report separately.** Transport failures are HTTP 401/403 with `WWW-Authenticate`; an IAM refusal is an in-band result with `isError` and `permission_denied`, so the
+   client can re-authorize and the model can see the cause.
+8. **Anonymous endpoints count per source address, not per client.** A `client_id` is self-reported at registration, so bucketing on it would hand an attacker a new key.
+9. **Consent is explicit.** The page shows the client name, redirect target, resource, scope, creation time and source address; approver eligibility matches a device login; no token or code ever
+   appears on the page.
+10. **Everything is audited.** OAuth protocol events and every tool call, refusals included, reach the permanent ledger; redaction covers `code_verifier`, `client_secret`, authorization codes and
+    device codes.
+11. **`/mcp` is not exposed cross-origin.** CORS is opt-in and off by default in production (metadata documents are the only responses with `Access-Control-Allow-Origin: *`), cross-origin protection
+    is applied explicitly because the SDK applies none, and DNS-rebinding protection stays at its default.
+12. **Revocation reaches both credentials.** Any token this server signed can be revoked by provenance without checking its audience; a token carrying `gid` is refused once its connection is revoked,
+    immediately on the revoking replica and within 30 seconds elsewhere; `Logout` revokes the client's connections rather than deleting refresh credentials. Tokens minted before `gid` existed are
+    refused once and recover with a refresh. Revocation and rotation serialize on the same row.
+13. **A switched-off surface publishes nothing.** `/mcp`, both metadata documents and every `/oauth/*` route answer 404.
 
 ## Failure modes
 
-| 场景 | 行为 |
+| Situation | Behavior |
 | --- | --- |
-| 无令牌 / 令牌无效、过期、被吊销、连接已撤销、连接行已被清理 | 401 + `WWW-Authenticate: Bearer resource_metadata=…, scope=…, error="invalid_token"` |
-| 升级前签发、无 `gid` 的 MCP access token | 401 + `error="invalid_token"`；客户端 refresh 一次换成带 `gid` 的新令牌（refresh 也过期才需重新授权） |
-| 令牌缺 `metaxisdata.mcp.read` | 403 + 同形挑战头，`error="insufficient_scope"` |
-| `mcp_enabled=false` | `/mcp`、两份元数据、`/oauth/*` 全部 404；**不写审计行** |
-| 开启但 `external_url` 缺失或有 query/fragment/userinfo、非 loopback http | 503（PRM/AS metadata 与 MCP 端点），明确失败且不发布元数据 |
-| IAM 拒绝某工具 | HTTP 200，`isError=true`，`code=permission_denied`；审计行记 WARNING 级 |
-| 名字歧义 / 不存在 | `isError=true`，`code=ambiguous`/`not_found`，`details.candidates` 给候选项 |
-| 没有 scope | `isError=true`，`code=scope_required`，候选库清单 |
-| 引擎无分析器 / 对象未同步 | `code=unsupported`（不是 `invalid_argument`，也不是瞬时故障） |
-| 单请求超 60s | `{"error":"temporarily_unavailable",...}` |
-| 请求体 >2 MiB | SDK/传输层拒绝 |
-| 超过按 principal 的调用预算 | 工具级 `resource_exhausted`；仍写审计行 |
-| 超过按来源地址的预算 | 429 + `Retry-After: 60`，发生在 bearer 校验之前 |
-| 跨站 POST `/mcp` | 标准库跨域保护拒绝 |
-| refresh token 复用 / 过期 / 跨 client / resource 变更 / 连接已撤销 | `invalid_grant`；过期不再删行（留给 maintenance，页面仍能显示 EXPIRED），已撤销连接的 refresh 一律拒绝 |
-
-## Open items
-
-| 未做/未决 | 证据与位置 |
-| --- | --- |
-| 工具未声明 `OutputSchema`（只走 `structuredContent`） | `backend/mcp/server.go:276-279` 只设 `InputSchema`。理由：结果是 protojson，手写 schema 会成第二真源；真要做应从 proto 生成 |
-| 注册后按 client 计数未做（只按 IP） | `backend/server/oauth_endpoints.go` 与 `backend/api/oauth/register.go:83-90` 都只按地址；`client_id` 是自报的，按它分桶等于给攻击者新钥匙 |
-| 分页未回 `hasMore`（只回 `nextPageToken`） | 各列表工具原样透传 RPC 的 next-page token；token 非空即「还有」 |
-| CIMD 未做 | 全仓库无实现；DCR 是 v1 路径 |
-| 多副本未测 | `backend/component/state/oauth_authorization_request.go:105-109` 明确进程内，需要粘性路由；集成套件只跑单实例 |
-| `Cacheable`/`ttlMs` 未启用 | 全仓库无实现；`cacheScope` 默认 `public`，与按调用者的 IAM 冲突 |
-| 省略 `jwks_uri` | `backend/api/oauth/metadata.go:121-124`：对称密钥 HS256，消费者就是本进程；偏差已记入 security posture |
-| 老客户端（<`2025-06-18`）文本副本未做 | `backend/mcp/server.go:355-358` 只写 `StructuredContent`、不设 `Content`；版本可读（见 SDK 契约），真需要时是一行分支 |
-| 写工具未做 | 只读 17 工具是确认过的能力面；写操作需 MRTR 语义。DQ 的建/改/删规则、运行、确认/解决问题、契约发布同样不在 MCP 面，LLM explain 也不做（调用者自己就是模型，见 D-91） |
-| device login 与 MCP 打通未做 | 未暴露 `device_code` grant；headless agent 仍需浏览器 |
+| no token, or a token that is invalid, expired or revoked, or whose connection is revoked or pruned | 401 with `WWW-Authenticate: Bearer resource_metadata=…, scope=…, error="invalid_token"` |
+| an MCP access token minted before `gid` existed | 401 `invalid_token`; one refresh recovers it, and only an expired refresh token needs the browser again |
+| token missing the scope | 403 with the same challenge shape and `error="insufficient_scope"` |
+| `mcp_enabled` off | endpoint, both metadata documents and `/oauth/*` are 404; no audit row |
+| enabled but `external_url` missing or unusable | 503, with no metadata published |
+| a tool the caller's IAM does not allow | HTTP 200, `isError` true, `code=permission_denied`; audit row WARNING |
+| a name is ambiguous or unknown | `isError`, `ambiguous` or `not_found`, with `details.candidates` |
+| `analyze_sql` without a scope | `scope_required` with the existing databases under `details` |
+| no lineage analyzer for the engine, or an object never synced | `unsupported` (neither a bad argument nor a transient fault) |
+| a tool call exceeds 60 seconds | `{"error":"temporarily_unavailable",...}` |
+| request body over 2 MiB | rejected by the transport |
+| per-principal call budget exhausted | tool-level `resource_exhausted`; the refusal is still audited |
+| per-address request budget exhausted | 429 with `Retry-After: 60`, before bearer verification |
+| cross-site POST to `/mcp` | rejected by cross-origin protection |
+| refresh reuse, expiry, another client, a moved resource, a revoked connection | `invalid_grant`; an expired row is kept for the management page, a revoked one mints nothing |
 
 ## Where things live
 
-- RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计/指标）、`backend/mcp/tool.go`（工具表与投影 helper）、`backend/mcp/tool_{metadata,lineage,quality}.go`（委派）、`backend/mcp/ref.go`（类型 alias + 错误映射）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。工具体、对象寻址与错误信封实现在 `backend/component/tools/*`，见 [agent-platform.md](agent-platform.md)。
-- AS：`backend/api/oauth/resource.go`（规范化 issuer/resource）、`backend/api/oauth/metadata.go`（PRM/AS metadata + 开关解析）、`backend/api/oauth/authorize.go`（PKCE/重定向/scope 安全核心）、`backend/api/oauth/token.go`（两种 grant）、`backend/api/oauth/register.go`（DCR）、`backend/api/oauth/server.go`（会话/错误渲染）、`backend/api/oauth/audit.go`。
-- consent RPC：`backend/api/v1/oauth_service.go`；proto `proto/v1/v1/oauth_service.proto`。
-- 已连接应用：`backend/api/v1/connected_app_service.go`（list/revoke、handler 侧 scope 与 `users.get` 可见性）、`backend/api/v1/filter.go` 的 `parseConnectedAppFilter`（CEL → 参数化 SQL，`state` 用 `CASE` 派生）、`proto/v1/v1/connected_app_service.proto`；前端 `frontend/src/pages/settings/ConnectedAppsSettingsPage.vue`、`frontend/src/pages/ConnectedAppsPage.vue`、`frontend/src/components/connected-app/`、`frontend/src/api/connected-app.ts`。
-- 令牌：`backend/api/auth/mcp_token.go`、`backend/api/auth/refresh_token.go`、`backend/api/auth/authenticator.go`（`GrantStore` + `grantRevoked`）。
-- 进程内状态：`backend/component/state/oauth_authorization_request.go`、`backend/component/state/state.go` 的 `GrantRevocationCache`（30s TTL，独立于 jti 缓存）；注册表与授权行：`backend/store/oauth_client.go`、`backend/store/oauth_grant.go`；迁移 `backend/migrator/migration/0.1/0011##oauth_client.sql`、`0014##refresh_tokens.sql`（历史）、`0023##connected_apps.sql`（当前最新）与 `LATEST.sql`。
-- 前置设置：`proto/store/store/setting.proto` 的 `mcp_enabled`/`external_url`、`backend/api/v1/setting_service.go`、`frontend/src/pages/settings/GeneralSettingsPage.vue`；consent 页 `frontend/src/pages/OAuthConsentPage.vue`（路由 `frontend/src/router/index.ts:278`）、`frontend/src/api/oauth.ts`。
-- 门禁：`go test ./backend/mcp/... ./backend/api/oauth/... ./backend/api/auth/... ./backend/store/...`（hermetic：`tool_test.go`、`tool_guard_test.go`、`sdk_contract_test.go`、`oauth/*_test.go`、`backend/store/oauth_grant_test.go`（原地轮换/撤销/存活查询形状）、`backend/api/auth/authenticator_test.go`（`gid`、连接存活、缓存窗口）、`backend/api/v1/connected_app_test.go`（鉴权矩阵与状态派生））；`make test-integration-smoke` 跑 `backend/test/integration/runner/mcp_service_test.go`（真实 server + Docker，除既有流程外覆盖「授权 → 列表可见 → 撤销 → `/mcp` 立即 401 → refresh `invalid_grant` → 重复撤销幂等」与「N 个并发 refresh 恰好一个赢家」）；`TestEveryMethodIsPermissionGated` 覆盖 `unannotatedMethods`。
-- 使用者文档：`docs/mcp.md`。刻意决策：`docs/security-posture.md`。
+- Resource server and tools: `backend/mcp/server.go` (config, handler, dispatch, audit, metrics), `tool.go` (definitions and projection helpers), `tool_{metadata,lineage,quality}.go` (delegation),
+  `ref.go`, `errors.go` (the error envelope), `auth.go` (`NewTokenVerifier`), `guide.go` with `guide.md` (the `metaxisdata_guide` prompt).
+- Authorization server: `backend/api/oauth/resource.go` (identifiers), `metadata.go` (both documents and the switch), `authorize.go` (PKCE, redirect and scope validation, completion), `token.go` (both
+  grants), `register.go` (dynamic registration), `grant.go` (rotation and principal re-check), `server.go` (session and error rendering), `audit.go`, `cli.go`.
+- Consent and connected apps: `backend/api/v1/oauth_service.go` with `proto/v1/v1/oauth_service.proto`; `backend/api/v1/connected_app_service.go`, `filter.go` (`parseConnectedAppFilter`) with
+  `proto/v1/v1/connected_app_service.proto`, and the frontend pages under `frontend/src/pages/`.
+- Tokens, state and storage: `backend/api/auth/mcp_token.go`, `grant_token.go`, `refresh_token.go`, `authenticator.go`; `backend/component/state/oauth_authorization_request.go` and the
+  `GrantRevocationCache` in `state.go`; `backend/store/oauth_client.go`, `backend/store/oauth_grant.go`.
+- Settings: `mcp_enabled` and `external_url` in `proto/store/store/setting.proto`, validated in `backend/api/v1/setting_service.go`, set on the frontend general settings page; the consent page is
+  `frontend/src/pages/OAuthConsentPage.vue` with `frontend/src/api/oauth.ts`.
+- Tests: `go test ./backend/mcp/... ./backend/api/oauth/... ./backend/api/auth/... ./backend/store/...` is hermetic. `backend/mcp/tool_guard_test.go` pins tool permissions and `sdk_contract_test.go`
+  pins the SDK behaviors relied on; also `backend/store/oauth_grant_test.go`, `backend/api/auth/authenticator_test.go` and `backend/api/v1/connected_app_test.go`. `make test-integration-smoke` runs
+  `backend/test/integration/runner/mcp_service_test.go` against a real server: authorize → list → revoke → immediate 401 → refresh `invalid_grant` → idempotent repeat, plus concurrent refreshes
+  leaving exactly one winner.

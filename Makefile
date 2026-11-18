@@ -108,3 +108,10 @@ test-integration-data-quality:
 test-integration:
 	go test -v -count=1 -tags=integration -race ./backend/test/integration/runner
 	go test -count=1 -tags=integration ./backend/migrator/...
+
+# The documentation gate: links, index coverage, size budgets, the English rule,
+# the bilingual pairs, and the bans on line-number anchors and process history.
+# A new reference is added to `.agents/docs/README.md`; this is what fails when it
+# is not, or when a doc drifts back into a plan, a phase table or a `file.go:123`.
+check-docs:
+	node scripts/check-docs.mjs

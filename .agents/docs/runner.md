@@ -1,31 +1,33 @@
 # Background runners — Reference
 
-> Status: **implemented**. Covers the common lifecycle of `backend/runner/` and the state each runner keeps in the process. Per-runner contracts live in [schemasync.md](schemasync.md) and [lineage-analyzer.md](lineage-analyzer.md); this file is the cross-runner map: startup, shutdown, in-process state, cadences and the single-replica assumption.
+> Cross-runner map of `backend/runner/`: startup and shutdown, in-process state, cadences and the single-replica assumption. Per-runner contracts live in [schemasync.md](schemasync.md), [lineage-analyzer.md](lineage-analyzer.md) and [data-quality.md](data-quality.md); the notification pipeline in [notifications.md](notifications.md).
 
 ## The ten runners
 
-| Runner | Package | Cadence | First run | Purpose |
-| --- | --- | --- | --- | --- |
-| `schemasync` | `backend/runner/schemasync` | instance scan 15m, database checker 10s | immediate | enumerate instances/databases, diff and write schema metadata + DDL |
-| `lineageanalyzer` | `backend/runner/lineageanalyzer` | full scan 1h, queue consumer 10s | immediate | analyze view/MV/manual/application SQL into `column_lineage` |
-| `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
-| `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
-| `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | schedule data quality checks **per target**: a target's one timer (`quality_target_schedule.next_run_at`) makes all of its enabled checks due together, and each due target becomes **one batch** that carries the target identity (`quality_run.target_*`); a manual selection is split into one batch per target. The scan only plans; each instance's plans are handed to two scheduled workers, so a long batch never blocks the loop that drains manual runs. One tick is bounded by 200 rules and 50 targets; a >100-rule target (only data that bypassed the API limit) can span batches, and a timed-out/abandoned batch leaves its unfinished checks ABANDONED for a bounded retry on the next tick (attempt 1..3). The target schedule advances only when the whole due cycle settles, not when a chunk is planned. The runner drives the problem ledger and notifications, and each batch leases the instance's connection budget before it starts; after a deferred admission it skips that instance's remaining due targets for the pass so one busy instance cannot queue one wait per target (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
-| `notificationdispatcher` | `backend/runner/notificationdispatcher` | due-claim scan 2s | first tick | lease due outbound deliveries from `notification_delivery`, render the event in the channel's language and POST it to the channel's webhook; retry with backoff (1m/5m/15m/1h/6h) and dead after 6 attempts. A batch whose channel list cannot be read is released, never marked dead (see [notifications.md](notifications.md)) |
-| `qualityagentrunner` | `backend/runner/qualityagentrunner` | 60s | one pass immediately | generate each ACTIVE agent's scheduled patrol report from the most recent due DAILY/WEEKLY schedule in its own timezone, aggregate the scope deterministically, write `quality_agent_report` (unique per agent/period key) and append a "report ready" message to the agent conversation; no model call. See [data-quality.md](data-quality.md) §3.9j |
-| `qualitydigestrunner` | `backend/runner/qualitydigestrunner` | 60s | one pass immediately | send the workspace's weekly data quality digest: read the `weekly_digest` schedule, take the most recent scheduled instant (≤24h old, else skip with one warning), aggregate the rolling seven-day window, enqueue a delivery-only `DATA_QUALITY_DIGEST` event for the explicitly subscribed channels and record the ISO-week period in `quality_digest_send`. Idempotent per period: a duplicate tick or restart reuses the same deterministic event id, and an enqueue failure leaves the period unrecorded for a retry inside the window (see [data-quality.md](data-quality.md), [notifications.md](notifications.md)) |
-| `qualitysessionrunner` | `backend/runner/qualitysessionrunner` | due-session scan 3s | first tick | host every active quality agent: one long-lived target session per target plus one front-office conversation per agent, continued wake by wake. Per-agent config supplies scope and budgets (idle/compaction cadences are package constants); a target session or conversation is skipped/blocked by its own agent state. Claims sessions whose wake is due (lease 15m, wake deadline 10m) into a fixed worker pool bounded by the per-agent concurrency budget; each wake appends a user message, continues the stored conversation with the model (or the deterministic survey), records every assistant/tool message and schedules the next wake (idle 24h by default, immediately when an event arrived, or a retryable/needs-human block). A failed or errored check execution is appended as an event to its target's session and wakes it immediately. See [data-quality.md](data-quality.md) §3.9h |
-| `qualityenrollmentrunner` | `backend/runner/qualityenrollmentrunner` | queue tick 60s, database scan 15m | first tick | turn each ACTIVE Agent's database scope into its own queue: discover TABLE/EXTERNAL_TABLE/VIEW/MATERIALIZED_VIEW per selected database (registry digest), reconcile OUT_OF_SCOPE/GONE, rank targets by priority and admit a bounded number of sessions per hour into the active set. A triaged target parks in DORMANT until its review; coverage appearing promotes it back to MONITOR. See [data-quality.md](data-quality.md) §3.9i |
+| Runner | Cadence | First run | Purpose |
+| --- | --- | --- | --- |
+| `schemasync` | instance scan 15m, database checker 10s | immediate | Enumerate instances/databases, diff schema, and write metadata plus DDL |
+| `lineageanalyzer` | full scan 1h, queue consumer 10s | immediate | Analyze view, materialized-view, manual and application SQL into `column_lineage` |
+| `lineagevalidation` | event-driven, 5s settle | one pass at startup | Revalidate ingested edges after a sync commits |
+| `maintenance` | 6h | immediate | Retention prunes, token cleanup, ingested-lineage sweep |
+| `qualityrunner` | due scan 10s, manual queue priority | first tick | Plan one batch per due target and execute it under the instance's connection budget; a target's timer makes all of its enabled checks due together, the scan only plans, and the schedule advances when the cycle settles. Contracts and the per-tick bounds are in [data-quality.md](data-quality.md) |
+| `notificationdispatcher` | due-claim scan 2s | first tick | Lease due deliveries, render per the channel's language and POST them; backoff 1m/5m/15m/1h/6h, dead after 6 attempts. A batch whose channel list cannot be read is released, never marked dead ([notifications.md](notifications.md)) |
+| `qualityagentrunner` | 60s | one pass immediately | Write each ACTIVE agent's scheduled patrol report from its most recent due schedule, deterministically, with no model call |
+| `qualitydigestrunner` | 60s | one pass immediately | Enqueue the workspace weekly digest for subscribed channels; take the latest scheduled instant within a 24h catch-up window and record the period so a duplicate tick or a restart cannot enqueue the same week twice |
+| `qualitysessionrunner` | due-session scan 3s | first tick | Host every active agent's target sessions and front-office conversation; claim due wakes (15m lease, 10m wake deadline) into a bounded worker pool and schedule the next wake. Durable truth is the session row, not the process |
+| `qualityenrollmentrunner` | queue tick 60s, database scan 15m | first tick | Turn each ACTIVE agent's database scope into its target queue, reconcile scope changes and admit a bounded number of sessions per hour |
 
-Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
+The five quality runners delegate their execution, scheduling, adoption and coverage detail to [data-quality.md](data-quality.md); the table above keeps only cadence and process state.
+
+Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which adds a panic boundary and logs start/stop with name and duration: a panic takes down that runner only, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.
 
 ## Lifecycle
 
-- **Startup**: `NewServer` wires the runners and starts them after the store and the analyzers are assembled; each `Run` returns only when the server's runner context is cancelled.
-- **Shutdown**: `server.Shutdown` cancels the runner context, waits for the runner wait group with a timeout, then closes the store. A runner that cannot observe cancellation is a bug (see the cancellable revalidation semaphore in `lineagevalidation`).
-- **Per-run timeouts**: every long loop that talks to a target database or the store has a bound — `syncTimeout` per driver call, 2× the scan interval for one instance scan pass, `analyzeObjectTimeout` per object, 5 minutes for one full-analysis queue scan, `passTimeout` for validation/maintenance passes. A bound expiring is a transient failure and is retried; it must never be recorded as a deterministic analysis/sync failure.
-- **Jitter**: every periodic ticker that runs a full pass (`schemasync` instance scan, `lineageanalyzer` full scan, `maintenance`) uses `runner.Jitter` (0–10% added) so a restart does not keep its passes aligned with other replicas' or its own previous cadence. The 10s schema-sync checker and the 10s analysis consumer are deliberately not jittered: they are cheap tick checks, and jitter would only add latency.
-- **Panic boundary**: the shared wrapper recovers the runner body; individual write paths (one database sync, one object analysis, one maintenance item) have their own recover/isolation so one bad unit does not lose the batch.
+- **Startup**: `NewServer` wires the runners and starts them after the store and analyzers are assembled; each `Run` returns only when the server's runner context is cancelled.
+- **Shutdown**: `server.Shutdown` cancels the runner context, waits for the wait group with a timeout, then closes the store. A runner that cannot observe cancellation is a bug (see the cancellable revalidation semaphore in `lineagevalidation`).
+- **Per-run timeouts**: every long loop that talks to a target database or the store has a bound — `syncTimeout` per driver call, twice the scan interval for one instance scan pass, `analyzeObjectTimeout` per object, 5 minutes for one full-analysis queue scan, `passTimeout` for validation/maintenance passes. A bound expiring is a transient failure and is retried; it must never be recorded as a deterministic analysis or sync failure.
+- **Jitter**: every periodic ticker that runs a full pass (`schemasync` instance scan, `lineageanalyzer` full scan, `maintenance`) uses `runner.Jitter` (0–10% added) so a restart does not keep its passes aligned with other replicas' or its own previous cadence. The 10s schema-sync checker and the 10s analysis consumer are deliberately not jittered: they are cheap tick checks and jitter would only add latency.
+- **Panic boundary**: the shared wrapper recovers the runner body; individual write paths (one database sync, one object analysis, one maintenance item) recover on their own so one bad unit does not lose the batch.
 
 ## State kept in the process
 
@@ -33,55 +35,45 @@ All coordination state is in memory, and the deployment runs **one server proces
 
 | State | Owner | Lost on restart |
 | --- | --- | --- |
-| database sync queue + retry backoff | `schemasync` | queued databases are re-discovered by the next instance scan |
-| database/instance sync gates | `schemasync` | in-flight syncs are simply gone; the next scan retries |
+| database sync queue, retry backoff, sync gates | `schemasync` | queued databases are re-discovered by the next instance scan; in-flight syncs are gone and the next scan retries |
 | `SyncOperation` (user-visible sync results) | `schemasync` | a message for an operation in flight is not delivered |
-| analysis event queue + scan backlog + retry backoff | `lineageanalyzer` | re-derived by the hourly scan |
-| revalidation trigger + settle window + semaphore | `lineagevalidation` | a startup pass replaces it |
-| table-statistics refresh clock, DDL refresh clock + rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
+| analysis event queue, scan backlog, retry backoff | `lineageanalyzer` | re-derived by the hourly scan |
+| revalidation trigger, settle window, semaphore | `lineagevalidation` | a startup pass replaces it |
+| table-statistics refresh clock, DDL refresh clock and rotation cursor | `schemasync` | a restart makes every database due for a refresh (intended first pass) |
 | maintenance schedule | `maintenance` | the next tick is 6h away; startup runs one pass |
-| data quality due scan, manual batch queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | targets re-converge from `quality_target_schedule.next_run_at`; one batch per due target; abandoned attempts retry within the cycle up to the attempt budget; queued manual batches are lost (their planned executions and batches are swept to ABANDONED at startup); LLM counters reset |
-| last digest period (handled or warning-logged) + startup pass | `qualitydigestrunner` | a restart re-reads at most one period from `quality_digest_send` and may log the stale-period warning once more; the period table is the real idempotency guard, not this field |
-| per-instance connection leases and their wait queues | `state.State.instanceConnections` (shared by every driver-opening path) | held leases vanish; a waiting batch observes its context and gives up, and the next scheduled tick retries. See [instance-connections.md](instance-connections.md) |
-| in-flight wake workers + process last-tick | `qualitysessionrunner` | the durable truth is the session row (lease, wake count, tokens, summary watermark, transcript); a restart clears stale leases and recovers sessions; no status read exposes a process last-tick |
-| per-database scan clock + last enrollment scan + scope fingerprint | `qualityenrollmentrunner` | every database is re-scanned once after a restart; the queue itself is durable, so nothing is lost, and a newly added database is scanned immediately because it has no clock entry |
-| data quality agent LLM metrics | `component/llm` (feature `dq_agent` / `dq_agent_compaction`) | call/duration/token counters are process metrics; a restart resets them |
+| data quality due scan, manual batch queue, in-flight rule ids, daily LLM counters | `qualityrunner` (quota counters live in `api/v1`) | targets re-converge from `quality_target_schedule.next_run_at`; abandoned attempts retry within the attempt budget; queued manual batches are lost and their executions are swept to ABANDONED at startup; LLM counters reset |
+| last digest period and startup pass | `qualitydigestrunner` | a restart re-reads at most one period and may repeat the stale-period warning; the period table is the real idempotency guard |
+| per-instance connection leases and wait queues | `state.State` (`instanceConnections`, shared by every driver-opening path) | held leases vanish; a waiting batch observes cancellation and gives up, and the next tick retries ([instance-connections.md](instance-connections.md)) |
+| in-flight wake workers and the process last-tick | `qualitysessionrunner` | the session row (lease, wake count, tokens, summary watermark, transcript) is the durable truth; a restart clears stale leases and recovers sessions |
+| per-database scan clock, last enrollment scan, scope fingerprint | `qualityenrollmentrunner` | every database is re-scanned once after a restart; the queue itself is durable, and a newly added database is scanned immediately because it has no clock entry |
+| data quality agent LLM metrics | `component/llm` (features `dq_agent`/`dq_agent_compaction`) | call/duration/token counters are process metrics and reset |
 
 Consequences worth knowing before changing this area:
 
-- **No cross-process coordination is attempted** (no advisory lock, no lease): running two replicas would duplicate syncs and analyses, split operation messages between processes and double the target database load. Scale the database, not the server.
+- **No cross-process coordination is attempted** (no advisory lock, no lease): two replicas would duplicate syncs and analyses, split operation messages between processes and double the target database load. Scale the database, not the server.
 - **A restart loses queued work but converges**: the instance scan re-enqueues databases, the hourly analysis scan re-queues stale objects, and startup refreshes statistics and DDL.
-- **Change detection still holds**: metadata fingerprint + `AnalyzerVersion` decide re-analysis; statistics and DDL refreshes are deliberately outside the fingerprint.
-- **Capacity contention is waited out, never recorded as a failure**: a scheduled run that cannot lease its instance's connection budget leaves its rules due, and a manual run that waits too long is abandoned; neither writes a rule result. The queue and its budgets are in [instance-connections.md](instance-connections.md).
+- **Change detection still holds**: metadata fingerprint plus `AnalyzerVersion` decide re-analysis; statistics and DDL refreshes are deliberately outside the fingerprint.
+- **Capacity contention is waited out, never recorded as a failure**: a scheduled run that cannot lease its instance's connection budget leaves its rules due, and a manual run that waits too long is abandoned; neither writes a rule result. Budgets live in [instance-connections.md](instance-connections.md).
 
 ## Derived-data and cache cadences
 
 | Data | Written by | Cadence / trigger | History? | Fingerprint / re-analysis? |
 | --- | --- | --- | --- | --- |
 | schema metadata | `schemasync` diff | every database sync (10s checker + 15m scan) | one row per change | is the fingerprint |
-| object DDL | `schemasync` | changed objects every sync, full refresh at most hourly per database (gated by the database's sync interval), rotating batch above 2000 objects | no (derived) | no |
-| table statistics / sequence last value | `schemasync` | at most hourly per database, gated by that database's sync interval; best effort (a failure is logged, never fails the sync) | **no** | no |
+| object DDL | `schemasync` | changed objects every sync; a full refresh at most hourly per database and gated by that database's sync interval, rotating in batches above 2000 objects | no (derived) | no |
+| table statistics / sequence last value | `schemasync` | at most hourly per database, gated by the database's sync interval; best effort (a failure is logged, never fails the sync) | **no** | no |
 | column lineage | `lineageanalyzer` | event queue first, then hourly scan backlog; bounded batch per tick | no (replaced per object) | `meta_hash` + `AnalyzerVersion` |
 | ingested lineage revalidation | `lineagevalidation` / `maintenance` | after a sync commit / 6h; one pass loops while the revalidator reports `hasMore`, bounded by the pass timeout | no (replaces edges) | n/a |
 
 ## Where things live
 
-| Concern | Code | Tests |
-| --- | --- | --- |
-| runner interface + panic boundary | `backend/runner/runner.go` | `backend/runner/runner_test.go` |
-| startup/shutdown wiring | `backend/server/server.go` | integration suites |
-| sync queue/gates/operations | `backend/runner/schemasync/{syncer,gate,queue,instance_sync,database_sync,metadata_batch,refresh,operation}.go` | `syncer_test.go`, `operation_test.go`, MySQL integration |
-| analysis queue/cadence | `backend/runner/lineageanalyzer/{analyzer,queue,analyze,build_sql,persist,classify}.go` | `analyzer_test.go`, `backend/test/integration/runner/schemasync_lineage_mysql_service_test.go` |
-| validation trigger/settle | `backend/runner/lineagevalidation/validation.go` | `validation_test.go` |
-| maintenance pass | `backend/runner/maintenance/maintenance.go` | `maintenance_test.go` |
-| quality scheduling/execution | `backend/runner/qualityrunner/{qualityrunner,types,contract,schedule,plan,admission,execute,execution_result,issue,notify,format}.go` | `qualityrunner_test.go`, `backend/test/integration/runner` |
-| weekly digest | `backend/runner/qualitydigestrunner/qualitydigestrunner.go` | `qualitydigestrunner_test.go`, `backend/test/integration/runner/quality_digest_runner_test.go` |
-| per-instance connection budget | `backend/component/state/connection.go` | `backend/component/state/connection_test.go` |
-| enrollment queue/discovery/admission | `backend/runner/qualityenrollmentrunner/qualityenrollmentrunner.go` | `qualityenrollmentrunner_test.go` |
-| enrollment store | `backend/store/quality_agent_enrollment.go` | `backend/store/quality_agent_enrollment_test.go`（admission SQL guard） |
+- Runner interface, panic boundary and jitter: `backend/runner/runner.go`; startup/shutdown wiring in `backend/server/server.go` (integration suites cover it).
+- `schemasync`: `backend/runner/schemasync/` (`syncer`, `gate`, `queue`, `instance_sync`, `database_sync`, `metadata_batch`, `refresh`, `operation`); `lineageanalyzer`: `backend/runner/lineageanalyzer/`; `lineagevalidation`: `validation.go`; `maintenance`: `maintenance.go`.
+- Quality runners: `backend/runner/qualityrunner/`, `qualitysessionrunner/`, `qualityenrollmentrunner/`, `qualityagentrunner/`, `qualitydigestrunner/`; each package has its own unit test, and `backend/test/integration/runner/` holds the real-server journeys (including the digest runner and the quality journey).
+- Per-instance connection budget: `backend/component/state/connection.go`; notification dispatcher: `backend/runner/notificationdispatcher/`; runner metrics in `backend/metrics/` ([metrics.md](metrics.md)).
 
 ## Known accepted gaps
 
-- **Runner metrics exist, and a dead runner is visible**: `runner.Go` reports `metaxisdata_runner_up` and `metaxisdata_runner_panics_total`, and the older runners expose their own success/queue/pass counters (see [metrics.md](metrics.md)). The enrollment runner has no dedicated counters yet; the enrollment read RPCs were removed in the 2026-11 refactor (D-133), so the queue is observable only through store rows and the runner logs. A panicking runner still is not restarted, but its `up` gauge drops to 0 while the process keeps serving. The agent's model calls are labelled `dq_agent` / `dq_agent_compaction` once the session runner passes the shared metrics instance.
-- **Agent session transcripts, reports and attention are not pruned yet**: `quality_agent_message` rows (and their compaction checkpoints), `quality_agent_report` and `quality_agent_attention` are kept indefinitely by design for this release; only the model context is compacted (see [data-quality.md](data-quality.md) D-120). Add a retention pass before enabling this on a workspace with a very large target catalog — automatic enrollment (§3.9i) makes this a prerequisite for a 10k-object scope, because triage creates one session per admitted target.
-- **Per-iteration timeout is per unit or per pass, not per runner lifetime** (`lineagevalidation`, `maintenance` and one analysis scan have pass bounds; a database sync has its driver deadline). A batch of pathological objects can therefore take longer than one interval; the next tick is skipped rather than overlapping.
+- **A dead runner is visible but not restarted**: `runner.Go` reports `metaxisdata_runner_up` and `metaxisdata_runner_panics_total`, and the sync and analysis runners expose their own outcome and duration counters. The enrollment runner has no dedicated counters; the enrollment read RPCs were removed with the external agent surface, so its queue is observable only through store rows and runner logs. A panicking runner still is not restarted — its `up` gauge drops to 0 while the process keeps serving.
+- **Agent transcripts, reports and attention are not pruned**: `quality_agent_message` (and its compaction checkpoints), `quality_agent_report` and `quality_agent_attention` are kept indefinitely by design; only the model context is compacted. Add a retention pass before enabling this on a workspace with a very large target catalog — automatic enrollment makes this a prerequisite at 10k-object scope, because triage creates one session per admitted target.
+- **Per-iteration timeout is per unit or per pass, not per runner lifetime**: a batch of pathological objects can outlast one interval; the next tick is then skipped rather than overlapped.

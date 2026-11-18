@@ -1,6 +1,8 @@
 # Documentation
 
-Documentation for running and integrating with a Metaxisdata deployment. The maintenance references an agent needs before changing code live in [.agents/docs/](../.agents/docs/README.md).
+Documentation for running and integrating with a Metaxisdata deployment. The maintenance references an agent needs before changing code live in [.agents/docs/](../.agents/docs/README.md) (English only).
+
+Only the two onboarding guides — the deployment guide and the local trial — are maintained in both languages; every other document here is English-only, so a translated copy cannot drift out of date.
 
 | Doc | Covers |
 | --- | --- |

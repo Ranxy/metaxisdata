@@ -24,7 +24,7 @@ namespace by host and port, so the Doris instance answers for it either way. Tha
 the fact section 25 of ``verify_chain.sql`` asserts, and section 31 forbids the
 shifted GUID the naming rule can produce: the reader's URL names the database and its
 table stays unqualified, because this plugin prefixes the URL's database to whatever
-``table`` says. FINDINGS F10 has the measured run.
+``table`` says. `verify_chain.sql` section 31 is the gate for the shifted GUID.
 """
 
 from __future__ import annotations

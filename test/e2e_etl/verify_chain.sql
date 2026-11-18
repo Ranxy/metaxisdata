@@ -138,7 +138,8 @@ FROM column_lineage cl
 WHERE cl.meta_guid = 'mysql-dev-1;e2e_ods;;v_region_order_stats'
 ORDER BY 1, 2, 3;
 
--- Sections 9-13 measure what "Post-fix verification" in FINDINGS.md reports.
+-- Sections 9-13 measure what the revalidation passes leave behind: no ingested edge
+-- may keep an unknown endpoint or a contradicted column claim after a run.
 -- Ingestion files each run's edges under that run's own meta row, so the same
 -- logical edge recurs once per run that produced it and every count below is
 -- DISTINCT; a raw row count would depend on how many chains have run against

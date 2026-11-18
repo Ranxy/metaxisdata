@@ -1,18 +1,24 @@
 # Notifications
 
-Every event the platform reports has two destinations: an **in-app inbox**
+Most events the platform reports have two destinations: an **in-app inbox**
 message for the people concerned, and, when an administrator configures one, an
 **outbound channel** that receives the same event outside the product. The inbox
-is always on. The outbound side is opt-in and starts empty.
+is always on; the outbound side is opt-in. The one exception is the weekly data
+quality digest, which is outbound-only and never appears in an inbox (see
+[The data quality digest](#the-data-quality-digest)).
 
 ## The inbox
 
 The bell at the bottom of the sidebar collects the messages the deployment sends
 to you: the outcome of a schema sync you asked for, OpenLineage ingestion
-failures, and data quality events — an issue opened or recovered, a check that
+failures, data quality events — an issue opened or recovered, a check that
 could not run, a scan that failed many checks at once, or a watched table's
-schema changing. Opening the inbox clears its badge; individual messages are marked read when
-you click them. Messages are kept forever and are personal to their recipient.
+schema changing — and quality-agent escalations. An escalation tells the agent's
+owner that its session is blocked and needs a decision, that a suggested rule
+awaits review, or that a patrol report found failures or new issues; without an
+owner it goes to the workspace administrators. Opening the inbox clears its
+badge; individual messages are marked read when you click them. Messages are
+kept forever and are personal to their recipient.
 
 ## Outbound channels
 
@@ -55,8 +61,7 @@ A channel is one destination and the rules for what it receives:
 Delivery is asynchronous: the platform queues the event, posts it, and retries a
 failure with backoff (1m, 5m, 15m, 1h, 6h). After six attempts the delivery is
 **dead**; fix the cause and press **Retry**, which grants a fresh six-attempt
-budget. An event addressed to five
-administrators still reaches a channel once.
+budget. An event addressed to five administrators still reaches a channel once.
 
 ### The webhook body
 
@@ -77,17 +82,14 @@ administrators still reaches a channel once.
 (Settings → General); the message then points at the issue, execution or
 instance page behind the event. The data-quality links carry the whole resource
 name, because those detail pages read the name from the path. Redirects are not
-followed: a 3xx answer is a failed attempt (a 301/302 would turn the POST into a
-GET without the body, and a 307/308 would re-send the body and signature to a
-host the endpoint chose). The body is a fixed shape: fields are added, never
-renamed or removed.
+followed: a 3xx answer is a failed attempt. The body is a fixed shape: fields are
+added, never renamed or removed.
 
 ### Verifying the signature
 
 Recompute HMAC-SHA256 over the raw request body with the channel's signing
-secret and compare it with the header. The endpoint URL and the signing secret
-are written once and never shown again; rotate them by editing the channel and
-filling the fields with new values.
+secret and compare it with the header. The endpoint URL and signing secret are
+written once and never shown again; rotate them by editing the channel.
 
 ### Chat robots
 
@@ -107,8 +109,8 @@ The three chat kinds speak their vendor's group-robot API:
 The robot answer's protocol code is part of delivery: an `errcode`/`code` that is
 not zero is a failed attempt, even when the HTTP status is 200. WeCom truncates a
 long message to its 4096-byte markdown limit. DingTalk and Feishu reject a signed
-request whose timestamp is more than an hour from their clock, so the server's
-clock must be synchronized (NTP).
+request whose timestamp is more than an hour off their clock, so keep the
+server's clock synchronized (NTP).
 
 ### Email
 
@@ -116,23 +118,22 @@ Email delivery needs one workspace-wide SMTP server, configured on the same
 page under **Email delivery (SMTP)**: the From address and optional name, host,
 port, encryption (none, STARTTLS, or implicit TLS), authentication (none, PLAIN,
 LOGIN, or CRAM-MD5), user name and password. Authentication cannot be combined
-with unencrypted transport. The password is write-only: it is stored encrypted,
-never returned by a read, and redacted from the audit log; leave the field empty
-while editing to keep the stored one. **Send test email** sends a message to your
-own address and tells you whether the SMTP transaction completed. To turn email
-delivery off, clear both the From address and the host and save; the server then
-deletes the setting, and every email channel fails until it is configured again.
+with unencrypted transport. The password is write-only: stored encrypted, never
+returned by a read, redacted from the audit log; leave the field empty while
+editing to keep the stored one. **Send test email** sends a message to your own
+address and reports whether the SMTP transaction completed. To turn email off,
+clear the From address and the host and save; the server deletes the setting, and
+every email channel fails until it is configured again.
 
 An email channel lists fixed recipients and/or follows the event's audience. The
 audience is resolved when the delivery runs, so an owner who changes their
 address receives it at the new one and a deleted account is skipped. One SMTP
 transaction carries the fixed addresses and the audience together; a delivery
-with more than 50 recipients fails rather than silently dropping people, and is
-retried like any other failure. A recipient the server rejects is skipped as long
-as at least one other recipient accepted the message. Recipients are
-envelope-only: the `To` header names nobody, so a shared on-call mailbox does not
-learn the internal owners' and administrators' addresses. Email has no
-application-level answer: a completed SMTP transaction is the receipt, so a
+with more than 50 recipients fails rather than silently dropping people. A
+recipient the server rejects is skipped as long as at least one other recipient
+accepted the message. Recipients are envelope-only: the `To` header names nobody,
+so a shared on-call mailbox does not learn the internal owners' and
+administrators' addresses. A completed SMTP transaction is the receipt, so a
 sent delivery has no error and no endpoint body. The **Test** action on an email
 channel sends one message to that channel's fixed recipients (the SMTP card's
 **Send test email** goes to your own address).
@@ -150,16 +151,14 @@ Quiet hours **hold, never drop**: a delivery that falls inside a window is put
 back to *pending* with its next attempt set to the moment the window ends. It
 does not consume an attempt, so the six-attempt budget is not spent waiting, and
 the first dispatcher tick after the window sends it. The inbox is unaffected. An
-invalid or unreadable schedule is ignored (deliveries proceed) rather than
-blocking alerts, and a window whose bounds fall into a daylight-saving transition
-(a skipped local hour) is ignored for that day rather than stretching into a
-day-long hold. A maintenance window is capped at 30 days, so a typo cannot hold
-alerting indefinitely.
+invalid or unreadable schedule is ignored so deliveries proceed, and a window
+whose bounds fall in a daylight-saving transition is skipped for that day rather
+than stretching into a day-long hold. A maintenance window is capped at 30 days,
+so a typo cannot hold alerting indefinitely.
 
-Saving a new schedule releases the deliveries the previous schedule was holding,
-so shortening or disabling quiet hours during an incident sends them on the next
-dispatcher tick instead of at the old window's end. A delivery held by a window
-shows as *pending*; the Deliveries card shows its next attempt.
+Saving a schedule releases the deliveries the previous one was holding, so
+shortening quiet hours during an incident sends them on the next dispatcher tick.
+A held delivery shows as *pending*; the Deliveries card shows its next attempt.
 
 ### Routing rules
 
@@ -167,9 +166,8 @@ A routing rule selects extra channels for the events whose in-app audience
 matches it. Create one under **Routing rules**: match by event type, minimum
 severity, rule owners and/or IAM groups (members of the group), then pick the
 channels to deliver to. Empty fields are wildcards; a rule with no filters
-selects every event. Routes are additive: a channel with a normal subscription
-keeps receiving its events, while a channel marked **Only receive events selected
-by a routing rule** receives an event only when a rule selects it. A deleted
+selects every event. Routes are additive: a normally subscribed channel keeps its
+events, while a routed-only channel receives only what a rule selects. A deleted
 channel is ignored; the rule's other channels still deliver.
 
 The data quality digest is the one event routing rules never select: it is a
@@ -180,11 +178,10 @@ through its event types instead.
 
 When an administrator enables the weekly digest under Settings → Data Quality,
 the server posts one summary per week to every enabled channel whose event types
-include **Data quality digest**. This is **opt-in**: a channel with no event types
-(or with other types only) keeps receiving event notifications and no digest, so
-an existing configuration never starts receiving a new periodic message by
-itself. The digest goes only to outbound channels — it does not appear in the
-inbox.
+include **Data quality digest**. This is **opt-in**: a channel with no event
+types (or other types only) gets no digest, so an existing configuration never
+starts receiving a new periodic message by itself. The digest goes only to
+outbound channels — it does not appear in the inbox.
 
 The payload is a rendered title and plain-text summary: the rolling seven-day
 period, executions by verdict, problems opened/recovered/still open, and the
@@ -194,19 +191,19 @@ body carries the same structured summary.
 
 Email channels need at least one fixed address: the digest has no audience of its
 own, so **include the audience** cannot resolve recipients for it. Quiet hours
-still hold a digest delivery until the window ends (a channel can opt out), and
-delivery retries are the same as for any event. A digest is sent at most once per
-ISO week; if the server missed the scheduled minute it still sends within 24
-hours, and a longer outage skips that week (one warning is logged). See
+still hold a digest delivery until the window ends (a channel can opt out). A
+digest is sent at most once per ISO week; if the server missed the scheduled
+minute it still sends within 24 hours, and a longer outage skips that week (one
+warning is logged). See
 [data-quality.md](data-quality.md#reports-exports-and-the-weekly-digest).
 
 ## Deliveries
 
 The **Deliveries** card on the same page lists the most recent attempts: the
-queued time, channel, event, state, how many attempts were made, when the next
-attempt is due, and the last error. States are *pending* (waiting, or waiting for a retry), *sending*,
-*sent*, and *dead* (out of attempts). Deliveries are kept 30 days; a channel's
-queued deliveries are removed with it.
+queued time, channel, event, state, attempt count, next attempt and last error.
+States are *pending* (waiting or waiting for a retry), *sending*, *sent*, and
+*dead* (out of attempts). Deliveries are kept 30 days; a channel's queued
+deliveries are removed with it.
 
 ## Permissions and safety
 
@@ -224,13 +221,11 @@ from audit rows, and replaced with `<endpoint>` in recorded delivery errors. The
 SMTP password is encrypted the same way. Because the destination is chosen by a
 workspace administrator, the deployment allows requests to any `http`/`https`
 address the administrator enters — the same trust boundary as an instance's
-database connection; see [security-posture.md](security-posture.md). Redirects
-are not followed for any HTTP kind: a 3xx answer is a failed attempt.
+database connection; see [security-posture.md](security-posture.md).
 
 Delivery is single-replica, like the rest of the background work: run one server
-process or accept that a queued delivery is claimed by whichever replica polls
-it. A server restart does not lose a queued delivery; an attempt interrupted
-mid-request is retried after its lease expires.
+process. A restart does not lose a queued delivery; an interrupted attempt is
+retried after its lease expires.
 
 ## Troubleshooting
 
