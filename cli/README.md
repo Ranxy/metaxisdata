@@ -221,11 +221,11 @@ data and a caller never has to tell "missing" from "empty".
 | --- | --- | --- |
 | 0 | Success | — |
 | 1 | Bad input: flags, an empty statement, `server_required`, `scope_required`, `config_invalid` | Fix the invocation; the error carries a `hint` |
-| 2 | Not authenticated: the session is gone (expired, revoked from Connected apps, ended by a password change, or the device login was denied) | `mxd auth login` |
+| 2 | Not authenticated: the session is gone (expired, revoked from Connected apps, ended by a password change, or the device login was denied or ran out of time) | `mxd auth login` |
 | 3 | Not found | Check the GUID |
 | 4 | Permission denied | Ask an administrator |
 | 5 | Could not complete: `unavailable` (the server was not reachable), `resource_exhausted`, or a server fault | Retry, then check that the server is running and read its logs |
-| 6 | Timeout or cancellation, local or remote, including `--login-timeout` running out | Retry, or raise `--timeout` / `--login-timeout` |
+| 6 | Timeout or cancellation, local or remote | Retry, or raise `--timeout` |
 
 The error envelope also carries a `code` string, which is finer grained than the
 exit status: `server_required`, `scope_required` and `config_invalid` all exit 1

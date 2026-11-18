@@ -24,7 +24,7 @@ Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/
 - **Lineage** — table lineage graph and column-level lineage, analyzed from view/materialized-view SQL and from OpenLineage.
 - **OpenLineage** — Overview / Jobs / Datasets / Events, namespace mapping, API keys, Airflow links.
 - **Explain SQL** — LLM-assisted SQL explanation scoped to selected metadata, with caching.
-- **Data Quality** — rules over tables and columns (row count, nulls, uniqueness, accepted values, ranges, regex, length, referential integrity, cross-column, freshness, custom SQL, expressions, standard codes), custom rule templates and workspace code tables, scheduled and manual runs, results and failure samples, a problem ledger with in-app notifications and administrator-configured outbound channels (webhook, DingTalk, WeCom, Feishu and SMTP email), column profiles and semantic labels, LLM-assisted rule drafts, failure explanations and label suggestions, streamed CSV exports of the executions/issues/targets directories, a forwardable per-target HTML quality report, and a scheduled weekly digest delivered to the outbound channels. **Quality agents** add a built-in per-agent runtime (owner conversation, scheduled patrol reports, owner attention, adoption guardrails) configured under Settings → Quality agents; there is no agent token or external agent API — external consumers read the quality surface through the read-only MCP tools. See [.agents/docs/data-quality.md](.agents/docs/data-quality.md).
+- **Data Quality** — rules over tables and columns (row count, nulls, uniqueness, accepted values, ranges, regex, length, referential integrity, cross-column, freshness, custom SQL, expressions, standard codes), templates and code tables, scheduled runs, a problem ledger with in-app and outbound notifications, column profiles and semantic labels, LLM-assisted drafts, streamed exports and a weekly digest. **Quality agents** add a built-in per-agent runtime under Settings → Quality agents; there is no agent token or external agent API, and external consumers read the quality surface through the read-only MCP tools. See [.agents/docs/data-quality.md](.agents/docs/data-quality.md).
 - **Settings** — users, audit logs, LLM providers, OpenLineage ingestion, outbound notification channels (webhook, chat robots, SMTP email, quiet hours, owner/team routing rules), connected apps, and the `mcp_enabled` switch.
 - **Device** — the `/device` page approves a command line client's device login.
 - **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision). **Connected apps** (Settings for an administrator, the avatar menu for a user's own) lists those authorizations and revokes them.
@@ -40,11 +40,26 @@ Two trees, split by audience. `docs/` is read by operators and integrators; `.ag
 | [docs/deploy.md](docs/deploy.md) | Building and running the container image or the prebuilt binary, and every environment variable it reads |
 | [docs/local-trial.md](docs/local-trial.md) | The compose stack for a throwaway instance on a development machine |
 | [docs/mcp.md](docs/mcp.md) | Connecting an MCP client, and what the endpoint promises |
+| [docs/application-sql-reporting.md](docs/application-sql-reporting.md) | Letting an application report the SQL it runs, and what the deployment stores |
+| [docs/notifications.md](docs/notifications.md) | The inbox, outbound channels, the delivery body and signature, retries |
+| [docs/data-quality.md](docs/data-quality.md) | Running quality checks: rule setup, cadence, statuses, issues, reports, agents, retention |
 | [docs/security-posture.md](docs/security-posture.md) | Behavior that looks like a bug — the deliberate, accepted decisions |
-| [.agents/docs/README.md](.agents/docs/README.md) | The index of maintenance references: lineage, MCP, IAM, notifications, schema sync, migrations, rate limiting, credentials, refresh tokens, environments, the CLI, the frontend |
+| [.agents/docs/README.md](.agents/docs/README.md) | The index of maintenance references — read the row for the subsystem you are about to change |
 | [.agents/docs/i18n-glossary.md](.agents/docs/i18n-glossary.md) | The one accepted rendering of each professional term per locale — read before writing user-facing copy in either language |
 | [.agents/docs/security-open-items.md](.agents/docs/security-open-items.md) | Which security findings are still open |
 | [.agents/docs/backend-open-items.md](.agents/docs/backend-open-items.md) | Open engineering debt that has no subsystem reference of its own |
+
+### Documentation rules
+
+A document explains **why** a decision was made and **what must not break**. How the code works is the code's job: do not restate proto fields, configuration tables, command or flag lists, enum values or file inventories — link to the source instead.
+
+- **Never write a line number.** A location written as `file:line` rots within a week; name the symbol (`ProcessRunEvent`, `splitDatasetName`) or the package.
+- **No moment-in-time content.** No phase or implementation tables, work-stream IDs, decision catalogs, `Status: implemented` headers, dates-as-status, commit hashes, PR references or struck-through "landed" items. That history belongs in the pull request; git holds it.
+- **One owner per fact.** The operator page states observable behavior; the maintenance reference states the invariants behind it and links to the operator page instead of restating it.
+- **English, always, in both trees.** Only [docs/deploy.md](docs/deploy.md) and [docs/local-trial.md](docs/local-trial.md) have a `_zh` twin; a pair must keep its headings and environment variables in parity. User-facing copy goes through [.agents/docs/i18n-glossary.md](.agents/docs/i18n-glossary.md).
+- **Budgets.** A maintenance reference stays under ~460 lines, an operator page under ~720; both under 100 KB. A page that outgrows the budget is describing too much code.
+- **Never hand-edit generated or embedded Markdown.** `proto/gen/grpc-doc/` is buf output; the table in `.agents/docs/i18n-glossary.md` is generated from `frontend/glossary.json` by its script; `backend/mcp/guide.md` and `cli/skill/SKILL.md` are `//go:embed` runtime assets, not documents.
+- **The gate is `make check-docs`** (`.github/workflows/docs.yml`): links, index coverage, budgets, the English rule, bilingual parity, and the bans above.
 
 ## Cross-Directory Invariants
 
@@ -78,18 +93,4 @@ Go integration suites run the real server against PostgreSQL + MySQL behind the 
 
 ## Deliberate, Accepted Decisions (Not Bugs)
 
-These look like defects but were chosen knowingly. Read [docs/security-posture.md](docs/security-posture.md) before "fixing" any of them.
-
-- **Authorization is workspace-scoped (single tenant)** — every member reads everything; writes need `workspaceAdmin`.
-- **Signup is open until an operator closes it, and the first account becomes the workspace administrator** — `DisallowSignup` is off by default.
-- **Stored credentials are encrypted with a per-deployment data key** (`v1:` AES-256-GCM, `backend/common/crypto`) — database read access recovers them all unless `METAXISDATA_ENCRYPTION_KEY` wraps that key with one kept outside the database.
-- **The CLI stores its session credentials in clear text** (an access token plus a rotating refresh token, file mode 0600).
-- **Analysis scopes live only in the process environment** (`METAXISDATA_SCOPES`), never persisted.
-- **Device login state is process-local** — run one replica or add sticky routing.
-- **gRPC reflection is anonymous.**
-- **Destructive schema sync is log-only** — no shrink threshold or confirmation flag.
-- **`audit_log` and `meta_registry_resource_history` are kept forever.**
-- **The MCP surface is off by default and its tokens are bound to `/mcp`** — enabling it needs `external_url`, and changing that address invalidates outstanding MCP tokens.
-- **Every MCP tool call is audited, reads included** — a remote entry point a model drives, recorded in the permanent ledger.
-- **OAuth pending state is process-local, and access and refresh tokens are separate credentials** — the same replica must see an approval and its completion; refresh tokens, by contrast, live in the database and rotate single-use. The MCP grant row is the durable **connected app**: a refresh updates it in place, so its id is stable, and access tokens carry that id and are refused once the connection is revoked (immediately on the replica that revoked it, within 30 seconds elsewhere). Access tokens minted before that claim existed are refused once and recover with a refresh. A **CLI device login is the same kind of connected app** — the built-in `mxd` client, a sliding 30-day grant, refreshed through `AuthService.ExchangeRefreshToken` because the CLI has no cookie jar — so Connected apps lists and revokes CLI sessions too, and `Logout` ends only the CLI session the token names. Connected apps lists and revokes these authorizations without the agent's token; see [docs/mcp.md](docs/mcp.md) and [docs/security-posture.md](docs/security-posture.md).
-- **Reverse-proxy contract** — cookie writes trust `Origin`/`Sec-Fetch-Site`; audit trusts `X-Forwarded-For` only from `--trusted-proxies`.
+Behavior in this repository that looks like a defect but was chosen knowingly — the read baseline, open signup, process-local state, anonymous machine endpoints, the clear-text CLI session, permanent audit rows, log-only destructive sync — is listed, with the trade-off behind each, in [docs/security-posture.md](docs/security-posture.md). Read that page before "fixing" any of it; each item needs a subsystem-level decision rather than a drive-by patch.

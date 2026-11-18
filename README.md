@@ -19,6 +19,15 @@ definitions and ingested OpenLineage events.
   Browse jobs, datasets, and events, with links back to Airflow.
 - **SQL explanation** — LLM-assisted explanation of a SQL statement, scoped to
   the metadata you select, with caching.
+- **Data quality** — Rules over tables and columns (row count, nulls, uniqueness,
+  accepted values, ranges, regex, length, referential integrity, cross-column,
+  freshness, custom SQL, expressions, standard codes), scheduled and manual runs,
+  a problem ledger with inbox notifications, coverage and a quality score,
+  column profiles and semantic labels, LLM-assisted rule drafts and failure
+  explanations, and a weekly digest. ([docs/data-quality.md](docs/data-quality.md))
+- **Notifications** — A workspace inbox plus administrator-configured outbound
+  channels — webhook, DingTalk, WeCom, Feishu and SMTP email — with quiet hours
+  and owner/team routing rules. ([docs/notifications.md](docs/notifications.md))
 - **Access control and audit** — Users, groups, named roles, and an
   access-policy editor. Audited operations are recorded in an audit log that is
   kept forever.

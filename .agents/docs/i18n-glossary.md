@@ -1,31 +1,44 @@
-# i18n 术语表 — Reference
+# i18n glossary — Reference
 
-> Status: **implemented**。术语数据、门禁与生成文档均已落地。本文件是 `frontend/glossary.json` 的维护参考；`frontend/AGENTS.md` 是前端代码规则，本篇不重复。
-> Related: [frontend/AGENTS.md](../../frontend/AGENTS.md)（i18n 工作流与门禁）、[glossary.json](../../frontend/glossary.json)（唯一事实源）、[check-i18n-glossary.mjs](../../frontend/scripts/check-i18n-glossary.mjs)（门禁与生成器）。
+> Maintenance reference for the one accepted rendering of every professional term per locale.
+> The data is [frontend/glossary.json](../../frontend/glossary.json) (the single source of truth);
+> this file is its generated, human- and agent-readable table plus the rules behind it.
+> Related: [frontend/AGENTS.md](../../frontend/AGENTS.md) (i18n workflow and gates),
+> [check-i18n-glossary.mjs](../../frontend/scripts/check-i18n-glossary.mjs) (gate, generator, lookup).
 
-## 是什么
+## What it is
 
-一份固定专业术语译法的表：每个术语在每种语言里只有一种写法，人和 agent 在**翻译 i18n 文案**、**写文档**、**命名代码与注释**时都参照它。它把"顺手换个近义词"这类漂移变成 CI 失败，而不是留在 review 里靠人眼发现。
+A table that freezes the professional terminology: each term has exactly one accepted rendering per
+locale, and people and agents consult it when **translating i18n copy**, **writing documentation** and
+**naming code and comments**. It turns "reached for a synonym" drift into a CI failure instead of a
+review comment someone has to catch by eye.
 
-已收录的术语分九类：Data / Lineage / OpenLineage / Ingestion / Access / Identity / Integration / Platform / Conventions。最后两类之外，Conventions 也管英文侧的大小写与拼写（`cancelled`→`canceled`、`Signup`→`sign-up`、`Openlineage`→`OpenLineage`），因为英文文案同样是产品语言的一部分。
+Terms are grouped into nine categories: Data, Lineage, OpenLineage, Ingestion, Access, Identity,
+Integration, Platform, Conventions. Conventions also governs English casing and spelling
+(`cancelled` -> `canceled`, `Signup` -> `sign-up`, `Openlineage` -> `OpenLineage`), because the English
+copy is part of the product language too, not just the translation source.
 
-## 数据与生成物
+## Data and generated artifacts
 
-| 位置 | 角色 | 谁改 |
+| Location | Role | Who edits it |
 | --- | --- | --- |
-| `frontend/glossary.json` | 唯一事实源：术语、定义、`scope`、`when`、`avoid` | 人（评审过的 PR） |
-| `.agents/docs/i18n-glossary.md` 的生成表格 | 人看的表；agent 直接读这一段 | 只由脚本写 |
-| `frontend/scripts/check-i18n-glossary.mjs` | 门禁 + 生成器 + 查询工具 | 与术语规则一起改 |
+| `frontend/glossary.json` | The single source of truth: terms, definitions, `scope`, `when`, `avoid` | A person, through a reviewed PR |
+| The generated table in this file | The table people read; agents read exactly this block | The script only |
+| `frontend/scripts/check-i18n-glossary.mjs` | The gate, the generator and the lookup tool | Changed together with the term rules |
 
-生成表格夹在一对 HTML 注释标记之间（`BEGIN GENERATED GLOSSARY` / `END GENERATED GLOSSARY`），**不要手改表格**：`pnpm --dir frontend i18n` 会在它和 JSON 不一致时失败。术语数据放在 `frontend/` 根目录而不是 `src/locales/`，是因为 `src/locales/*.json` 被 ESLint 的 `no-unused-keys` 规则和 `sort_i18n_keys.mjs` 当作 locale catalog 处理——术语表不是 catalog，混在一起会被当成一堆"未使用的 key"。
+The generated table sits between the `BEGIN GENERATED GLOSSARY` and `END GENERATED GLOSSARY` HTML
+comment markers. **Never edit the table by hand**: `pnpm --dir frontend i18n` fails when it disagrees
+with the JSON. The term data lives in the `frontend/` root rather than under `src/locales/` because
+every `*.json` there is treated as a locale catalog by ESLint's `no-unused-keys` rule and by
+`sort_i18n_keys.mjs`; a glossary is not a catalog, and mixing it in would read as a pile of unused keys.
 
-## 术语条目
+## A term entry
 
 ```jsonc
 {
-  "id": "job",                       // lower-kebab-case，唯一
-  "category": "OpenLineage",         // 必须是 categories 里声明过的
-  "definition": "…",                 // 一句话，用来消歧（view 名词 vs 动词）
+  "id": "job",                       // lower-kebab-case, unique
+  "category": "OpenLineage",         // must be declared in categories
+  "definition": "...",               // one sentence, to disambiguate (the noun "view" vs the verb)
   "translations": { "en-US": "job", "zh-CN": "作业" },
   "scope": ["openlineage.", "openlineageSettings.", "home."],
   "when": { "en-US": "/\\bjobs?\\b/i" },
@@ -33,55 +46,63 @@
 }
 ```
 
-| 字段 | 语义 |
+| Field | Meaning |
 | --- | --- |
-| `translations` | 固定译法。`locales` 里的每种语言都必须有非空值 |
-| `definition` | 术语的边界：什么算这个术语、什么时候不算。表格里给人和 agent 读 |
-| `scope` | i18n key 前缀列表，限定 `avoid` 的检查范围。**缺省 = 全部 key** |
-| `when` | 附加条件：该 key 在某些语言里的值必须命中模式，规则才生效。通常写成"英文源文里真的出现了这个术语" |
-| `avoid` | 按语言列出的禁用写法。不以 `/` 开头结尾的是字面量子串，`/regex/flags` 是正则 |
+| `translations` | The fixed rendering. Every locale in `locales` must have a non-empty value |
+| `definition` | The term's boundary: what counts as this term and what does not. Shown to people and agents |
+| `scope` | i18n key prefixes that bound the `avoid` check. **Absent = every key** |
+| `when` | An extra condition: the rule fires only on keys whose value in a named locale matches the pattern. Usually "the English source really uses this term" |
+| `avoid` | Forbidden variants per locale. A string not wrapped in `/` is a literal substring; `/regex/flags` is a regular expression |
 
-`scope` 和 `when` 存在的理由：同一个词常有多个义项（`view` 是视图也是"查看"，`列` 出现在"排列""列出""序列"里）。全局禁用一个写法会误伤；把规则钉在真正适用的 key 前缀上、并且要求英文源文确实用了这个术语，规则才既严格又不吵——`column` 那条就是这么写的。
+`scope` and `when` exist because one word often has several senses (`view` is a page view and a
+database view; the Chinese `列` appears inside "arrange", "list" and "sequence"). Forbidding a variant
+globally would misfire; pinning the rule to the key prefixes where the term really applies, and
+requiring that the English source actually uses it, makes the rule strict without being noisy — the
+`column` entry is written exactly that way.
 
-## 门禁
+## The gate
 
-`pnpm --dir frontend i18n` 依次跑三个脚本，`check-i18n-glossary.mjs` 是最后一个：
+`pnpm --dir frontend i18n` runs three scripts in order, with `check-i18n-glossary.mjs` last:
 
-1. **完整性** — id 唯一且 lower-kebab-case、category 已声明、每种 locale 都有译法、`scope` 前缀在 catalog 里真实存在、正则可编译。
-2. **漂移** — 任何 catalog 值命中 `avoid` 即失败，报错给出 locale、key、命中的模式和该用的译法。
-3. **文档同步** — 生成表格与 JSON 必须逐字节一致；标记重复或缺失同样算失败。
+1. **Integrity** — ids are unique and lower-kebab-case, every category is declared, every locale has a
+   translation, every `scope` prefix exists in the catalog, and every pattern compiles.
+2. **Drift** — any catalog value that matches an `avoid` variant fails, and the message names the
+   locale, the key, the matched pattern and the rendering to use instead.
+3. **Document sync** — the generated table must match the JSON byte for byte; duplicate or missing
+   markers fail too.
 
-漂移报错长这样：
+A drift error looks like this:
 
 ```
   - zh-CN openlineage.searchJobsPlaceholder: contains "任务", but glossary "job" fixes "作业" — "搜索作业名称、…"
 ```
 
-## 查询
+## Lookup
 
 ```bash
-pnpm --dir frontend i18n:glossary                 # 门禁
-pnpm --dir frontend i18n:glossary --show job      # 查一个术语
-pnpm --dir frontend i18n:glossary --show lineage  # 中英任一写法都能命中
-pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
+pnpm --dir frontend i18n:glossary                 # run the gate
+pnpm --dir frontend i18n:glossary --show job      # look one term up
+pnpm --dir frontend i18n:glossary --show lineage  # either locale's wording matches
+pnpm --dir frontend i18n:glossary --write-doc     # rewrite the generated table
 ```
 
-`--show` 无参数时打印整张表——agent 在写新文案前的一次调用，比读 JSON 便宜。
+`--show` with no argument prints the whole table — one call before writing new copy, cheaper for an
+agent than reading the JSON.
 
-## 决定
+## Decisions
 
-| 决定 | 理由 |
+| Decision | Why |
 | --- | --- |
-| JSON 是唯一事实源，Markdown 表格生成 | 两份手写清单必然漂移；生成 + 门禁让"表准不准"不再是问题 |
-| 只固化术语，不固化整句 | 语序、语气和断句要留给译者；锁死整句会产出翻译腔和无法维护的模板 |
-| 规则按 key 前缀 `scope` 收窄，并按 `when` 要求源文命中 | 多义词（`view` / `run` / `column`）全局禁用会误伤，收窄后可以下重手 |
-| 英文侧同样受管 | 产品对外只有一套语言习惯；`cancelled`、`signin`、`Openlineage` 已在真实文案里出现过 |
-| 中文保留 `Schema`、`SQL`、`API 密钥` 中的拉丁词 | 项目既有习惯（`README_zh.md` 也写 schema），硬译反而降低可读性 |
-| `scope` 前缀必须命中真实 key | 术语随功能下线而失效，门禁逼着维护者删掉死规则而不是留着装饰 |
-| 术语表放在 `frontend/glossary.json`，不放进 `src/locales/` | 那里每个 `*.json` 都被当成 catalog（ESLint 未使用 key、排序脚本），术语表不是 catalog |
-| 允许 `--show` 查询 | 人和 agent 的入口不同：人看文档表格，agent 用一次命令拿到术语边界 |
+| The JSON is the single source of truth; the Markdown table is generated | Two hand-maintained lists always drift; generating and gating removes "is the table right" as a question |
+| Freeze terms, not whole sentences | Word order, tone and punctuation belong to the translator; locking whole sentences produces translationese and unmaintainable templates |
+| Narrow rules by key-prefix `scope` and require the source to match `when` | Globally forbidding a variant of an ambiguous word (`view`, `run`, `column`) misfires; narrowed, the rule can be strict |
+| The English side is governed too | The product has one set of language conventions; `cancelled`, `signin` and `Openlineage` have all appeared in real copy |
+| Chinese keeps the Latin words in `Schema`, `SQL` and `API 密钥` | It is the project's existing habit (`README_zh.md` writes schema too); forcing a translation reduces readability |
+| A `scope` prefix must match a real key | a term dies with the feature; the gate forces the maintainer to delete the dead rule instead of keeping decoration |
+| The glossary lives in `frontend/glossary.json`, not `src/locales/` | Every `*.json` there is treated as a catalog (ESLint unused keys, the sorting script); a glossary is not a catalog |
+| `--show` is allowed | People and agents have different entry points: a person reads the table, an agent spends one call to get a term's boundary |
 
-## 生成表格
+## The generated table
 
 <!-- BEGIN GENERATED GLOSSARY -->
 | en-US | zh-CN | Category | Definition | Scope | Do not use |
