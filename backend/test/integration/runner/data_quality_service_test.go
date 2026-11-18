@@ -4140,9 +4140,11 @@ func setQualityAgentRunner(t *testing.T, fixture *qualityFixture, enabled bool) 
 	current, err := fixture.settings.GetWorkspaceProfileSetting(context.Background(),
 		withToken(fixture.env.AdminToken(), &v1pb.GetWorkspaceProfileSettingRequest{}))
 	require.NoError(t, err)
-	setting := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
-	if setting == nil {
-		setting = &v1pb.DataQualitySetting{}
+	setting := &v1pb.DataQualitySetting{}
+	if original := current.Msg.GetDataQuality(); original != nil {
+		if cloned, ok := proto.Clone(original).(*v1pb.DataQualitySetting); ok {
+			setting = cloned
+		}
 	}
 	setting.AgentRunnerEnabled = enabled
 	_, err = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(),
