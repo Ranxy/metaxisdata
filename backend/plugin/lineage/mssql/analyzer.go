@@ -8,7 +8,7 @@
 // so there is no raw text to re-parse the way StarRocks has to.
 //
 // Three upstream AST facts shape the traversal and are recorded in
-// .agents/docs/mssql-lineage.md: `SelectStmt.All` doubles as SELECT ALL, so it means
+// .agents/docs/lineage-dialects.md: `SelectStmt.All` doubles as SELECT ALL, so it means
 // "keeps duplicates" only when Op is set; a scalar subquery, an aliased table
 // reference and every declared name list carry no end offset; and two keywords are
 // read as aliases (`FROM t1 NATURAL JOIN t2`, `MERGE INTO tgt USING src`), which is
