@@ -11,7 +11,8 @@ the thresholds it was judged against, and (optionally) the rows that failed and 
 rows that passed.
 
 Everything is in the **Data Quality** section of the sidebar. The check engine is
-fully offline; three model-assisted features are opt-in.
+fully offline. Model assistance for failure explanations, label suggestions and
+check drafts is opt-in, and so is the built-in quality agent runtime.
 
 ## Before the first check
 
@@ -33,6 +34,11 @@ fully offline; three model-assisted features are opt-in.
    local to the deployment, and the "send sample values" switch is reserved —
    no model path includes raw sample rows today. Everything else works with
    model assistance off.
+4. *(Optional)* **Turn on quality agents.** An administrator can create an agent
+   under Settings → Quality agents (owner, database scope, capabilities) and turn
+   off the workspace **Pause all agents** switch; see [Quality agents](#quality-agents). Agents
+   are independent of the check engine: with the runtime off, checks keep running
+   and nothing else changes.
 
 ## Adding a check
 
@@ -279,16 +285,15 @@ observed range on a numeric column. It needs no model and no provider, so it
 works with model analysis switched off; the drafts land in the same review queue
 as every other proposal, and nothing runs until a person creates the check. The
 observed threshold is a starting point: the draft's reason states the
-observation and the arithmetic, and the check dialog can change it. On the target
-workspace the entry is in the copilot panel's quick strip; on a table's Data
-Quality tab it sits beside **Target workspace**.
+observation and the arithmetic, and the check dialog can change it. On a table's
+Data Quality tab it sits beside **Open workspace**; an agent's triage pass drafts
+checks into the same queue.
 
-Checks can also start from a model draft: draft in the target workspace's AI
-copilot, or open **Data Quality → Suggestions** and use **Draft with AI** to pick
-one or more tables and describe the check once. A queued draft appears inline in
-its target's workspace, where it can be accepted or adjusted in the check dialog;
-multi-target drafting runs as a background job, so you do not have to keep the
-page open.
+A pending draft appears inline in its target's workspace (and on the table's Data
+Quality tab on the metadata page), where it can be accepted or adjusted in the
+check dialog. Nothing is created or enabled until a person accepts it. There is no
+natural-language multi-target drafting job: the profile passes and the quality
+agents fill the queue, and **Data Quality → Suggestions** reviews it.
 
 ## Standard codes
 
@@ -404,8 +409,8 @@ executions beside it. Its header sums the target up, including the **quality
 score** and the **recent pass rate** (see
 [Coverage and quality score](#coverage-and-quality-score)). The workspace can run all of the target's checks at once,
 add or edit a check without walking the target picker again, show which columns
-have no check yet, and draft checks with the AI copilot on the right — drafts
-appear inside the section they belong to until you create them as checks.
+have no check yet, and show pending check drafts inside the section they belong
+to until you create them as checks.
 
 If a table's **structure changed after its checks were saved** — a column added,
 dropped, renamed, retyped or made nullable, a primary key changed, or a view's SQL
@@ -905,7 +910,7 @@ labels. *Profile columns* computes null counts, distinct counts, extremes,
 lengths, frequent values and value shapes with two queries; *AI label fields*
 asks the model to name each column's semantic type and proposes check drafts from
 a fixed mapping; *Recommend checks* derives check drafts from the profile itself
-and needs no model. Both only produce suggestions — nothing becomes a check until a
+and needs no model. These entry points only produce suggestions — nothing becomes a check until a
 person creates the check. When the table has proposals waiting, the tab also
 shows a **Suggestions awaiting review** card (it stays hidden otherwise): each
 row names the column, or the check draft's title, with the proposed semantic
@@ -922,19 +927,13 @@ a reviewer without it can still reject the draft.
 The **Suggestions** page is the review center. Suggestions arrive from three
 places:
 
-- **Draft with AI** on the Suggestions page: pick one or more tables (a single
-  target can also limit its columns), describe in your own words what must hold,
-  and submit. This starts a **background drafting job** on the server: you can
-  close the page or the browser tab and the model calls continue. The job appears
-  in the **AI drafting jobs** panel on the Suggestions page with its per-target
-  progress, how many suggestions it has queued, and any per-target error; an active
-  job can be canceled, which stops it after the target currently being drafted.
-  A failed target explains itself: the failure class (for example *Output limit*),
-  a plain-language next step, the provider/model, stop reason, token budget and
-  prompt size, and a **correlation ID** to quote in a support request. When runtime
-  LLM debug was enabled, *View raw request/response* shows the exact prompt and
-  model response (the debug log is kept seven days).
-- **Recommend checks** on a target workspace or a table's Data Quality tab: profile
+- **Quality agents.** An active agent's triage pass drafts checks for the
+  uncovered targets in its database scope, and an agent with the *Adopt*
+  capability can accept low-risk drafts on its owner's behalf under its adoption
+  guardrails (see [Quality agents](#quality-agents)). Agent drafts are ordinary
+  proposals in the queue; an automatic adoption is recorded on the agent and is
+  visible in its home.
+- **Recommend checks** on a table's Data Quality tab: profile
   the columns first, then derive checks and starting thresholds from those
   profiles. It uses no model and no provider, so it is available with model analysis
   off, and it is the only pass that proposes an observed threshold. The same button
@@ -945,9 +944,7 @@ places:
   analysis on; without it the button is not offered.
 
 The queue groups suggestions by target table and filters by status, kind, source
-and target scope. Suggestions produced by a finished drafting job appear like any
-other and are selected on the current page when the job completes. Select rows on
-the current page to work in bulk (up to 200 per submit):
+and target scope. Select rows on the current page to work in bulk (up to 200 per submit):
 
 - **Check drafts** — *Create checks* opens one dialog where you set severity,
   dimension and owner for the whole selection; expand a row to edit its
@@ -989,7 +986,7 @@ made-up bound.
 
 Suggestions are proposals about a fact, and the queue keeps **one pending proposal
 per proposal identity**: one per column for a label, one per check type plus the
-columns it covers for a check draft. Clicking *Suggest labels* or *Draft with AI*
+columns it covers for a check draft. Clicking *Suggest labels* or *Recommend checks*
 again therefore never adds a second copy: a check-draft proposal that is still
 pending is **refreshed** in place (the row keeps its identity, and its *refreshed*
 time moves), while a column that already has a pending label proposal is skipped
@@ -1004,18 +1001,15 @@ A generation pass also reconciles proposals with reality:
 - Check drafts already covered by a saved check are not queued, and a pending draft
   they cover is closed as *Superseded*.
 - Proposals you already accepted or rejected are not proposed again. *Regenerate*
-  (on the table's Data Quality tab and in the drafting workbench) re-analyzes those
-  columns and checks; it still refreshes rather than duplicates.
+  (on the table's Data Quality tab) re-analyzes those columns
+  and checks; it still refreshes rather than duplicates.
 - A pending proposal belongs to the pass that produced it. Running a different
   pass does not overwrite it: **AI label fields** will not put its default
-  parameters back over a recommendation's observed ones, and *Draft with AI* is not
-  overwritten by a derived pass either. The one exception is deliberate — a
+  parameters back over a recommendation's observed ones. The one exception is deliberate — a
   recommendation may replace a pending label-pass draft, whose parameters are the
   fixed defaults, with the thresholds it observed. *Regenerate* overrides this for
   the pass you are running. The queue write enforces this itself, so two passes
   running at the same moment cannot override each other.
-- Submitting the same drafting job twice while the first one is still pending or
-  running returns the first job instead of starting a second analysis.
 
 Because there is only ever one pending proposal per identity, accepting or
 rejecting acts on exactly that proposal: accepting a label writes it (and it will
@@ -1035,56 +1029,122 @@ Decided suggestions stay visible under *All statuses* with who decided them and
 their note. Nothing the model proposes is enabled or executed without a person
 creating the check, and the model never sees raw sample rows.
 
-## Agent sessions
+## Quality agents
 
-With the built-in agent runner enabled (Settings → Data Quality), each table,
-view, materialized view or external table can get one long-lived **agent
-session**: a continuous conversation the agent keeps for that target. A session
-is not a one-off run — every scheduled look, every failed check and every
-question you ask becomes a message in the same thread, and the agent continues
-from it.
+A **quality agent** is the built-in autonomous runtime for this workspace. It is
+not an API client and it has no token: an agent is one identity with one
+configuration — an owner, a set of databases, the capabilities to use, a report
+schedule, adoption guardrails and budgets — and the server runs it in-process.
+A workspace can have several agents with different scopes, and each one runs
+independently.
 
-- **Starting one**: open the table's data quality workspace and use **Start agent
-  session** in the Agent session card, or create it from the agent session list.
-  The target's database must be in the runner's database scope and an enabled
-  quality agent must exist.
-- **Automatic enrollment**: when *Automatic enrollment* is on, every table, view
-  and materialized view in the selected databases is discovered into a queue
-  instead of being started by hand. The runner admits a bounded number per hour
-  (10 by default), by priority: targets that already have checks or a recent
-  failure first, then targets other assets depend on, then the rest. A target
-  without any check gets one **triage**: the agent reads its schema, stored
-  profiles and consumers, drafts checks into the AI suggestions queue and records
-  what it concluded. The target then sleeps for its review interval (30 days by
-  default) and wakes again only when checks appear, a check fails or someone
-  asks. Every draft is a proposal a person approves; automatic enrollment never
-  enables a check or changes a rule itself. The queue page shows each target's
-  state, why it is waiting and its session, and lets you exclude a target or
-  retry it.
-- **What it does**: it wakes on a schedule (24 hours by default), on a failed or
-  errored check, and when you send it a message. It can read the target's plan,
-  recent executions and confirmed memories, record investigations and asset
-  facts, propose decisions (a person confirms them), block itself for a person,
-  or ask for an earlier wake. It cannot publish contracts, decide change requests,
-  edit checks or change settings.
-- **States**: *Enabled* (waiting or running), *Paused* (no new wakes), *Blocked*
-  (needs a person or a budget window; the reason is shown) and *Archived*
-  (tombstone; the conversation stays readable). "Running" is a lease, so the card
-  shows it live.
-- **Reading the conversation**: the session page groups messages by wake and
-  shows what the model received and produced, with a collapsible card for every
-  tool call and its result. A compaction card marks where older history was
-  summarized to free context. The page updates every couple of seconds while the
-  agent is running.
-- **Budget and cadence**: the runner card sets the hourly token budget, wakes per
-  hour, concurrent sessions, the compaction threshold (default 262,144 tokens),
-  the idle wake interval (default 86,400 seconds) and whether failed checks wake
-  the agent. A workspace that hits a budget shows a Blocked session with
-  `token-budget` or `wake-budget`; it recovers at the hour boundary.
-- **Events**: with *Wake the agent when a check fails* on (the default), a failed
-  or errored execution is appended to its target's session and wakes it
-  immediately. The same execution is never appended twice, and one session accepts
-  at most 20 events per hour.
+Everything an agent does is scoped to the tables and views of the databases you
+give it: it discovers them, watches them on a schedule, reacts to failed checks,
+drafts checks into the review queue and escalates to its owner when it needs a
+person.
+
+### Where agents live
+
+- **Data Quality → Agents** (`/data-quality/agents`) lists the agents you may
+  see: administrators see every agent, other members see the ones they own.
+- **An agent's home** is its working page: the conversation with its owner, its
+  **Patrol reports**, its **Needs you** attention list, its auto-adoption setting,
+  and its scope and state.
+- **Settings → Quality agents** (`/settings/quality-agents`) is where an
+  administrator creates and edits agents and turns the runtime on or off.
+- **Diagnostics** (`/data-quality/agents/{workspace}/{id}/diagnostics`) is an
+  administrator-only page with the agent's internal per-target sessions and their
+  transcripts. It is not part of the day-to-day product; its only action is
+  resuming a stuck session.
+
+### Turning the runtime on
+
+Settings → Quality agents has one workspace-wide switch, **Pause all agents** (the
+workspace agent-runtime switch). It starts paused; while it is on, no agent wakes,
+no report is generated and no failure event is delivered. Each agent also has its
+own state, so one agent can be paused without stopping the others.
+
+### Creating an agent
+
+An administrator creates an agent with:
+
+- **Owner** — the person the agent works for. The owner is the only person who can
+  talk to it; administrators can read its home, reports and attention list but
+  cannot hold a conversation with it.
+- **Database scope** — the databases the agent may watch. Every table, external
+  table, view and materialized view in those databases is discovered and either
+  triaged (no checks yet) or monitored. The target set is automatic; there is no
+  per-target enrollment screen.
+- **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept
+  low-risk drafts for the owner under the guardrails below) and *Patrol* (the
+  scheduled review of the scope and its reports).
+- **Report schedule** — off, daily or weekly, with a time, a time zone and (for
+  weekly) a weekday.
+- **Adoption guardrails** — off, paused or active; the rule types eligible, a
+  minimum model confidence, a daily ceiling, and whether critical assets may be
+  adopted. *Paused* creates an adopted check disabled for the owner to enable;
+  *Active* creates it enabled. The owner can turn adoption off or back to paused
+  from the agent's home; the rest is administrator-managed.
+- **Budgets** — tokens and wakes per hour, concurrent sessions, new sessions per
+  hour, active sessions and conversation messages per hour. Zero means the server
+  default; the server's hard cap still applies.
+
+Saving keeps the agent in **Draft** until an administrator starts it. An
+**Active** agent runs; a **Paused** agent keeps its configuration and identity but
+wakes nothing; a **Disabled** agent is permanent — create a new one instead.
+
+### What an agent does
+
+- **Discovers and triages.** New targets in scope are queued by priority, with
+  targets that already have checks or a recent failure first. A target without
+  checks gets one *triage*: the agent reads its schema, stored column profiles,
+  labels and lineage consumers, drafts checks into the suggestions review queue and
+  records what it concluded. That target then sleeps for its review interval
+  (about 30 days) and wakes again when checks are created on it, a check fails or
+  its owner asks.
+- **Monitors.** Covered targets are reviewed on the agent's schedule and when a
+  check fails or errors; each wake continues the same conversation for that
+  target. The agent can record verified asset facts to remember across wakes.
+- **Converses with its owner.** The owner's questions join the same long-lived
+  conversation. An agent without a configured model still answers with a
+  deterministic scope summary.
+- **Reports.** On its daily or weekly schedule the agent produces a deterministic
+  patrol report for its scope — scope health, targets and coverage, enabled checks,
+  executions by verdict, new and open problems, pending proposals — and appends a
+  "report ready" note to the conversation. Reports are generated from records;
+  they do not call a model, and there is no on-demand report.
+- **Escalates.** Three things become an **attention** item for the owner: a
+  conversation blocked on a person (needs-human, restart-limited or a
+  model-reported blocker), a proposal still waiting for review after an adoption
+  pass, and a report that found new failures or problems. The owner answers or
+  dismisses it from the agent's home; answering resumes the target's session (or
+  becomes a front-office message when the block was agent-level). The owner also
+  receives an in-app notification for each item.
+- **Does not write freely.** An agent cannot publish a contract, decide a proposal,
+  edit a check or change settings. Its only writes are the proposal and
+  asset-fact tools inside its own runtime, and an adopted check is created through
+  the normal check path under the guardrails above, owned by the agent's owner.
+
+### Budgets, blocks and diagnostics
+
+An agent that spends its hourly token or wake budget is **blocked** with
+`token-budget` or `wake-budget` and recovers at the hour boundary. A target whose
+database left the agent's scope is blocked with `out-of-scope`, and a target of a
+disabled agent with `agent-disabled`; both recover on their own once the cause is
+cleared. Other blocks need the owner. Blocked states appear in the attention list;
+the internal session list and transcripts are in the administrator diagnostics
+page, where a stuck session can be resumed.
+
+### External consumers
+
+There is no agent token and no external API through which an agent can be called
+or can write. Integrations that need quality data use the **MCP** server instead:
+its eight read-only quality tools expose the target directory, one target's checks
+and problems, the problem ledger, executions and their evidence, one object's
+trust signal, the lineage impact and consumption coverage. Those tools read what
+the checks recorded; they cannot create, change or run anything. See
+[mcp.md](mcp.md).
+
 
 ## Settings
 
@@ -1113,32 +1173,28 @@ Settings → LLM providers configures each provider profile, including **Max out
 tokens** (0 = server default 32,768; 256–131,072). It is the ceiling sent to the
 model for every data quality analysis using that profile; unused tokens are not
 charged. If the provider or model caps output lower, the request is rejected and
-the failed target reports a provider-status diagnostic. The DQ limits and the
+the failed analysis reports a provider-status diagnostic. The DQ limits and the
 usage card are the place to raise the daily/concurrency budget when the defaults
 are too low for your workload.
-Settings → Data Quality also holds the **agent runner** card: the runner switch,
-the database scope, the hourly token and wake budgets, concurrent sessions, the
-compaction threshold, the idle wake interval and the failed-check event switch.
-It also holds **Automatic enrollment** and its quotas: how many new automatic
-sessions may start per hour, how many targets may be active at once, how many
-days a triaged target sleeps before its next review, and what share of the wake
-budget is reserved for failed checks and people. Turning automatic enrollment on
-asks for confirmation because every table in the selected databases joins the
-queue. Its status line shows what is running and the runner's last tick; **Agent
-sessions** opens the session list and the **Enrollment** tab opens the queue.
+Settings → Quality agents (`/settings/quality-agents`) is the agent control panel:
+the **Pause all agents** workspace switch, the agent list, and the create/edit dialog
+for each agent (owner, database scope, capabilities, report schedule, adoption
+guardrails and budgets). It is the only place agent configuration lives — Settings
+→ Data Quality no longer carries agent fields — while the agent's home is where
+its owner talks to it, reads its reports and answers its attention.
 
 
 ## Retention
 
 Executions are kept 90 days, resolved issues 90 days, column profiles and the
-model result cache 7 days, decided or superseded suggestions 90 days, finished AI drafting jobs
-90 days, and captured raw LLM request/response debug entries 7 days; the
-maintenance runner prunes them. Checks, open issues and accepted labels are not
-pruned. Agent session transcripts (`quality_agent_message`) and their
-compaction checkpoints are **not pruned** in this release: context compaction
-only changes what the model reads, not the stored conversation, so a workspace
-with many monitored targets accumulates rows. The weekly-digest period table
-gains at most one row per week and is not pruned.
+model result cache 7 days, decided or superseded suggestions 90 days, and captured
+raw LLM request/response debug entries 7 days; the maintenance runner prunes them.
+Checks, open issues and accepted labels are not pruned. Agent conversation
+transcripts (`quality_agent_message`), per-agent reports and attention rows are
+**not pruned** in this release: context compaction only changes what the model
+reads, not the stored conversation, so a workspace with many monitored targets
+accumulates rows. The weekly-digest period table gains at most one row per week
+and is not pruned.
 
 ## Troubleshooting
 
@@ -1164,8 +1220,6 @@ gains at most one row per week and is not pruned.
 | A code is rejected although it is in my table | Workspace code-table membership is an exact, case-sensitive match (trailing spaces are ignored). A built-in standard with a code table must also pass that standard's own algorithm. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
-| An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is the provider profile's Max output tokens, default 32,768). Provider errors carry the provider/model and stop reason but not the provider's body; the server retries once at 4,096 tokens when a model rejects the requested budget, and if it is still rejected, lower the profile's Max output tokens or use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |
-| An AI drafting job stays queued or running | The server processes one job at a time; a queued job starts on the next runner tick (about five seconds). If the server restarted mid-job, the job is marked failed on startup and is not resumed — submit it again. |
 | An AI analysis is rejected as over quota | Settings → Data Quality → Today's AI usage shows used/limit and concurrency. Raise **Daily AI analyses** (L1+L2, max 1,000,000) or **Concurrent LLM calls** (1–64); the change applies to the next analysis without a restart. |
 | A model rejects the output budget | The provider profile's **Max output tokens** is above what that model accepts. The server first retries that request once at 4,096 tokens; if it is still rejected, lower the profile budget (Settings → LLM providers) or use a model with a larger output cap. The failure shows a provider-status diagnostic. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
@@ -1193,19 +1247,20 @@ gains at most one row per week and is not pruned.
 | A filter value with a time variable is rejected | A filter value must be one whole variable (`${today-7d}`); quoting it or mixing it with text is refused. Check the name (`now`/`today`/`yesterday`), the unit (`m`/`h`/`d`) and the size (at most 366 days). A date variable cannot be compared with a numeric column. |
 | The partition window looks a day off | Time variables resolve in the workspace's check time zone (Settings → Data Quality; empty means UTC). An integer partition column (`20261101`) is not a date to the engine — use a custom SQL check with an explicit cast. |
 | A long timeout still ended abandoned | The 15-minute batch deadline is the hard limit for one target's scan; a per-check timeout only bounds that check's own query. |
+| An agent never wakes | The workspace **Pause all agents** switch is on (the runtime is paused), the agent is not Active, or its database scope is empty. Its home shows the state; the diagnostics page shows its sessions. |
+| A target stays unmonitored or is slow to appear | Discovery and admission are automatic and bounded: a large scope is admitted in priority order (targets with checks or recent failures first), and a triaged target sleeps for its review interval. Narrow the agent's database scope if the whole scope should be watched sooner. |
+| A triaged target never wakes again | That is the design: after triage it sleeps for the review interval (about 30 days). It wakes again when a check is created on it, a check fails, or its owner asks. |
+| An agent is blocked with `token-budget` or `wake-budget` | The agent spent its hourly budget; it recovers at the next hour boundary. An administrator can raise the budget in Settings → Quality agents. |
+| An agent is blocked with `out-of-scope` or `agent-disabled` | Its database left the agent's scope, or the agent was disabled. Both recover once the cause is cleared; otherwise check the reason in the attention list. |
+| An agent is blocked with `needs-human` | The model reported the same blocker for three wakes. Open the attention item, fix the cause, then answer it to resume the target's session. |
+| The owner cannot talk to the agent | Only the owner may; administrators can read but not send. Change the owner in Settings → Quality agents, or ask the owner. |
+| The agent does not react to a failed check | The target has no enabled session yet (it may still be queued), triage has not run on it, or the workspace runtime is paused. |
+| An agent's answer is a fixed scope summary | No LLM provider is configured, so the agent falls back to its deterministic summary. Configure one under Settings → LLM providers. |
+| The conversation does not show an agent's target work | The owner conversation is the front office only; per-target sessions and their transcripts are in the administrator diagnostics page. |
+| Where did the old session or enrollment pages go? | They were replaced by the per-agent home and the administrator diagnostics page. The old `/data-quality/agent*` compatibility routes were removed, so open the agents list instead. |
 
 The API surface, resource names, data model and invariants are documented for
 maintainers in [.agents/docs/data-quality.md](../.agents/docs/data-quality.md).
-
-| An agent session never wakes | The runner switch is off, the target's database is not in the runner scope, agent autonomy is off, no enabled quality agent exists, or the session is paused/blocked. The session card shows the blocked code and reason. |
-| A target sits pending in the enrollment queue | Automatic enrollment is off, the hourly admission or active-set limit is reached, no model is configured for a triage, no enabled quality agent exists, or autonomy is off. The queue row's blocked reason says which. Targets are admitted by priority, so a low-priority target can wait while higher-priority ones are processed. |
-| A triaged target never wakes again | That is the design: after triage it sleeps for the review interval (30 days by default). It wakes immediately again when checks are created on it, a check fails, or you use **Retry**. |
-| An agent session is blocked with `token-budget` or `wake-budget` | The workspace spent its hourly budget; it recovers at the next hour boundary. Raise the limit in the runner card if this is routine. |
-| An agent session is blocked with `out-of-scope` or `agent-disabled` | Its database left the runner scope or its agent was disabled. Both recover on their own once the cause is cleared; otherwise check the reason on the card and fix it. |
-| An agent session is blocked with `needs-human` | The model reported the same blocker for three wakes, a triage session has no model configured, or an event reference no longer resolves. Check the reason on the card, fix the cause, then resume. |
-| A question stays blocked with "needs the model" | No LLM provider is configured, so only the deterministic survey can run. Configure one under Settings → LLM providers and resume the session. |
-| The agent does not react to a failed check | *Wake the agent when a check fails* is off, the target has no enabled session, or the session already accepted 20 events this hour. |
-| The conversation does not show older messages | History older than the last compaction is summarized in the compaction card; load earlier pages from the session page. The transcript is kept, but model context is compacted. |
 
 ## See also
 

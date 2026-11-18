@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -38,11 +37,6 @@ func WithTableContext(reader TableContextReader) Option {
 // draft in the review queue.
 type AdoptionFunc func(ctx context.Context, session *store.QualityAgentSessionMessage)
 
-// WithAdoption gives the engine the auto-adoption pass a triage wake runs.
-func WithAdoption(adoption AdoptionFunc) Option {
-	return func(engine *Engine) { engine.adoption = adoption }
-}
-
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.
 func WithDraftChecks(draft DraftChecksFunc) Option {
 	return func(engine *Engine) { engine.draftChecks = draft }
@@ -51,12 +45,6 @@ func WithDraftChecks(draft DraftChecksFunc) Option {
 // WithPermissionChecker gives the engine the IAM checker a tool call is gated by.
 func WithPermissionChecker(checker tool.PermissionChecker) Option {
 	return func(engine *Engine) { engine.checker = checker }
-}
-
-// WithActionSettings gives the engine the settings loader its autonomy policy
-// reads. Without it the action-policy gate is skipped.
-func WithActionSettings(load func(ctx context.Context) (dataquality.Settings, error)) Option {
-	return func(engine *Engine) { engine.actionSettings = load }
 }
 
 // WithMaxParallelReads lets one model batch run this many parallel-safe reads at

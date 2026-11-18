@@ -67,16 +67,12 @@ func validateMeta(t Tool) error {
 		if strings.TrimSpace(t.Meta.Permission) == "" {
 			return fmt.Errorf("tool %q is permission-authorized but declares no permission", t.Name)
 		}
-	case AuthzAction:
-		if strings.TrimSpace(t.Meta.Action) == "" {
-			return fmt.Errorf("tool %q is action-authorized but declares no action", t.Name)
-		}
 	case AuthzInternal:
 		if t.Meta.Scope != ScopeProductOnly {
 			return fmt.Errorf("tool %q is internal but is not product-only", t.Name)
 		}
-		if t.Meta.Permission != "" || t.Meta.Action != "" {
-			return fmt.Errorf("tool %q is internal but declares a permission or action", t.Name)
+		if t.Meta.Permission != "" {
+			return fmt.Errorf("tool %q is internal but declares a permission", t.Name)
 		}
 	default:
 		return fmt.Errorf("tool %q has an unknown authorization mode", t.Name)

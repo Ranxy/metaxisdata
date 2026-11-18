@@ -26,12 +26,12 @@ func TestRuleTypeForDraftConfig(t *testing.T) {
 func TestAdoptionAllowsRuleType(t *testing.T) {
 	t.Parallel()
 
-	config := &store.QualityAgentConfigMessage{}
-	require.True(t, adoptionAllowsRuleType(config, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
-	require.False(t, adoptionAllowsRuleType(config, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
+	agent := &store.QualityAgentMessage{}
+	require.True(t, adoptionAllowsRuleType(agent, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
+	require.False(t, adoptionAllowsRuleType(agent, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
 	require.True(t, agentcapability.IsLowRiskRuleType(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
 
-	config.AdoptionRuleTypes = []int16{int16(storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL)}
-	require.True(t, adoptionAllowsRuleType(config, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
-	require.False(t, adoptionAllowsRuleType(config, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
+	agent.AdoptionRuleTypes = []int16{int16(storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL)}
+	require.True(t, adoptionAllowsRuleType(agent, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL))
+	require.False(t, adoptionAllowsRuleType(agent, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
 }

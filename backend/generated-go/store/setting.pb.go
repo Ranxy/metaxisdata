@@ -591,50 +591,12 @@ type DataQualitySetting struct {
 	// IANA time zone the time variables of check filters and custom SQL are
 	// resolved in, for example "Asia/Shanghai". Empty means UTC.
 	TimeZone string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
-	// Whether the workspace's agent principals may write plan declarations and
-	// proposed change requests. Off by default: the kill switch returns the
-	// workspace to human-only edits, and the agent still reads.
-	AgentAutonomyEnabled bool `protobuf:"varint,14,opt,name=agent_autonomy_enabled,json=agentAutonomyEnabled,proto3" json:"agent_autonomy_enabled,omitempty"`
-	// Whether the built-in quality agent runner may run sessions. Off by default.
+	// Whether the built-in quality agent runner may run sessions. Off by default:
+	// turning it off stops agent wakes, reports and failure events. Per-agent
+	// budgets and scope live on the agent.
 	AgentRunnerEnabled bool `protobuf:"varint,15,opt,name=agent_runner_enabled,json=agentRunnerEnabled,proto3" json:"agent_runner_enabled,omitempty"`
-	// The databases the runner may see and work on, as database resource names
-	// (instances/{instance}/databases/{database}). Empty means none.
-	AgentRunnerDatabases []string `protobuf:"bytes,16,rep,name=agent_runner_databases,json=agentRunnerDatabases,proto3" json:"agent_runner_databases,omitempty"`
-	// The workspace's hourly token ceiling for runner sessions. Zero means the
-	// server default (100000000).
-	AgentRunnerTokensPerHour int64 `protobuf:"varint,17,opt,name=agent_runner_tokens_per_hour,json=agentRunnerTokensPerHour,proto3" json:"agent_runner_tokens_per_hour,omitempty"`
-	// How many session wakes the workspace may start per hour. Zero means the
-	// server default (20).
-	AgentRunnerWakesPerHour int32 `protobuf:"varint,20,opt,name=agent_runner_wakes_per_hour,json=agentRunnerWakesPerHour,proto3" json:"agent_runner_wakes_per_hour,omitempty"`
-	// How many sessions may run at once. Zero means the server default (2).
-	AgentRunnerMaxConcurrentSessions int32 `protobuf:"varint,21,opt,name=agent_runner_max_concurrent_sessions,json=agentRunnerMaxConcurrentSessions,proto3" json:"agent_runner_max_concurrent_sessions,omitempty"`
-	// The context token threshold that triggers compaction of a session's older
-	// messages. Zero means the server default (262144).
-	AgentRunnerCompactionTriggerTokens int32 `protobuf:"varint,22,opt,name=agent_runner_compaction_trigger_tokens,json=agentRunnerCompactionTriggerTokens,proto3" json:"agent_runner_compaction_trigger_tokens,omitempty"`
-	// How long an idle session sleeps between wakes, in seconds. Zero means the
-	// server default (86400).
-	AgentRunnerIdleWakeSeconds int32 `protobuf:"varint,23,opt,name=agent_runner_idle_wake_seconds,json=agentRunnerIdleWakeSeconds,proto3" json:"agent_runner_idle_wake_seconds,omitempty"`
-	// Whether a failed check execution appends an event to its target's session and
-	// wakes it. On by default.
-	AgentRunnerAutoInvestigateFailures *bool `protobuf:"varint,24,opt,name=agent_runner_auto_investigate_failures,json=agentRunnerAutoInvestigateFailures,proto3,oneof" json:"agent_runner_auto_investigate_failures,omitempty"`
-	// Whether the runner enrolls every monitorable object in its database scope into
-	// its queue. Off by default: turning it on is the workspace's opt-in to automatic
-	// triage and monitoring.
-	AgentRunnerAutoEnroll bool `protobuf:"varint,25,opt,name=agent_runner_auto_enroll,json=agentRunnerAutoEnroll,proto3" json:"agent_runner_auto_enroll,omitempty"`
-	// How many automatic sessions the admission path may create per hour. Zero means
-	// the server default (10).
-	AgentRunnerMaxNewSessionsPerHour int32 `protobuf:"varint,26,opt,name=agent_runner_max_new_sessions_per_hour,json=agentRunnerMaxNewSessionsPerHour,proto3" json:"agent_runner_max_new_sessions_per_hour,omitempty"`
-	// How many enrollments may be active (triaging or monitoring) at once. Zero means
-	// the server default (100).
-	AgentRunnerMaxActiveSessions int32 `protobuf:"varint,27,opt,name=agent_runner_max_active_sessions,json=agentRunnerMaxActiveSessions,proto3" json:"agent_runner_max_active_sessions,omitempty"`
-	// How many days a triaged target sleeps before it is reviewed again. Zero means
-	// the server default (30).
-	AgentRunnerDormantReviewDays int32 `protobuf:"varint,28,opt,name=agent_runner_dormant_review_days,json=agentRunnerDormantReviewDays,proto3" json:"agent_runner_dormant_review_days,omitempty"`
-	// The percentage of the hourly wake budget reserved for events and people; the
-	// admission path only spends what remains. Zero means the server default (50).
-	AgentRunnerEventBudgetPercent int32 `protobuf:"varint,29,opt,name=agent_runner_event_budget_percent,json=agentRunnerEventBudgetPercent,proto3" json:"agent_runner_event_budget_percent,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -758,102 +720,11 @@ func (x *DataQualitySetting) GetTimeZone() string {
 	return ""
 }
 
-func (x *DataQualitySetting) GetAgentAutonomyEnabled() bool {
-	if x != nil {
-		return x.AgentAutonomyEnabled
-	}
-	return false
-}
-
 func (x *DataQualitySetting) GetAgentRunnerEnabled() bool {
 	if x != nil {
 		return x.AgentRunnerEnabled
 	}
 	return false
-}
-
-func (x *DataQualitySetting) GetAgentRunnerDatabases() []string {
-	if x != nil {
-		return x.AgentRunnerDatabases
-	}
-	return nil
-}
-
-func (x *DataQualitySetting) GetAgentRunnerTokensPerHour() int64 {
-	if x != nil {
-		return x.AgentRunnerTokensPerHour
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerWakesPerHour() int32 {
-	if x != nil {
-		return x.AgentRunnerWakesPerHour
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerMaxConcurrentSessions() int32 {
-	if x != nil {
-		return x.AgentRunnerMaxConcurrentSessions
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerCompactionTriggerTokens() int32 {
-	if x != nil {
-		return x.AgentRunnerCompactionTriggerTokens
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerIdleWakeSeconds() int32 {
-	if x != nil {
-		return x.AgentRunnerIdleWakeSeconds
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerAutoInvestigateFailures() bool {
-	if x != nil && x.AgentRunnerAutoInvestigateFailures != nil {
-		return *x.AgentRunnerAutoInvestigateFailures
-	}
-	return false
-}
-
-func (x *DataQualitySetting) GetAgentRunnerAutoEnroll() bool {
-	if x != nil {
-		return x.AgentRunnerAutoEnroll
-	}
-	return false
-}
-
-func (x *DataQualitySetting) GetAgentRunnerMaxNewSessionsPerHour() int32 {
-	if x != nil {
-		return x.AgentRunnerMaxNewSessionsPerHour
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerMaxActiveSessions() int32 {
-	if x != nil {
-		return x.AgentRunnerMaxActiveSessions
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerDormantReviewDays() int32 {
-	if x != nil {
-		return x.AgentRunnerDormantReviewDays
-	}
-	return 0
-}
-
-func (x *DataQualitySetting) GetAgentRunnerEventBudgetPercent() int32 {
-	if x != nil {
-		return x.AgentRunnerEventBudgetPercent
-	}
-	return 0
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest
@@ -1379,7 +1250,8 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x0e\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe7\n" +
+	"\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1394,22 +1266,8 @@ const file_store_setting_proto_rawDesc = "" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12L\n" +
 	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
-	"\ttime_zone\x18\r \x01(\tR\btimeZone\x124\n" +
-	"\x16agent_autonomy_enabled\x18\x0e \x01(\bR\x14agentAutonomyEnabled\x120\n" +
-	"\x14agent_runner_enabled\x18\x0f \x01(\bR\x12agentRunnerEnabled\x124\n" +
-	"\x16agent_runner_databases\x18\x10 \x03(\tR\x14agentRunnerDatabases\x12>\n" +
-	"\x1cagent_runner_tokens_per_hour\x18\x11 \x01(\x03R\x18agentRunnerTokensPerHour\x12<\n" +
-	"\x1bagent_runner_wakes_per_hour\x18\x14 \x01(\x05R\x17agentRunnerWakesPerHour\x12N\n" +
-	"$agent_runner_max_concurrent_sessions\x18\x15 \x01(\x05R agentRunnerMaxConcurrentSessions\x12R\n" +
-	"&agent_runner_compaction_trigger_tokens\x18\x16 \x01(\x05R\"agentRunnerCompactionTriggerTokens\x12B\n" +
-	"\x1eagent_runner_idle_wake_seconds\x18\x17 \x01(\x05R\x1aagentRunnerIdleWakeSeconds\x12W\n" +
-	"&agent_runner_auto_investigate_failures\x18\x18 \x01(\bH\x00R\"agentRunnerAutoInvestigateFailures\x88\x01\x01\x127\n" +
-	"\x18agent_runner_auto_enroll\x18\x19 \x01(\bR\x15agentRunnerAutoEnroll\x12P\n" +
-	"&agent_runner_max_new_sessions_per_hour\x18\x1a \x01(\x05R agentRunnerMaxNewSessionsPerHour\x12F\n" +
-	" agent_runner_max_active_sessions\x18\x1b \x01(\x05R\x1cagentRunnerMaxActiveSessions\x12F\n" +
-	" agent_runner_dormant_review_days\x18\x1c \x01(\x05R\x1cagentRunnerDormantReviewDays\x12H\n" +
-	"!agent_runner_event_budget_percent\x18\x1d \x01(\x05R\x1dagentRunnerEventBudgetPercentB)\n" +
-	"'_agent_runner_auto_investigate_failuresJ\x04\b\x12\x10\x13J\x04\b\x13\x10\x14R\x1bagent_runner_goals_per_hourR!agent_runner_max_concurrent_goals\"\x9e\x01\n" +
+	"\ttime_zone\x18\r \x01(\tR\btimeZone\x120\n" +
+	"\x14agent_runner_enabled\x18\x0f \x01(\bR\x12agentRunnerEnabledJ\x04\b\x0e\x10\x0fJ\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x17\x10\x18J\x04\b\x18\x10\x19J\x04\b\x19\x10\x1aJ\x04\b\x1a\x10\x1bJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1eR\x16agent_autonomy_enabledR\x16agent_runner_databasesR\x1bagent_runner_goals_per_hourR!agent_runner_max_concurrent_goalsR\x1cagent_runner_tokens_per_hourR\x1bagent_runner_wakes_per_hourR$agent_runner_max_concurrent_sessionsR&agent_runner_compaction_trigger_tokensR\x1eagent_runner_idle_wake_secondsR&agent_runner_auto_investigate_failuresR\x18agent_runner_auto_enrollR&agent_runner_max_new_sessions_per_hourR agent_runner_max_active_sessionsR agent_runner_dormant_review_daysR!agent_runner_event_budget_percent\"\x9e\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x1c.metaxisdata.store.DayOfWeekR\tdayOfWeek\x12\x12\n" +
@@ -1534,7 +1392,6 @@ func file_store_setting_proto_init() {
 	if File_store_setting_proto != nil {
 		return
 	}
-	file_store_setting_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

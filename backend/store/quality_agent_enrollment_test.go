@@ -19,8 +19,7 @@ func TestScanQualityAgentEnrollment(t *testing.T) {
 		int64(5), "enr-res", "ws", int64(3), "i;d;public;t", int16(4), "instances/i/databases/d",
 		int16(2), int16(2), int32(450), "rules,failing", "admission-limit",
 		(*int64)(nil), int32(1), (*time.Time)(nil), (*time.Time)(nil),
-		discovered, discovered, (*int32)(nil), (*time.Time)(nil), int32(3),
-		discovered, discovered,
+		discovered, discovered, int32(3), discovered, discovered,
 	}
 	enrollment, err := scanQualityAgentEnrollment(&fakeScanner{values: values})
 	require.NoError(t, err)
@@ -94,23 +93,22 @@ func TestAdmissibleEnrollmentQueryPinsTheRoundRobinPredicate(t *testing.T) {
 	requirePlaceholdersMatchArgs(t, strings.ReplaceAll(admissibleQualityAgentEnrollmentsQuery, qualityAgentEnrollmentColumns, "id"), []any{"ws", int64(3), int16(1), 20})
 }
 
-// The scope statements must leave a human's pause and a needs-human block alone, and
-// their placeholders must match the arguments the reconciler passes. The session
-// statement takes no database list: every placeholder it numbers must be referenced.
+// The scope statements must leave a needs-human block alone, and their placeholders
+// must match the arguments the reconciler passes. The session statement takes no
+// database list: every placeholder it numbers must be referenced.
 func TestReconcileScopeQueryPinsSafetyPredicates(t *testing.T) {
 	t.Parallel()
 
 	for _, fragment := range []string{
-		"state <> $4",
 		"(s.state <> $3 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))",
 	} {
 		require.Contains(t, blockOutOfScopeSessionsQuery, fragment)
 	}
 	requirePlaceholdersMatchArgs(t, blockOutOfScopeSessionsQuery, []any{
-		"ws", int16(5), int16(3), int16(2), int64(3),
+		"ws", int16(5), int16(3), int64(3),
 	})
 	requirePlaceholdersMatchArgs(t, reconcileOutOfScopeEnrollmentsQuery, []any{
-		"ws", int64(3), []string{"instances/i/databases/d"}, int16(5), int16(4),
+		"ws", int64(3), []string{"instances/i/databases/d"}, int16(5),
 	})
 	requirePlaceholdersMatchArgs(t, restoreInScopeEnrollmentsQuery, []any{
 		"ws", int64(3), []string{"instances/i/databases/d"}, int16(1), int16(5),

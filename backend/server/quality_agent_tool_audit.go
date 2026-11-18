@@ -36,7 +36,7 @@ func (s agentToolAuditSink) RecordToolCall(ctx context.Context, entry tool.Audit
 		status.Message = audit.BoundAuditString(entry.Failure.Message)
 		severity = storepb.AuditLogSeverity_ERROR
 		switch entry.Failure.Code {
-		case tool.CodeActionDenied, tool.CodePermissionDenied, tool.CodeUnauthenticated:
+		case tool.CodePermissionDenied, tool.CodeUnauthenticated:
 			status.Code = int32(connect.CodePermissionDenied)
 			severity = storepb.AuditLogSeverity_WARNING
 		default:

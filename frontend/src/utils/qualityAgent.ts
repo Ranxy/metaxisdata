@@ -35,14 +35,6 @@ export function qualityAgentRoute(name: string) {
     : { name: "QualityAgent", params };
 }
 
-/** Builds the diagnostics route for a full resource name. */
-export function qualityAgentDiagnosticsRoute(name: string) {
-  const params = qualityAgentRouteParams(name);
-  return params === undefined
-    ? { name: "QualityAgents" }
-    : { name: "QualityAgentDiagnostics", params };
-}
-
 /** Builds the full resource name from route params. */
 export function qualityAgentName(workspace: string, agentId: string): string {
   return `workspaces/${workspace}/qualityAgents/${agentId}`;

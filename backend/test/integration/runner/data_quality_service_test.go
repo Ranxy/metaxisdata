@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,8 +15,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -76,17 +77,6 @@ func setupQualityMySQLFixture(t *testing.T, withReadOnlyDataSource bool) *qualit
 		notifications:  v1connect.NewNotificationServiceClient(httpClient, env.BaseURL),
 		settings:       v1connect.NewSettingServiceClient(httpClient, env.BaseURL),
 	}
-}
-
-// qualityAdminUserName resolves the bootstrapped administrator's resource name,
-// which every agent created by the scenarios must name as its owner.
-func qualityAdminUserName(t *testing.T, fixture *qualityFixture) string {
-	t.Helper()
-	client := v1connect.NewUserServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
-	response, err := client.GetCurrentUser(fixture.ctx,
-		withToken(fixture.env.AdminToken(), &emptypb.Empty{}))
-	require.NoError(t, err)
-	return response.Msg.GetName()
 }
 
 // createRule creates one table-level rule through the public API.
@@ -3522,739 +3512,790 @@ func TestDataQualityTargetWithoutScheduleRowRealServerIntegration(t *testing.T) 
 	require.Nil(t, detail.Msg.GetSummary().GetSchedule())
 }
 
-// TestDataQualityChangeRequestRealServerIntegration covers the approve-or-reject
-// batch: a pending proposal and a plan declaration applied per item, a request
-// expiring on a stale base, a rejection carrying its taxonomy, and the rule that a
-// critical target decides one item at a time.
-func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
-	fixture := setupQualityMySQLFixture(t, true)
-	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		fixture.usersGUID, qualityRowCountConfig(1))
-
-	getContract := func() *v1pb.QualityContract {
-		t.Helper()
-		response, err := fixture.dataQuality.GetQualityContract(fixture.ctx,
-			withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRequest{
-				Parent:     "workspaces/-",
-				TargetGuid: fixture.usersGUID,
-				MetaType:   v1pb.MetaType_TABLE,
-			}))
-		require.NoError(t, err, "get the quality contract")
-		return response.Msg
-	}
-	publish := func(note string) {
-		t.Helper()
-		_, err := fixture.dataQuality.PublishQualityContract(fixture.ctx,
-			withToken(fixture.env.AdminToken(), &v1pb.PublishQualityContractRequest{
-				Parent:     "workspaces/-",
-				TargetGuid: fixture.usersGUID,
-				MetaType:   v1pb.MetaType_TABLE,
-				Note:       note,
-			}))
-		require.NoError(t, err, "publish the quality contract")
-	}
-	create := func(items []*v1pb.QualityChangeRequestItem, baseVersion int32) (*v1pb.QualityChangeRequest, error) {
-		response, err := fixture.dataQuality.CreateQualityChangeRequest(fixture.ctx,
-			withToken(fixture.env.AdminToken(), &v1pb.CreateQualityChangeRequestRequest{
-				Parent:      "workspaces/-",
-				TargetGuid:  fixture.usersGUID,
-				MetaType:    v1pb.MetaType_TABLE,
-				BaseVersion: baseVersion,
-				Items:       items,
-			}))
-		if err != nil {
-			return nil, err
-		}
-		return response.Msg, nil
-	}
-	decide := func(name string, decision v1pb.DecideQualityChangeRequestRequest_Decision, reasons ...v1pb.QualityChangeRejectionReason) (*v1pb.QualityChangeRequest, error) {
-		response, err := fixture.dataQuality.DecideQualityChangeRequest(fixture.ctx,
-			withToken(fixture.env.AdminToken(), &v1pb.DecideQualityChangeRequestRequest{
-				Name:             name,
-				Decision:         decision,
-				RejectionReasons: reasons,
-			}))
-		if err != nil {
-			return nil, err
-		}
-		return response.Msg, nil
-	}
-
-	publish("first")
-	suggestion := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
-		qualityDraftSuggestionPayload("suggested row count"))
-	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
-	require.NoError(t, err)
-	suggestionName := common.FormatWorkspace(workspaceID) + "/qualitySuggestions/" + suggestion.ResourceID
-
-	// One batch carries both kinds: a pending proposal and a declaration.
-	request, err := create([]*v1pb.QualityChangeRequestItem{
-		{
-			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
-			Suggestion: suggestionName,
-			Dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-		},
-		{
-			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-			MinChecks: 1,
-		},
-	}, 1)
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED, request.GetState())
-	require.Equal(t, int32(1), request.GetBaseVersion())
-	require.Len(t, request.GetItems(), 2)
-
-	// Creating the same batch again returns the same request instead of a second one.
-	duplicateCreate, err := create([]*v1pb.QualityChangeRequestItem{
-		{
-			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
-			Suggestion: suggestionName,
-			Dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-		},
-		{
-			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-			MinChecks: 1,
-		},
-	}, 1)
-	require.NoError(t, err)
-	require.Equal(t, request.GetName(), duplicateCreate.GetName(), "a retry returns the existing request")
-
-	// Reading it back by name is the review surface.
-	read, err := fixture.dataQuality.GetQualityChangeRequest(fixture.ctx,
-		withToken(fixture.env.AdminToken(), &v1pb.GetQualityChangeRequestRequest{Name: request.GetName()}))
-	require.NoError(t, err)
-	require.Equal(t, request.GetName(), read.Msg.GetName())
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED, read.Msg.GetState())
-
-	applied, err := decide(request.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, applied.GetState(),
-		"item results: %v", applied.GetItemResults())
-	require.Len(t, applied.GetItemResults(), 2)
-	for _, result := range applied.GetItemResults() {
-		require.Equal(t, v1pb.QualityChangeRequestItemResult_STATUS_APPLIED, result.GetStatus(), result.GetDetail())
-	}
-	require.NotEmpty(t, applied.GetItemResults()[0].GetAppliedResourceId(), "the accepted proposal created a rule")
-
-	// The proposal was accepted through the existing path, and the declaration moved
-	// into the staged plan.
-	accepted, err := fixture.dataQuality.ListQualitySuggestions(fixture.ctx,
-		withToken(fixture.env.AdminToken(), &v1pb.ListQualitySuggestionsRequest{
-			Parent: "workspaces/-",
-			Status: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
-		}))
-	require.NoError(t, err)
-	require.Len(t, accepted.Msg.GetQualitySuggestions(), 1)
-	contract := getContract()
-	require.NotNil(t, contract.GetStagedPlan(), "the declaration applied to the target")
-	foundFreshness := false
-	for _, declaration := range contract.GetStagedPlan().GetCoverage() {
-		if declaration.GetProperty() == v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS {
-			foundFreshness = true
-		}
-	}
-	require.True(t, foundFreshness)
-
-	// A request written against the version before that publish is expired, not
-	// silently rebased.
-	publish("declared")
-	stale, err := create([]*v1pb.QualityChangeRequestItem{{
-		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-		MinChecks: 2,
-	}}, 1)
-	require.NoError(t, err)
-	expired, err := decide(stale.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_EXPIRED, expired.GetState())
-
-	// Rejection records the structured taxonomy that later decisions learn from.
-	rejected, err := create([]*v1pb.QualityChangeRequestItem{{
-		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-		MinChecks: 1,
-	}}, 2)
-	require.NoError(t, err)
-	refused, err := decide(rejected.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT,
-		v1pb.QualityChangeRejectionReason_QUALITY_CHANGE_REJECTION_REASON_NOISE)
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_REJECTED, refused.GetState())
-	require.Equal(t, []v1pb.QualityChangeRejectionReason{
-		v1pb.QualityChangeRejectionReason_QUALITY_CHANGE_REJECTION_REASON_NOISE,
-	}, refused.GetRejectionReasons())
-	_, err = decide(rejected.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
-	require.Error(t, err, "a decided request cannot be decided again")
-
-	// A rejection without a taxonomy reason is refused: the structured reason is the
-	// part later decisions learn from.
-	noReason, err := create([]*v1pb.QualityChangeRequestItem{{
-		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-		MinChecks: 2,
-	}}, 2)
-	require.NoError(t, err)
-	_, err = decide(noReason.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT)
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-
-	// A critical target decides one item at a time: a batch would hide changes from
-	// the approver.
-	settings := getContract().GetSettings()
-	critical := &v1pb.QualityContractSettings{
-		Filter:          settings.GetFilter(),
-		DefaultSeverity: settings.GetDefaultSeverity(),
-		Intent: &v1pb.QualityContractIntent{
-			Criticality: v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL,
-		},
-	}
-	_, err = fixture.dataQuality.UpdateQualityContract(fixture.ctx,
-		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
-			Parent:     "workspaces/-",
-			TargetGuid: fixture.usersGUID,
-			MetaType:   v1pb.MetaType_TABLE,
-			Settings:   critical,
-		}))
-	require.NoError(t, err)
-	publish("critical")
-	_, err = create([]*v1pb.QualityChangeRequestItem{
-		{
-			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-			MinChecks: 1,
-		},
-		{
-			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-			MinChecks: 1,
-		},
-	}, 3)
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
-// TestDataQualityAgentRealServerIntegration covers the agent principal: an
-// administrator creates it and gets a bearer token once, the token authenticates as
-// an independent principal whose role can read quality plans but not administration,
-// rotation invalidates the old token, disabling the agent ends it, and the workspace
-// kill-switch setting round-trips.
+// TestDataQualityAgentRealServerIntegration covers the built-in agent's identity and
+// lifecycle now that the external-agent surface is gone. An administrator creates the
+// agent with no bearer credential, the store binds its service-account principal to
+// the internal qualityAgent role and the user directory hides that principal, a
+// non-administrator owner can list and read exactly the agent they own, the state
+// machine is the only lifecycle truth with DISABLED terminal, and the workspace runner
+// switch round-trips. The reflection block pins the final client surface: the 17
+// surviving agent RPCs are callable and the deleted token, enrollment, session-get,
+// memory and action-policy RPCs cannot be called again without failing here.
 func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	fixture := setupQualityMySQLFixture(t, false)
 	adminToken := fixture.env.AdminToken()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	userClient := v1connect.NewUserServiceClient(httpClient, fixture.env.BaseURL)
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
 
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "stranger")
+
+	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
 			Parent:       "workspaces/-",
 			DisplayName:  "quality agent",
-			Description:  "proposes plan declarations",
-			Owner:        qualityAdminUserName(t, fixture),
-			Databases:    []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
+			Description:  "surveys the fixture database",
+			Owner:        ownerName,
+			Databases:    scope,
 			Capabilities: []string{"suggest", "patrol"},
 		}))
-	require.NoError(t, err)
-	require.NotEmpty(t, created.Msg.GetToken(), "the token is returned once")
-	require.True(t, created.Msg.GetAgent().GetEnabled())
-	require.Equal(t, "quality agent", created.Msg.GetAgent().GetDisplayName())
-	require.NotEmpty(t, created.Msg.GetAgent().GetName())
+	require.NoError(t, err, "an administrator creates the built-in agent")
+	agent := created.Msg.GetAgent()
+	require.NotNil(t, agent)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DRAFT, agent.GetState(),
+		"creation without start leaves a draft")
+	require.Equal(t, "quality agent", agent.GetDisplayName())
+	require.Equal(t, "surveys the fixture database", agent.GetDescription())
+	require.Equal(t, ownerName, agent.GetOwner())
+	require.Equal(t, scope, agent.GetDatabases())
+	require.ElementsMatch(t, []string{"suggest", "patrol"}, agent.GetCapabilities())
+	require.NotEmpty(t, agent.GetConversation(), "the agent's conversation is created with it")
+	// CreateQualityAgentResponse carries no token field any more and
+	// RotateQualityAgentToken does not exist, so there is no credential to assert: the
+	// compile-time surface below is the assertion.
 
-	// The token is a real principal: the same HTTP endpoint accepts it, and the
-	// agent role can read quality plans.
-	agentClient := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 10 * time.Second}, fixture.env.BaseURL)
-	_, err = agentClient.ListQualityPlans(fixture.ctx,
-		withToken(created.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
+	// The agent is an internal principal: the store binds it to the qualityAgent role
+	// and the user directory hides it, while an audit reference still resolves.
+	resourceID := resourceIDFromName(agent.GetName())
+	stored, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceID)
 	require.NoError(t, err)
+	require.NotNil(t, stored)
+	principalName := common.FormatUserUID(stored.PrincipalID)
 
-	// Administration stays administrator-only: the diagnostics read needs agents.manage.
-	_, err = agentClient.ListQualityAgentSessions(fixture.ctx,
-		withToken(created.Msg.GetToken(), &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	policy, err := iamClient.GetWorkspaceIamPolicy(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceIamPolicyRequest{}))
+	require.NoError(t, err)
+	require.True(t, iamPolicyBindsMember(policy.Msg.GetPolicy(), "roles/qualityAgent", principalName),
+		"creating the agent binds its principal to roles/qualityAgent")
 
-	// Rotation mints a new token and ends the old one.
-	rotated, err := fixture.dataQuality.RotateQualityAgentToken(fixture.ctx,
-		withToken(adminToken, &v1pb.RotateQualityAgentTokenRequest{Name: created.Msg.GetAgent().GetName()}))
+	principal, err := userClient.GetUser(fixture.ctx,
+		withToken(adminToken, &v1pb.GetUserRequest{Name: principalName}))
 	require.NoError(t, err)
-	require.NotEmpty(t, rotated.Msg.GetToken())
-	_, err = agentClient.ListQualityPlans(fixture.ctx,
-		withToken(created.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
-	require.Error(t, err, "the old token is invalidated by a rotation")
-	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
-	_, err = agentClient.ListQualityPlans(fixture.ctx,
-		withToken(rotated.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err, "the rotated token authenticates")
-
-	// Disabling the agent ends every token; the row stays for the audit trail.
-	disabled, err := fixture.dataQuality.DisableQualityAgent(fixture.ctx,
-		withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: created.Msg.GetAgent().GetName()}))
+	require.Equal(t, v1pb.UserType_SERVICE_ACCOUNT, principal.Msg.GetUserType(),
+		"the agent principal is an internal service account, not a person")
+	users, err := userClient.ListUsers(fixture.ctx,
+		withToken(adminToken, &v1pb.ListUsersRequest{PageSize: 1000}))
 	require.NoError(t, err)
-	require.False(t, disabled.Msg.GetEnabled())
-	_, err = agentClient.ListQualityPlans(fixture.ctx,
-		withToken(rotated.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
-
-	listed, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
-		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err)
-	require.Len(t, listed.Msg.GetQualityAgents(), 1)
-	require.False(t, listed.Msg.GetQualityAgents()[0].GetEnabled())
-
-	// The workspace kill switch is a setting: off by default, writable by an
-	// administrator.
-	settings, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
-		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
-	require.NoError(t, err)
-	require.False(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled(), "agent writes are off by default")
-	_, err = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
-		withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
-				AgentAutonomyEnabled: true,
-			}},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-		}))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting:    &v1pb.WorkspaceProfileSetting{},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-		}))
-	})
-	settings, err = fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
-		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
-	require.NoError(t, err)
-	require.True(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled())
-}
-
-// TestDataQualityAgentWritesRealServerIntegration covers the writes an agent owns:
-// staging a plan declaration, proposing a change request and recording an
-// investigation, all gated by the workspace kill switch, and the agent never being
-// able to decide its own proposal.
-func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
-	fixture := setupQualityMySQLFixture(t, true)
-	adminToken := fixture.env.AdminToken()
-	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		fixture.usersGUID, qualityRowCountConfig(1))
-	publish := func() {
-		t.Helper()
-		_, err := fixture.dataQuality.PublishQualityContract(fixture.ctx,
-			withToken(adminToken, &v1pb.PublishQualityContractRequest{
-				Parent:     "workspaces/-",
-				TargetGuid: fixture.usersGUID,
-				MetaType:   v1pb.MetaType_TABLE,
-			}))
-		require.NoError(t, err, "publish the quality contract")
+	for _, user := range users.Msg.GetUsers() {
+		require.NotEqual(t, principalName, user.GetName(),
+			"the user directory (and the owner picker behind it) hides internal agent principals")
 	}
-	publish()
 
-	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
-		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:       "workspaces/-",
-			DisplayName:  "writing agent",
-			Owner:        qualityAdminUserName(t, fixture),
-			Databases:    []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
-			Capabilities: []string{"suggest", "patrol"},
-		}))
+	// Visibility follows ownership for members; an administrator sees every agent.
+	ownerList, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
 	require.NoError(t, err)
-	agentToken := created.Msg.GetToken()
-	agentClient := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 10 * time.Second}, fixture.env.BaseURL)
+	require.Contains(t, qualityAgentNames(ownerList.Msg.GetQualityAgents()), agent.GetName(),
+		"the owner lists the agent they own")
+	ownerRead, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, ownerName, ownerRead.Msg.GetOwner())
 
-	stage := func(baseVersion int32) (*v1pb.QualityContract, error) {
-		response, err := agentClient.StageQualityPlan(fixture.ctx,
-			withToken(agentToken, &v1pb.StageQualityPlanRequest{
-				Parent:      "workspaces/-",
-				TargetGuid:  fixture.usersGUID,
-				MetaType:    v1pb.MetaType_TABLE,
-				BaseVersion: baseVersion,
-				Coverage: []*v1pb.QualityPlanCoverage{{
-					Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-					MinChecks: 1,
-				}},
-			}))
+	adminList, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
+	require.NoError(t, err)
+	require.Contains(t, qualityAgentNames(adminList.Msg.GetQualityAgents()), agent.GetName(),
+		"an administrator lists every agent")
+	_, err = fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+
+	strangerList, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(strangerToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
+	require.NoError(t, err)
+	require.NotContains(t, qualityAgentNames(strangerList.Msg.GetQualityAgents()), agent.GetName(),
+		"another member does not see an agent they do not own")
+	_, err = fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(strangerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.Error(t, err, "a non-owner member cannot read the agent")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err),
+		"a non-owner sees nothing of the agent, not even its existence")
+
+	start := func(token string) (*v1pb.QualityAgent, error) {
+		response, err := fixture.dataQuality.StartQualityAgent(fixture.ctx,
+			withToken(token, &v1pb.StartQualityAgentRequest{Name: agent.GetName()}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+	pause := func(token string) (*v1pb.QualityAgent, error) {
+		response, err := fixture.dataQuality.PauseQualityAgent(fixture.ctx,
+			withToken(token, &v1pb.PauseQualityAgentRequest{Name: agent.GetName()}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+	disable := func() (*v1pb.QualityAgent, error) {
+		response, err := fixture.dataQuality.DisableQualityAgent(fixture.ctx,
+			withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: agent.GetName()}))
 		if err != nil {
 			return nil, err
 		}
 		return response.Msg, nil
 	}
 
-	// The action policy is readable and reflects the switch: with autonomy off, the
-	// proposal card is refused before the agent tries anything.
-	policy, err := fixture.dataQuality.GetQualityActionPolicy(fixture.ctx,
-		withToken(adminToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err)
-	require.Len(t, policy.Msg.GetActions(), 21)
-	require.False(t, policy.Msg.GetAgentAutonomyEnabled())
-	require.Equal(t, "DENIED_AUTONOMY_OFF", actionDecision(policy.Msg, "A0-4"))
-	require.True(t, actionRedLine(policy.Msg, "A3-1"))
-	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
-
-	// A person's memory write is not gated by the agent switch.
-	humanFact, err := fixture.dataQuality.CreateQualityMemory(fixture.ctx,
-		withToken(adminToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
-			Subject:   fixture.usersGUID,
-			Statement: "approximately 19k rows",
-			Evidence:  []*v1pb.QualityInvestigationEvidence{{Kind: "PROFILE", Reference: "profiles/users"}},
-		}))
-	require.NoError(t, err, "the agent switch does not gate human memory writes")
-	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED, humanFact.Msg.GetStatus())
-	require.Equal(t, v1pb.QualityMemorySource_QUALITY_MEMORY_SOURCE_HUMAN, humanFact.Msg.GetSource())
-	require.NotEmpty(t, humanFact.Msg.GetConfirmedBy())
-
-	// The kill switch also gates the agent's memory writes.
-	_, err = agentClient.CreateQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
-			Subject:   fixture.usersGUID,
-			Statement: "roughly 20k rows",
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "PROFILE", Reference: "profiles/users",
-			}},
-		}))
-	require.Error(t, err)
+	// State transitions are the lifecycle: a draft has nothing to pause, start is
+	// idempotent, the owner may pause, and DISABLED is terminal.
+	_, err = pause(adminToken)
+	require.Error(t, err, "a draft agent is not running; nothing to pause")
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
-
-	// The kill switch is the workspace's total gate: off (the default) refuses the
-	// agent's declaration write before anything changes.
-	_, err = stage(1)
-	require.Error(t, err)
+	active, err := start(adminToken)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, active.GetState())
+	activeAgain, err := start(adminToken)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, activeAgain.GetState(),
+		"starting an active agent is a no-op")
+	paused, err := pause(ownerToken)
+	require.NoError(t, err, "the owner may pause the agent they own")
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_PAUSED, paused.GetState())
+	pausedAgain, err := pause(ownerToken)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_PAUSED, pausedAgain.GetState(),
+		"pausing a paused agent is a no-op")
+	resumed, err := start(adminToken)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, resumed.GetState())
+	_, err = pause(adminToken)
+	require.NoError(t, err)
+	disabled, err := disable()
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, disabled.GetState())
+	_, err = start(adminToken)
+	require.Error(t, err, "a disabled agent can never be started again")
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
-	// A person writing while the switch is off is unaffected.
-	humanProposal, err := fixture.dataQuality.CreateQualityChangeRequest(fixture.ctx,
-		withToken(adminToken, &v1pb.CreateQualityChangeRequestRequest{
-			Parent:      "workspaces/-",
-			TargetGuid:  fixture.usersGUID,
-			MetaType:    v1pb.MetaType_TABLE,
-			BaseVersion: 1,
-			Items: []*v1pb.QualityChangeRequestItem{{
-				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-				MinChecks: 2,
-			}},
-		}))
-	require.NoError(t, err, "the agent switch does not gate human writes")
-	require.Equal(t, v1pb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN, humanProposal.Msg.GetSource())
-	// The agent cannot propose either while the switch is off.
-	_, err = agentClient.CreateQualityChangeRequest(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityChangeRequestRequest{
-			Parent:      "workspaces/-",
-			TargetGuid:  fixture.usersGUID,
-			MetaType:    v1pb.MetaType_TABLE,
-			BaseVersion: 1,
-			Items: []*v1pb.QualityChangeRequestItem{{
-				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
-				MinChecks: 2,
-			}},
-		}))
-	require.Error(t, err)
+	_, err = pause(adminToken)
+	require.Error(t, err, "a disabled agent cannot be paused either")
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
-
-	t.Cleanup(func() {
-		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting:    &v1pb.WorkspaceProfileSetting{},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-		}))
-	})
-	_, err = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
-		withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
-			Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
-				AgentAutonomyEnabled: true,
-			}},
-			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
-		}))
+	disabledAgain, err := disable()
+	require.NoError(t, err, "disabling a disabled agent converges on the same terminal row")
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, disabledAgain.GetState())
+	readBack, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
 	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, readBack.Msg.GetState())
 
-	// A declaration written against a version that is no longer current is refused,
-	// not rebased.
-	_, err = stage(0)
-	require.Error(t, err)
-	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
-
-	// With the switch on, the proposal card is allowed and the red lines stay closed.
-	policy, err = fixture.dataQuality.GetQualityActionPolicy(fixture.ctx,
-		withToken(adminToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err)
-	require.True(t, policy.Msg.GetAgentAutonomyEnabled())
-	require.Equal(t, "ALLOWED", actionDecision(policy.Msg, "A0-4"))
-	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
-	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A2-1"))
-	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A1-1"))
-	require.Equal(t, "ALLOWED", actionDecision(policy.Msg, "A0-3"), "the agent may record an investigation")
-
-	// The agent can read the same policy and see its own verdicts: proposal allowed,
-	// person-only writes not exposed.
-	agentPolicy, err := agentClient.GetQualityActionPolicy(fixture.ctx,
-		withToken(agentToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err)
-	require.Len(t, agentPolicy.Msg.GetActions(), 21)
-	require.Equal(t, "ALLOWED", actionDecision(agentPolicy.Msg, "A0-4"))
-	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(agentPolicy.Msg, "A2-1"))
-
-	staged, err := stage(1)
-	require.NoError(t, err, "the enabled agent stages a declaration")
-	// Staging a declaration does not publish: the version is where it was.
-	require.Equal(t, int32(1), staged.GetPublishedVersion())
-	require.NotNil(t, staged.GetStagedPlan())
-	found := false
-	for _, declaration := range staged.GetStagedPlan().GetCoverage() {
-		if declaration.GetProperty() == v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS {
-			found = true
-		}
+	// The final client surface: the 17 agent RPCs survived, the 20 external-agent RPCs
+	// did not. Reflection makes the deletion an assertion instead of a compile-only
+	// promise.
+	clientSurface := reflect.TypeOf((*v1connect.DataQualityServiceClient)(nil)).Elem()
+	for _, removed := range []string{
+		"RotateQualityAgentToken",
+		"GetQualityAgentReport", "GetQualityAgentSession",
+		"GetQualityAgentRunnerStatus", "GetQualityAgentMetrics",
+		"ListQualityAgentEnrollments", "GetQualityAgentEnrollmentSummary",
+		"GetQualityActionPolicy", "StageQualityPlan",
+		"CreateQualityChangeRequest", "GetQualityChangeRequest",
+		"ListQualityChangeRequests", "DecideQualityChangeRequest",
+		"CreateQualityInvestigation", "GetQualityInvestigation", "ListQualityInvestigations",
+		"CreateQualityMemory", "ListQualityMemories", "ConfirmQualityMemory", "DeleteQualityMemory",
+	} {
+		_, present := clientSurface.MethodByName(removed)
+		require.Falsef(t, present, "the removed RPC %s is back on the client surface", removed)
 	}
-	require.True(t, found)
+	for _, kept := range []string{
+		"CreateQualityAgent", "GetQualityAgent", "ListQualityAgents", "UpdateQualityAgent",
+		"StartQualityAgent", "PauseQualityAgent", "DisableQualityAgent",
+		"SetQualityAgentAdoption", "SendQualityAgentMessage",
+		"ListQualityAgentConversationMessages", "ListQualityAgentReports",
+		"ListQualityAgentAttentions", "ReplyQualityAgentAttention", "DismissQualityAgentAttention",
+		"ListQualityAgentSessions", "ListQualityAgentSessionMessages", "ResumeQualityAgentSession",
+	} {
+		_, present := clientSurface.MethodByName(kept)
+		require.Truef(t, present, "the surviving agent RPC %s is missing from the client surface", kept)
+	}
 
-	// The agent can propose a batch, attributed to the agent principal, but cannot
-	// decide it: deciding is a human permission.
-	proposed, err := agentClient.CreateQualityChangeRequest(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityChangeRequestRequest{
-			Parent:      "workspaces/-",
-			TargetGuid:  fixture.usersGUID,
-			MetaType:    v1pb.MetaType_TABLE,
-			BaseVersion: 1,
-			Items: []*v1pb.QualityChangeRequestItem{{
-				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-				MinChecks: 2,
-			}},
+	// The workspace switch is a setting: off by default, writable by an administrator.
+	settings, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.False(t, settings.Msg.GetDataQuality().GetAgentRunnerEnabled(),
+		"the built-in agent runner is off by default")
+	enableQualityAgentRunner(t, fixture)
+	settings, err = fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.True(t, settings.Msg.GetDataQuality().GetAgentRunnerEnabled())
+	setQualityAgentRunner(t, fixture, false)
+	settings, err = fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.False(t, settings.Msg.GetDataQuality().GetAgentRunnerEnabled(),
+		"the switch round-trips back off")
+}
+
+// TestDataQualityAgentWritesRealServerIntegration covers the writes the in-process
+// agent owns now that no HTTP caller can act as the agent. The owner's conversation
+// gets a deterministic reply with no model configured, adoption round-trips under the
+// owner/administrator split, the enrollment runner admits the covered fixture table as
+// a MONITOR session whose deterministic wake records an asset fact through the tool
+// pipeline, the administrator diagnostics read the transcript and recover a parked
+// session, a blocked escalation is answered by resuming its session, and the patrol
+// report runner generates a daily report over a failing period and escalates its
+// anomaly for the owner to dismiss. None of the deleted change-request, investigation,
+// memory-admin, token, action-policy or enrollment RPCs is called.
+func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "writer-owner")
+
+	// Coverage makes the enrollment runner admit the fixture table as a MONITOR session
+	// (a TRIAGE admission would need a model); the published contract gives the
+	// deterministic wake a plan to survey, so it records one uncovered property as an
+	// agent asset fact.
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		fixture.usersGUID, &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_SchemaDrift{
+			SchemaDrift: &v1pb.SchemaDriftConfig{},
+		}})
+	storedRule, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{
+		ResourceID: ptrString(resourceIDFromName(rule.GetName())),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, storedRule)
+	_, err = fixture.dataQuality.PublishQualityContract(fixture.ctx,
+		withToken(adminToken, &v1pb.PublishQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err, "publish the fixture table's quality contract")
+
+	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:       "workspaces/-",
+			DisplayName:  "writing agent",
+			Owner:        ownerName,
+			Databases:    scope,
+			Capabilities: []string{"suggest", "adopt", "patrol"},
+			// Reporting starts off; the scenario turns it on once the queue row exists so
+			// the first report already covers an enrolled target.
+			ReportSchedule: &v1pb.QualityAgentReportSchedule{
+				Frequency: v1pb.QualityAgentReportFrequency_QUALITY_AGENT_REPORT_FREQUENCY_OFF,
+			},
+			Start: true,
 		}))
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_AGENT, proposed.Msg.GetSource())
-	_, err = agentClient.DecideQualityChangeRequest(fixture.ctx,
-		withToken(agentToken, &v1pb.DecideQualityChangeRequestRequest{
-			Name:     proposed.Msg.GetName(),
-			Decision: v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE,
+	agent := created.Msg.GetAgent()
+	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, agent.GetState())
+	agentResourceID := resourceIDFromName(agent.GetName())
+	storedAgent, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, agentResourceID)
+	require.NoError(t, err)
+	require.NotNil(t, storedAgent)
+
+	// The runner switch is the workspace's gate for every built-in agent loop.
+	enableQualityAgentRunner(t, fixture)
+
+	// The owner's question is answered without a model: the conversation wake records a
+	// deterministic scope summary, and the front office never exposes raw tool calls.
+	sent, err := fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "Which tables are in scope?",
+			RequestId:   "dq-agent-integration-1",
 		}))
-	require.Error(t, err, "an agent cannot approve its own proposal")
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER, sent.Msg.GetRole())
+	require.Equal(t, "Which tables are in scope?", sent.Msg.GetContent())
+	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(adminToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "an administrator cannot speak as the owner",
+		}))
+	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 
-	// A human decides it; the per-item result appears on the request.
-	decided, err := fixture.dataQuality.DecideQualityChangeRequest(fixture.ctx,
-		withToken(adminToken, &v1pb.DecideQualityChangeRequestRequest{
-			Name:     proposed.Msg.GetName(),
-			Decision: v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE,
+	var reply *v1pb.QualityAgentSessionMessage
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
+			withToken(ownerToken, &v1pb.ListQualityAgentConversationMessagesRequest{
+				Parent:   agent.GetName(),
+				PageSize: 100,
+			}))
+		if err != nil {
+			return false
+		}
+		for _, message := range response.Msg.GetQualityAgentConversationMessages() {
+			if message.GetRole() == v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT &&
+				strings.Contains(message.GetContent(), "Scope:") {
+				reply = message
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 250*time.Millisecond,
+		"the deterministic conversation wake never answered: %s", fixture.env.ServerLogs())
+	require.Empty(t, reply.GetToolCalls(),
+		"the owner's conversation stays product content, not the model's raw tool calls")
+	adminConversation, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentConversationMessagesRequest{
+			Parent:   agent.GetName(),
+			PageSize: 100,
+		}))
+	require.NoError(t, err, "an administrator may read the agent conversation")
+	require.NotEmpty(t, adminConversation.Msg.GetQualityAgentConversationMessages())
+
+	// Adoption is the owner's guardrail: they may turn it off or back to PAUSED, while
+	// ACTIVE stays an administrator decision.
+	adoptionPaused, err := fixture.dataQuality.SetQualityAgentAdoption(fixture.ctx,
+		withToken(ownerToken, &v1pb.SetQualityAgentAdoptionRequest{
+			Name:     agent.GetName(),
+			Adoption: &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_PAUSED},
 		}))
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, decided.Msg.GetState())
-
-	// The agent records an investigation: evidence references, a verdict and the
-	// cost, attributed to the agent principal, idempotently.
-	investigation, err := agentClient.CreateQualityInvestigation(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
-			Parent:           "workspaces/-",
-			TargetGuid:       fixture.usersGUID,
-			MetaType:         v1pb.MetaType_TABLE,
-			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
-			TriggerReference: "qualityExecutions/1",
-			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE,
-			Summary:          "the upstream batch was short",
-			Hypotheses: []*v1pb.QualityInvestigationHypothesis{{
-				Statement: "upstream delivered fewer rows", Status: "CONFIRMED",
-			}},
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "EXECUTION", Reference: "qualityExecutions/1",
-			}},
-			PromptTokens: 120, CompletionTokens: 40,
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_PAUSED,
+		adoptionPaused.Msg.GetAdoption().GetMode())
+	_, err = fixture.dataQuality.SetQualityAgentAdoption(fixture.ctx,
+		withToken(ownerToken, &v1pb.SetQualityAgentAdoptionRequest{
+			Name:     agent.GetName(),
+			Adoption: &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE},
+		}))
+	require.Error(t, err, "only an administrator may enable automatic adoption")
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	adoptionActive, err := fixture.dataQuality.SetQualityAgentAdoption(fixture.ctx,
+		withToken(adminToken, &v1pb.SetQualityAgentAdoptionRequest{
+			Name:     agent.GetName(),
+			Adoption: &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE},
 		}))
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED, investigation.Msg.GetStatus())
-	require.Equal(t, v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, investigation.Msg.GetVerdict())
-	require.Len(t, investigation.Msg.GetEvidence(), 1)
-	require.NotEmpty(t, investigation.Msg.GetCreatedBy())
-
-	// A retry with the same work product returns the recorded investigation.
-	retried, err := agentClient.CreateQualityInvestigation(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
-			Parent:           "workspaces/-",
-			TargetGuid:       fixture.usersGUID,
-			MetaType:         v1pb.MetaType_TABLE,
-			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
-			TriggerReference: "qualityExecutions/1",
-			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE,
-			Summary:          "the upstream batch was short",
-			Hypotheses: []*v1pb.QualityInvestigationHypothesis{{
-				Statement: "upstream delivered fewer rows", Status: "CONFIRMED",
-			}},
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "EXECUTION", Reference: "qualityExecutions/1",
-			}},
-			PromptTokens: 120, CompletionTokens: 40,
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE,
+		adoptionActive.Msg.GetAdoption().GetMode())
+	adoptionOff, err := fixture.dataQuality.SetQualityAgentAdoption(fixture.ctx,
+		withToken(ownerToken, &v1pb.SetQualityAgentAdoptionRequest{
+			Name:     agent.GetName(),
+			Adoption: &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_OFF},
 		}))
 	require.NoError(t, err)
-	require.Equal(t, investigation.Msg.GetName(), retried.Msg.GetName())
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_OFF,
+		adoptionOff.Msg.GetAdoption().GetMode())
 
-	// An investigation cannot claim a change request that does not exist.
+	// The enrollment runner admits the covered table on its next tick and the session
+	// runner wakes it; both are real runner loops, so the wait is bounded by their
+	// 60-second and 3-second ticks.
+	session := waitForQualityAgentTargetSession(t, fixture, agent.GetName(), fixture.usersGUID)
+	require.Equal(t, v1pb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, session.GetMode())
+	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, session.GetState())
+
+	// Diagnostics are administrator-only.
+	_, err = fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
+	require.Error(t, err, "the session diagnostics are not an owner surface")
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	_, err = fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The deterministic monitor wake surveys the published plan and records the gap as an
+	// asset fact through the agent's tool path, attributed to its internal principal.
+	survey := waitForQualityAgentSessionMessage(t, fixture, session.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
+		return message.GetRole() == v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE &&
+			strings.Contains(message.GetContent(), "deterministic survey")
+	})
+	require.NotEmpty(t, survey.GetContent())
+	var fact *store.QualityMemoryMessage
+	require.Eventually(t, func() bool {
+		facts, err := fixture.env.Store.ListQualityMemories(fixture.ctx,
+			&store.FindQualityMemoryMessage{Subject: &fixture.usersGUID})
+		if err != nil {
+			return false
+		}
+		for _, candidate := range facts {
+			if candidate.Kind == storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT &&
+				candidate.Source == storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT &&
+				candidate.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
+				fact = candidate
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 250*time.Millisecond,
+		"the deterministic monitor wake recorded no asset fact: %s", fixture.env.ServerLogs())
+	require.Contains(t, fact.Statement, "uncovered propert")
+	require.NotNil(t, fact.CreatedBy)
+	require.Equal(t, int32(storedAgent.PrincipalID), *fact.CreatedBy,
+		"the asset fact is attributed to the agent's internal principal")
+
+	// Build the report period the runner reads: a daily 00:00 UTC report covers
+	// yesterday, so a completed failing execution there makes the period unhealthy.
+	insertFailedQualityExecution(t, fixture, storedRule,
+		time.Now().UTC().Truncate(24*time.Hour).Add(-12*time.Hour))
+	updated, err := fixture.dataQuality.UpdateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateQualityAgentRequest{
+			QualityAgent: &v1pb.QualityAgent{
+				Name: agent.GetName(),
+				ReportSchedule: &v1pb.QualityAgentReportSchedule{
+					Frequency: v1pb.QualityAgentReportFrequency_QUALITY_AGENT_REPORT_FREQUENCY_DAILY,
+					Time:      "00:00",
+					Timezone:  "UTC",
+				},
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"report_schedule"}},
+		}))
+	require.NoError(t, err, "turn the daily patrol report on")
+	require.Equal(t, v1pb.QualityAgentReportFrequency_QUALITY_AGENT_REPORT_FREQUENCY_DAILY,
+		updated.Msg.GetReportSchedule().GetFrequency())
+
+	// Administrator diagnostics: a stuck session is recovered through the resume RPC.
+	sessionResourceID := resourceIDFromName(session.GetName())
+	parkSession := func() *store.QualityAgentSessionMessage {
+		var parked *store.QualityAgentSessionMessage
+		require.Eventually(t, func() bool {
+			fresh, err := fixture.env.Store.GetQualityAgentSession(fixture.ctx, sessionResourceID)
+			if err != nil || fresh == nil ||
+				fresh.State != storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED ||
+				fresh.LeaseUntil != nil {
+				return false
+			}
+			blocked, applied, err := fixture.env.Store.UpdateQualityAgentSessionState(fixture.ctx,
+				fresh.ResourceID, fresh.Revision,
+				storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
+				"needs-human", "a person must decide", nil)
+			if err != nil || !applied {
+				return false
+			}
+			parked = blocked
+			return true
+		}, 30*time.Second, 100*time.Millisecond,
+			"the fixture could not park the session: %s", fixture.env.ServerLogs())
+		return parked
+	}
+	parked := parkSession()
+	_, err = fixture.dataQuality.ResumeQualityAgentSession(fixture.ctx,
+		withToken(ownerToken, &v1pb.ResumeQualityAgentSessionRequest{
+			Name:             session.GetName(),
+			ExpectedRevision: parked.Revision,
+		}))
+	require.Error(t, err, "resuming a session is administrator recovery, not an owner action")
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	resumed, err := fixture.dataQuality.ResumeQualityAgentSession(fixture.ctx,
+		withToken(adminToken, &v1pb.ResumeQualityAgentSessionRequest{
+			Name:             session.GetName(),
+			ExpectedRevision: parked.Revision,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, resumed.Msg.GetState())
+	require.Empty(t, resumed.Msg.GetBlockedCode())
+
+	// The resumed session wakes once more (the resume advanced its wake); let that wake
+	// settle so the second park is not racing it.
+	require.Eventually(t, func() bool {
+		fresh, err := fixture.env.Store.GetQualityAgentSession(fixture.ctx, sessionResourceID)
+		if err != nil || fresh == nil {
+			return false
+		}
+		return fresh.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED &&
+			fresh.LeaseUntil == nil && fresh.WakeCount > parked.WakeCount
+	}, 30*time.Second, 100*time.Millisecond,
+		"the resumed session never finished its wake: %s", fixture.env.ServerLogs())
+
+	// An owner escalation is answered through the reply RPC: the attention resolves, the
+	// reply lands on the target session as the owner's ASK, and the session resumes. The
+	// runner writes this row when a session parks for a person; a model is unavailable
+	// here, so the fixture opens the escalation the runner would have opened.
 	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)
-	missingActionRef := common.FormatWorkspace(workspaceID) + "/qualityChangeRequests/missing"
-	_, err = agentClient.CreateQualityInvestigation(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
-			Parent:           "workspaces/-",
-			TargetGuid:       fixture.usersGUID,
-			MetaType:         v1pb.MetaType_TABLE,
-			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_ISSUE,
-			TriggerReference: "qualityIssues/1",
-			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE,
-			Evidence:         []*v1pb.QualityInvestigationEvidence{{Kind: "ISSUE", Reference: "qualityIssues/1"}},
-			ActionRefs:       []string{missingActionRef},
+	parked = parkSession()
+	escalation, createdAttention, err := fixture.env.Store.CreateQualityAgentAttention(fixture.ctx,
+		&store.QualityAgentAttentionMessage{
+			WorkspaceID: workspaceID,
+			AgentID:     storedAgent.ID,
+			Kind:        store.QualityAgentAttentionKindBlocked,
+			SessionID:   &parked.ID,
+			Title:       "The agent needs a decision",
+			Question:    "Should this target stay covered?",
+			DedupeKey:   "blocked:" + sessionResourceID + ":needs-human",
+			CreatedAt:   time.Now().UTC(),
+		})
+	require.NoError(t, err)
+	require.True(t, createdAttention)
+	escalationName := common.FormatWorkspace(workspaceID) + "/qualityAgentAttentions/" + escalation.ResourceID
+	openAttentions, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
+			Parent:   agent.GetName(),
+			Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
+			PageSize: 50,
 		}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.NoError(t, err)
+	require.Contains(t, qualityAgentAttentionNames(openAttentions.Msg.GetQualityAgentAttentions()), escalationName,
+		"the owner lists the open escalation")
+	replied, err := fixture.dataQuality.ReplyQualityAgentAttention(fixture.ctx,
+		withToken(ownerToken, &v1pb.ReplyQualityAgentAttentionRequest{
+			Name:        escalationName,
+			MessageBody: "Keep it covered; the sparse batch is expected.",
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_RESOLVED, replied.Msg.GetStatus())
+	require.Equal(t, ownerName, replied.Msg.GetResolvedBy())
+	require.Equal(t, session.GetName(), replied.Msg.GetSession(),
+		"the escalation points at the session the owner's answer resumes")
+	answer := waitForQualityAgentSessionMessage(t, fixture, session.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
+		return message.GetOrigin() == v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK &&
+			message.GetContent() == "Keep it covered; the sparse batch is expected."
+	})
+	require.NotEmpty(t, answer.GetContent())
 
-	listedInvestigations, err := fixture.dataQuality.ListQualityInvestigations(fixture.ctx,
-		withToken(adminToken, &v1pb.ListQualityInvestigationsRequest{Parent: "workspaces/-"}))
-	require.NoError(t, err)
-	require.Len(t, listedInvestigations.Msg.GetQualityInvestigations(), 1)
+	// The patrol report runner generates the daily report on its own tick; the owner may
+	// read it and its anomaly escalation, which they dismiss.
+	var report *v1pb.QualityAgentReport
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentReports(fixture.ctx,
+			withToken(adminToken, &v1pb.ListQualityAgentReportsRequest{
+				Parent:   agent.GetName(),
+				PageSize: 10,
+			}))
+		if err != nil || len(response.Msg.GetQualityAgentReports()) == 0 {
+			return false
+		}
+		report = response.Msg.GetQualityAgentReports()[0]
+		return true
+	}, 150*time.Second, 500*time.Millisecond,
+		"the agent report runner never generated the daily patrol report: %s", fixture.env.ServerLogs())
+	require.Equal(t, v1pb.QualityAgentReportPeriod_QUALITY_AGENT_REPORT_PERIOD_DAILY, report.GetPeriodKind())
+	require.NotEmpty(t, report.GetPeriodKey())
+	require.GreaterOrEqual(t, report.GetTargetCount(), int32(1))
+	require.Equal(t, int32(1), report.GetCoveredTargetCount())
+	require.Equal(t, int32(1), report.GetExecutionCount())
+	require.Equal(t, int32(1), report.GetFailedCount())
+	require.NotEmpty(t, report.GetBodyMarkdown())
+	ownerReports, err := fixture.dataQuality.ListQualityAgentReports(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentReportsRequest{
+			Parent:   agent.GetName(),
+			PageSize: 10,
+		}))
+	require.NoError(t, err, "the owner may read the patrol reports")
+	require.NotEmpty(t, ownerReports.Msg.GetQualityAgentReports())
 
-	// An asset fact is knowledge an agent observes, so it is recorded confirmed; a
-	// decision is a judgment, so the agent's version stays proposed for a person.
-	assetFact, err := agentClient.CreateQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
-			Subject:   fixture.usersGUID,
-			Statement: "roughly 20k rows",
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "PROFILE", Reference: "profiles/users",
-			}},
+	var anomaly *v1pb.QualityAgentAttention
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
+			withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
+				Parent:   agent.GetName(),
+				Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
+				PageSize: 50,
+			}))
+		if err != nil {
+			return false
+		}
+		for _, attention := range response.Msg.GetQualityAgentAttentions() {
+			if attention.GetKind() == v1pb.QualityAgentAttentionKind_QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY {
+				anomaly = attention
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 250*time.Millisecond,
+		"the report runner never escalated the failing period: %s", fixture.env.ServerLogs())
+	dismissed, err := fixture.dataQuality.DismissQualityAgentAttention(fixture.ctx,
+		withToken(ownerToken, &v1pb.DismissQualityAgentAttentionRequest{Name: anomaly.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_DISMISSED, dismissed.Msg.GetStatus())
+	require.Equal(t, ownerName, dismissed.Msg.GetResolvedBy())
+	dismissedList, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
+			Parent:   agent.GetName(),
+			Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_DISMISSED,
+			PageSize: 50,
 		}))
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED, assetFact.Msg.GetStatus())
-	require.Equal(t, v1pb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT, assetFact.Msg.GetSource())
-
-	// A newer fact supersedes the previous one instead of overwriting it.
-	secondFact, err := agentClient.CreateQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
-			Subject:   fixture.usersGUID,
-			Statement: "roughly 21k rows",
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "PROFILE", Reference: "profiles/users",
-			}},
-		}))
-	require.NoError(t, err)
-	superseded, err := fixture.dataQuality.ListQualityMemories(fixture.ctx,
-		withToken(adminToken, &v1pb.ListQualityMemoriesRequest{
-			Parent: "workspaces/-",
-			Status: v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED,
-		}))
-	require.NoError(t, err)
-	// The human fact and the agent's first fact were both superseded by newer facts.
-	require.Len(t, superseded.Msg.GetQualityMemories(), 2)
-	supersededNames := []string{
-		superseded.Msg.GetQualityMemories()[0].GetName(),
-		superseded.Msg.GetQualityMemories()[1].GetName(),
-	}
-	require.Contains(t, supersededNames, assetFact.Msg.GetName())
-	require.Contains(t, supersededNames, humanFact.Msg.GetName())
-
-	decisionMemory, err := agentClient.CreateQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
-			Subject:   "inst;db;public;orders|rule|r1",
-			Statement: "rejected as noise: the upstream batch is deliberately sparse",
-			Evidence: []*v1pb.QualityInvestigationEvidence{{
-				Kind: "ISSUE", Reference: "qualityIssues/1",
-			}},
-		}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED, decisionMemory.Msg.GetStatus())
-
-	// Only a person turns a proposed judgment into knowledge.
-	confirmed, err := fixture.dataQuality.ConfirmQualityMemory(fixture.ctx,
-		withToken(adminToken, &v1pb.ConfirmQualityMemoryRequest{
-			Name:     decisionMemory.Msg.GetName(),
-			Decision: v1pb.ConfirmQualityMemoryRequest_DECISION_CONFIRM,
-		}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED, confirmed.Msg.GetStatus())
-	require.NotEmpty(t, confirmed.Msg.GetConfirmedBy())
-	// Confirming a proposal supersedes the previous confirmed memory of that subject,
-	// so exactly one decision stays current.
-	secondDecision, err := agentClient.CreateQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
-			Parent:    "workspaces/-",
-			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
-			Subject:   decisionMemory.Msg.GetSubject(),
-			Statement: "the upstream batch is intentionally sparse; noise is expected",
-			Evidence:  []*v1pb.QualityInvestigationEvidence{{Kind: "ISSUE", Reference: "qualityIssues/1"}},
-		}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED, secondDecision.Msg.GetStatus())
-	_, err = fixture.dataQuality.ConfirmQualityMemory(fixture.ctx,
-		withToken(adminToken, &v1pb.ConfirmQualityMemoryRequest{
-			Name:     secondDecision.Msg.GetName(),
-			Decision: v1pb.ConfirmQualityMemoryRequest_DECISION_CONFIRM,
-		}))
-	require.NoError(t, err)
-	supersededDecisions, err := fixture.dataQuality.ListQualityMemories(fixture.ctx,
-		withToken(adminToken, &v1pb.ListQualityMemoriesRequest{
-			Parent: "workspaces/-",
-			Kind:   v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
-			Status: v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED,
-		}))
-	require.NoError(t, err)
-	require.Len(t, supersededDecisions.Msg.GetQualityMemories(), 1)
-	require.Equal(t, decisionMemory.Msg.GetName(), supersededDecisions.Msg.GetQualityMemories()[0].GetName())
-	require.Equal(t, secondDecision.Msg.GetName(), supersededDecisions.Msg.GetQualityMemories()[0].GetSupersededBy())
-	// Confirming again is a compare-and-set conflict, not a second decision.
-	_, err = fixture.dataQuality.ConfirmQualityMemory(fixture.ctx,
-		withToken(adminToken, &v1pb.ConfirmQualityMemoryRequest{
-			Name:     secondDecision.Msg.GetName(),
-			Decision: v1pb.ConfirmQualityMemoryRequest_DECISION_CONFIRM,
-		}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
-
-	// Deletion is administrator cleanup; an agent cannot remove knowledge.
-	_, err = agentClient.DeleteQualityMemory(fixture.ctx,
-		withToken(agentToken, &v1pb.DeleteQualityMemoryRequest{Name: secondFact.Msg.GetName()}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-	_, err = fixture.dataQuality.DeleteQualityMemory(fixture.ctx,
-		withToken(adminToken, &v1pb.DeleteQualityMemoryRequest{Name: secondFact.Msg.GetName()}))
-	require.NoError(t, err)
-	deleted, err := fixture.dataQuality.ListQualityMemories(fixture.ctx,
-		withToken(adminToken, &v1pb.ListQualityMemoriesRequest{
-			Parent: "workspaces/-",
-			Kind:   v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
-			Status: v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED,
-		}))
-	require.NoError(t, err)
-	require.Empty(t, deleted.Msg.GetQualityMemories(),
-		"a deleted memory and the superseded one leave the confirmed reads")
-
-	// Disabling the agent ends its ability to write (and to read).
-	_, err = fixture.dataQuality.DisableQualityAgent(fixture.ctx,
-		withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: created.Msg.GetAgent().GetName()}))
-	require.NoError(t, err)
-	_, err = stage(1)
-	require.Error(t, err)
-	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+	require.Contains(t, qualityAgentAttentionNames(dismissedList.Msg.GetQualityAgentAttentions()), anomaly.GetName())
 }
 
-// actionDecision returns one card's decision code from a policy response.
-func actionDecision(policy *v1pb.QualityActionPolicy, id string) string {
-	for _, action := range policy.GetActions() {
-		if action.GetId() == id {
-			return action.GetDecisionCode()
+// createQualityAgentTestMember creates an ordinary workspace member and returns its
+// resource name and login token. The member is the agent owner in these scenarios:
+// the owner-only conversation and escalation RPCs need a non-administrator.
+func createQualityAgentTestMember(t *testing.T, fixture *qualityFixture, label string) (string, string) {
+	t.Helper()
+
+	client := v1connect.NewUserServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+	email := fmt.Sprintf("dq-agent-%s-%d@example.com", label, time.Now().UnixNano())
+	const password = "Integration-Password-1!"
+	created, err := client.CreateUser(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.CreateUserRequest{
+		User: &v1pb.User{
+			Email:    email,
+			Title:    "DQ agent " + label,
+			Password: password,
+			UserType: v1pb.UserType_END_USER,
+		},
+	}))
+	require.NoError(t, err, "create the %s member", label)
+	token, err := fixture.env.LoginAs(fixture.ctx, email, password)
+	require.NoError(t, err, "log in the %s member", label)
+	return created.Msg.GetName(), token
+}
+
+// setQualityAgentRunner flips the workspace's agent runner switch, preserving the
+// rest of the data-quality setting: the setting update replaces the whole message,
+// and a bare message would silently clear store_failure_samples and the limits for
+// every test sharing the server.
+func setQualityAgentRunner(t *testing.T, fixture *qualityFixture, enabled bool) {
+	t.Helper()
+
+	current, err := fixture.settings.GetWorkspaceProfileSetting(context.Background(),
+		withToken(fixture.env.AdminToken(), &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	setting := &v1pb.DataQualitySetting{}
+	if original := current.Msg.GetDataQuality(); original != nil {
+		if cloned, ok := proto.Clone(original).(*v1pb.DataQualitySetting); ok {
+			setting = cloned
 		}
 	}
-	return ""
+	setting.AgentRunnerEnabled = enabled
+	_, err = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(),
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: setting},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	require.NoError(t, err)
 }
 
-// actionRedLine reports whether one catalog card is a red line.
-func actionRedLine(policy *v1pb.QualityActionPolicy, id string) bool {
-	for _, action := range policy.GetActions() {
-		if action.GetId() == id {
-			return action.GetRedLine()
+// enableQualityAgentRunner turns the workspace's agent runner switch on and restores
+// it after the test.
+func enableQualityAgentRunner(t *testing.T, fixture *qualityFixture) {
+	t.Helper()
+	t.Cleanup(func() { setQualityAgentRunner(t, fixture, false) })
+	setQualityAgentRunner(t, fixture, true)
+}
+
+// resourceIDFromName returns the last segment of a resource name.
+func resourceIDFromName(name string) string {
+	return name[strings.LastIndex(name, "/")+1:]
+}
+
+// ptrString returns a pointer to value.
+func ptrString(value string) *string { return &value }
+
+// iamPolicyBindsMember reports whether the policy grants role to member.
+func iamPolicyBindsMember(policy *v1pb.IamPolicy, role, member string) bool {
+	for _, binding := range policy.GetBindings() {
+		if binding.GetRole() != role {
+			continue
+		}
+		for _, candidate := range binding.GetMembers() {
+			if candidate == member {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// qualityAgentNames returns the resource names of the given agents.
+func qualityAgentNames(agents []*v1pb.QualityAgent) []string {
+	names := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		names = append(names, agent.GetName())
+	}
+	return names
+}
+
+// qualityAgentAttentionNames returns the resource names of the given attentions.
+func qualityAgentAttentionNames(attentions []*v1pb.QualityAgentAttention) []string {
+	names := make([]string, 0, len(attentions))
+	for _, attention := range attentions {
+		names = append(names, attention.GetName())
+	}
+	return names
+}
+
+// waitForQualityAgentTargetSession waits until the enrollment runner has admitted one
+// target of one agent as a work session and returns it. The wait covers the enrollment
+// runner's 60-second tick plus admission.
+func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, agentName, targetGUID string) *v1pb.QualityAgentSession {
+	t.Helper()
+
+	var session *v1pb.QualityAgentSession
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.ListQualityAgentSessionsRequest{
+				Parent:   "workspaces/-",
+				Agent:    agentName,
+				PageSize: 100,
+			}))
+		if err != nil {
+			return false
+		}
+		for _, candidate := range response.Msg.GetQualityAgentSessions() {
+			if candidate.GetTarget().GetMetaGuid() == targetGUID {
+				session = candidate
+				return true
+			}
+		}
+		return false
+	}, 150*time.Second, 500*time.Millisecond,
+		"the enrollment runner never admitted the covered target: %s", fixture.env.ServerLogs())
+	return session
+}
+
+// waitForQualityAgentSessionMessage waits until one session transcript entry matches
+// match and returns it. The transcript is read through the administrator diagnostics RPC.
+func waitForQualityAgentSessionMessage(t *testing.T, fixture *qualityFixture, sessionName string, match func(*v1pb.QualityAgentSessionMessage) bool) *v1pb.QualityAgentSessionMessage {
+	t.Helper()
+
+	var found *v1pb.QualityAgentSessionMessage
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.ListQualityAgentSessionMessagesRequest{
+				Parent:   sessionName,
+				PageSize: 200,
+			}))
+		if err != nil {
+			return false
+		}
+		for _, message := range response.Msg.GetQualityAgentSessionMessages() {
+			if match(message) {
+				found = message
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 250*time.Millisecond,
+		"the session transcript never contained the expected entry: %s", fixture.env.ServerLogs())
+	return found
+}
+
+// insertFailedQualityExecution writes the completed failing execution the quality
+// runner would have recorded for one rule at one instant. The report runner reads only
+// the ledger, so the row is what makes a report period visibly unhealthy.
+func insertFailedQualityExecution(t *testing.T, fixture *qualityFixture, rule *store.QualityRuleMessage, finishedAt time.Time) {
+	t.Helper()
+
+	runResourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	var runID int64
+	require.NoError(t, fixture.env.Store.GetDB().QueryRowContext(fixture.ctx, `
+		INSERT INTO quality_run (resource_id, target_guid, target_type, trigger, status, outcome, started_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		RETURNING id`,
+		runResourceID,
+		rule.TargetGUID,
+		int16(rule.TargetType),
+		int16(storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		finishedAt,
+	).Scan(&runID))
+
+	_, err = fixture.env.Store.GetDB().ExecContext(fixture.ctx, `
+		INSERT INTO quality_execution
+			(run_id, rule_id, rule_revision, target_guid, target_type, trigger, attempt,
+			 state, status, started_at, finished_at, scheduled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $9, $9)`,
+		runID,
+		rule.ID,
+		rule.Revision,
+		rule.TargetGUID,
+		int16(rule.TargetType),
+		int16(storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		finishedAt,
+	)
+	require.NoError(t, err, "write the failed execution of rule %d", rule.ID)
 }

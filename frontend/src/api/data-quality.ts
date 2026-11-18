@@ -12,16 +12,11 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
-  type ConfirmQualityMemoryRequest_Decision,
-  ConfirmQualityMemoryRequestSchema,
   CreateQualityAgentRequestSchema,
   type CreateQualityAgentResponse,
   CreateQualityCodeTableRequestSchema,
-  CreateQualityMemoryRequestSchema,
   CreateQualityRuleRequestSchema,
   CreateQualityRuleTemplateRequestSchema,
-  DecideQualityChangeRequestRequest_Decision,
-  DecideQualityChangeRequestRequestSchema,
   DeleteQualityCodeTableRequestSchema,
   DeleteQualityRuleRequestSchema,
   DeleteQualityRuleTemplateRequestSchema,
@@ -34,12 +29,7 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
-  GetQualityAgentEnrollmentSummaryRequestSchema,
-  GetQualityAgentMetricsRequestSchema,
-  GetQualityAgentReportRequestSchema,
   GetQualityAgentRequestSchema,
-  GetQualityAgentRunnerStatusRequestSchema,
-  GetQualityAgentSessionRequestSchema,
   GetQualityCodeTableRequestSchema,
   GetQualityConsumptionCoverageRequestSchema,
   type GetQualityConsumptionCoverageResponse,
@@ -65,18 +55,14 @@ import {
   ListQualityAgentAttentionsRequestSchema,
   ListQualityAgentConversationMessagesRequestSchema,
   type ListQualityAgentConversationMessagesResponse,
-  ListQualityAgentEnrollmentsRequestSchema,
   ListQualityAgentReportsRequestSchema,
   ListQualityAgentSessionMessagesRequestSchema,
   ListQualityAgentSessionsRequestSchema,
   ListQualityAgentsRequestSchema,
-  ListQualityChangeRequestsRequestSchema,
   ListQualityCodeTablesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
   ListQualityExecutionsRequestSchema,
-  ListQualityInvestigationsRequestSchema,
   ListQualityIssuesRequestSchema,
-  ListQualityMemoriesRequestSchema,
   ListQualityRulesRequestSchema,
   ListQualityRuleTemplatesRequestSchema,
   ListQualityRunsRequestSchema,
@@ -91,21 +77,12 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
-  type QualityAgentEnrollment,
-  QualityAgentEnrollmentState,
-  type QualityAgentEnrollmentSummary,
-  type QualityAgentMetrics,
   type QualityAgentReport,
   QualityAgentReportFrequency,
-  type QualityAgentRunnerStatus,
   type QualityAgentSession,
   type QualityAgentSessionMessage,
   QualityAgentSessionMode,
-  QualityAgentSessionSource,
   QualityAgentSessionState,
-  QualityChangeRejectionReason,
-  type QualityChangeRequest,
-  QualityChangeRequestState,
   type QualityCodeTable,
   type QualityContract,
   type QualityContractRevision,
@@ -114,13 +91,10 @@ import {
   type QualityExecution,
   QualityExecutionState,
   QualityExecutionTrigger,
-  type QualityInvestigation,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
   type QualityLLMUsage,
-  type QualityMemory,
-  type QualityMemoryKind,
   type QualityOverview,
   type QualityPlan,
   QualityResolutionReason,
@@ -145,8 +119,6 @@ import {
   type RecommendQualityChecksResponse,
   ReplyQualityAgentAttentionRequestSchema,
   ResumeQualityAgentSessionRequestSchema,
-  RotateQualityAgentTokenRequestSchema,
-  type RotateQualityAgentTokenResponse,
   RunQualityRulesRequestSchema,
   SendQualityAgentMessageRequestSchema,
   SetQualityAgentAdoptionRequestSchema,
@@ -1206,33 +1178,6 @@ export async function getQualityLLMUsage(
   });
 }
 
-// ---- drafting jobs ----
-
-/**
- * Submit one durable AI drafting job for several targets. The server runs the
- * analyses in the background; the returned job is safe to poll and outlives the
- * browser tab.
- *
- * An identical request while its job is still PENDING/RUNNING returns that job
- * with `deduplicated` set instead of starting a second analysis.
- */
-
-/** Read one drafting job, including its per-target progress. */
-
-/**
- * The raw request/response bodies of one failed drafting target. Only available
- * when runtime LLM debug was on at the time and the 7-day debug log has not been
- * pruned; `available` says which it is.
- */
-
-/** One page of drafting jobs, newest first. */
-
-/**
- * Ask a job to stop. Canceling between targets is cooperative: a PENDING job
- * becomes CANCELED immediately, a RUNNING one stops after the current target,
- * and canceling a terminal job returns it unchanged.
- */
-
 // ---- column profiles and labels ----
 
 /** Stored profiles of one table's columns. */
@@ -1587,51 +1532,6 @@ export async function exportQualityReport(options: {
   });
 }
 
-// ---- change requests ----
-
-/** One page of change requests, newest first. */
-export async function listQualityChangeRequests(options: {
-  targetGuid?: string;
-  state?: QualityChangeRequestState;
-  pageSize?: number;
-  pageToken?: string;
-  signal?: AbortSignal;
-}): Promise<ListPage<QualityChangeRequest>> {
-  const request = create(ListQualityChangeRequestsRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    targetGuid: options.targetGuid ?? "",
-    state: options.state ?? QualityChangeRequestState.UNSPECIFIED,
-    pageSize: options.pageSize ?? 20,
-    pageToken: options.pageToken ?? "",
-  });
-  const response = await dataQualityClient.listQualityChangeRequests(request, {
-    signal: options.signal,
-  });
-  return {
-    items: response.qualityChangeRequests,
-    nextPageToken: response.nextPageToken,
-  };
-}
-
-/** Approve (applying each item) or reject one change request. */
-export async function decideQualityChangeRequest(options: {
-  name: string;
-  decision: DecideQualityChangeRequestRequest_Decision;
-  rejectionReasons?: QualityChangeRejectionReason[];
-  decisionNote?: string;
-  signal?: AbortSignal;
-}): Promise<QualityChangeRequest> {
-  const request = create(DecideQualityChangeRequestRequestSchema, {
-    name: options.name,
-    decision: options.decision,
-    rejectionReasons: options.rejectionReasons ?? [],
-    decisionNote: options.decisionNote ?? "",
-  });
-  return await dataQualityClient.decideQualityChangeRequest(request, {
-    signal: options.signal,
-  });
-}
-
 // ---- quality agents ----
 
 /** One agent's runtime configuration as the create/edit form holds it. */
@@ -1664,7 +1564,7 @@ export interface QualityAgentConfigInput {
   };
 }
 
-/** Create an agent; the returned token is shown exactly once. */
+/** Create an agent; it stays DRAFT unless `start` is set. */
 export async function createQualityAgent(options: {
   config: QualityAgentConfigInput;
   start?: boolean;
@@ -1754,16 +1654,7 @@ export async function setQualityAgentAdoption(
   return await dataQualityClient.setQualityAgentAdoption(request, { signal });
 }
 
-/** Mint a new token for an agent and invalidate the previous ones. */
-export async function rotateQualityAgentToken(
-  name: string,
-  signal?: AbortSignal
-): Promise<RotateQualityAgentTokenResponse> {
-  const request = create(RotateQualityAgentTokenRequestSchema, { name });
-  return await dataQualityClient.rotateQualityAgentToken(request, { signal });
-}
-
-/** Disable an agent: every token it holds stops authenticating. */
+/** Disable an agent permanently; its sessions stop waking. */
 export async function disableQualityAgent(
   name: string,
   signal?: AbortSignal
@@ -1833,15 +1724,6 @@ export async function listQualityAgentReports(
   return response.qualityAgentReports;
 }
 
-/** Read one report with its rendered markdown body. */
-export async function getQualityAgentReport(
-  name: string,
-  signal?: AbortSignal
-): Promise<QualityAgentReport> {
-  const request = create(GetQualityAgentReportRequestSchema, { name });
-  return await dataQualityClient.getQualityAgentReport(request, { signal });
-}
-
 /**
  * Append the owner's message to the agent conversation and wake it. `requestId` is
  * a client idempotency id; a repeated id returns the existing message.
@@ -1884,43 +1766,17 @@ export async function listQualityAgentConversationMessages(
 
 // ---- quality agent sessions ----
 
-/** The filters both session reads share; a page and a full walk accept the same. */
+/** The filters the session walk accepts. */
 export interface QualityAgentSessionListOptions {
   state?: QualityAgentSessionState;
   agent?: string;
   database?: string;
   targetGuid?: string;
-  /** UNSPECIFIED keeps both manual and automatic sessions. */
-  source?: QualityAgentSessionSource;
   /** UNSPECIFIED keeps both monitor and triage sessions. */
   mode?: QualityAgentSessionMode;
   pageSize?: number;
   pageToken?: string;
   signal?: AbortSignal;
-}
-
-/** One page of agent sessions, newest activity first. */
-export async function listQualityAgentSessionsPage(
-  options: QualityAgentSessionListOptions = {}
-): Promise<ListPage<QualityAgentSession>> {
-  const request = create(ListQualityAgentSessionsRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
-    database: options.database ?? "",
-    targetGuid: options.targetGuid ?? "",
-    source: options.source ?? QualityAgentSessionSource.UNSPECIFIED,
-    mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
-    agent: options.agent ?? "",
-    pageSize: options.pageSize ?? 50,
-    pageToken: options.pageToken ?? "",
-  });
-  const response = await dataQualityClient.listQualityAgentSessions(request, {
-    signal: options.signal,
-  });
-  return {
-    items: response.qualityAgentSessions,
-    nextPageToken: response.nextPageToken,
-  };
 }
 
 /**
@@ -1937,7 +1793,6 @@ export async function listQualityAgentSessions(
       state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
       database: options.database ?? "",
       targetGuid: options.targetGuid ?? "",
-      source: options.source ?? QualityAgentSessionSource.UNSPECIFIED,
       mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
       agent: options.agent ?? "",
       pageSize: listAllPageSize,
@@ -1953,23 +1808,7 @@ export async function listQualityAgentSessions(
   });
 }
 
-/** One target's session; the name is a real workspace name, not the `-` shorthand. */
-export async function getQualityAgentSession(
-  name: string,
-  signal?: AbortSignal
-): Promise<QualityAgentSession> {
-  const request = create(GetQualityAgentSessionRequestSchema, { name });
-  return await dataQualityClient.getQualityAgentSession(request, { signal });
-}
-
-/**
- * Start the one long-lived session of a target. `metaType` may be omitted when
- * the target already has rules; the server resolves it from them.
- */
-
-/** Pause a session; `expectedRevision` is the revision the caller saw. */
-
-/** Resume a paused or blocked session and make it due now. */
+/** Resume a stuck (blocked) session; administrator recovery from diagnostics. */
 export async function resumeQualityAgentSession(
   name: string,
   expectedRevision: number,
@@ -1981,17 +1820,6 @@ export async function resumeQualityAgentSession(
   });
   return await dataQualityClient.resumeQualityAgentSession(request, { signal });
 }
-
-/** Archive a session: it stops waking and its conversation stays readable. */
-
-/**
- * Append a person's question to the conversation and wake the session.
- *
- * `requestId` is a client-generated idempotency id: repeating a wake with the
- * same id returns the session without appending a second message, so a retried
- * or double-clicked send cannot post the question twice. An empty id lets the
- * server generate a random one, which makes a repeat a new message.
- */
 
 /**
  * One page of a session's transcript. With no `afterSeq` the NEWEST page is
@@ -2022,186 +1850,4 @@ export async function listQualityAgentSessionMessages(
     messages: response.qualityAgentSessionMessages,
     nextPageToken: response.nextPageToken,
   };
-}
-
-/** The runner's live state: budgets, session counts and a process-local tick. */
-export async function getQualityAgentRunnerStatus(
-  signal?: AbortSignal
-): Promise<QualityAgentRunnerStatus> {
-  const request = create(GetQualityAgentRunnerStatusRequestSchema, {
-    parent: WORKSPACE_PARENT,
-  });
-  return await dataQualityClient.getQualityAgentRunnerStatus(request, {
-    signal,
-  });
-}
-
-/** The runner's evaluation: session counts, spend and proposal outcomes. */
-export async function getQualityAgentMetrics(
-  signal?: AbortSignal
-): Promise<QualityAgentMetrics> {
-  const request = create(GetQualityAgentMetricsRequestSchema, {
-    parent: WORKSPACE_PARENT,
-  });
-  return await dataQualityClient.getQualityAgentMetrics(request, { signal });
-}
-
-// ---- quality agent enrollments ----
-
-/** The resource-name segment an enrollment's id occupies. */
-const ENROLLMENT_SEGMENT = "qualityAgentEnrollments";
-
-/** Format: workspaces/{workspace}/qualityAgentEnrollments/{id}. */
-export function qualityAgentEnrollmentName(id: string): string {
-  return `${WORKSPACE_PARENT}/${ENROLLMENT_SEGMENT}/${id}`;
-}
-
-/** The id part of an enrollment's resource name; the name itself if it has none. */
-export function qualityAgentEnrollmentID(name: string): string {
-  return name.slice(name.lastIndexOf("/") + 1);
-}
-
-/** The filters and paging of the queue. */
-export interface QualityAgentEnrollmentListOptions {
-  /** An exact database resource name; empty keeps every database. */
-  database?: string;
-  /** UNSPECIFIED keeps every state. */
-  state?: QualityAgentEnrollmentState;
-  /** UNSPECIFIED keeps both modes. */
-  mode?: QualityAgentSessionMode;
-  /** A case-insensitive substring over the target path and GUID. */
-  search?: string;
-  pageSize?: number;
-  pageToken?: string;
-  signal?: AbortSignal;
-}
-
-/** One page of the runner's enrollment queue. */
-export async function listQualityAgentEnrollments(
-  options: QualityAgentEnrollmentListOptions = {}
-): Promise<ListPage<QualityAgentEnrollment>> {
-  const request = create(ListQualityAgentEnrollmentsRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    pageSize: options.pageSize ?? 50,
-    pageToken: options.pageToken ?? "",
-    database: options.database ?? "",
-    state: options.state ?? QualityAgentEnrollmentState.UNSPECIFIED,
-    mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
-    search: options.search ?? "",
-  });
-  const response = await dataQualityClient.listQualityAgentEnrollments(
-    request,
-    {
-      signal: options.signal,
-    }
-  );
-  return {
-    items: response.qualityAgentEnrollments,
-    nextPageToken: response.nextPageToken,
-  };
-}
-
-/**
- * The queue at a glance: its state counts, a per-database breakdown, and when
- * discovery last scanned a database (process-local, so a restart clears it).
- */
-export async function getQualityAgentEnrollmentSummary(
-  signal?: AbortSignal
-): Promise<QualityAgentEnrollmentSummary> {
-  const request = create(GetQualityAgentEnrollmentSummaryRequestSchema, {
-    parent: WORKSPACE_PARENT,
-  });
-  return await dataQualityClient.getQualityAgentEnrollmentSummary(request, {
-    signal,
-  });
-}
-
-/**
- * Apply a person's queue change with a revision compare-and-set. Only `state`
- * (PENDING to re-include, EXCLUDED to opt out) and `mode` may be masked.
- */
-
-/** Requeue one enrollment now with a priority bump. */
-
-// ---- investigations and memories ----
-
-/** The target's investigations, newest first. */
-export async function listQualityInvestigations(
-  targetGuid: string,
-  signal?: AbortSignal
-): Promise<QualityInvestigation[]> {
-  return await listAll(async (pageToken) => {
-    const request = create(ListQualityInvestigationsRequestSchema, {
-      parent: WORKSPACE_PARENT,
-      targetGuid,
-      pageSize: listAllPageSize,
-      pageToken,
-    });
-    const response = await dataQualityClient.listQualityInvestigations(
-      request,
-      {
-        signal,
-      }
-    );
-    return {
-      items: response.qualityInvestigations,
-      nextPageToken: response.nextPageToken,
-    };
-  });
-}
-
-/** The memories recorded about one subject (a target GUID here), newest first. */
-export async function listQualityMemories(
-  subject: string,
-  signal?: AbortSignal
-): Promise<QualityMemory[]> {
-  return await listAll(async (pageToken) => {
-    const request = create(ListQualityMemoriesRequestSchema, {
-      parent: WORKSPACE_PARENT,
-      subject,
-      pageSize: listAllPageSize,
-      pageToken,
-    });
-    const response = await dataQualityClient.listQualityMemories(request, {
-      signal,
-    });
-    return {
-      items: response.qualityMemories,
-      nextPageToken: response.nextPageToken,
-    };
-  });
-}
-
-/** Confirm or reject a proposed memory: a person is what turns it into knowledge. */
-export async function confirmQualityMemory(
-  name: string,
-  decision: ConfirmQualityMemoryRequest_Decision,
-  signal?: AbortSignal
-): Promise<QualityMemory> {
-  const request = create(ConfirmQualityMemoryRequestSchema, { name, decision });
-  return await dataQualityClient.confirmQualityMemory(request, { signal });
-}
-
-/** Record a memory: an asset fact, a decision with its reason, or an event. */
-export async function createQualityMemory(options: {
-  kind: QualityMemoryKind;
-  subject: string;
-  statement: string;
-  evidence: Array<{ kind: string; reference: string; note?: string }>;
-  signal?: AbortSignal;
-}): Promise<QualityMemory> {
-  const request = create(CreateQualityMemoryRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    kind: options.kind,
-    subject: options.subject,
-    statement: options.statement,
-    evidence: options.evidence.map((reference) => ({
-      kind: reference.kind,
-      reference: reference.reference,
-      note: reference.note ?? "",
-    })),
-  });
-  return await dataQualityClient.createQualityMemory(request, {
-    signal: options.signal,
-  });
 }

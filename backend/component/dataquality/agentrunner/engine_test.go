@@ -14,7 +14,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -23,24 +22,21 @@ import (
 
 // fakeStore is the in-memory slice of the store the engine tests need.
 type fakeStore struct {
-	messages       []*store.QualityAgentTranscriptMessage
-	memories       []*store.QualityMemoryMessage
-	executions     map[int64]*store.QualityExecutionMessage
-	investigations []*store.CreateQualityInvestigationInput
-	memoryInputs   []*store.CreateQualityMemoryInput
-	nextSeq        int64
-	agent          *store.QualityAgentMessage
+	messages     []*store.QualityAgentTranscriptMessage
+	memories     []*store.QualityMemoryMessage
+	executions   map[int64]*store.QualityExecutionMessage
+	memoryInputs []*store.CreateQualityMemoryInput
+	nextSeq      int64
+	agent        *store.QualityAgentMessage
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
 		executions: map[int64]*store.QualityExecutionMessage{},
-		agent:      &store.QualityAgentMessage{ID: 1, Enabled: true},
+		agent:      &store.QualityAgentMessage{ID: 1, State: store.QualityAgentStateActive},
 	}
 }
 
-// GetQualityAgentByID returns the session's agent row, whose enabled flag the
-// action policy reads.
 func (*fakeStore) QualityAgentEnrollmentSummary(context.Context, string, int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error) {
 	return nil, nil
 }
@@ -50,10 +46,6 @@ func (*fakeStore) ListQualityAgentEnrollments(context.Context, *store.FindQualit
 }
 
 func (*fakeStore) ListQualitySuggestions(context.Context, *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error) {
-	return nil, nil
-}
-
-func (*fakeStore) GetQualityAgentConfig(context.Context, int64) (*store.QualityAgentConfigMessage, error) {
 	return nil, nil
 }
 
@@ -87,18 +79,13 @@ func (f *fakeStore) ListQualityMemories(context.Context, *store.FindQualityMemor
 	return f.memories, nil
 }
 
-func (f *fakeStore) CreateQualityInvestigation(_ context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error) {
-	f.investigations = append(f.investigations, input)
-	return &store.QualityInvestigationMessage{ResourceID: input.ResourceID}, true, nil
-}
-
 func (f *fakeStore) CreateQualityMemory(_ context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error) {
 	f.memoryInputs = append(f.memoryInputs, input)
 	memory := &store.QualityMemoryMessage{
 		ResourceID: input.ResourceID,
 		Subject:    input.Subject,
 		Statement:  input.Statement,
-		Status:     input.Status,
+		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED,
 		Evidence:   input.Evidence,
 		ExpiresAt:  input.ExpiresAt,
 	}
@@ -168,10 +155,6 @@ func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *
 		matches = matches[:limit]
 	}
 	return matches, nil
-}
-
-func (f *fakeStore) MaxQualityAgentTranscriptSeq(context.Context, int64) (int64, error) {
-	return f.nextSeq, nil
 }
 
 func (*fakeStore) UpdateQualityAgentSessionCompaction(context.Context, string, string, int64) (bool, error) {
@@ -248,6 +231,18 @@ func testSession() *store.QualityAgentSessionMessage {
 	}
 }
 
+// engineNoteContent joins the runner notes of a transcript, which is where a
+// no-model wake records what it reviewed.
+func engineNoteContent(messages []*store.QualityAgentTranscriptMessage) string {
+	var parts []string
+	for _, message := range messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE {
+			parts = append(parts, message.Content)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 func roles(messages []*store.QualityAgentTranscriptMessage) []storepb.QualityAgentMessageRole {
 	result := make([]storepb.QualityAgentMessageRole, 0, len(messages))
 	for _, message := range messages {
@@ -271,8 +266,6 @@ func TestWakeRecordsTheConversation(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
 	require.Nil(t, outcome.NextWakeAt)
-	require.Equal(t, int64(220), outcome.TokensUsed)
-	require.Equal(t, int32(100), outcome.ContextTokens)
 	require.Zero(t, outcome.ProcessedSeq, "assistant/tool/engine rows are not inputs")
 	require.Contains(t, outcome.Summary, "wake finished")
 
@@ -348,11 +341,11 @@ func TestWakeFallsBackToTheDeterministicSurvey(t *testing.T) {
 	require.NotNil(t, outcome.NextWakeAt)
 	require.WithinDuration(t, time.Now().Add(maintainWake), *outcome.NextWakeAt, time.Minute)
 	require.Contains(t, outcome.Summary, "surveyed")
-	require.Equal(t, "survey", outcome.EngineState.GetPhase())
 }
 
-// An event with an execution reference is investigated deterministically.
-func TestWakeInvestigatesAFailedExecutionWithoutAModel(t *testing.T) {
+// An event with an execution reference is reviewed deterministically and its facts
+// stay in the transcript.
+func TestWakeReviewsAFailedExecutionWithoutAModel(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
@@ -376,10 +369,9 @@ func TestWakeInvestigatesAFailedExecutionWithoutAModel(t *testing.T) {
 	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
-	require.Contains(t, outcome.Summary, "investigated 1 event(s)")
-	require.Len(t, stores.investigations, 1)
-	require.Equal(t, storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
-		stores.investigations[0].Trigger)
+	require.Contains(t, outcome.Summary, "reviewed 1 event(s)")
+	require.Empty(t, stores.memoryInputs, "a deterministic review writes no knowledge object")
+	require.Contains(t, engineNoteContent(stores.messages), "execution qualityExecutions/7 finished QUALITY_STATUS_FAIL with 12 failed rows")
 }
 
 // A person's question cannot be answered without a model, so the session parks instead
@@ -433,9 +425,9 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 	require.Greater(t, len(stores.messages), before)
 }
 
-// An event whose execution ended ERROR is investigated too: an error is as much
+// An event whose execution ended ERROR is reviewed too: an error is as much
 // something the agent should look at as a FAIL.
-func TestWakeInvestigatesAnErroredExecutionWithoutAModel(t *testing.T) {
+func TestWakeReviewsAnErroredExecutionWithoutAModel(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
@@ -459,8 +451,8 @@ func TestWakeInvestigatesAnErroredExecutionWithoutAModel(t *testing.T) {
 	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
-	require.Contains(t, outcome.Summary, "investigated 1 event(s)")
-	require.Len(t, stores.investigations, 1)
+	require.Contains(t, outcome.Summary, "reviewed 1 event(s)")
+	require.Contains(t, engineNoteContent(stores.messages), "NO_READ_ONLY_SOURCE")
 }
 
 // The watermark counts only external inputs: the assistant/tool/engine rows a wake
@@ -488,8 +480,8 @@ func TestWakeWatermarkCountsOnlyExternalInputs(t *testing.T) {
 	require.Equal(t, event.Seq, outcome.ProcessedSeq)
 }
 
-// The no-model path investigates every pending event it can, not just the first.
-func TestDeterministicWakeInvestigatesEveryPendingEvent(t *testing.T) {
+// The no-model path reviews every pending event it can, not just the first.
+func TestDeterministicWakeReviewsEveryPendingEvent(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
@@ -510,7 +502,7 @@ func TestDeterministicWakeInvestigatesEveryPendingEvent(t *testing.T) {
 
 	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
-	require.Len(t, stores.investigations, 2)
+	require.Equal(t, 2, strings.Count(engineNoteContent(stores.messages), "deterministic event review"))
 	require.Equal(t, last.Seq, outcome.ProcessedSeq)
 }
 
@@ -536,7 +528,7 @@ func TestDeterministicWakeLeavesTheRestPending(t *testing.T) {
 
 	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
-	require.Len(t, stores.investigations, maxDeterministicEvents)
+	require.Equal(t, maxDeterministicEvents, strings.Count(engineNoteContent(stores.messages), "deterministic event review"))
 	require.Less(t, outcome.ProcessedSeq, stores.nextSeq, "the last event is still pending")
 }
 
@@ -570,27 +562,26 @@ func TestWakeRepairsADanglingToolCall(t *testing.T) {
 	require.True(t, found, "the dangling call got a synthetic result")
 }
 
-// Several distinct decisions can be recorded in one session; only an identical
-// statement is deduplicated.
-func TestRecordDecisionKeepsDistinctDecisions(t *testing.T) {
+// Distinct asset facts can be recorded in one session; an identical statement is
+// deduplicated against the confirmed fact already stored for the target.
+func TestRecordAssetFactKeepsDistinctFacts(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
 	turns := []scriptedTurn{
-		{content: "first", toolCalls: []llm.ToolCall{toolCall("call_1", "record_decision", `{"statement":"the drop is a real data issue"}`)}},
-		{content: "second", toolCalls: []llm.ToolCall{toolCall("call_2", "record_decision", `{"statement":"the check threshold is too strict"}`)}},
+		{content: "first", toolCalls: []llm.ToolCall{toolCall("call_1", "record_asset_fact", `{"statement":"the table has 12 rows"}`)}},
+		{content: "second", toolCalls: []llm.ToolCall{toolCall("call_2", "record_asset_fact", `{"statement":"the owner column is nullable"}`)}},
+		{content: "third", toolCalls: []llm.ToolCall{toolCall("call_3", "record_asset_fact", `{"statement":"the table has 12 rows"}`)}},
 		{content: "done"},
 	}
 	engine := NewModelEngine(stores, scriptedChat(turns), resolveToModel, nil)
 	_, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
-	decisions := 0
-	for _, input := range stores.memoryInputs {
-		if input.Kind == storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION {
-			decisions++
-		}
-	}
-	require.Equal(t, 2, decisions)
+	require.Len(t, stores.memoryInputs, 2, "an identical statement is not recorded twice")
+	statements := []string{stores.memoryInputs[0].Statement, stores.memoryInputs[1].Statement}
+	require.ElementsMatch(t, []string{"the table has 12 rows", "the owner column is nullable"}, statements)
+	require.NotNil(t, stores.memoryInputs[0].Evidence)
+	require.Equal(t, "MODEL", stores.memoryInputs[0].Evidence.GetEvidence()[0].GetKind())
 }
 
 // A provider context-overflow rejection forces a compaction and retries the wake once
@@ -731,53 +722,6 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 	require.True(t, found, "the tool call metric was not recorded")
 }
 
-// The action policy gate runs in the tool pipeline: a propose tool is refused when
-// the workspace autonomy switch is off, even though the runner would normally have
-// parked the session before the model ran.
-func TestWakeEnforcesTheActionPolicy(t *testing.T) {
-	t.Parallel()
-
-	autonomy := func(enabled bool) Option {
-		return WithActionSettings(func(context.Context) (dataquality.Settings, error) {
-			return dataquality.Settings{AgentAutonomyEnabled: enabled}, nil
-		})
-	}
-	turns := []scriptedTurn{
-		{content: "recording", toolCalls: []llm.ToolCall{toolCall("call_1", "record_investigation",
-			`{"summary":"the drop is a real data issue","verdict":"root_cause"}`)}},
-		{content: "done"},
-	}
-
-	deniedStore := newFakeStore()
-	denied := NewModelEngine(deniedStore, scriptedChat(turns), resolveToModel, nil, autonomy(false))
-	_, err := denied.Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.Empty(t, deniedStore.investigations, "a refused action must not write")
-
-	var toolRow *store.QualityAgentTranscriptMessage
-	for _, message := range deniedStore.messages {
-		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
-			toolRow = message
-		}
-	}
-	require.NotNil(t, toolRow)
-	require.Contains(t, toolRow.Content, "autonomy is disabled")
-
-	allowedStore := newFakeStore()
-	allowed := NewModelEngine(allowedStore, scriptedChat(turns), resolveToModel, nil, autonomy(true))
-	_, err = allowed.Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.Len(t, allowedStore.investigations, 1)
-
-	// Autonomy on but the agent itself disabled: the policy reads the agent row.
-	disabledStore := newFakeStore()
-	disabledStore.agent.Enabled = false
-	disabled := NewModelEngine(disabledStore, scriptedChat(turns), resolveToModel, nil, autonomy(true))
-	_, err = disabled.Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.Empty(t, disabledStore.investigations, "a disabled agent must not write")
-}
-
 // fakeToolAudit collects the tool audit entries a wake reports.
 type fakeToolAudit struct {
 	entries []tool.AuditEntry
@@ -797,7 +741,7 @@ func TestWakeAuditsProposeTools(t *testing.T) {
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: "checking", toolCalls: []llm.ToolCall{
 			toolCall("call_1", "get_target_summary", "{}"),
-			toolCall("call_2", "record_investigation", `{"summary":"the drop is a real data issue"}`),
+			toolCall("call_2", "record_asset_fact", `{"statement":"the table has 12 rows"}`),
 		}},
 		{content: "done"},
 	}), resolveToModel, nil, WithToolAudit(sink))
@@ -805,8 +749,7 @@ func TestWakeAuditsProposeTools(t *testing.T) {
 	_, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.Len(t, sink.entries, 1)
-	require.Equal(t, "record_investigation", sink.entries[0].Tool)
-	require.Equal(t, string(dataquality.ActionWriteInvestigation), sink.entries[0].Action)
+	require.Equal(t, "record_asset_fact", sink.entries[0].Tool)
 	require.Equal(t, 7, sink.entries[0].Principal.ID)
 	require.Nil(t, sink.entries[0].Failure)
 }

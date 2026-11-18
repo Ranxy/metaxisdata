@@ -27,14 +27,11 @@ type QualityAgentSessionMessage struct {
 	DatabaseRef       string
 	AgentID           int64
 	AgentPrincipalID  int32
-	Objective         string
 	State             storepb.QualityAgentSessionState
 	BlockedCode       string
 	BlockedReason     string
 	Revision          int32
 	WakeCount         int32
-	TokensUsed        int64
-	ContextTokens     int32
 	Summary           string
 	SummaryThroughSeq int64
 	ProcessedSeq      int64
@@ -42,11 +39,9 @@ type QualityAgentSessionMessage struct {
 	NextWakeAt        *time.Time
 	LeaseUntil        *time.Time
 	RestartCount      int32
-	CreatedBy         *int32
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	ArchivedAt        *time.Time
-	Source            storepb.QualityAgentSessionSource
 	Mode              storepb.QualityAgentSessionMode
 	// Kind is 1 for a target work thread and 2 for the agent's conversation.
 	Kind int16
@@ -57,37 +52,32 @@ type QualityAgentSessionMessage struct {
 
 // QualityAgentTranscriptMessage is one append-only conversation entry of a session.
 type QualityAgentTranscriptMessage struct {
-	ID               int64
-	SessionID        int64
-	WorkspaceID      string
-	Seq              int64
-	Wake             int32
-	Turn             int32
-	Role             storepb.QualityAgentMessageRole
-	Origin           storepb.QualityAgentMessageOrigin
-	Content          string
-	ToolCalls        *storepb.QualityToolCallList
-	ToolCallID       string
-	ToolName         string
-	Reference        string
-	Tokens           int32
-	PromptTokens     int32
-	CompletionTokens int32
-	Error            string
-	Truncated        bool
-	IdempotencyKey   string
-	// CreatedBy is the person who sent an ASK, when known.
-	CreatedBy *int32
-	CreatedAt time.Time
+	ID             int64
+	SessionID      int64
+	WorkspaceID    string
+	Seq            int64
+	Wake           int32
+	Turn           int32
+	Role           storepb.QualityAgentMessageRole
+	Origin         storepb.QualityAgentMessageOrigin
+	Content        string
+	ToolCalls      *storepb.QualityToolCallList
+	ToolCallID     string
+	ToolName       string
+	Reference      string
+	Tokens         int32
+	Error          string
+	Truncated      bool
+	IdempotencyKey string
+	CreatedAt      time.Time
 }
 
 const qualityAgentSessionColumns = `id, resource_id, workspace_id, target_guid, target_type,
 	database_ref, agent_id,
 	COALESCE((SELECT principal_id FROM quality_agent WHERE quality_agent.id = agent_id), 0) AS agent_principal_id,
-	objective, state, blocked_code, blocked_reason, revision, wake_count, tokens_used,
-	context_tokens, summary, summary_through_seq, processed_seq, engine_state,
-	next_wake_at, lease_until, restart_count, created_by, created_at, updated_at, archived_at,
-	source, mode, kind`
+	state, blocked_code, blocked_reason, revision, wake_count, summary,
+	summary_through_seq, processed_seq, engine_state, next_wake_at, lease_until,
+	restart_count, created_at, updated_at, archived_at, mode, kind`
 
 // qualityAgentSessionReadColumns adds the newest message timestamp the list and detail
 // readers show as "last activity".
@@ -95,8 +85,8 @@ const qualityAgentSessionReadColumns = qualityAgentSessionColumns + `,
 	(SELECT MAX(m.created_at) FROM quality_agent_message m WHERE m.session_id = quality_agent_session.id) AS last_activity_at`
 
 const qualityAgentTranscriptColumns = `id, session_id, workspace_id, seq, wake, turn, role,
-	origin, content, tool_calls, tool_call_id, tool_name, reference, tokens, prompt_tokens,
-	completion_tokens, error, truncated, idempotency_key, created_by, created_at`
+	origin, content, tool_calls, tool_call_id, tool_name, reference, tokens, error,
+	truncated, idempotency_key, created_at`
 
 // CreateQualityAgentSessionInput is one session creation. A duplicate active session
 // for the same target is reported as a conflict by the partial unique index.
@@ -106,9 +96,6 @@ type CreateQualityAgentSessionInput struct {
 	TargetType  storepb.MetaType
 	DatabaseRef string
 	AgentID     int64
-	Objective   string
-	CreatedBy   *int32
-	Source      storepb.QualityAgentSessionSource
 	Mode        storepb.QualityAgentSessionMode
 	// Kind is 1 for a target work thread and 2 for the conversation. Zero means 1.
 	Kind int16
@@ -133,10 +120,6 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate the session id")
 	}
-	source := input.Source
-	if source == storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED {
-		source = storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_MANUAL
-	}
 	mode := input.Mode
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
@@ -144,13 +127,13 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_session
 			(resource_id, workspace_id, target_guid, target_type, database_ref, agent_id,
-			 objective, state, next_wake_at, created_by, source, mode, kind)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11, $12, $13)
+			 state, next_wake_at, mode, kind)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), $9, $10)
 		RETURNING `+qualityAgentSessionColumns,
 		resourceID, input.WorkspaceID, input.TargetGUID, int16(input.TargetType),
-		input.DatabaseRef, input.AgentID, input.Objective,
+		input.DatabaseRef, input.AgentID,
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
-		input.NextWakeAt, input.CreatedBy, int16(source), int16(mode), kind))
+		input.NextWakeAt, int16(mode), kind))
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, common.Errorf(common.Conflict, "an active session already covers this target")
@@ -223,7 +206,6 @@ type FindQualityAgentSessionMessage struct {
 	TargetGUID      *string
 	DatabaseRef     *string
 	States          []storepb.QualityAgentSessionState
-	Source          storepb.QualityAgentSessionSource
 	Mode            storepb.QualityAgentSessionMode
 	IncludeArchived bool
 	Limit           *int
@@ -266,9 +248,6 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 		}
 		where += ` AND state = ANY(` + arg(pq.Array(states)) + `::int2[])`
 	}
-	if find.Source != storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED {
-		where += ` AND source = ` + arg(int16(find.Source))
-	}
 	if find.Mode != storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		where += ` AND mode = ` + arg(int16(find.Mode))
 	}
@@ -303,12 +282,12 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 // retryableSessionBlockedCodes are blocked codes the runner may wake again on its
 // own; anything else needs a person.
 func retryableSessionBlockedCodes() []string {
-	return []string{"token-budget", "wake-budget", "autonomy-off", "internal-error", "concurrency-limit"}
+	return []string{"token-budget", "wake-budget", "internal-error", "concurrency-limit"}
 }
 
 // QualityAgentSessionBlockedCodeRetryable reports whether a block is transient (a
-// budget window, autonomy off, a transient internal error). The check runner uses it to
-// keep appending failure events while the session is parked on such a block.
+// budget window, a transient internal error). The check runner uses it to keep
+// appending failure events while the session is parked on such a block.
 func QualityAgentSessionBlockedCodeRetryable(code string) bool {
 	for _, candidate := range retryableSessionBlockedCodes() {
 		if candidate == code {
@@ -391,31 +370,9 @@ func (s *Store) UpdateQualityAgentSessionState(ctx context.Context, resourceID s
 	return message, true, nil
 }
 
-// ArchiveQualityAgentSession tombstones a session; the transcript stays.
-func (s *Store) ArchiveQualityAgentSession(ctx context.Context, resourceID string, expectedRevision int32, now time.Time) (bool, error) {
-	result, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_agent_session
-		SET state = $2, archived_at = $3, next_wake_at = NULL, lease_until = NULL,
-			revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND revision = $4 AND archived_at IS NULL`,
-		resourceID,
-		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED),
-		now, expectedRevision)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to archive the quality agent session")
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, errors.Wrap(err, "failed to count the archived session")
-	}
-	return affected > 0, nil
-}
-
 // QualityAgentSessionWakeResult is what one wake persists on the session row.
 type QualityAgentSessionWakeResult struct {
 	WakeCountIncrement int32
-	TokensUsed         int64
-	ContextTokens      int32
 	ProcessedSeq       int64
 	EngineState        *storepb.QualityAgentSessionEngineState
 }
@@ -436,14 +393,12 @@ func (s *Store) UpdateQualityAgentSessionProgress(ctx context.Context, resourceI
 	}
 	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx, `
 		UPDATE quality_agent_session
-		SET wake_count = wake_count + $2, tokens_used = tokens_used + $3,
-			context_tokens = GREATEST(context_tokens, $4),
-			processed_seq = GREATEST(processed_seq, $5), engine_state = $6,
+		SET wake_count = wake_count + $2,
+			processed_seq = GREATEST(processed_seq, $3), engine_state = $4,
 			restart_count = 0, revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND archived_at IS NULL
 		RETURNING `+qualityAgentSessionColumns,
-		resourceID, result.WakeCountIncrement, result.TokensUsed, result.ContextTokens,
-		result.ProcessedSeq, payload))
+		resourceID, result.WakeCountIncrement, result.ProcessedSeq, payload))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, common.Errorf(common.Conflict, "the session is no longer active")
@@ -562,16 +517,14 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	message, err := scanQualityAgentTranscript(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_message
 			(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-			 tool_call_id, tool_name, reference, tokens, prompt_tokens, completion_tokens,
-			 error, truncated, idempotency_key, created_by)
+			 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
 		VALUES ($1, $2,
 			(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING `+qualityAgentTranscriptColumns,
 		input.SessionID, input.WorkspaceID, input.Wake, input.Turn, int16(input.Role),
 		int16(input.Origin), input.Content, toolCalls, input.ToolCallID, input.ToolName,
-		input.Reference, input.Tokens, input.PromptTokens, input.CompletionTokens,
-		input.Error, input.Truncated, input.IdempotencyKey, input.CreatedBy))
+		input.Reference, input.Tokens, input.Error, input.Truncated, input.IdempotencyKey))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to append the session message")
 	}
@@ -677,17 +630,6 @@ func (s *Store) ListQualityAgentTranscriptMessages(ctx context.Context, find *Fi
 	return messages, nil
 }
 
-// MaxQualityAgentTranscriptSeq is the highest message seq of one session.
-func (s *Store) MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error) {
-	var seq int64
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(seq), 0) FROM quality_agent_message WHERE session_id = $1`,
-		sessionID).Scan(&seq); err != nil {
-		return 0, errors.Wrap(err, "failed to read the session message seq")
-	}
-	return seq, nil
-}
-
 // SumQualityAgentSessionTokensSince is the workspace's agent token spend since one
 // instant, the hourly budget the runner enforces.
 func (s *Store) SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error) {
@@ -723,136 +665,6 @@ func (s *Store) CountQualityAgentSessionWakesSince(ctx context.Context, workspac
 	return total, nil
 }
 
-// QualityAgentSessionMetrics is the runner's evaluation derived from session rows.
-type QualityAgentSessionMetrics struct {
-	StateCounts                 map[storepb.QualityAgentSessionState]int32
-	TokensTotal                 int64
-	TokensLastHour              int64
-	InvestigationsTotal         int32
-	InvestigationsInconclusive  int32
-	InvestigationsRootCause     int32
-	InvestigationsContributing  int32
-	InvestigationsUnrelated     int32
-	AgentChangeRequestsTotal    int32
-	AgentChangeRequestsApplied  int32
-	AgentChangeRequestsRejected int32
-	AgentChangeRequestsPending  int32
-	AgentChangeRequestsApproved int32
-	AgentChangeRequestsExpired  int32
-	TopTargets                  []QualityAgentSessionTargetCost
-}
-
-// QualityAgentSessionTargetCost is one target's share of the agent token spend.
-type QualityAgentSessionTargetCost struct {
-	TargetGUID   string
-	TargetType   storepb.MetaType
-	TokensUsed   int64
-	SessionCount int32
-}
-
-// GetQualityAgentSessionMetrics aggregates the runner's sessions, their token spend
-// from the transcript (so archived sessions still count) and the products the agent
-// recorded. Change-request and investigation rows carry no workspace column, so those
-// counts are global by design in this single-workspace deployment.
-func (s *Store) GetQualityAgentSessionMetrics(ctx context.Context, workspaceID string) (*QualityAgentSessionMetrics, error) {
-	metrics := &QualityAgentSessionMetrics{StateCounts: map[storepb.QualityAgentSessionState]int32{}}
-	// Archived sessions keep state=ARCHIVED, so grouping every row of the workspace
-	// counts them without a second query; filtering archived_at here would always
-	// report zero for that bucket.
-	stateQuery := `SELECT state, COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 GROUP BY state`
-	rows, err := s.GetDB().QueryContext(ctx, stateQuery, workspaceID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the session states")
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var (
-			state int16
-			count int32
-		)
-		if err := rows.Scan(&state, &count); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a session state")
-		}
-		metrics.StateCounts[storepb.QualityAgentSessionState(state)] = count
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the session states")
-	}
-
-	tokenQuery := `SELECT COALESCE((SELECT SUM(tokens_used) FROM quality_agent_session WHERE workspace_id = $1), 0),
-			COALESCE((SELECT SUM(tokens) FROM quality_agent_message WHERE workspace_id = $1 AND created_at > NOW() - INTERVAL '1 hour'), 0)`
-	if err := s.GetDB().QueryRowContext(ctx, tokenQuery, workspaceID).
-		Scan(&metrics.TokensTotal, &metrics.TokensLastHour); err != nil {
-		return nil, errors.Wrap(err, "failed to read the session token spend")
-	}
-
-	changeRequestQuery := `SELECT COUNT(*),
-			COUNT(*) FILTER (WHERE state = $2),
-			COUNT(*) FILTER (WHERE state = $3),
-			COUNT(*) FILTER (WHERE state = $4),
-			COUNT(*) FILTER (WHERE state = $5),
-			COUNT(*) FILTER (WHERE state = $6)
-		FROM quality_change_request WHERE source = $1`
-	if err := s.GetDB().QueryRowContext(ctx, changeRequestQuery,
-		int16(storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_AGENT),
-		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED),
-		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_REJECTED),
-		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED),
-		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPROVED),
-		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_EXPIRED),
-	).Scan(&metrics.AgentChangeRequestsTotal, &metrics.AgentChangeRequestsApplied,
-		&metrics.AgentChangeRequestsRejected, &metrics.AgentChangeRequestsPending,
-		&metrics.AgentChangeRequestsApproved, &metrics.AgentChangeRequestsExpired); err != nil {
-		return nil, errors.Wrap(err, "failed to read the agent change requests")
-	}
-
-	investigationQuery := `SELECT COUNT(*),
-			COUNT(*) FILTER (WHERE verdict = $1),
-			COUNT(*) FILTER (WHERE verdict = $2),
-			COUNT(*) FILTER (WHERE verdict = $3),
-			COUNT(*) FILTER (WHERE verdict = $4)
-		FROM quality_investigation`
-	if err := s.GetDB().QueryRowContext(ctx, investigationQuery,
-		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE),
-		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE),
-		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR),
-		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_UNRELATED),
-	).Scan(&metrics.InvestigationsTotal, &metrics.InvestigationsInconclusive,
-		&metrics.InvestigationsRootCause, &metrics.InvestigationsContributing,
-		&metrics.InvestigationsUnrelated); err != nil {
-		return nil, errors.Wrap(err, "failed to read the investigation verdicts")
-	}
-
-	targetQuery := `SELECT g.target_guid, g.target_type, COALESCE(SUM(m.tokens), 0),
-			COUNT(DISTINCT g.id)
-		FROM quality_agent_message m
-		JOIN quality_agent_session g ON g.id = m.session_id
-		WHERE g.workspace_id = $1
-		GROUP BY g.target_guid, g.target_type
-		ORDER BY SUM(m.tokens) DESC, COUNT(DISTINCT g.id) DESC, g.target_guid ASC LIMIT 5`
-	targetRows, err := s.GetDB().QueryContext(ctx, targetQuery, workspaceID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target costs")
-	}
-	defer targetRows.Close()
-	for targetRows.Next() {
-		var (
-			cost       QualityAgentSessionTargetCost
-			targetType int16
-		)
-		if err := targetRows.Scan(&cost.TargetGUID, &targetType, &cost.TokensUsed, &cost.SessionCount); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a target cost")
-		}
-		cost.TargetType = storepb.MetaType(targetType)
-		metrics.TopTargets = append(metrics.TopTargets, cost)
-	}
-	if err := targetRows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the target costs")
-	}
-	return metrics, nil
-}
-
 // scanQualityAgentSession reads one quality_agent_session row without the joined
 // last-activity column.
 func scanQualityAgentSession(scanner interface{ Scan(dest ...any) error }) (*QualityAgentSessionMessage, error) {
@@ -872,19 +684,18 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		engineState []byte
 		agentID     int64
 		agentPrinID int32
-		source      int16
 		mode        int16
 		kind        int16
 	)
 	dest := []any{
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.TargetGUID,
-		&targetType, &message.DatabaseRef, &agentID, &agentPrinID, &message.Objective,
+		&targetType, &message.DatabaseRef, &agentID, &agentPrinID,
 		&state, &message.BlockedCode, &message.BlockedReason, &message.Revision,
-		&message.WakeCount, &message.TokensUsed, &message.ContextTokens, &message.Summary,
+		&message.WakeCount, &message.Summary,
 		&message.SummaryThroughSeq, &message.ProcessedSeq, &engineState,
-		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount, &message.CreatedBy,
+		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount,
 		&message.CreatedAt, &message.UpdatedAt, &message.ArchivedAt,
-		&source, &mode, &kind,
+		&mode, &kind,
 	}
 	if withLastActivity {
 		dest = append(dest, &message.LastActivityAt)
@@ -897,7 +708,6 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 	message.AgentID = agentID
 	message.AgentPrincipalID = agentPrinID
 	message.Kind = kind
-	message.Source = storepb.QualityAgentSessionSource(source)
 	message.Mode = storepb.QualityAgentSessionMode(mode)
 	engineStateMessage := &storepb.QualityAgentSessionEngineState{}
 	if len(engineState) > 0 && string(engineState) != "{}" {
@@ -916,23 +726,17 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 		role      int16
 		origin    int16
 		toolCalls []byte
-		createdBy sql.NullInt32
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.SessionID, &message.WorkspaceID, &message.Seq, &message.Wake,
 		&message.Turn, &role, &origin, &message.Content, &toolCalls, &message.ToolCallID,
-		&message.ToolName, &message.Reference, &message.Tokens, &message.PromptTokens,
-		&message.CompletionTokens, &message.Error, &message.Truncated,
-		&message.IdempotencyKey, &createdBy, &message.CreatedAt,
+		&message.ToolName, &message.Reference, &message.Tokens, &message.Error,
+		&message.Truncated, &message.IdempotencyKey, &message.CreatedAt,
 	); err != nil {
 		return nil, err
 	}
 	message.Role = storepb.QualityAgentMessageRole(role)
 	message.Origin = storepb.QualityAgentMessageOrigin(origin)
-	if createdBy.Valid {
-		value := createdBy.Int32
-		message.CreatedBy = &value
-	}
 	toolCallList := &storepb.QualityToolCallList{}
 	if len(toolCalls) > 0 && string(toolCalls) != "{}" {
 		if err := common.ProtojsonUnmarshaler.Unmarshal(toolCalls, toolCallList); err != nil {
@@ -963,51 +767,6 @@ func (s *Store) AdvanceQualityAgentSessionWake(ctx context.Context, resourceID s
 	return affected > 0, nil
 }
 
-// CountQualityAgentSessionsByLease counts the sessions currently running (a live lease).
-func (s *Store) CountQualityAgentSessionsByLease(ctx context.Context, workspaceID string, agentID int64, now time.Time) (int32, error) {
-	var count int32
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND agent_id = $2 AND kind = 1
-			AND archived_at IS NULL AND lease_until > $3`,
-		workspaceID, agentID, now).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count the running sessions")
-	}
-	return count, nil
-}
-
-// CountQualityAgentSessionsByState counts the non-archived sessions in one state.
-func (s *Store) CountQualityAgentSessionsByState(ctx context.Context, workspaceID string, agentID int64, state storepb.QualityAgentSessionState) (int32, error) {
-	var count int32
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND agent_id = $2 AND kind = 1
-			AND archived_at IS NULL AND state = $3`,
-		workspaceID, agentID, int16(state)).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count the session states")
-	}
-	return count, nil
-}
-
-// LastQualityAgentSessionActivity is the workspace's newest transcript entry, the
-// runner status's "last activity" heartbeat.
-func (s *Store) LastQualityAgentSessionActivity(ctx context.Context, workspaceID string, agentID int64) (*time.Time, error) {
-	var last sql.NullTime
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT MAX(m.created_at)
-		FROM quality_agent_message m
-		JOIN quality_agent_session s ON s.id = m.session_id
-		WHERE m.workspace_id = $1 AND s.agent_id = $2`,
-		workspaceID, agentID).Scan(&last); err != nil {
-		return nil, errors.Wrap(err, "failed to read the last session activity")
-	}
-	if !last.Valid {
-		return nil, nil
-	}
-	value := last.Time.UTC()
-	return &value, nil
-}
-
 // CountQualityAgentSessionEventsSince counts the events appended to one session since
 // one instant, the per-session event cap that keeps a storm of failing checks from
 // flooding one conversation.
@@ -1023,14 +782,14 @@ func (s *Store) CountQualityAgentSessionEventsSince(ctx context.Context, session
 	return count, nil
 }
 
-// CountQualityAgentSessionsCreatedSince counts the sessions one source created after
-// a time. The enrollment admission path uses it to bound automatic sessions per hour.
-func (s *Store) CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, source storepb.QualityAgentSessionSource, since time.Time) (int, error) {
+// CountQualityAgentSessionsCreatedSince counts the target sessions an agent created
+// since a time. The enrollment admission path uses it to bound new sessions per hour.
+func (s *Store) CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int, error) {
 	var count int
 	if err := s.GetDB().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND agent_id = $2 AND source = $3 AND created_at > $4`,
-		workspaceID, agentID, int16(source), since).Scan(&count); err != nil {
+		WHERE workspace_id = $1 AND agent_id = $2 AND kind = 1 AND created_at > $3`,
+		workspaceID, agentID, since).Scan(&count); err != nil {
 		return 0, errors.Wrap(err, "failed to count the sessions created since")
 	}
 	return count, nil
@@ -1053,82 +812,6 @@ func (s *Store) UpdateQualityAgentSessionMode(ctx context.Context, resourceID st
 	return affected > 0, nil
 }
 
-// The workspace-wide counters below feed the administrator status read, which
-// reports the whole deployment rather than one agent. The per-agent variants are
-// what the runners budget against.
-
-// CountQualityAgentSessionsByLeaseAll counts running target sessions in the workspace.
-func (s *Store) CountQualityAgentSessionsByLeaseAll(ctx context.Context, workspaceID string, now time.Time) (int32, error) {
-	var count int32
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND kind = 1 AND archived_at IS NULL AND lease_until > $2`,
-		workspaceID, now).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count the running sessions")
-	}
-	return count, nil
-}
-
-// CountQualityAgentSessionsByStateAll counts target sessions in one state.
-func (s *Store) CountQualityAgentSessionsByStateAll(ctx context.Context, workspaceID string, state storepb.QualityAgentSessionState) (int32, error) {
-	var count int32
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND kind = 1 AND archived_at IS NULL AND state = $2`,
-		workspaceID, int16(state)).Scan(&count); err != nil {
-		return 0, errors.Wrap(err, "failed to count the session states")
-	}
-	return count, nil
-}
-
-// SumQualityAgentSessionTokensSinceAll sums the workspace's token spend.
-func (s *Store) SumQualityAgentSessionTokensSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error) {
-	var total int64
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(m.tokens), 0)
-		FROM quality_agent_message m
-		JOIN quality_agent_session s ON s.id = m.session_id
-		WHERE m.workspace_id = $1 AND m.created_at > $2`,
-		workspaceID, since).Scan(&total); err != nil {
-		return 0, errors.Wrap(err, "failed to sum the session tokens")
-	}
-	return total, nil
-}
-
-// CountQualityAgentSessionWakesSinceAll counts the workspace's target wakes.
-func (s *Store) CountQualityAgentSessionWakesSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error) {
-	var total int64
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM quality_agent_message m
-		JOIN quality_agent_session s ON s.id = m.session_id
-		WHERE m.workspace_id = $1 AND m.created_at > $2 AND s.kind = 1
-			AND m.role = $3 AND m.origin IN ($4, $5, $6)`,
-		workspaceID, since,
-		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK)).Scan(&total); err != nil {
-		return 0, errors.Wrap(err, "failed to count the session wakes")
-	}
-	return total, nil
-}
-
-// LastQualityAgentSessionActivityAll returns the newest transcript timestamp in the
-// workspace.
-func (s *Store) LastQualityAgentSessionActivityAll(ctx context.Context, workspaceID string) (*time.Time, error) {
-	var last sql.NullTime
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT MAX(created_at) FROM quality_agent_message WHERE workspace_id = $1`, workspaceID).Scan(&last); err != nil {
-		return nil, errors.Wrap(err, "failed to read the last session activity")
-	}
-	if !last.Valid {
-		return nil, nil
-	}
-	value := last.Time
-	return &value, nil
-}
-
 // EnsureQualityAgentConversation returns the agent's one front-office conversation,
 // creating it on first use. The partial unique index makes concurrent creates
 // converge on one row.
@@ -1148,13 +831,11 @@ func (s *Store) EnsureQualityAgentConversation(ctx context.Context, workspaceID 
 	_, err = s.GetDB().ExecContext(ctx, `
 		INSERT INTO quality_agent_session
 			(resource_id, workspace_id, target_guid, target_type, database_ref, agent_id,
-			 objective, state, next_wake_at, source, mode, kind)
-		VALUES ($1, $2, '', 0, '', $3, $4, $5, NULL, $6, $7, 2)
+			 state, next_wake_at, mode, kind)
+		VALUES ($1, $2, '', 0, '', $3, $4, NULL, $5, 2)
 		ON CONFLICT (agent_id) WHERE archived_at IS NULL AND kind = 2 DO NOTHING`,
 		resourceID, workspaceID, agentID,
-		"Talk to the workspace's quality agent about its scope, findings and reports.",
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
-		int16(storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_MANUAL),
 		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the agent conversation")

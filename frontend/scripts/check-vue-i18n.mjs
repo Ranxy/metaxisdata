@@ -54,28 +54,9 @@ export const DYNAMIC_PREFIXES = [
   // auditLogs.eventNames.* — the audit log page humanizes an RPC method name
   // through a computed key, which the checker cannot follow.
   "auditLogs.eventNames.",
-  // agentSessionStateKey/agentMessageRoleKey/agentMessageOriginKey in
-  // src/utils/agentSession.ts return the label key for a session state, a
-  // transcript role and a user/engine message origin; the checker cannot follow
-  // a key a helper returns.
-  "dataQuality.agent.state.",
-  "dataQuality.agent.role.",
-  "dataQuality.agent.origin.",
   // qualityAgentAttentionText() in src/lib/notificationText.ts returns the title
   // key for an agent escalation; the checker cannot follow a key a helper returns.
   "notifications.qualityAgent",
-  // agentSessionSourceKey/agentSessionModeKey in src/utils/agentSession.ts return
-  // the label key for who created a session and what its wake does.
-  "dataQuality.agent.source.",
-  "dataQuality.agent.mode.",
-  // enrollmentStateKey/enrollmentPriorityReasonLabels/enrollmentBlockedReasonLabel
-  // in src/utils/agentEnrollment.ts return the label key for a queue state, a
-  // priority signal and a blocked reason; the queue page also picks a per-database
-  // count key through a table, which the checker cannot follow.
-  "dataQuality.agent.enrollment.state.",
-  "dataQuality.agent.enrollment.prioritySignal.",
-  "dataQuality.agent.enrollment.blocked.",
-  "dataQuality.agent.enrollment.database",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.
@@ -96,9 +77,6 @@ export const DYNAMIC_PREFIXES = [
   // its unset state) to its label key.
   "dataQuality.intent.criticalityOption",
   "dataQuality.intent.criticalityUnset",
-  // rejectionKey() in ChangeRequestsDialog.vue maps the rejection taxonomy to its
-  // label key.
-  "dataQuality.changeRequests.reason",
   // The editor's vocabulary helpers and its validation messages: the key is
   // chosen by a helper in src/utils/dataQuality.ts or returned by
   // validateRuleForm, so the checker cannot follow it either.
@@ -119,15 +97,6 @@ export const DYNAMIC_PREFIXES = [
   // src/utils/dataQualitySuggestion.ts and toasted by
   // src/composables/useSuggestionSummary.ts.
   "dataQuality.suggestionSummary",
-  // Job lifecycle and per-target state labels returned by helpers in
-  // src/utils/dataQualitySuggestion.ts.
-  "dataQuality.suggestionJobStatus",
-  "dataQuality.suggestionJobTargetState",
-  // LLM failure classifier labels/hints and the synchronous truncation hint
-  // returned by helpers in src/utils/dataQualitySuggestion.ts.
-  "dataQuality.suggestions.diagnostic.code",
-  "dataQuality.suggestions.diagnostic.hint",
-  "dataQuality.suggestions.diagnostic.syncTruncatedHint",
   "dataQuality.semanticType",
   // qualityStandardCodeKey() in src/utils/dataQuality.ts maps the standard a
   // standard-code check validates to its label key.

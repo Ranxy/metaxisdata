@@ -303,24 +303,17 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		}),
 		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks),
 		agentrunner.WithPermissionChecker(agentIAM),
-		agentrunner.WithActionSettings(func(ctx context.Context) (dataquality.Settings, error) {
-			return dataquality.LoadSettings(ctx, stores)
-		}),
 		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	s.sessionRunner.SetAttentionSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
-		config, err := s.store.GetQualityAgentConfig(ctx, session.AgentID)
-		if err != nil || config == nil {
-			return
-		}
 		agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
 		if err != nil || agent == nil {
 			return
 		}
 		language := agentlang.English
-		if config.OwnerPrincipalID != nil {
-			if owner, ownerErr := s.store.GetUserByID(ctx, int(*config.OwnerPrincipalID)); ownerErr == nil {
+		if agent.OwnerPrincipalID != nil {
+			if owner, ownerErr := s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID)); ownerErr == nil {
 				language = agentlang.Of(owner)
 			}
 		}
@@ -329,7 +322,6 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			AgentID:     session.AgentID,
 			Kind:        store.QualityAgentAttentionKindBlocked,
 			SessionID:   &session.ID,
-			Reference:   session.ResourceID,
 			Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindBlocked),
 			Question:    agentlang.BlockedQuestion(language, reason),
 			DedupeKey:   "blocked:" + session.ResourceID + ":" + code,
@@ -346,8 +338,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			Question:  attention.Question,
 		}
 		dedupeKey := "dqagent:" + attention.ResourceID
-		if config.OwnerPrincipalID != nil {
-			if sendErr := s.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+		if agent.OwnerPrincipalID != nil {
+			if sendErr := s.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
 				slog.Warn("failed to send a quality agent attention notification", log.WithError(sendErr))
 			}
 		} else if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
@@ -378,7 +370,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = newEchoServer()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.sessionRunner, s.enrollmentRunner, sessionEngine, s.metrics); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, sessionEngine, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 

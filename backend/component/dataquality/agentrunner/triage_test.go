@@ -27,7 +27,7 @@ func TestTriageWakeWithoutAModelRetries(t *testing.T) {
 	require.Equal(t, "needs-human", outcome.BlockedCode)
 	require.Contains(t, outcome.BlockedReason, "needs a model")
 	require.Nil(t, outcome.NextWakeAt)
-	require.Empty(t, stores.investigations)
+	require.Empty(t, stores.memoryInputs)
 }
 
 func TestModelToolDefsDependOnMode(t *testing.T) {
@@ -40,7 +40,9 @@ func TestModelToolDefsDependOnMode(t *testing.T) {
 	triage := specNames(triageSpec().Tools)
 	require.Contains(t, triage, "get_table_context")
 	require.Contains(t, triage, "draft_checks")
-	require.Contains(t, triage, "record_investigation")
+	require.Contains(t, triage, "record_asset_fact")
+	require.NotContains(t, triage, "record_investigation")
+	require.NotContains(t, triage, "record_decision")
 }
 
 func TestGetTableContextToolReadsTheReader(t *testing.T) {

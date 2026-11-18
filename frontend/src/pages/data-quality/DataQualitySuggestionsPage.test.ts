@@ -31,8 +31,6 @@ const mocks = vi.hoisted(() => ({
   suggestQualityRule: vi.fn(),
   batchCreateQualityRules: vi.fn(),
   batchUpdateQualitySuggestions: vi.fn(),
-  listQualitySuggestionJobs: vi.fn(),
-  cancelQualitySuggestionJob: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
   listMetadata: vi.fn(),
   listAllMetadata: vi.fn(),
@@ -46,8 +44,6 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   suggestQualityRule: mocks.suggestQualityRule,
   batchCreateQualityRules: mocks.batchCreateQualityRules,
   batchUpdateQualitySuggestions: mocks.batchUpdateQualitySuggestions,
-  listQualitySuggestionJobs: mocks.listQualitySuggestionJobs,
-  cancelQualitySuggestionJob: mocks.cancelQualitySuggestionJob,
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -242,10 +238,6 @@ describe("DataQualitySuggestionsPage", () => {
     mocks.listMetadata.mockResolvedValue({ typesStoredMetadata: [] });
     mocks.listAllMetadata.mockResolvedValue([]);
     mocks.listAllInstances.mockResolvedValue([]);
-    mocks.listQualitySuggestionJobs.mockResolvedValue({
-      items: [],
-      nextPageToken: "",
-    });
     mocks.updateQualitySuggestion.mockImplementation(async (options) =>
       create(QualitySuggestionSchema, { name: options.name })
     );

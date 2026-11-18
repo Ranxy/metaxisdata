@@ -12,30 +12,13 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// QualityAgentReportTrigger says what produced a report.
-type QualityAgentReportTrigger int16
-
-const (
-	QualityAgentReportTriggerScheduled QualityAgentReportTrigger = 1
-	QualityAgentReportTriggerOnDemand  QualityAgentReportTrigger = 2
-)
-
-// QualityAgentReportPeriod is the report's period shape.
+// QualityAgentReportPeriod is the report's period shape. Reports are always
+// generated synchronously by the scheduled DAILY/WEEKLY runner.
 type QualityAgentReportPeriod int16
 
 const (
-	QualityAgentReportPeriodDaily    QualityAgentReportPeriod = 1
-	QualityAgentReportPeriodWeekly   QualityAgentReportPeriod = 2
-	QualityAgentReportPeriodOnDemand QualityAgentReportPeriod = 3
-)
-
-// QualityAgentReportState is the asynchronous generation state.
-type QualityAgentReportState int16
-
-const (
-	QualityAgentReportStatePending QualityAgentReportState = 1
-	QualityAgentReportStateReady   QualityAgentReportState = 2
-	QualityAgentReportStateFailed  QualityAgentReportState = 3
+	QualityAgentReportPeriodDaily  QualityAgentReportPeriod = 1
+	QualityAgentReportPeriodWeekly QualityAgentReportPeriod = 2
 )
 
 // QualityAgentReportMessage is one per-agent patrol report.
@@ -44,12 +27,10 @@ type QualityAgentReportMessage struct {
 	ResourceID           string
 	WorkspaceID          string
 	AgentID              int64
-	Trigger              QualityAgentReportTrigger
 	PeriodKind           QualityAgentReportPeriod
 	PeriodKey            string
 	PeriodStart          time.Time
 	PeriodEnd            time.Time
-	State                QualityAgentReportState
 	Scope                []string
 	TargetCount          int32
 	CoveredTargetCount   int32
@@ -62,23 +43,20 @@ type QualityAgentReportMessage struct {
 	NewIssueCount        int32
 	OpenIssueCount       int32
 	PendingProposalCount int32
-	TokensUsed           int64
-	Severity             int16
 	BodyMarkdown         string
-	FailureReason        string
 	CreatedAt            time.Time
 	GeneratedAt          *time.Time
 }
 
-const qualityAgentReportColumns = `id, resource_id, workspace_id, agent_id, trigger,
-	period_kind, period_key, period_start, period_end, state, scope, target_count,
+const qualityAgentReportColumns = `id, resource_id, workspace_id, agent_id,
+	period_kind, period_key, period_start, period_end, scope, target_count,
 	covered_target_count, rule_count, execution_count, passed_count, warned_count,
 	failed_count, errored_count, new_issue_count, open_issue_count,
-	pending_proposal_count, tokens_used, severity, body_markdown, failure_reason,
-	created_at, generated_at`
+	pending_proposal_count, body_markdown, created_at, generated_at`
 
-// CreateQualityAgentReport inserts one report row. The unique period index makes a
-// retried tick converge on one report; an existing row is returned with created=false.
+// CreateQualityAgentReport inserts one report row. The unique (agent, period) index
+// makes a retried tick converge on one report; an existing row is returned with
+// created=false.
 func (s *Store) CreateQualityAgentReport(ctx context.Context, message *QualityAgentReportMessage) (*QualityAgentReportMessage, bool, error) {
 	if message == nil || message.AgentID <= 0 || message.WorkspaceID == "" {
 		return nil, false, common.Errorf(common.Invalid, "a report needs an agent and a workspace")
@@ -93,26 +71,25 @@ func (s *Store) CreateQualityAgentReport(ctx context.Context, message *QualityAg
 	}
 	row := s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_report
-			(resource_id, workspace_id, agent_id, trigger, period_kind, period_key,
-			 period_start, period_end, state, scope, target_count, covered_target_count,
+			(resource_id, workspace_id, agent_id, period_kind, period_key,
+			 period_start, period_end, scope, target_count, covered_target_count,
 			 rule_count, execution_count, passed_count, warned_count, failed_count,
 			 errored_count, new_issue_count, open_issue_count, pending_proposal_count,
-			 tokens_used, severity, body_markdown, failure_reason, generated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-			$17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
-		ON CONFLICT (agent_id, trigger, period_key) DO NOTHING
+			 body_markdown, generated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+			$16, $17, $18, $19, $20, $21)
+		ON CONFLICT (agent_id, period_key) DO NOTHING
 		RETURNING `+qualityAgentReportColumns,
-		resourceID, message.WorkspaceID, message.AgentID, int16(message.Trigger),
+		resourceID, message.WorkspaceID, message.AgentID,
 		int16(message.PeriodKind), message.PeriodKey, message.PeriodStart, message.PeriodEnd,
-		int16(message.State), pq.Array(message.Scope), message.TargetCount, message.CoveredTargetCount,
+		pq.Array(message.Scope), message.TargetCount, message.CoveredTargetCount,
 		message.RuleCount, message.ExecutionCount, message.PassedCount, message.WarnedCount,
 		message.FailedCount, message.ErroredCount, message.NewIssueCount,
-		message.OpenIssueCount, message.PendingProposalCount, message.TokensUsed,
-		message.Severity, message.BodyMarkdown, message.FailureReason,
+		message.OpenIssueCount, message.PendingProposalCount, message.BodyMarkdown,
 		message.GeneratedAt)
 	created, err := scanQualityAgentReport(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		existing, readErr := s.GetQualityAgentReportByPeriod(ctx, message.AgentID, message.Trigger, message.PeriodKey)
+		existing, readErr := s.GetQualityAgentReportByPeriod(ctx, message.AgentID, message.PeriodKey)
 		if readErr != nil {
 			return nil, false, readErr
 		}
@@ -128,24 +105,10 @@ func (s *Store) CreateQualityAgentReport(ctx context.Context, message *QualityAg
 }
 
 // GetQualityAgentReportByPeriod reads one period's report; nil means absent.
-func (s *Store) GetQualityAgentReportByPeriod(ctx context.Context, agentID int64, trigger QualityAgentReportTrigger, periodKey string) (*QualityAgentReportMessage, error) {
+func (s *Store) GetQualityAgentReportByPeriod(ctx context.Context, agentID int64, periodKey string) (*QualityAgentReportMessage, error) {
 	message, err := scanQualityAgentReport(s.GetDB().QueryRowContext(ctx,
 		`SELECT `+qualityAgentReportColumns+` FROM quality_agent_report
-		 WHERE agent_id = $1 AND trigger = $2 AND period_key = $3`,
-		agentID, int16(trigger), periodKey))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "failed to read the quality agent report")
-	}
-	return message, nil
-}
-
-// GetQualityAgentReportByResourceID reads one report; nil means absent.
-func (s *Store) GetQualityAgentReportByResourceID(ctx context.Context, resourceID string) (*QualityAgentReportMessage, error) {
-	message, err := scanQualityAgentReport(s.GetDB().QueryRowContext(ctx,
-		`SELECT `+qualityAgentReportColumns+` FROM quality_agent_report WHERE resource_id = $1`, resourceID))
+		 WHERE agent_id = $1 AND period_key = $2`, agentID, periodKey))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -199,8 +162,8 @@ type QualityAgentReportSnapshot struct {
 
 // BuildQualityAgentReportSnapshot aggregates one period over the agent's enrolled
 // targets. The enrollment set, not the database prefix, is the scope: a target the
-// agent excluded or lost is not counted, and two agents covering the same database
-// do not double-count each other's targets.
+// agent lost is not counted, and two agents covering the same database do not
+// double-count each other's targets.
 func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int64, databases []string, since, until time.Time) (*QualityAgentReportSnapshot, error) {
 	snapshot := &QualityAgentReportSnapshot{Scope: append([]string(nil), databases...)}
 	states := []int16{
@@ -291,26 +254,21 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 func scanQualityAgentReport(scanner interface{ Scan(dest ...any) error }) (*QualityAgentReportMessage, error) {
 	var (
 		message     QualityAgentReportMessage
-		trigger     int16
 		periodKind  int16
-		state       int16
 		generatedAt sql.NullTime
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
-		&trigger, &periodKind, &message.PeriodKey, &message.PeriodStart, &message.PeriodEnd,
-		&state, pq.Array(&message.Scope), &message.TargetCount, &message.CoveredTargetCount,
+		&periodKind, &message.PeriodKey, &message.PeriodStart, &message.PeriodEnd,
+		pq.Array(&message.Scope), &message.TargetCount, &message.CoveredTargetCount,
 		&message.RuleCount, &message.ExecutionCount, &message.PassedCount,
 		&message.WarnedCount, &message.FailedCount, &message.ErroredCount,
 		&message.NewIssueCount, &message.OpenIssueCount, &message.PendingProposalCount,
-		&message.TokensUsed, &message.Severity, &message.BodyMarkdown,
-		&message.FailureReason, &message.CreatedAt, &generatedAt,
+		&message.BodyMarkdown, &message.CreatedAt, &generatedAt,
 	); err != nil {
 		return nil, err
 	}
-	message.Trigger = QualityAgentReportTrigger(trigger)
 	message.PeriodKind = QualityAgentReportPeriod(periodKind)
-	message.State = QualityAgentReportState(state)
 	if generatedAt.Valid {
 		value := generatedAt.Time
 		message.GeneratedAt = &value

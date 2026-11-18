@@ -8,7 +8,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -39,14 +38,13 @@ func readMeta() tool.Meta {
 
 // proposeMeta is the metadata of a tool that records a proposal or evidence
 // through an RPC handler.
-func proposeMeta(action dataquality.ActionID) tool.Meta {
+func proposeMeta() tool.Meta {
 	return tool.Meta{
 		Group:          "quality",
 		Scope:          tool.ScopeProductOnly,
 		Authz:          tool.AuthzPermission,
 		SideEffect:     tool.SideEffectPropose,
 		Permission:     string(permission.DataQualityPlansUpdate),
-		Action:         string(action),
 		MaxResultBytes: maxToolResultBytes,
 	}
 }
@@ -55,10 +53,9 @@ func proposeMeta(action dataquality.ActionID) tool.Meta {
 // only and is scoped by session ownership, not by a workspace permission.
 func internalMeta() tool.Meta {
 	return tool.Meta{
-		Group:  "agent",
-		Scope:  tool.ScopeProductOnly,
-		Authz:  tool.AuthzInternal,
-		Action: "",
+		Group: "agent",
+		Scope: tool.ScopeProductOnly,
+		Authz: tool.AuthzInternal,
 	}
 }
 
@@ -82,19 +79,9 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 		},
 		{
 			name:        "get_memory",
-			description: "List the confirmed memories about the target.",
+			description: "List the target's confirmed asset facts.",
 			parameters:  empty,
 			meta:        readMeta(),
-		},
-		{
-			name:        "record_investigation",
-			description: "Record an investigation with the evidence behind it.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"summary":   map[string]any{"type": "string"},
-				"verdict":   map[string]any{"type": "string", "enum": []string{"root_cause", "contributing_factor", "inconclusive"}},
-				"reference": map[string]any{"type": "string", "description": "an execution resource name when the investigation is about one"},
-			}, "required": []string{"summary"}},
-			meta: proposeMeta(dataquality.ActionWriteInvestigation),
 		},
 		{
 			name:        "record_asset_fact",
@@ -102,15 +89,7 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"statement": map[string]any{"type": "string"},
 			}, "required": []string{"statement"}},
-			meta: proposeMeta(dataquality.ActionWriteAssetFact),
-		},
-		{
-			name:        "record_decision",
-			description: "Record a proposed decision about the target; a person confirms it before it counts as knowledge.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"statement": map[string]any{"type": "string"},
-			}, "required": []string{"statement"}},
-			meta: proposeMeta(dataquality.ActionRecordDecisionWhy),
+			meta: proposeMeta(),
 		},
 		{
 			name:        "block_session",

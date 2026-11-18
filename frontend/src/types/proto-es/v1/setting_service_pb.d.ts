@@ -226,119 +226,13 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
   timeZone: string;
 
   /**
-   * Whether the workspace's agent principals may write plan declarations and
-   * proposed change requests. Off by default: turning it off is the kill
-   * switch that returns the workspace to human-only edits.
-   *
-   * @generated from field: bool agent_autonomy_enabled = 14;
-   */
-  agentAutonomyEnabled: boolean;
-
-  /**
    * Whether the built-in quality agent runner may run sessions. Off by default:
-   * turning it off stops new wakes; recorded proposals stay for review.
+   * turning it off stops agent wakes, reports and failure events. Per-agent
+   * budgets and scope live on the agent.
    *
    * @generated from field: bool agent_runner_enabled = 15;
    */
   agentRunnerEnabled: boolean;
-
-  /**
-   * The databases the runner may see and work on, as database resource names
-   * (instances/{instance}/databases/{database}). Empty means no database is in
-   * scope and the runner creates no session.
-   *
-   * @generated from field: repeated string agent_runner_databases = 16;
-   */
-  agentRunnerDatabases: string[];
-
-  /**
-   * The workspace's hourly token ceiling for runner sessions; 0 means the server
-   * default (100000000). A session has no individual token cap.
-   *
-   * @generated from field: int64 agent_runner_tokens_per_hour = 17;
-   */
-  agentRunnerTokensPerHour: bigint;
-
-  /**
-   * How many session wakes the workspace may start per hour; 0 means the server
-   * default (20).
-   *
-   * @generated from field: int32 agent_runner_wakes_per_hour = 20;
-   */
-  agentRunnerWakesPerHour: number;
-
-  /**
-   * How many sessions may run at once; 0 means the server default (2).
-   *
-   * @generated from field: int32 agent_runner_max_concurrent_sessions = 21;
-   */
-  agentRunnerMaxConcurrentSessions: number;
-
-  /**
-   * The context token threshold that triggers compaction of a session's older
-   * messages; 0 means the server default (262144).
-   *
-   * @generated from field: int32 agent_runner_compaction_trigger_tokens = 22;
-   */
-  agentRunnerCompactionTriggerTokens: number;
-
-  /**
-   * How long an idle session sleeps between wakes, in seconds; 0 means the server
-   * default (86400).
-   *
-   * @generated from field: int32 agent_runner_idle_wake_seconds = 23;
-   */
-  agentRunnerIdleWakeSeconds: number;
-
-  /**
-   * Whether a failed check execution appends an event to its target's session and
-   * wakes it. On by default.
-   *
-   * @generated from field: optional bool agent_runner_auto_investigate_failures = 24;
-   */
-  agentRunnerAutoInvestigateFailures?: boolean;
-
-  /**
-   * Whether the runner enrolls every monitorable object in its database scope into
-   * its queue. Off by default: turning it on is the workspace's opt-in to automatic
-   * triage and monitoring. Every write stays a proposal a person approves.
-   *
-   * @generated from field: bool agent_runner_auto_enroll = 25;
-   */
-  agentRunnerAutoEnroll: boolean;
-
-  /**
-   * How many automatic sessions the admission path may create per hour; 0 means the
-   * server default (10), accepted range 1-1000.
-   *
-   * @generated from field: int32 agent_runner_max_new_sessions_per_hour = 26;
-   */
-  agentRunnerMaxNewSessionsPerHour: number;
-
-  /**
-   * How many enrollments may be active (triaging or monitoring) at once; 0 means the
-   * server default (100), accepted range 1-10000.
-   *
-   * @generated from field: int32 agent_runner_max_active_sessions = 27;
-   */
-  agentRunnerMaxActiveSessions: number;
-
-  /**
-   * How many days a triaged target sleeps before it is reviewed again; 0 means the
-   * server default (30), accepted range 1-365.
-   *
-   * @generated from field: int32 agent_runner_dormant_review_days = 28;
-   */
-  agentRunnerDormantReviewDays: number;
-
-  /**
-   * The percentage of the hourly wake budget reserved for failed checks and people;
-   * automated admission only spends the remainder. 0 means the server default (50),
-   * accepted range 10-90.
-   *
-   * @generated from field: int32 agent_runner_event_budget_percent = 29;
-   */
-  agentRunnerEventBudgetPercent: number;
 };
 
 /**

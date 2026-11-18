@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -24,6 +25,48 @@ const (
 	adoptionDailyWindow  = 24 * time.Hour
 	defaultAdoptionDaily = 10
 )
+
+// SetQualityAgentAdoption changes the adoption mode without exposing the rest of
+// the configuration. An owner may turn it off or return it to PAUSED; ACTIVE stays
+// an administrator decision.
+func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *connect.Request[v1pb.SetQualityAgentAdoptionRequest]) (*connect.Response[v1pb.QualityAgent], error) {
+	workspaceID, resourceID, err := s.qualityAgentResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	agent, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.GetAdoption() == nil {
+		return nil, connectErrorInvalid("an adoption setting is required")
+	}
+	mode, err := qualityAgentAdoptionModeFromV1(req.Msg.GetAdoption().GetMode())
+	if err != nil {
+		return nil, err
+	}
+	admin, err := s.callerIsQualityAgentAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if mode == store.QualityAgentAdoptionModeActive && !admin {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only an administrator may enable automatic adoption"))
+	}
+	agent.AdoptionMode = mode
+	if mode == store.QualityAgentAdoptionModeOff || mode == store.QualityAgentAdoptionModeUnspecified {
+		agent.AdoptionMode = store.QualityAgentAdoptionModeOff
+	}
+	updated, err := s.store.UpdateQualityAgentConfig(ctx, agent)
+	if err != nil {
+		return nil, err
+	}
+	view, err := s.qualityAgentView(ctx, workspaceID, updated)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(view), nil
+}
 
 // AdoptQualitySuggestions applies the agent's auto-adoption guardrails to the rule
 // drafts a triage wake queued. It is called by the session engine after a
@@ -42,18 +85,18 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 }
 
 func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, session *store.QualityAgentSessionMessage) {
-	config, err := s.store.GetQualityAgentConfig(ctx, session.AgentID)
-	if err != nil || config == nil {
+	agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil || agent == nil {
 		return
 	}
-	if config.State != store.QualityAgentStateActive ||
-		(config.AdoptionMode != store.QualityAgentAdoptionModeActive &&
-			config.AdoptionMode != store.QualityAgentAdoptionModePaused) ||
-		!slices.Contains(config.Capabilities, "adopt") ||
-		!slices.Contains(config.Capabilities, "suggest") {
+	if agent.State != store.QualityAgentStateActive ||
+		(agent.AdoptionMode != store.QualityAgentAdoptionModeActive &&
+			agent.AdoptionMode != store.QualityAgentAdoptionModePaused) ||
+		!slices.Contains(agent.Capabilities, agentcapability.Adopt) ||
+		!slices.Contains(agent.Capabilities, agentcapability.Suggest) {
 		return
 	}
-	limit := config.AdoptionMaxPerDay
+	limit := agent.AdoptionMaxPerDay
 	if limit <= 0 {
 		limit = defaultAdoptionDaily
 	}
@@ -65,11 +108,7 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 	if adopted >= limit {
 		return
 	}
-	ownerID := config.OwnerPrincipalID
-	agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
-	if err != nil || agent == nil {
-		return
-	}
+	ownerID := agent.OwnerPrincipalID
 	// Without an owner the agent still queues its drafts and escalates to the
 	// administrators; only the rule write needs an owner to attribute the rule to.
 	var owner *store.UserMessage
@@ -110,11 +149,11 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 			continue
 		}
 		ruleType, ok := ruleTypeForDraftConfig(draft.GetConfig())
-		if !ok || !adoptionAllowsRuleType(config, ruleType) {
+		if !ok || !adoptionAllowsRuleType(agent, ruleType) {
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "rule type is outside the adoption allowlist")
 			continue
 		}
-		threshold := config.AdoptionConfidenceThreshold
+		threshold := agent.AdoptionConfidenceThreshold
 		if threshold <= 0 {
 			threshold = 0.7
 		}
@@ -122,7 +161,7 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "confidence is below the adoption threshold")
 			continue
 		}
-		if critical && !config.AdoptionAllowCritical {
+		if critical && !agent.AdoptionAllowCritical {
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "the target is critical and critical adoption is disabled")
 			continue
 		}
@@ -130,7 +169,7 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 			return
 		}
 		state := v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
-		if config.AdoptionMode == store.QualityAgentAdoptionModePaused {
+		if agent.AdoptionMode == store.QualityAgentAdoptionModePaused {
 			state = v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
 		}
 		rule := &v1pb.QualityRule{
@@ -179,7 +218,6 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 		WorkspaceID: session.WorkspaceID,
 		AgentID:     session.AgentID,
 		Kind:        store.QualityAgentAttentionKindProposalPending,
-		Reference:   targetGUID,
 		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
 		Question:    agentlang.ProposalQuestion(language, len(remaining)),
 		DedupeKey:   "proposal:" + targetGUID,
@@ -254,11 +292,11 @@ func (s *DataQualityService) recordAdoption(ctx context.Context, session *store.
 	}
 }
 
-func adoptionAllowsRuleType(config *store.QualityAgentConfigMessage, ruleType storepb.QualityRuleType) bool {
-	if len(config.AdoptionRuleTypes) == 0 {
+func adoptionAllowsRuleType(agent *store.QualityAgentMessage, ruleType storepb.QualityRuleType) bool {
+	if len(agent.AdoptionRuleTypes) == 0 {
 		return agentcapability.IsLowRiskRuleType(ruleType)
 	}
-	for _, allowed := range config.AdoptionRuleTypes {
+	for _, allowed := range agent.AdoptionRuleTypes {
 		if storepb.QualityRuleType(allowed) == ruleType {
 			return true
 		}

@@ -1,16 +1,14 @@
 package quality
 
 // The built-in quality agent's own tools (product-only scope): the target summary,
-// recent executions and memories it reads, the investigations/facts/decisions it
-// records, and the triage capabilities (table context, check drafts). They are not
-// part of the MCP read surface; they run through the same tool contract and
-// pipeline as every other tool, and the deterministic wake paths reuse their
-// CreateInvestigation/RecordAssetFactStatement helpers.
+// recent executions and memories it reads, the asset facts it records, and the
+// triage capabilities (table context, check drafts). They are not part of the MCP
+// read surface; they run through the same tool contract and pipeline as every
+// other tool, and the deterministic wake paths reuse the
+// RecordAssetFactStatement helper.
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -24,17 +22,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// maxDecisionStatement matches the API's memory statement bound.
-const maxDecisionStatement = 4000
-
 // maxTriageDraftColumns bounds the columns one draft_checks call may scope.
 const maxTriageDraftColumns = 8
 
 // MaxTriageDraftColumns is the exported bound the transport's contract tests read.
 const MaxTriageDraftColumns = maxTriageDraftColumns
-
-// sessionEvidenceKind is the evidence kind that ties a memory to its session.
-const sessionEvidenceKind = "SESSION"
 
 // AgentSession is the session identity the agent tools read and write.
 type AgentSession struct {
@@ -54,7 +46,6 @@ type AgentStore interface {
 	GetQualityContract(ctx context.Context, targetGUID string, targetType storepb.MetaType) (*store.QualityContractMessage, error)
 	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	ListQualityMemories(ctx context.Context, find *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error)
-	CreateQualityInvestigation(ctx context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
 }
 
@@ -235,59 +226,6 @@ func (t *AgentTools) GetMemory(ctx context.Context, session AgentSession) (strin
 	return marshalJSON(map[string]any{"memories": emptyIfNil(evidence.Memories)})
 }
 
-// RecordInvestigation records an investigation with its evidence reference.
-func (t *AgentTools) RecordInvestigation(ctx context.Context, session AgentSession, arguments string) (string, error) {
-	var input struct {
-		Summary   string `json:"summary"`
-		Verdict   string `json:"verdict"`
-		Reference string `json:"reference"`
-	}
-	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
-		return "", errors.Wrap(err, "invalid record_investigation arguments")
-	}
-	if strings.TrimSpace(input.Summary) == "" {
-		return "", errors.New("record_investigation needs a summary")
-	}
-	investigation := &store.CreateQualityInvestigationInput{
-		TargetGUID:         session.TargetGUID,
-		TargetType:         session.TargetType,
-		Trigger:            storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_MANUAL,
-		TriggerReference:   session.ResourceID,
-		Status:             storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
-		Verdict:            verdictFromString(input.Verdict),
-		Summary:            input.Summary,
-		Evidence:           &storepb.QualityInvestigationEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{{Kind: sessionEvidenceKind, Reference: session.ResourceID}}},
-		RequestFingerprint: investigationFingerprint(session.TargetGUID, input.Summary, input.Reference),
-		CreatedBy:          ptrInt32(session.AgentPrincipalID),
-	}
-	if input.Reference != "" {
-		investigation.Trigger = storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION
-		investigation.TriggerReference = input.Reference
-		investigation.Evidence.Evidence = append(investigation.Evidence.Evidence,
-			&storepb.QualityInvestigationEvidence{Kind: "EXECUTION", Reference: input.Reference})
-	}
-	message, err := t.CreateInvestigation(ctx, investigation)
-	if err != nil {
-		return "", err
-	}
-	return marshalJSON(map[string]any{"recorded": true, "investigation": message.ResourceID})
-}
-
-// CreateInvestigation writes one investigation; the store dedupes by fingerprint.
-// It is the shared write path behind the model tool and the deterministic survey.
-func (t *AgentTools) CreateInvestigation(ctx context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, error) {
-	resourceID, err := common.RandomString(12)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate the investigation id")
-	}
-	input.ResourceID = resourceID
-	message, _, err := t.deps.Store.CreateQualityInvestigation(ctx, input)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to record the investigation")
-	}
-	return message, nil
-}
-
 // RecordAssetFact records a model-observed fact unless a confirmed one already says
 // the same thing.
 func (t *AgentTools) RecordAssetFact(ctx context.Context, session AgentSession, arguments string) (string, error) {
@@ -327,12 +265,9 @@ func (t *AgentTools) RecordAssetFactStatement(ctx context.Context, session Agent
 	}
 	_, err = t.deps.Store.CreateQualityMemory(ctx, &store.CreateQualityMemoryInput{
 		ResourceID: resourceID,
-		Kind:       storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
 		Subject:    session.TargetGUID,
 		Statement:  statement,
-		Source:     storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT,
-		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED,
-		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
+		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityMemoryEvidence{
 			{Kind: "MODEL", Reference: session.ResourceID},
 		}},
 		CreatedBy: ptrInt32(session.AgentPrincipalID),
@@ -341,58 +276,6 @@ func (t *AgentTools) RecordAssetFactStatement(ctx context.Context, session Agent
 		return errors.Wrap(err, "failed to record the asset fact")
 	}
 	return nil
-}
-
-// RecordDecision writes the model's conclusion as a PROPOSED decision memory. It
-// never confirms itself: a person turns it into knowledge.
-func (t *AgentTools) RecordDecision(ctx context.Context, session AgentSession, arguments string) (string, error) {
-	var input struct {
-		Statement string `json:"statement"`
-	}
-	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
-		return "", errors.Wrap(err, "invalid record_decision arguments")
-	}
-	statement := strings.TrimSpace(input.Statement)
-	if statement == "" {
-		return "", errors.New("record_decision needs a statement")
-	}
-	statement = truncateRunes(statement, maxDecisionStatement)
-	kind := storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION
-	existing, err := t.deps.Store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Kind: &kind})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to read the target's memories")
-	}
-	for _, memory := range existing {
-		if memory.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED {
-			continue
-		}
-		if memory.ExpiresAt != nil && !memory.ExpiresAt.After(t.now()) {
-			continue
-		}
-		if memory.Statement == statement {
-			return marshalJSON(map[string]any{"recorded": true})
-		}
-	}
-	resourceID, err := common.RandomString(12)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to generate the memory id")
-	}
-	_, err = t.deps.Store.CreateQualityMemory(ctx, &store.CreateQualityMemoryInput{
-		ResourceID: resourceID,
-		Kind:       storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
-		Subject:    session.TargetGUID,
-		Statement:  statement,
-		Source:     storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT,
-		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED,
-		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
-			{Kind: sessionEvidenceKind, Reference: session.ResourceID},
-		}},
-		CreatedBy: ptrInt32(session.AgentPrincipalID),
-	})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to record the decision memory")
-	}
-	return marshalJSON(map[string]any{"recorded": true})
 }
 
 // GetTableContext reads the bounded table context a triage wake uses.
@@ -512,28 +395,9 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 	}
 }
 
-// investigationFingerprint identifies one investigation deterministically, so a
-// retried wake cannot record it twice.
-func investigationFingerprint(targetGUID, summary, reference string) string {
-	sum := sha256.Sum256([]byte("agent-investigation|" + targetGUID + "|" + reference + "|" + summary))
-	return "agent-inv:" + hex.EncodeToString(sum[:])
-}
-
 // executionIDName renders an execution resource name for a tool result.
 func executionIDName(id int64) string {
 	return fmt.Sprintf("qualityExecutions/%d", id)
-}
-
-// verdictFromString maps the model's verdict word to the stored enum.
-func verdictFromString(value string) storepb.QualityInvestigationVerdict {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "root_cause":
-		return storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE
-	case "contributing_factor":
-		return storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR
-	default:
-		return storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE
-	}
 }
 
 // marshalJSON renders a tool result.
@@ -555,16 +419,3 @@ func emptyIfNil(values []string) []string {
 
 // ptrInt32 returns a pointer to value.
 func ptrInt32(value int32) *int32 { return &value }
-
-// truncateRunes bounds a string at rune granularity so a multi-byte character is
-// never split; protojson rejects invalid UTF-8.
-func truncateRunes(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	if len(runes) <= limit {
-		return value
-	}
-	return string(runes[:limit]) + "…"
-}

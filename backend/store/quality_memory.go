@@ -14,9 +14,9 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// QualityMemoryMessage is one durable piece of knowledge with its evidence and its
-// correction path. Superseded and expired rows stay for that path; a delete is a soft
-// delete that only removes the row from reads.
+// QualityMemoryMessage is one deterministic asset fact with its evidence. A fact
+// is written confirmed; the previous fact of the same subject is superseded, never
+// overwritten, so the correction path keeps its history.
 type QualityMemoryMessage struct {
 	ID           int64
 	ResourceID   string
@@ -26,10 +26,7 @@ type QualityMemoryMessage struct {
 	Source       storepb.QualityMemorySource
 	Status       storepb.QualityMemoryStatus
 	Evidence     *storepb.QualityMemoryEvidenceList
-	DomainRef    string
 	ExpiresAt    *time.Time
-	ConfirmedBy  *int32
-	ConfirmedAt  *time.Time
 	SupersededBy string
 	CreatedBy    *int32
 	CreatedAt    time.Time
@@ -37,27 +34,23 @@ type QualityMemoryMessage struct {
 }
 
 const qualityMemoryColumns = `id, resource_id, kind, subject, statement, source, status,
-	evidence, domain_ref, expires_at, confirmed_by, confirmed_at, superseded_by,
-	created_by, created_at, updated_at`
+	evidence, expires_at, superseded_by, created_by, created_at, updated_at`
 
-// CreateQualityMemoryInput is one record attempt.
+// CreateQualityMemoryInput is one asset fact to record.
 type CreateQualityMemoryInput struct {
-	ResourceID  string
-	Kind        storepb.QualityMemoryKind
-	Subject     string
-	Statement   string
-	Source      storepb.QualityMemorySource
-	Status      storepb.QualityMemoryStatus
-	Evidence    *storepb.QualityMemoryEvidenceList
-	DomainRef   string
-	ExpiresAt   *time.Time
-	ConfirmedBy *int32
-	CreatedBy   *int32
+	ResourceID string
+	// Subject is the target the fact is about.
+	Subject   string
+	Statement string
+	Evidence  *storepb.QualityMemoryEvidenceList
+	ExpiresAt *time.Time
+	CreatedBy *int32
 }
 
-// CreateQualityMemory records one memory. A confirmed one supersedes the confirmed
-// memory of the same kind and subject: the previous row keeps its evidence and gains
-// superseded_by, it is never overwritten.
+// CreateQualityMemory records one confirmed asset fact. A new fact supersedes the
+// previous confirmed fact of the same subject in the same transaction, and a
+// transaction-scoped advisory lock serializes concurrent writers so exactly one row
+// stays current.
 func (s *Store) CreateQualityMemory(ctx context.Context, input *CreateQualityMemoryInput) (*QualityMemoryMessage, error) {
 	if input == nil || input.ResourceID == "" {
 		return nil, common.Errorf(common.Invalid, "a resource id is required")
@@ -73,30 +66,28 @@ func (s *Store) CreateQualityMemory(ctx context.Context, input *CreateQualityMem
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
-	// A confirmed memory records when it was confirmed; a proposal records nothing yet.
-	var confirmedAt *time.Time
-	if input.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
-		now := time.Now()
-		confirmedAt = &now
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+		qualityMemorySubjectLockKey(input.Subject)); err != nil {
+		return nil, errors.Wrap(err, "failed to lock the memory subject")
 	}
-	row := tx.QueryRowContext(ctx, `
+	message, err := scanQualityMemory(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_memory
-			(resource_id, kind, subject, statement, source, status, evidence, domain_ref,
-			 expires_at, confirmed_by, confirmed_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			(resource_id, kind, subject, statement, source, status, evidence, expires_at,
+			 created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING `+qualityMemoryColumns,
-		input.ResourceID, int16(input.Kind), input.Subject, input.Statement,
-		int16(input.Source), int16(input.Status), evidence, input.DomainRef,
-		input.ExpiresAt, input.ConfirmedBy, confirmedAt, input.CreatedBy)
-	message, err := scanQualityMemory(row)
+		input.ResourceID,
+		int16(storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT), input.Subject,
+		input.Statement,
+		int16(storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT),
+		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED), evidence,
+		input.ExpiresAt, input.CreatedBy))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality memory")
 	}
-	if message.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
-		if err := supersedeQualityMemory(ctx, tx, input.Kind, input.Subject, input.ResourceID); err != nil {
-			return nil, err
-		}
+	if err := supersedeQualityMemory(ctx, tx, input.Subject, input.ResourceID); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, errors.Wrap(err, "failed to commit the quality memory")
@@ -104,57 +95,50 @@ func (s *Store) CreateQualityMemory(ctx context.Context, input *CreateQualityMem
 	return message, nil
 }
 
-// GetQualityMemory reads one memory; nil means it does not exist or was deleted.
-func (s *Store) GetQualityMemory(ctx context.Context, resourceID string) (*QualityMemoryMessage, error) {
-	message, err := scanQualityMemory(s.GetDB().QueryRowContext(ctx,
-		`SELECT `+qualityMemoryColumns+` FROM quality_memory WHERE resource_id = $1 AND deleted = FALSE`, resourceID))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "failed to read the quality memory")
+// supersedeQualityMemory marks the previous confirmed fact of one subject as
+// superseded. It runs inside the caller's transaction, after the new row is written.
+func supersedeQualityMemory(ctx context.Context, tx *sql.Tx, subject, resourceID string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_memory
+		SET status = $3, superseded_by = $4, updated_at = NOW()
+		WHERE kind = $1 AND subject = $2 AND status = $5 AND resource_id <> $4
+	`, int16(storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT), subject,
+		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED),
+		resourceID,
+		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)); err != nil {
+		return errors.Wrap(err, "failed to supersede the previous memory")
 	}
-	return message, nil
+	return nil
 }
 
-// FindQualityMemoryMessage filters a list; every field is optional.
+// qualityMemorySubjectLockKey is the advisory-lock key for one subject: only one
+// writer may insert and supersede for a subject at a time.
+func qualityMemorySubjectLockKey(subject string) string {
+	return strings.ToLower(storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT.String()) + "|" + subject
+}
+
+// FindQualityMemoryMessage filters an asset-fact list; every field is optional.
 type FindQualityMemoryMessage struct {
-	Kind    *storepb.QualityMemoryKind
-	Status  *storepb.QualityMemoryStatus
 	Subject *string
 	Limit   *int
 	Offset  *int
 }
 
-// ListQualityMemories lists memories newest first. An expired confirmation is filtered
-// as EXPIRED, not as CONFIRMED, so a reader cannot mistake stale knowledge for current.
+// ListQualityMemories lists the confirmed asset facts newest first. A fact whose
+// expiry has passed is reported as EXPIRED on read, so a caller cannot mistake stale
+// knowledge for current knowledge; the row itself is kept.
 func (s *Store) ListQualityMemories(ctx context.Context, find *FindQualityMemoryMessage) ([]*QualityMemoryMessage, error) {
 	if find == nil {
 		find = &FindQualityMemoryMessage{}
 	}
-	where := "deleted = FALSE"
-	args := []any{}
+	args := []any{int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)}
+	where := "status = $1"
 	arg := func(value any) string {
 		args = append(args, value)
 		return "$" + strconv.Itoa(len(args))
 	}
-	if find.Kind != nil {
-		where += ` AND kind = ` + arg(int16(*find.Kind))
-	}
 	if find.Subject != nil && strings.TrimSpace(*find.Subject) != "" {
 		where += ` AND subject = ` + arg(strings.TrimSpace(*find.Subject))
-	}
-	if find.Status != nil {
-		switch *find.Status {
-		case storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_EXPIRED:
-			where += ` AND status = ` + arg(int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)) +
-				` AND expires_at IS NOT NULL AND expires_at <= NOW()`
-		case storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED:
-			where += ` AND status = ` + arg(int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)) +
-				` AND (expires_at IS NULL OR expires_at > NOW())`
-		default:
-			where += ` AND status = ` + arg(int16(*find.Status))
-		}
 	}
 	limit, offset := 100, 0
 	if find.Limit != nil && *find.Limit > 0 {
@@ -170,11 +154,16 @@ func (s *Store) ListQualityMemories(ctx context.Context, find *FindQualityMemory
 		return nil, errors.Wrap(err, "failed to list the quality memories")
 	}
 	defer rows.Close()
+	now := time.Now()
 	var messages []*QualityMemoryMessage
 	for rows.Next() {
 		message, err := scanQualityMemory(rows)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to scan a quality memory")
+		}
+		if message.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED &&
+			message.ExpiresAt != nil && !message.ExpiresAt.After(now) {
+			message.Status = storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_EXPIRED
 		}
 		messages = append(messages, message)
 	}
@@ -184,109 +173,20 @@ func (s *Store) ListQualityMemories(ctx context.Context, find *FindQualityMemory
 	return messages, nil
 }
 
-// ConfirmQualityMemory moves a PROPOSED memory to CONFIRMED or REJECTED. The compare
-// and set on the previous status is what makes two reviewers' clicks safe, and a
-// confirmed memory supersedes the previous one of the same kind and subject in the
-// same transaction, so exactly one row is current.
-func (s *Store) ConfirmQualityMemory(ctx context.Context, resourceID string, status storepb.QualityMemoryStatus, confirmedBy *int32) (*QualityMemoryMessage, error) {
-	if status != storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED &&
-		status != storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED {
-		return nil, common.Errorf(common.Invalid, "a confirmation must confirm or reject")
-	}
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	var kind int16
-	var subject string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT kind, subject FROM quality_memory WHERE resource_id = $1 AND deleted = FALSE`,
-		resourceID).Scan(&kind, &subject); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, common.Errorf(common.NotFound, "memory %q not found", resourceID)
-		}
-		return nil, errors.Wrap(err, "failed to read the memory to confirm")
-	}
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
-		strings.ToLower(storepb.QualityMemoryKind(kind).String())+"|"+subject); err != nil {
-		return nil, errors.Wrap(err, "failed to lock the memory subject")
-	}
-	message, err := scanQualityMemory(tx.QueryRowContext(ctx, `
-		UPDATE quality_memory
-		SET status = $2, confirmed_by = $3, confirmed_at = NOW(), updated_at = NOW()
-		WHERE resource_id = $1 AND status = $4 AND deleted = FALSE
-		RETURNING `+qualityMemoryColumns,
-		resourceID, int16(status), confirmedBy,
-		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED)))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, common.Errorf(common.Conflict, "the memory was already decided")
-		}
-		return nil, errors.Wrap(err, "failed to confirm the quality memory")
-	}
-	if message.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
-		if err := supersedeQualityMemory(ctx, tx, storepb.QualityMemoryKind(kind), subject, resourceID); err != nil {
-			return nil, err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit the memory confirmation")
-	}
-	return message, nil
-}
-
-// supersedeQualityMemory marks the previous confirmed memory of one (kind, subject) as
-// superseded. It runs inside the caller's transaction, after the new row is locked in.
-func supersedeQualityMemory(ctx context.Context, tx *sql.Tx, kind storepb.QualityMemoryKind, subject, resourceID string) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE quality_memory
-		SET status = $3, superseded_by = $4, updated_at = NOW()
-		WHERE kind = $1 AND subject = $2 AND status = $5 AND resource_id <> $4 AND deleted = FALSE
-	`, int16(kind), subject,
-		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED),
-		resourceID,
-		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)); err != nil {
-		return errors.Wrap(err, "failed to supersede the previous memory")
-	}
-	return nil
-}
-
-// DeleteQualityMemory soft-deletes a memory; the audit row records who removed it.
-func (s *Store) DeleteQualityMemory(ctx context.Context, resourceID string) error {
-	result, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_memory SET deleted = TRUE, updated_at = NOW()
-		WHERE resource_id = $1 AND deleted = FALSE`, resourceID)
-	if err != nil {
-		return errors.Wrap(err, "failed to delete the quality memory")
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return errors.Wrap(err, "failed to count the deleted memory")
-	}
-	if affected == 0 {
-		return common.Errorf(common.NotFound, "memory %q not found", resourceID)
-	}
-	return nil
-}
-
 // scanQualityMemory reads one quality_memory row.
 func scanQualityMemory(scanner interface{ Scan(dest ...any) error }) (*QualityMemoryMessage, error) {
 	var (
-		message     QualityMemoryMessage
-		kind        int16
-		source      int16
-		status      int16
-		evidence    []byte
-		expiresAt   sql.NullTime
-		confirmedBy sql.NullInt32
-		confirmedAt sql.NullTime
-		createdBy   sql.NullInt32
+		message   QualityMemoryMessage
+		kind      int16
+		source    int16
+		status    int16
+		evidence  []byte
+		expiresAt sql.NullTime
+		createdBy sql.NullInt32
 	)
 	if err := scanner.Scan(&message.ID, &message.ResourceID, &kind, &message.Subject,
-		&message.Statement, &source, &status, &evidence, &message.DomainRef, &expiresAt,
-		&confirmedBy, &confirmedAt, &message.SupersededBy, &createdBy,
-		&message.CreatedAt, &message.UpdatedAt); err != nil {
+		&message.Statement, &source, &status, &evidence, &expiresAt,
+		&message.SupersededBy, &createdBy, &message.CreatedAt, &message.UpdatedAt); err != nil {
 		return nil, err
 	}
 	message.Kind = storepb.QualityMemoryKind(kind)
@@ -301,14 +201,6 @@ func scanQualityMemory(scanner interface{ Scan(dest ...any) error }) (*QualityMe
 	if expiresAt.Valid {
 		value := expiresAt.Time
 		message.ExpiresAt = &value
-	}
-	if confirmedBy.Valid {
-		id := confirmedBy.Int32
-		message.ConfirmedBy = &id
-	}
-	if confirmedAt.Valid {
-		value := confirmedAt.Time
-		message.ConfirmedAt = &value
 	}
 	if createdBy.Valid {
 		id := createdBy.Int32

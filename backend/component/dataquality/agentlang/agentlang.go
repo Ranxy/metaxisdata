@@ -96,11 +96,11 @@ func ReportReady(lang, start, end string) string {
 }
 
 // ScopeSummary is the deterministic conversation answer when no model is configured.
-func ScopeSummary(lang string, total, pending, active, dormant, excluded, outOfScope, gone int) string {
+func ScopeSummary(lang string, total, pending, active, dormant, outOfScope, gone int) string {
 	if IsChinese(lang) {
 		lines := []string{
 			fmt.Sprintf("范围：已发现 %d 个目标。", total),
-			fmt.Sprintf("队列：%d 待准入、%d 活跃、%d 休眠、%d 已排除、%d 出范围、%d 已消失。", pending, active, dormant, excluded, outOfScope, gone),
+			fmt.Sprintf("队列：%d 待准入、%d 活跃、%d 休眠、%d 出范围、%d 已消失。", pending, active, dormant, outOfScope, gone),
 		}
 		if pending > 0 {
 			lines = append(lines, "Agent 仍在准入待处理目标。")
@@ -113,7 +113,7 @@ func ScopeSummary(lang string, total, pending, active, dormant, excluded, outOfS
 	}
 	lines := []string{
 		fmt.Sprintf("Scope: %d target(s) discovered.", total),
-		fmt.Sprintf("Queue: %d pending, %d active, %d dormant, %d excluded, %d out of scope, %d gone.", pending, active, dormant, excluded, outOfScope, gone),
+		fmt.Sprintf("Queue: %d pending, %d active, %d dormant, %d out of scope, %d gone.", pending, active, dormant, outOfScope, gone),
 	}
 	if pending > 0 {
 		lines = append(lines, "The agent is still admitting pending targets.")

@@ -39,11 +39,11 @@ Output EXACTLY the Markdown structure below: keep every section, in order. Use t
 ## Work Completed
 - [wakes already handled, checks run or reviewed, events investigated]
 
-## Confirmed Findings and Investigations
-- [investigation ids/verdicts and the finding behind each]
+## Confirmed Findings
+- [the asset facts already recorded and the evidence behind each]
 
-## Memories and Decisions
-- [asset facts and proposed decisions already recorded; mark proposals as proposals]
+## Recorded Asset Facts
+- [the current asset fact for the target and what it established]
 
 ## Open Issues and Pending Work
 - [unfinished work, blockers waiting on a person, failures that still need a conclusion]

@@ -797,6 +797,12 @@ const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
 const form = ref<DataQualitySettingsForm>(settingsToForm(undefined));
+/**
+ * The runner switch is owned by the agents settings page, but a save here
+ * replaces the whole `data_quality` message, so keep the value read at load
+ * and write it back untouched.
+ */
+const agentRunnerEnabled = ref(false);
 const profileOptions = ref<Array<{ name: string; title: string }>>([]);
 const issues = ref<ReturnType<typeof validateSettingsForm>>([]);
 const isLoading = ref(true);
@@ -903,6 +909,7 @@ async function load() {
   try {
     const profile = await getWorkspaceProfileSetting();
     form.value = settingsToForm(profile.dataQuality);
+    agentRunnerEnabled.value = profile.dataQuality?.agentRunnerEnabled ?? false;
     original.value = JSON.stringify(form.value);
     issues.value = [];
     await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
@@ -1159,7 +1166,9 @@ async function handleSave() {
   }
   isSaving.value = true;
   try {
-    await updateDataQualitySetting(formToSetting(form.value));
+    const setting = formToSetting(form.value);
+    setting.agentRunnerEnabled = agentRunnerEnabled.value;
+    await updateDataQualitySetting(setting);
     notify.success(t("dataQualitySettings.saved"));
     await load();
   } catch (e: unknown) {

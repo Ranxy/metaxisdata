@@ -211,8 +211,6 @@ function stateLabel(state: QualityAgentSessionState): string {
   switch (state) {
     case QualityAgentSessionState.ENABLED:
       return t("qualityAgent.stateEnabled");
-    case QualityAgentSessionState.PAUSED:
-      return t("qualityAgent.statePaused");
     case QualityAgentSessionState.BLOCKED:
       return t("qualityAgent.stateBlocked");
     case QualityAgentSessionState.ARCHIVED:
@@ -244,17 +242,17 @@ function roleLabel(role: QualityAgentMessageRole): string {
 function originLabel(origin: QualityAgentMessageOrigin): string {
   switch (origin) {
     case QualityAgentMessageOrigin.WAKE:
-      return "wake";
+      return t("qualityAgent.originWake");
     case QualityAgentMessageOrigin.EVENT:
-      return "event";
+      return t("qualityAgent.originEvent");
     case QualityAgentMessageOrigin.ASK:
-      return "ask";
+      return t("qualityAgent.originAsk");
     case QualityAgentMessageOrigin.RUNNER:
-      return "runner";
+      return t("qualityAgent.originRunner");
     case QualityAgentMessageOrigin.MODEL:
-      return "model";
+      return t("qualityAgent.originModel");
     case QualityAgentMessageOrigin.COMPACTION:
-      return "compaction";
+      return t("qualityAgent.originCompaction");
     default:
       return "";
   }

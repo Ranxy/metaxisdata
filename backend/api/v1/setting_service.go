@@ -72,30 +72,6 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 	if setting.McpEnabled && setting.ExternalUrl == "" {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("external_url must be configured before mcp_enabled can be turned on"))
 	}
-	// Automatic enrollment needs a scope and an agent to run as; refusing the write is
-	// clearer than discovering it later as an empty queue. Autonomy is not required (the
-	// queue may be prepared before it is turned on), but the page warns about it.
-	if dataQuality := setting.GetDataQuality(); dataQuality.GetAgentRunnerAutoEnroll() {
-		if !dataQuality.GetAgentRunnerEnabled() || len(dataQuality.GetAgentRunnerDatabases()) == 0 {
-			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("automatic enrollment needs the agent runner enabled and at least one database in scope"))
-		}
-		agents, err := s.store.ListQualityAgents(ctx)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the quality agents"))
-		}
-		enabled := false
-		for _, agent := range agents {
-			if agent.Enabled {
-				enabled = true
-				break
-			}
-		}
-		if !enabled {
-			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("automatic enrollment needs an enabled quality agent"))
-		}
-	}
 
 	payload, err := protojson.Marshal(setting)
 	if err != nil {
@@ -236,38 +212,6 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	if provider != "" && !validLLMProviderProfileName(provider) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
 	}
-	if value := dataQuality.GetAgentRunnerTokensPerHour(); value < 0 || value > dataquality.MaxAgentRunnerTokensPerHour {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_tokens_per_hour must be between 0 and %d", dataquality.MaxAgentRunnerTokensPerHour))
-	}
-	if value := dataQuality.GetAgentRunnerWakesPerHour(); value < 0 || value > dataquality.MaxAgentRunnerWakesPerHour {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_wakes_per_hour must be between 0 and %d", dataquality.MaxAgentRunnerWakesPerHour))
-	}
-	if value := dataQuality.GetAgentRunnerMaxConcurrentSessions(); value < 0 || value > dataquality.MaxAgentRunnerConcurrentSessions {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_max_concurrent_sessions must be between 0 and %d", dataquality.MaxAgentRunnerConcurrentSessions))
-	}
-	if value := dataQuality.GetAgentRunnerCompactionTriggerTokens(); value != 0 && (value < dataquality.MinAgentRunnerCompactionTriggerTokens || value > dataquality.MaxAgentRunnerCompactionTriggerTokens) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_compaction_trigger_tokens must be 0 or between %d and %d", dataquality.MinAgentRunnerCompactionTriggerTokens, dataquality.MaxAgentRunnerCompactionTriggerTokens))
-	}
-	if value := dataQuality.GetAgentRunnerIdleWakeSeconds(); value != 0 && (value < dataquality.MinAgentRunnerIdleWakeSeconds || value > dataquality.MaxAgentRunnerIdleWakeSeconds) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_idle_wake_seconds must be 0 or between %d and %d", dataquality.MinAgentRunnerIdleWakeSeconds, dataquality.MaxAgentRunnerIdleWakeSeconds))
-	}
-	if value := dataQuality.GetAgentRunnerMaxNewSessionsPerHour(); value != 0 && (value < 1 || value > dataquality.MaxAgentRunnerNewSessionsPerHour) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_max_new_sessions_per_hour must be 0 or between 1 and %d", dataquality.MaxAgentRunnerNewSessionsPerHour))
-	}
-	if value := dataQuality.GetAgentRunnerMaxActiveSessions(); value < 0 || value > dataquality.MaxAgentRunnerActiveSessions {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_max_active_sessions must be between 0 and %d", dataquality.MaxAgentRunnerActiveSessions))
-	}
-	if value := dataQuality.GetAgentRunnerDormantReviewDays(); value != 0 && (value < dataquality.MinAgentRunnerDormantReviewDays || value > dataquality.MaxAgentRunnerDormantReviewDays) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_dormant_review_days must be 0 or between %d and %d", dataquality.MinAgentRunnerDormantReviewDays, dataquality.MaxAgentRunnerDormantReviewDays))
-	}
-	if value := dataQuality.GetAgentRunnerEventBudgetPercent(); value != 0 && (value < dataquality.MinAgentRunnerEventBudgetPercent || value > dataquality.MaxAgentRunnerEventBudgetPercent) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_event_budget_percent must be 0 or between %d and %d", dataquality.MinAgentRunnerEventBudgetPercent, dataquality.MaxAgentRunnerEventBudgetPercent))
-	}
-	runnerDatabases, err := normalizeRunnerDatabases(dataQuality.GetAgentRunnerDatabases())
-	if err != nil {
-		return nil, err
-	}
-
 	var digest *storepb.QualityDigestSetting
 	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
 		// The v1 and store DayOfWeek enums are defined with identical values
@@ -284,32 +228,19 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	}
 
 	result := &storepb.DataQualitySetting{
-		EnableLlmAnalysis:                  dataQuality.GetEnableLlmAnalysis(),
-		LlmProviderProfile:                 provider,
-		StoreFailureSamples:                dataQuality.GetStoreFailureSamples(),
-		FailureSampleLimit:                 dataQuality.GetFailureSampleLimit(),
-		DailyExecutionLimit:                dataQuality.GetDailyExecutionLimit(),
-		DailyColumnAnalysisLimit:           dataQuality.GetDailyColumnAnalysisLimit(),
-		DailyLlmAnalysisLimit:              dataQuality.GetDailyLlmAnalysisLimit(),
-		LlmConcurrencyLimit:                dataQuality.GetLlmConcurrencyLimit(),
-		MaxColumnsPerAnalysis:              dataQuality.GetMaxColumnsPerAnalysis(),
-		SendSampleValuesToLlm:              dataQuality.GetSendSampleValuesToLlm(),
-		WeeklyDigest:                       digest,
-		TimeZone:                           timeZone,
-		AgentAutonomyEnabled:               dataQuality.GetAgentAutonomyEnabled(),
-		AgentRunnerEnabled:                 dataQuality.GetAgentRunnerEnabled(),
-		AgentRunnerDatabases:               runnerDatabases,
-		AgentRunnerTokensPerHour:           dataQuality.GetAgentRunnerTokensPerHour(),
-		AgentRunnerWakesPerHour:            dataQuality.GetAgentRunnerWakesPerHour(),
-		AgentRunnerMaxConcurrentSessions:   dataQuality.GetAgentRunnerMaxConcurrentSessions(),
-		AgentRunnerCompactionTriggerTokens: dataQuality.GetAgentRunnerCompactionTriggerTokens(),
-		AgentRunnerIdleWakeSeconds:         dataQuality.GetAgentRunnerIdleWakeSeconds(),
-		AgentRunnerAutoInvestigateFailures: dataQuality.AgentRunnerAutoInvestigateFailures,
-		AgentRunnerAutoEnroll:              dataQuality.GetAgentRunnerAutoEnroll(),
-		AgentRunnerMaxNewSessionsPerHour:   dataQuality.GetAgentRunnerMaxNewSessionsPerHour(),
-		AgentRunnerMaxActiveSessions:       dataQuality.GetAgentRunnerMaxActiveSessions(),
-		AgentRunnerDormantReviewDays:       dataQuality.GetAgentRunnerDormantReviewDays(),
-		AgentRunnerEventBudgetPercent:      dataQuality.GetAgentRunnerEventBudgetPercent(),
+		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:       provider,
+		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
+		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
+		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:             digest,
+		TimeZone:                 timeZone,
+		AgentRunnerEnabled:       dataQuality.GetAgentRunnerEnabled(),
 	}
 	if interval != nil {
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
@@ -357,33 +288,20 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		}
 	}
 	return &v1pb.DataQualitySetting{
-		EnableLlmAnalysis:                  dataQuality.GetEnableLlmAnalysis(),
-		LlmProviderProfile:                 dataQuality.GetLlmProviderProfile(),
-		StoreFailureSamples:                dataQuality.GetStoreFailureSamples(),
-		FailureSampleLimit:                 dataQuality.GetFailureSampleLimit(),
-		DefaultScheduleInterval:            dataQuality.GetDefaultScheduleInterval(),
-		DailyExecutionLimit:                dataQuality.GetDailyExecutionLimit(),
-		DailyColumnAnalysisLimit:           dataQuality.GetDailyColumnAnalysisLimit(),
-		DailyLlmAnalysisLimit:              dataQuality.GetDailyLlmAnalysisLimit(),
-		LlmConcurrencyLimit:                dataQuality.GetLlmConcurrencyLimit(),
-		MaxColumnsPerAnalysis:              dataQuality.GetMaxColumnsPerAnalysis(),
-		SendSampleValuesToLlm:              dataQuality.GetSendSampleValuesToLlm(),
-		WeeklyDigest:                       digest,
-		TimeZone:                           dataQuality.GetTimeZone(),
-		AgentAutonomyEnabled:               dataQuality.GetAgentAutonomyEnabled(),
-		AgentRunnerEnabled:                 dataQuality.GetAgentRunnerEnabled(),
-		AgentRunnerDatabases:               append([]string(nil), dataQuality.GetAgentRunnerDatabases()...),
-		AgentRunnerTokensPerHour:           dataQuality.GetAgentRunnerTokensPerHour(),
-		AgentRunnerWakesPerHour:            dataQuality.GetAgentRunnerWakesPerHour(),
-		AgentRunnerMaxConcurrentSessions:   dataQuality.GetAgentRunnerMaxConcurrentSessions(),
-		AgentRunnerCompactionTriggerTokens: dataQuality.GetAgentRunnerCompactionTriggerTokens(),
-		AgentRunnerIdleWakeSeconds:         dataQuality.GetAgentRunnerIdleWakeSeconds(),
-		AgentRunnerAutoInvestigateFailures: dataQuality.AgentRunnerAutoInvestigateFailures,
-		AgentRunnerAutoEnroll:              dataQuality.GetAgentRunnerAutoEnroll(),
-		AgentRunnerMaxNewSessionsPerHour:   dataQuality.GetAgentRunnerMaxNewSessionsPerHour(),
-		AgentRunnerMaxActiveSessions:       dataQuality.GetAgentRunnerMaxActiveSessions(),
-		AgentRunnerDormantReviewDays:       dataQuality.GetAgentRunnerDormantReviewDays(),
-		AgentRunnerEventBudgetPercent:      dataQuality.GetAgentRunnerEventBudgetPercent(),
+		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:       dataQuality.GetLlmProviderProfile(),
+		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
+		DefaultScheduleInterval:  dataQuality.GetDefaultScheduleInterval(),
+		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
+		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:             digest,
+		TimeZone:                 dataQuality.GetTimeZone(),
+		AgentRunnerEnabled:       dataQuality.GetAgentRunnerEnabled(),
 	}
 }
 
@@ -414,20 +332,7 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 			Time:      fmt.Sprintf("%02d:%02d", resolved.Digest.Hour, resolved.Digest.Minute),
 			Timezone:  resolved.Digest.Timezone,
 		},
-		AgentAutonomyEnabled:               resolved.AgentAutonomyEnabled,
-		AgentRunnerEnabled:                 resolved.AgentRunnerEnabled,
-		AgentRunnerDatabases:               append([]string(nil), resolved.AgentRunnerDatabases...),
-		AgentRunnerTokensPerHour:           resolved.AgentRunnerTokensPerHour,
-		AgentRunnerWakesPerHour:            int32(resolved.AgentRunnerWakesPerHour),
-		AgentRunnerMaxConcurrentSessions:   int32(resolved.AgentRunnerMaxConcurrentSessions),
-		AgentRunnerCompactionTriggerTokens: int32(resolved.AgentRunnerCompactionTriggerTokens),
-		AgentRunnerIdleWakeSeconds:         int32(resolved.AgentRunnerIdleWakeSeconds),
-		AgentRunnerAutoInvestigateFailures: &resolved.AgentRunnerAutoInvestigateFailures,
-		AgentRunnerAutoEnroll:              resolved.AgentRunnerAutoEnroll,
-		AgentRunnerMaxNewSessionsPerHour:   int32(resolved.AgentRunnerMaxNewSessionsPerHour),
-		AgentRunnerMaxActiveSessions:       int32(resolved.AgentRunnerMaxActiveSessions),
-		AgentRunnerDormantReviewDays:       int32(resolved.AgentRunnerDormantReviewDays),
-		AgentRunnerEventBudgetPercent:      int32(resolved.AgentRunnerEventBudgetPercent),
+		AgentRunnerEnabled: resolved.AgentRunnerEnabled,
 	}
 }
 
@@ -976,27 +881,4 @@ func convertToV1QuietHoursSetting(setting *storepb.QuietHoursSetting) *v1pb.Quie
 		result.MaintenanceWindows = append(result.MaintenanceWindows, converted)
 	}
 	return result
-}
-
-// normalizeRunnerDatabases trims, de-duplicates and validates the runner's database
-// allowlist. A database is a resource name, so a typo is refused at the boundary
-// instead of silently making the runner see nothing.
-func normalizeRunnerDatabases(databases []string) ([]string, error) {
-	if len(databases) == 0 {
-		return nil, nil
-	}
-	seen := make(map[string]bool, len(databases))
-	out := make([]string, 0, len(databases))
-	for _, database := range databases {
-		database = strings.TrimSpace(database)
-		if database == "" || seen[database] {
-			continue
-		}
-		if _, err := common.GetNameParentTokens(database, common.InstanceNamePrefix, common.DatabaseIDPrefix); err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_databases entry %q is not a database resource name", database))
-		}
-		seen[database] = true
-		out = append(out, database)
-	}
-	return out, nil
 }

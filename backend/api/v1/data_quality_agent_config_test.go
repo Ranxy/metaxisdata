@@ -84,8 +84,10 @@ func TestParseQualityAgentConfigValidation(t *testing.T) {
 func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 	t.Parallel()
 
-	current := &store.QualityAgentConfigMessage{
+	current := &store.QualityAgentMessage{
+		ID:                          5,
 		OwnerPrincipalID:            int32Pointer(7),
+		State:                       store.QualityAgentStatePaused,
 		Capabilities:                []string{"suggest"},
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
@@ -96,6 +98,7 @@ func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 	}, current, []string{"instances/i/databases/d"}, []string{"capabilities"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"instances/i/databases/d"}, databases)
+	require.Equal(t, int64(5), next.ID, "the update keeps the row it writes")
 	require.NotNil(t, next.OwnerPrincipalID)
 	require.Equal(t, []string{"suggest", "patrol"}, next.Capabilities)
 }
@@ -105,12 +108,9 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 
 	owner := int32(9)
 	agent := &store.QualityAgentMessage{
-		ResourceID:  "abc",
-		PrincipalID: 10,
-		DisplayName: "Agent A",
-		Enabled:     true,
-	}
-	config := &store.QualityAgentConfigMessage{
+		ResourceID:                  "abc",
+		PrincipalID:                 10,
+		DisplayName:                 "Agent A",
 		State:                       store.QualityAgentStateActive,
 		OwnerPrincipalID:            &owner,
 		Capabilities:                []string{"suggest"},
@@ -118,7 +118,7 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
 	}
-	view := convertQualityAgentToV1("ws", agent, config, []string{"instances/i/databases/d"})
+	view := convertQualityAgentToV1("ws", agent, []string{"instances/i/databases/d"})
 	require.Equal(t, "workspaces/ws/qualityAgents/abc", view.GetName())
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, view.GetState())
 	require.Equal(t, "users/9", view.GetOwner())
@@ -128,4 +128,22 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 
 func int32Pointer(value int32) *int32 {
 	return &value
+}
+
+// The merged row's state is the only lifecycle truth the API renders.
+func TestQualityAgentStateToV1(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		state store.QualityAgentState
+		want  v1pb.QualityAgentState
+	}{
+		{store.QualityAgentStateDraft, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DRAFT},
+		{store.QualityAgentStateActive, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE},
+		{store.QualityAgentStatePaused, v1pb.QualityAgentState_QUALITY_AGENT_STATE_PAUSED},
+		{store.QualityAgentStateDisabled, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED},
+		{store.QualityAgentState(0), v1pb.QualityAgentState_QUALITY_AGENT_STATE_UNSPECIFIED},
+	} {
+		require.Equal(t, test.want, qualityAgentStateToV1(test.state))
+	}
 }

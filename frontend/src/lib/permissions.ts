@@ -137,7 +137,6 @@ export const PERMISSION_GROUPS = [
       "metaxisdata.dataQuality.labels.update",
       "metaxisdata.dataQuality.contracts.publish",
       "metaxisdata.dataQuality.plans.update",
-      "metaxisdata.dataQuality.changeRequests.decide",
       "metaxisdata.dataQuality.templates.list",
       "metaxisdata.dataQuality.templates.create",
       "metaxisdata.dataQuality.templates.update",

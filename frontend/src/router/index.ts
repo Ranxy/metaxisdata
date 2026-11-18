@@ -329,20 +329,6 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        // Old bookmarks: the session work log and the enrollment console are no
-        // longer product surfaces. Send them to the agent list instead of a dead end.
-        path: "agent",
-        redirect: { name: "QualityAgents" },
-      },
-      {
-        path: "agent/enrollment",
-        redirect: { name: "QualityAgents" },
-      },
-      {
-        path: "agent/:sessionId+",
-        redirect: { name: "QualityAgents" },
-      },
-      {
         // Every check across targets, for audit and search. It is a directory,
         // not an authoring surface: a check is created and edited inside the
         // target's contract workspace, where its column and siblings are visible.

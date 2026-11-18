@@ -15,12 +15,8 @@ import (
 const (
 	// maintainWake is how long a fully surveyed target sleeps before the next look.
 	maintainWake = 24 * time.Hour
-	// gapContinueWake continues a survey that recorded its per-wake limit of gaps.
-	gapContinueWake = time.Minute
 	// retryWake re-runs a session whose wake failed transiently.
 	retryWake = 10 * time.Minute
-	// maxGapInvestigations bounds the investigations one deterministic wake records.
-	maxGapInvestigations = 5
 	// maxDeterministicEvents bounds how many pending events one no-model wake handles;
 	// the rest stay above the watermark and are picked up by the next wake.
 	maxDeterministicEvents = 10
@@ -39,7 +35,6 @@ func doneSet(state *storepb.QualityAgentSessionEngineState) map[string]bool {
 // snapshot the runner passed in.
 func cloneEngineState(state *storepb.QualityAgentSessionEngineState) *storepb.QualityAgentSessionEngineState {
 	cloned := &storepb.QualityAgentSessionEngineState{
-		Phase:         state.GetPhase(),
 		BlockedRounds: state.GetBlockedRounds(),
 		BlockedCode:   state.GetBlockedCode(),
 	}
@@ -87,8 +82,6 @@ func truncateRunes(value string, limit int) string {
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }
-
-func ptrInt32(value int32) *int32 { return &value }
 
 // assistantIdempotencyKey identifies one assistant message of a wake. The content and
 // the tool calls are part of the key: a crash-retried turn that the model answered

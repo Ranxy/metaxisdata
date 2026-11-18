@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -83,17 +82,7 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			Minute:   45,
 			Timezone: "Asia/Shanghai",
 		},
-		TimeZone:                           "Asia/Shanghai",
-		AgentRunnerTokensPerHour:           DefaultAgentRunnerTokensPerHour,
-		AgentRunnerWakesPerHour:            DefaultAgentRunnerWakesPerHour,
-		AgentRunnerMaxConcurrentSessions:   DefaultAgentRunnerMaxConcurrentSessions,
-		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
-		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
-		AgentRunnerAutoInvestigateFailures: true,
-		AgentRunnerMaxNewSessionsPerHour:   DefaultAgentRunnerMaxNewSessionsPerHour,
-		AgentRunnerMaxActiveSessions:       DefaultAgentRunnerMaxActiveSessions,
-		AgentRunnerDormantReviewDays:       DefaultAgentRunnerDormantReviewDays,
-		AgentRunnerEventBudgetPercent:      DefaultAgentRunnerEventBudgetPercent,
+		TimeZone: "Asia/Shanghai",
 	}, SettingsFromProfile(profile))
 }
 
@@ -360,56 +349,17 @@ func TestValidateTimeZone(t *testing.T) {
 	}
 }
 
-// The runner settings resolve explicit values and clamp out-of-band stored numbers, so
-// a bad row can never make the runner stop or run wild.
-func TestSettingsFromProfileResolvesRunnerLimits(t *testing.T) {
+// The workspace setting now carries only the runner's global switch; the per-agent
+// budgets live on the agent row.
+func TestSettingsFromProfileResolvesTheRunnerSwitch(t *testing.T) {
 	t.Parallel()
 
-	profile := &storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
-		AgentRunnerEnabled:                 true,
-		AgentRunnerDatabases:               []string{" instances/i1/databases/d1 ", "instances/i1/databases/d1", "instances/i2/databases/d2"},
-		AgentRunnerTokensPerHour:           500_000_000,
-		AgentRunnerWakesPerHour:            50,
-		AgentRunnerMaxConcurrentSessions:   4,
-		AgentRunnerCompactionTriggerTokens: 131_072,
-		AgentRunnerIdleWakeSeconds:         3_600,
-		AgentRunnerAutoInvestigateFailures: proto.Bool(true),
-		AgentRunnerAutoEnroll:              true,
-		AgentRunnerMaxNewSessionsPerHour:   5,
-		AgentRunnerMaxActiveSessions:       7,
-		AgentRunnerDormantReviewDays:       14,
-		AgentRunnerEventBudgetPercent:      60,
-	}}
-	resolved := SettingsFromProfile(profile)
-	require.True(t, resolved.AgentRunnerEnabled)
-	require.Equal(t, []string{"instances/i1/databases/d1", "instances/i2/databases/d2"}, resolved.AgentRunnerDatabases)
-	require.Equal(t, int64(500_000_000), resolved.AgentRunnerTokensPerHour)
-	require.Equal(t, 50, resolved.AgentRunnerWakesPerHour)
-	require.Equal(t, 4, resolved.AgentRunnerMaxConcurrentSessions)
-	require.Equal(t, 131_072, resolved.AgentRunnerCompactionTriggerTokens)
-	require.Equal(t, 3_600, resolved.AgentRunnerIdleWakeSeconds)
-	require.True(t, resolved.AgentRunnerAutoInvestigateFailures)
-	require.True(t, resolved.AgentRunnerAutoEnroll)
-	require.Equal(t, 5, resolved.AgentRunnerMaxNewSessionsPerHour)
-	require.Equal(t, 7, resolved.AgentRunnerMaxActiveSessions)
-	require.Equal(t, 14, resolved.AgentRunnerDormantReviewDays)
-	require.Equal(t, 60, resolved.AgentRunnerEventBudgetPercent)
-
-	// A zero boolean means the store never wrote it, which is the on default.
-	require.True(t, SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+	resolved := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
 		AgentRunnerEnabled: true,
-	}}).AgentRunnerAutoInvestigateFailures)
-
-	outOfRange := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
-		AgentRunnerTokensPerHour:           -5,
-		AgentRunnerWakesPerHour:            100_000,
-		AgentRunnerMaxConcurrentSessions:   1000,
-		AgentRunnerCompactionTriggerTokens: 10,
-		AgentRunnerIdleWakeSeconds:         5,
 	}})
-	require.Equal(t, DefaultAgentRunnerTokensPerHour, outOfRange.AgentRunnerTokensPerHour)
-	require.Equal(t, MaxAgentRunnerWakesPerHour, outOfRange.AgentRunnerWakesPerHour)
-	require.Equal(t, MaxAgentRunnerConcurrentSessions, outOfRange.AgentRunnerMaxConcurrentSessions)
-	require.Equal(t, MinAgentRunnerCompactionTriggerTokens, outOfRange.AgentRunnerCompactionTriggerTokens)
-	require.Equal(t, MinAgentRunnerIdleWakeSeconds, outOfRange.AgentRunnerIdleWakeSeconds)
+	require.True(t, resolved.AgentRunnerEnabled)
+
+	require.False(t, SettingsFromProfile(&storepb.WorkspaceProfileSetting{
+		DataQuality: &storepb.DataQualitySetting{},
+	}).AgentRunnerEnabled)
 }

@@ -39,8 +39,11 @@ CREATE TABLE IF NOT EXISTS quality_agent_report (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_report_resource
     ON quality_agent_report(resource_id);
+-- The period identity is (agent, period). The column list matches the final schema,
+-- where reports are always scheduled and there is no trigger column; 0062 rebuilds this
+-- table into that shape.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_report_period
-    ON quality_agent_report(agent_id, trigger, period_key);
+    ON quality_agent_report(agent_id, period_key);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_report_agent_created
     ON quality_agent_report(agent_id, created_at DESC);
 COMMENT ON TABLE quality_agent_report IS 'Per-agent deterministic patrol report over the agent database scope';

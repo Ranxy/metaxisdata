@@ -15,7 +15,6 @@ import (
 
 func compactionSession() *store.QualityAgentSessionMessage {
 	session := testSession()
-	session.ContextTokens = 10_000
 	return session
 }
 
@@ -72,7 +71,6 @@ func TestMaybeCompactSkipsUnderTheTrigger(t *testing.T) {
 	stores := newFakeStore()
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "unused"}}), resolveToModel, nil)
 	session := compactionSession()
-	session.ContextTokens = 100
 
 	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil, llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(2), 10_000, false)
 	require.NoError(t, err)
@@ -164,7 +162,6 @@ func TestMaybeCompactForcedIgnoresTheTrigger(t *testing.T) {
 		{content: "## Next Step\n- (none)"},
 	}), resolveToModel, nil)
 	session := compactionSession()
-	session.ContextTokens = 10
 	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil,
 		llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(12), 1_000_000, true)
 	require.NoError(t, err)

@@ -195,7 +195,6 @@ func redactAuditResponse(message proto.Message) proto.Message {
 		if !ok {
 			return message
 		}
-		cloned.Objective = ""
 		cloned.BlockedReason = ""
 		return cloned
 	case *v1pb.ListQualityAgentSessionMessagesResponse:

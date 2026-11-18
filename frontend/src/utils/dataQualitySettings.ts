@@ -26,21 +26,6 @@ import {
  */
 
 export const FAILURE_SAMPLE_LIMIT_MAX = 100;
-export const MAX_AGENT_RUNNER_TOKENS_PER_HOUR = 1_000_000_000_000;
-export const MAX_AGENT_RUNNER_WAKES_PER_HOUR = 1000;
-export const MAX_AGENT_RUNNER_CONCURRENT_SESSIONS = 16;
-export const MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 16_384;
-export const MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 4_194_304;
-export const MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS = 60;
-export const MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS = 604_800;
-export const MIN_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR = 1;
-export const MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR = 1000;
-export const MIN_AGENT_RUNNER_MAX_ACTIVE_SESSIONS = 1;
-export const MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS = 10_000;
-export const MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS = 1;
-export const MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS = 365;
-export const MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT = 10;
-export const MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT = 90;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
 export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
 export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
@@ -107,34 +92,6 @@ export interface DataQualitySettingsForm {
    * returns the resolved value, so a workspace that never chose one shows "UTC".
    */
   checkTimeZone: string;
-  /** The workspace kill switch for agent writes; off unless an administrator opts in. */
-  agentAutonomyEnabled: boolean;
-  /** The built-in runner switch; off unless an administrator opts in. */
-  agentRunnerEnabled: boolean;
-  /** Database resource names the runner may work on; empty means none. */
-  agentRunnerDatabases: string[];
-  /** Blank/0 means the server default (100000000). */
-  agentRunnerTokensPerHour: string;
-  /** Blank/0 means the server default (20). */
-  agentRunnerWakesPerHour: string;
-  /** Blank/0 means the server default (2). */
-  agentRunnerMaxConcurrentSessions: string;
-  /** Blank/0 means the server default (262144). */
-  agentRunnerCompactionTriggerTokens: string;
-  /** Blank/0 means the server default (86400). */
-  agentRunnerIdleWakeSeconds: string;
-  /** On by default: a failed check wakes the target's session. */
-  agentRunnerAutoInvestigateFailures: boolean;
-  /** Discover every object in the runner's database scope and queue it. */
-  agentRunnerAutoEnroll: boolean;
-  /** Blank/0 means the server default (10); the form enforces 1-1000. */
-  agentRunnerMaxNewSessionsPerHour: string;
-  /** Blank/0 means the server default (100); the form enforces 1-10000. */
-  agentRunnerMaxActiveSessions: string;
-  /** Blank/0 means the server default (30); the form enforces 1-365. */
-  agentRunnerDormantReviewDays: string;
-  /** Blank/0 means the server default (50); the form enforces 10-90. */
-  agentRunnerEventBudgetPercent: string;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -160,37 +117,6 @@ export function settingsToForm(
     // A blank zone is UTC; the field shows that only as a placeholder so an
     // unconfigured workspace is not made to look explicitly configured.
     checkTimeZone: setting?.timeZone ?? "",
-    agentAutonomyEnabled: setting?.agentAutonomyEnabled ?? false,
-    agentRunnerEnabled: setting?.agentRunnerEnabled ?? false,
-    agentRunnerDatabases: [...(setting?.agentRunnerDatabases ?? [])],
-    agentRunnerTokensPerHour: setting?.agentRunnerTokensPerHour
-      ? setting.agentRunnerTokensPerHour.toString()
-      : "",
-    agentRunnerWakesPerHour: numberToInput(setting?.agentRunnerWakesPerHour),
-    agentRunnerMaxConcurrentSessions: numberToInput(
-      setting?.agentRunnerMaxConcurrentSessions
-    ),
-    agentRunnerCompactionTriggerTokens: numberToInput(
-      setting?.agentRunnerCompactionTriggerTokens
-    ),
-    agentRunnerIdleWakeSeconds: numberToInput(
-      setting?.agentRunnerIdleWakeSeconds
-    ),
-    agentRunnerAutoInvestigateFailures:
-      setting?.agentRunnerAutoInvestigateFailures ?? true,
-    agentRunnerAutoEnroll: setting?.agentRunnerAutoEnroll ?? false,
-    agentRunnerMaxNewSessionsPerHour: numberToInput(
-      setting?.agentRunnerMaxNewSessionsPerHour
-    ),
-    agentRunnerMaxActiveSessions: numberToInput(
-      setting?.agentRunnerMaxActiveSessions
-    ),
-    agentRunnerDormantReviewDays: numberToInput(
-      setting?.agentRunnerDormantReviewDays
-    ),
-    agentRunnerEventBudgetPercent: numberToInput(
-      setting?.agentRunnerEventBudgetPercent
-    ),
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -223,28 +149,6 @@ export function formToSetting(
     maxColumnsPerAnalysis: inputToInt(form.maxColumnsPerAnalysis) ?? 0,
     sendSampleValuesToLlm: form.sendSampleValuesToLlm,
     timeZone: form.checkTimeZone.trim(),
-    agentAutonomyEnabled: form.agentAutonomyEnabled,
-    agentRunnerEnabled: form.agentRunnerEnabled,
-    agentRunnerDatabases: form.agentRunnerDatabases,
-    agentRunnerTokensPerHour:
-      inputToBigInt(form.agentRunnerTokensPerHour) ?? 0n,
-    agentRunnerWakesPerHour: inputToInt(form.agentRunnerWakesPerHour) ?? 0,
-    agentRunnerMaxConcurrentSessions:
-      inputToInt(form.agentRunnerMaxConcurrentSessions) ?? 0,
-    agentRunnerCompactionTriggerTokens:
-      inputToInt(form.agentRunnerCompactionTriggerTokens) ?? 0,
-    agentRunnerIdleWakeSeconds:
-      inputToInt(form.agentRunnerIdleWakeSeconds) ?? 0,
-    agentRunnerAutoInvestigateFailures: form.agentRunnerAutoInvestigateFailures,
-    agentRunnerAutoEnroll: form.agentRunnerAutoEnroll,
-    agentRunnerMaxNewSessionsPerHour:
-      inputToInt(form.agentRunnerMaxNewSessionsPerHour) ?? 0,
-    agentRunnerMaxActiveSessions:
-      inputToInt(form.agentRunnerMaxActiveSessions) ?? 0,
-    agentRunnerDormantReviewDays:
-      inputToInt(form.agentRunnerDormantReviewDays) ?? 0,
-    agentRunnerEventBudgetPercent:
-      inputToInt(form.agentRunnerEventBudgetPercent) ?? 0,
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.
@@ -338,100 +242,6 @@ export function validateSettingsForm(
   if (concurrency === "invalid") {
     issue("llmConcurrencyLimitInvalid", { max: LLM_CONCURRENCY_LIMIT_MAX });
   }
-  const runnerTokens = checkRange64(
-    form.agentRunnerTokensPerHour,
-    0,
-    MAX_AGENT_RUNNER_TOKENS_PER_HOUR
-  );
-  if (runnerTokens === "invalid") {
-    issue("runnerTokensPerHourInvalid", {
-      max: MAX_AGENT_RUNNER_TOKENS_PER_HOUR.toString(),
-    });
-  }
-  const runnerWakes = checkRange(
-    form.agentRunnerWakesPerHour,
-    0,
-    MAX_AGENT_RUNNER_WAKES_PER_HOUR
-  );
-  if (runnerWakes === "invalid") {
-    issue("runnerWakesPerHourInvalid", {
-      max: MAX_AGENT_RUNNER_WAKES_PER_HOUR,
-    });
-  }
-  const runnerConcurrency = checkRange(
-    form.agentRunnerMaxConcurrentSessions,
-    0,
-    MAX_AGENT_RUNNER_CONCURRENT_SESSIONS
-  );
-  if (runnerConcurrency === "invalid") {
-    issue("runnerConcurrencyInvalid", {
-      max: MAX_AGENT_RUNNER_CONCURRENT_SESSIONS,
-    });
-  }
-  const compaction = checkRangeOrZero(
-    form.agentRunnerCompactionTriggerTokens,
-    MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
-    MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS
-  );
-  if (compaction === "invalid") {
-    issue("runnerCompactionTriggerTokensInvalid", {
-      min: MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
-      max: MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
-    });
-  }
-  const idleWake = checkRangeOrZero(
-    form.agentRunnerIdleWakeSeconds,
-    MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
-    MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS
-  );
-  if (idleWake === "invalid") {
-    issue("runnerIdleWakeSecondsInvalid", {
-      min: MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
-      max: MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS,
-    });
-  }
-  const maxNewSessions = checkRangeOrZero(
-    form.agentRunnerMaxNewSessionsPerHour,
-    MIN_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR,
-    MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR
-  );
-  if (maxNewSessions === "invalid") {
-    issue("runnerMaxNewSessionsPerHourInvalid", {
-      max: MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR,
-    });
-  }
-  const maxActiveSessions = checkRangeOrZero(
-    form.agentRunnerMaxActiveSessions,
-    MIN_AGENT_RUNNER_MAX_ACTIVE_SESSIONS,
-    MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS
-  );
-  if (maxActiveSessions === "invalid") {
-    issue("runnerMaxActiveSessionsInvalid", {
-      max: MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS,
-    });
-  }
-  const dormantReviewDays = checkRangeOrZero(
-    form.agentRunnerDormantReviewDays,
-    MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
-    MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS
-  );
-  if (dormantReviewDays === "invalid") {
-    issue("runnerDormantReviewDaysInvalid", {
-      min: MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
-      max: MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
-    });
-  }
-  const eventBudgetPercent = checkRangeOrZero(
-    form.agentRunnerEventBudgetPercent,
-    MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
-    MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT
-  );
-  if (eventBudgetPercent === "invalid") {
-    issue("runnerEventBudgetPercentInvalid", {
-      min: MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
-      max: MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
-    });
-  }
   const maxColumns = checkRange(
     form.maxColumnsPerAnalysis,
     0,
@@ -482,39 +292,6 @@ function validateDigest(
 /** A number field: blank is allowed (server default); anything else is checked. */
 type RangeCheck = "empty" | "valid" | "invalid";
 
-/** A non-negative int64 input within [0, max], blank as 0; "invalid" otherwise. */
-function checkRange64(
-  value: string,
-  min: number,
-  max: number
-): number | "invalid" {
-  const text = value.trim();
-  if (text === "") {
-    return 0;
-  }
-  if (!/^[0-9]+$/.test(text)) {
-    return "invalid";
-  }
-  const parsed = BigInt(text);
-  if (parsed < BigInt(min) || parsed > BigInt(max)) {
-    return "invalid";
-  }
-  return Number(parsed);
-}
-
-/** A number field where blank or 0 means the server default, else [min, max]. */
-function checkRangeOrZero(value: string, min: number, max: number): RangeCheck {
-  const text = value.trim();
-  if (text === "" || text === "0") {
-    return "empty";
-  }
-  const parsed = Number(text);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    return "invalid";
-  }
-  return "valid";
-}
-
 function checkRange(value: string, min: number, max: number): RangeCheck {
   const text = value.trim();
   if (text === "") {
@@ -539,15 +316,6 @@ function checkNonNegative(value: string): RangeCheck {
 /** A stored number as an input value; 0 means "server default" and is blank. */
 function numberToInput(value: number | undefined): string {
   return value !== undefined && value > 0 ? String(value) : "";
-}
-
-/** An input value as a non-negative int64, or undefined when blank or malformed. */
-function inputToBigInt(value: string): bigint | undefined {
-  const text = value.trim();
-  if (!/^[0-9]+$/.test(text)) {
-    return undefined;
-  }
-  return BigInt(text);
 }
 
 /** An input value as a non-negative integer, or undefined when blank. */

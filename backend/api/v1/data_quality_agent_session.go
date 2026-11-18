@@ -11,7 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -21,12 +20,9 @@ const (
 	qualityAgentSessionPrefix = "qualityAgentSessions/"
 )
 
-// AgentRunnerStatusProvider is the process-local liveness signal of the session runner.
-// A zero time means the runner has not ticked yet or has stopped.
-type AgentRunnerStatusProvider interface {
-	LastTick() time.Time
-}
-
+// ListQualityAgentSessions lists the workspace's target work threads. It is the
+// administrator diagnostics view; the agent conversation is read through the
+// conversation RPCs.
 func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *connect.Request[v1pb.ListQualityAgentSessionsRequest]) (*connect.Response[v1pb.ListQualityAgentSessionsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -60,7 +56,6 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	if database := strings.TrimSpace(req.Msg.GetDatabase()); database != "" {
 		find.DatabaseRef = &database
 	}
-	find.Source = storepb.QualityAgentSessionSource(req.Msg.GetSource())
 	find.Mode = storepb.QualityAgentSessionMode(req.Msg.GetMode())
 	switch state := req.Msg.GetState(); state {
 	case v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_UNSPECIFIED:
@@ -69,7 +64,6 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 		find.IncludeArchived = true
 		find.States = []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED}
 	case v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED,
-		v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED,
 		v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED:
 		find.States = []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState(state)}
 	default:
@@ -91,19 +85,7 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	return connect.NewResponse(response), nil
 }
 
-// GetQualityAgentSession reads one session.
-func (s *DataQualityService) GetQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
-	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
-	if err != nil {
-		return nil, err
-	}
-	message, err := s.fetchQualityAgentSession(ctx, resourceID)
-	if err != nil {
-		return nil, err
-	}
-	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, message, time.Now().UTC())), nil
-}
-
+// ResumeQualityAgentSession resumes a stuck BLOCKED session.
 func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.ResumeQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
 	now := time.Now().UTC()
 	session, err := s.transitionQualityAgentSession(ctx, req.Msg.GetName(), req.Msg.GetExpectedRevision(),
@@ -187,132 +169,6 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	return connect.NewResponse(response), nil
 }
 
-// GetQualityAgentRunnerStatus reads the runner's live state and budget spend.
-func (s *DataQualityService) GetQualityAgentRunnerStatus(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentRunnerStatusRequest]) (*connect.Response[v1pb.QualityAgentRunnerStatus], error) {
-	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
-	if err != nil {
-		return nil, err
-	}
-	settings, err := dataquality.LoadSettings(ctx, s.store)
-	if err != nil {
-		return nil, errLoadQualitySettings(err)
-	}
-	now := time.Now().UTC()
-	running, err := s.store.CountQualityAgentSessionsByLeaseAll(ctx, workspaceID, now)
-	if err != nil {
-		return nil, err
-	}
-	enabled, err := s.store.CountQualityAgentSessionsByStateAll(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)
-	if err != nil {
-		return nil, err
-	}
-	blocked, err := s.store.CountQualityAgentSessionsByStateAll(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED)
-	if err != nil {
-		return nil, err
-	}
-	tokens, err := s.store.SumQualityAgentSessionTokensSinceAll(ctx, workspaceID, now.Add(-time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	wakes, err := s.store.CountQualityAgentSessionWakesSinceAll(ctx, workspaceID, now.Add(-time.Hour))
-	if err != nil {
-		return nil, err
-	}
-	lastActivity, err := s.store.LastQualityAgentSessionActivityAll(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	enrollments, err := s.store.CountQualityAgentEnrollmentsByStateAll(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	idle := enabled - running
-	if idle < 0 {
-		idle = 0
-	}
-	response := &v1pb.QualityAgentRunnerStatus{
-		Enabled:                 settings.AgentRunnerEnabled,
-		AutonomyEnabled:         settings.AgentAutonomyEnabled,
-		LlmConfigured:           s.llmConfigured(ctx),
-		RunningSessions:         running,
-		IdleSessions:            idle,
-		BlockedSessions:         blocked,
-		TokensLastHour:          tokens,
-		TokensPerHourLimit:      settings.AgentRunnerTokensPerHour,
-		WakesLastHour:           int32(wakes),
-		WakesPerHourLimit:       int32(settings.AgentRunnerWakesPerHour),
-		MaxConcurrentSessions:   int32(settings.AgentRunnerMaxConcurrentSessions),
-		CompactionTriggerTokens: int32(settings.AgentRunnerCompactionTriggerTokens),
-		IdleWakeSeconds:         int32(settings.AgentRunnerIdleWakeSeconds),
-		LastActivityTime:        timestampOrNil(lastActivity),
-		PendingEnrollments:      int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING]),
-		ActiveEnrollments:       int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE]),
-		DormantEnrollments:      int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT]),
-		ExcludedEnrollments:     int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED]),
-		MaxNewSessionsPerHour:   int32(settings.AgentRunnerMaxNewSessionsPerHour),
-		MaxActiveSessions:       int32(settings.AgentRunnerMaxActiveSessions),
-		AutoEnrollEnabled:       settings.AgentRunnerAutoEnroll,
-	}
-	if s.agentRunner != nil {
-		if tick := s.agentRunner.LastTick(); !tick.IsZero() {
-			response.RunnerLastTickTime = timestamppb.New(tick)
-		}
-	}
-	if s.enrollmentRunner != nil {
-		if scan := s.enrollmentRunner.LastEnrollmentScan(); !scan.IsZero() {
-			response.EnrollmentLastScanTime = timestamppb.New(scan)
-		}
-	}
-	return connect.NewResponse(response), nil
-}
-
-// GetQualityAgentMetrics reads the runner's evaluation: session states, token spend,
-// the acceptance of its proposed change requests and its investigation verdicts.
-func (s *DataQualityService) GetQualityAgentMetrics(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentMetricsRequest]) (*connect.Response[v1pb.QualityAgentMetrics], error) {
-	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
-	if err != nil {
-		return nil, err
-	}
-	metrics, err := s.store.GetQualityAgentSessionMetrics(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	response := &v1pb.QualityAgentMetrics{
-		TokensTotal:                      metrics.TokensTotal,
-		TokensLastHour:                   metrics.TokensLastHour,
-		AgentChangeRequestsTotal:         metrics.AgentChangeRequestsTotal,
-		AgentChangeRequestsApplied:       metrics.AgentChangeRequestsApplied,
-		AgentChangeRequestsRejected:      metrics.AgentChangeRequestsRejected,
-		AgentChangeRequestsPending:       metrics.AgentChangeRequestsPending,
-		AgentChangeRequestsApproved:      metrics.AgentChangeRequestsApproved,
-		AgentChangeRequestsExpired:       metrics.AgentChangeRequestsExpired,
-		InvestigationsTotal:              metrics.InvestigationsTotal,
-		InvestigationsInconclusive:       metrics.InvestigationsInconclusive,
-		InvestigationsRootCause:          metrics.InvestigationsRootCause,
-		InvestigationsContributingFactor: metrics.InvestigationsContributing,
-		InvestigationsUnrelated:          metrics.InvestigationsUnrelated,
-	}
-	for _, state := range []storepb.QualityAgentSessionState{
-		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED,
-		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED,
-		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
-		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED,
-	} {
-		response.Sessions = append(response.Sessions, &v1pb.QualityAgentSessionStateCount{
-			State: v1pb.QualityAgentSessionState(state),
-			Count: metrics.StateCounts[state],
-		})
-	}
-	for _, target := range metrics.TopTargets {
-		response.TopTargets = append(response.TopTargets, &v1pb.QualityAgentTargetCost{
-			Target:       &v1pb.QualityTarget{MetaGuid: target.TargetGUID, MetaType: v1pb.MetaType(target.TargetType)},
-			TokensUsed:   target.TokensUsed,
-			SessionCount: target.SessionCount,
-		})
-	}
-	return connect.NewResponse(response), nil
-}
-
 // transitionQualityAgentSession applies one human state change with a revision CAS.
 func (s *DataQualityService) transitionQualityAgentSession(ctx context.Context, name string, expectedRevision int32, state storepb.QualityAgentSessionState, nextWake *time.Time) (*connect.Response[v1pb.QualityAgentSession], error) {
 	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, name)
@@ -372,20 +228,16 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 		Target:           convertQualityAgentSessionTargetToV1(message),
 		Database:         message.DatabaseRef,
 		Agent:            common.FormatUserUID(int(message.AgentPrincipalID)),
-		Objective:        message.Objective,
 		State:            v1pb.QualityAgentSessionState(message.State),
 		BlockedCode:      message.BlockedCode,
 		BlockedReason:    message.BlockedReason,
 		Revision:         message.Revision,
 		WakeCount:        message.WakeCount,
-		TokensUsed:       message.TokensUsed,
-		ContextTokens:    message.ContextTokens,
 		NextWakeTime:     timestampOrNil(message.NextWakeAt),
 		LastActivityTime: timestampOrNil(message.LastActivityAt),
 		LeaseExpireTime:  timestampOrNil(message.LeaseUntil),
 		RestartCount:     message.RestartCount,
 		Running:          message.LeaseUntil != nil && message.LeaseUntil.After(now),
-		Source:           v1pb.QualityAgentSessionSource(message.Source),
 		Mode:             v1pb.QualityAgentSessionMode(message.Mode),
 		CreateTime:       timestamppb.New(message.CreatedAt),
 		UpdateTime:       timestamppb.New(message.UpdatedAt),
@@ -458,24 +310,6 @@ func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, messa
 		})
 	}
 	return converted
-}
-
-// databaseRefOfTarget derives the database resource name from a target GUID
-// (instance;database;schema;object), the value the allowlist holds.
-func databaseRefOfTarget(targetGUID string) (string, error) {
-	segments := common.SplitMetaGUID(targetGUID)
-	if len(segments) < 2 || segments[0] == "" || segments[1] == "" {
-		return "", connectErrorInvalid("target GUID %q does not name a database object", targetGUID)
-	}
-	return common.FormatDatabase(segments[0], segments[1]), nil
-}
-
-func (s *DataQualityService) llmConfigured(ctx context.Context) bool {
-	if s.suggester == nil {
-		return false
-	}
-	config, _, err := s.suggester.ResolveConfig(ctx)
-	return err == nil && (config.BaseURL != "" || config.ModelName != "")
 }
 
 // slicesReverse reverses a page in place; the newest-first read is handed to the client

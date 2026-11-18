@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS quality_memory (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_memory_resource
     ON quality_memory(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_memory_subject
-    ON quality_memory(kind, subject, created_at DESC) WHERE deleted = FALSE;
+    ON quality_memory(kind, subject, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_memory_status
-    ON quality_memory(status, created_at DESC) WHERE deleted = FALSE;
+    ON quality_memory(status, created_at DESC);
 COMMENT ON TABLE quality_memory IS 'Durable knowledge with evidence and a correction path: asset facts, decisions and events';
 COMMENT ON COLUMN quality_memory.kind IS 'Stored as QualityMemoryKind (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_memory.source IS 'Stored as QualityMemorySource (proto/store/store/data_quality.proto)';

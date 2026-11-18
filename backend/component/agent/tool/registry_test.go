@@ -57,10 +57,6 @@ func TestRegisterRejectsInvalidDeclarations(t *testing.T) {
 		{name: "missing execute", mutate: func(tool *Tool) { tool.Execute = nil }, want: "execute function"},
 		{name: "missing group", mutate: func(tool *Tool) { tool.Meta.Group = "" }, want: "metadata group"},
 		{name: "permission missing", mutate: func(tool *Tool) { tool.Meta.Permission = "" }, want: "declares no permission"},
-		{name: "action missing", mutate: func(tool *Tool) {
-			tool.Meta.Authz = AuthzAction
-			tool.Meta.Permission = ""
-		}, want: "declares no action"},
 		{name: "internal not product only", mutate: func(tool *Tool) {
 			tool.Meta.Authz = AuthzInternal
 			tool.Meta.Permission = ""

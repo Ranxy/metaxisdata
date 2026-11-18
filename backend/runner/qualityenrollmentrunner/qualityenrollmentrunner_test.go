@@ -38,7 +38,7 @@ func TestAdmissionSkipsTriageWithoutAModel(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
+	fake.agent = testAgent()
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
 		ResourceID:  "enr-1",
 		TargetGUID:  "i;d;public;t",
@@ -49,7 +49,7 @@ func TestAdmissionSkipsTriageWithoutAModel(t *testing.T) {
 	runner := testRunner(fake)
 	runner.llmConfigured = func(context.Context) bool { return false }
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Empty(t, fake.created)
 	require.Equal(t, []string{"enr-1"}, fake.blockedReasons)
@@ -60,7 +60,7 @@ func TestAdmissionCreatesAutomaticSession(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
+	fake.agent = testAgent()
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
 		ResourceID:  "enr-1",
 		TargetGUID:  "i;d;public;t",
@@ -72,12 +72,11 @@ func TestAdmissionCreatesAutomaticSession(t *testing.T) {
 	runner := testRunner(fake)
 	runner.llmConfigured = func(context.Context) bool { return true }
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Len(t, fake.created, 1)
-	require.Equal(t, storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_AUTO, fake.created[0].Source)
 	require.Equal(t, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, fake.created[0].Mode)
-	require.Nil(t, fake.created[0].CreatedBy)
+	require.Equal(t, int16(0), fake.created[0].Kind, "a target session defaults to the work-thread kind")
 	require.NotNil(t, fake.created[0].NextWakeAt)
 	require.Len(t, fake.linked, 1)
 }
@@ -86,12 +85,12 @@ func TestAdmissionStopsAtTheHourlyCap(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
-	fake.createdLastHour = testSettings().AgentRunnerMaxNewSessionsPerHour
+	fake.agent = testAgent()
+	fake.createdLastHour = int(testAgent().MaxNewSessionsPerHour)
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
 	runner := testRunner(fake)
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Empty(t, fake.created)
 	require.Equal(t, []string{"admission-limit"}, fake.blockedReasonValues)
@@ -101,12 +100,12 @@ func TestAdmissionStopsAtTheActiveCap(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
-	fake.activeEnrollments = testSettings().AgentRunnerMaxActiveSessions
+	fake.agent = testAgent()
+	fake.activeEnrollments = int(testAgent().MaxActiveSessions)
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
 	runner := testRunner(fake)
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Empty(t, fake.created)
 	require.Equal(t, []string{"active-limit"}, fake.blockedReasonValues)
@@ -150,7 +149,7 @@ func TestRecoverBlockedReenablesScopeSession(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
+	fake.agent = testAgent()
 	fake.recoverable = []*store.QualityAgentEnrollmentMessage{{
 		ResourceID: "enr-1", TargetGUID: "i;d;public;t", DatabaseRef: "instances/i/databases/d",
 	}}
@@ -176,9 +175,7 @@ func TestRunOnceReconcilesChangedScope(t *testing.T) {
 	fake := newFakeStore()
 	runner := testRunner(fake)
 
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
-	fake.agents = []*store.QualityAgentMessage{fake.agent}
-	fake.configs = []*store.QualityAgentConfigMessage{{AgentID: 7, State: store.QualityAgentStateActive}}
+	fake.agents = []*store.QualityAgentMessage{testAgent()}
 	fake.scopes = map[int64][]string{7: {"instances/i/databases/d"}}
 
 	runner.runOnce(context.Background())
@@ -220,12 +217,12 @@ func TestAdmissionRespectsTheEventBudgetReserve(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
+	fake.agent = testAgent()
 	fake.wakesLastHour = 50
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
 	runner := testRunner(fake)
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Empty(t, fake.created)
 	require.Equal(t, []string{"event-budget"}, fake.blockedReasonValues)
@@ -235,39 +232,53 @@ func TestAdmissionClampsToTheRemainingActiveSlots(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
-	fake.activeEnrollments = testSettings().AgentRunnerMaxActiveSessions - 1
+	fake.agent = testAgent()
+	fake.activeEnrollments = int(testAgent().MaxActiveSessions) - 1
 	fake.candidates = []*store.QualityAgentEnrollmentMessage{
 		{ResourceID: "enr-1", TargetGUID: "i;d;public;a", DatabaseRef: "instances/i/databases/d"},
 		{ResourceID: "enr-2", TargetGUID: "i;d;public;b", DatabaseRef: "instances/i/databases/d"},
 	}
 	runner := testRunner(fake)
 
-	runner.admit(context.Background(), "ws", testSettings(), testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Len(t, fake.created, 1, "one free active slot admits exactly one session")
 }
 
-func TestAdmissionStopsWhenAutonomyIsOff(t *testing.T) {
+func TestAdmissionBlocksAnAgentWithoutThePatrolCapability(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
-	fake.agent = &store.QualityAgentMessage{ID: 7, Enabled: true}
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
+	fake.agent = testAgent()
+	fake.agent.Capabilities = []string{"suggest"}
+	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
+		ResourceID: "enr-1", TargetGUID: "i;d;public;t", DatabaseRef: "instances/i/databases/d",
+		Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
+	}}
 	runner := testRunner(fake)
-	settings := testSettings()
-	settings.AgentAutonomyEnabled = false
 
-	runner.admit(context.Background(), "ws", settings, testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Empty(t, fake.created)
-	require.Equal(t, []string{"autonomy-off"}, fake.blockedReasonValues)
+	require.Equal(t, []string{"capability-patrol-disabled"}, fake.blockedReasonValues)
+}
+
+// testAgent is one ACTIVE agent with its merged runtime configuration and budgets.
+func testAgent() *store.QualityAgentMessage {
+	return &store.QualityAgentMessage{
+		ID:                    7,
+		State:                 store.QualityAgentStateActive,
+		Capabilities:          []string{"suggest", "patrol"},
+		WakesPerHour:          100,
+		MaxConcurrentSessions: 2,
+		MaxNewSessionsPerHour: 10,
+		MaxActiveSessions:     100,
+	}
 }
 
 func testActiveAgent(fake *fakeStore) *activeAgent {
 	return &activeAgent{
 		agent:     fake.agent,
-		config:    &store.QualityAgentConfigMessage{AgentID: 7, State: store.QualityAgentStateActive, Capabilities: []string{"suggest", "patrol"}},
 		databases: []string{"instances/i/databases/d"},
 	}
 }
@@ -287,20 +298,7 @@ func testRunner(stores Store) *Runner {
 }
 
 func testSettings() dataquality.Settings {
-	return dataquality.Settings{
-		AgentRunnerEnabled:               true,
-		AgentAutonomyEnabled:             true,
-		AgentRunnerAutoEnroll:            true,
-		AgentRunnerDatabases:             []string{"instances/i/databases/d"},
-		AgentRunnerTokensPerHour:         1_000_000,
-		AgentRunnerWakesPerHour:          100,
-		AgentRunnerMaxConcurrentSessions: 2,
-		AgentRunnerIdleWakeSeconds:       3_600,
-		AgentRunnerMaxNewSessionsPerHour: 10,
-		AgentRunnerMaxActiveSessions:     100,
-		AgentRunnerDormantReviewDays:     30,
-		AgentRunnerEventBudgetPercent:    50,
-	}
+	return dataquality.Settings{AgentRunnerEnabled: true}
 }
 
 // fakeStore is a configurable in-memory Store. Only the calls each test inspects are
@@ -311,7 +309,6 @@ type fakeStore struct {
 	digest             []*store.MetaRegistryResource
 	agent              *store.QualityAgentMessage
 	agents             []*store.QualityAgentMessage
-	configs            []*store.QualityAgentConfigMessage
 	scopes             map[int64][]string
 	enrollments        []*store.QualityAgentEnrollmentMessage
 	candidates         []*store.QualityAgentEnrollmentMessage
@@ -427,7 +424,7 @@ func (f *fakeStore) AdvanceQualityAgentSessionWake(_ context.Context, resourceID
 func (f *fakeStore) CountActiveQualityAgentEnrollments(context.Context, string, int64) (int, error) {
 	return f.activeEnrollments, nil
 }
-func (f *fakeStore) CountQualityAgentSessionsCreatedSince(context.Context, string, int64, storepb.QualityAgentSessionSource, time.Time) (int, error) {
+func (f *fakeStore) CountQualityAgentSessionsCreatedSince(context.Context, string, int64, time.Time) (int, error) {
 	return f.createdLastHour, nil
 }
 
@@ -441,10 +438,6 @@ func (f *fakeStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
 	}
 	return f.databaseTime, nil
 }
-func (f *fakeStore) ListQualityAgentConfigs(context.Context) ([]*store.QualityAgentConfigMessage, error) {
-	return f.configs, nil
-}
-
 func (f *fakeStore) ListQualityAgentDatabasesByAgent(context.Context) (map[int64][]string, error) {
 	return f.scopes, nil
 }

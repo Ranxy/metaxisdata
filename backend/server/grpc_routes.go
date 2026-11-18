@@ -85,8 +85,6 @@ func configureGrpcRouters(
 	llmQuota *dataquality.LLMQuota,
 	lineageAnalyzer *lineage.Analyzer,
 	notifier *notification.Service,
-	agentRunner apiv1.AgentRunnerStatusProvider,
-	enrollmentRunner apiv1.AgentEnrollmentStatusProvider,
 	sessionEngine *agentrunner.Engine,
 	m *metrics.Metrics,
 ) error {
@@ -121,7 +119,7 @@ func configureGrpcRouters(
 	applicationService := apiv1.NewApplicationService(stores)
 	// Manual executions are planned by the API and queued to the quality runner;
 	// when it is absent they are still planned PENDING rather than dropped.
-	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, secret, profile, agentRunner, enrollmentRunner, iamManager, notifier)
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, iamManager, notifier)
 	if sessionEngine != nil {
 		sessionEngine.SetAdoption(dataQualityService.AdoptQualitySuggestions)
 	}

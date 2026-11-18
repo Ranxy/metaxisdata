@@ -23,7 +23,7 @@ func (s *DataQualityService) ListQualityAgentAttentions(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	agent, _, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
+	agent, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (s *DataQualityService) qualityAgentAttentionForOwner(ctx context.Context, 
 	if agent == nil {
 		return "", nil, nil, connect.NewError(connect.CodeNotFound, errors.New("the attention's agent no longer exists"))
 	}
-	if _, _, err := s.qualityAgentConversationAccess(ctx, agent.ResourceID, true); err != nil {
+	if _, err := s.qualityAgentConversationAccess(ctx, agent.ResourceID, true); err != nil {
 		return "", nil, nil, err
 	}
 	return workspaceID, attention, agent, nil
@@ -181,7 +181,6 @@ func convertQualityAgentAttentionToV1(workspaceID, agentResourceID, sessionResou
 		Agent:      common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agentResourceID,
 		Kind:       qualityAgentAttentionKindToV1(attention.Kind),
 		Status:     qualityAgentAttentionStatusToV1(attention.Status),
-		Reference:  attention.Reference,
 		Title:      attention.Title,
 		Question:   attention.Question,
 		CreateTime: timestamppb.New(attention.CreatedAt),

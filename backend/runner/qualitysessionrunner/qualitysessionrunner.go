@@ -30,9 +30,14 @@ const (
 	wakeDeadline = 10 * time.Minute
 	// retryWake is how soon a transient failure is retried.
 	retryWake = 10 * time.Minute
+	// concurrencyRetryWake is how soon a session skipped because its agent is at
+	// its concurrent limit is looked at again.
+	concurrencyRetryWake = 30 * time.Second
 	// restartLimit is how many times a session may be recovered after a crash before it
 	// is parked for a person.
 	restartLimit int32 = 3
+	// restartEscalationLimit bounds how many restart-limit sessions one sweep escalates.
+	restartEscalationLimit = 100
 )
 
 // SessionStore is the slice of *store.Store the runner needs.
@@ -46,17 +51,12 @@ type SessionStore interface {
 	ListQualityAgentSessionsByBlockedCode(ctx context.Context, code string, limit int) ([]*store.QualityAgentSessionMessage, error)
 	ClaimDueQualityAgentSessions(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]*store.QualityAgentSessionMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
-	GetQualityAgentConfig(ctx context.Context, agentID int64) (*store.QualityAgentConfigMessage, error)
 	ListQualityAgentDatabases(ctx context.Context, agentID int64) ([]string, error)
 	UpdateQualityAgentSessionProgress(ctx context.Context, resourceID string, result *store.QualityAgentSessionWakeResult) (*store.QualityAgentSessionMessage, error)
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
-	SumQualityAgentSessionTokensSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error)
-	CountQualityAgentSessionWakesSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error)
-	CountQualityAgentSessionsByLease(ctx context.Context, workspaceID string, agentID int64, now time.Time) (int32, error)
-	CountQualityAgentSessionsByLeaseAll(ctx context.Context, workspaceID string, now time.Time) (int32, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
 	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
@@ -74,12 +74,16 @@ type Runner struct {
 	// now is time.Now.UTC in production; a test fixes it.
 	now func() time.Time
 	// tick carries the production constant; a test overrides it.
-	tick     time.Duration
-	swept    bool
-	inFlight atomic.Int32
-	wg       sync.WaitGroup
-	// lastTick is process-local liveness for the status read; a restart resets it.
-	lastTick atomic.Int64
+	tick                   time.Duration
+	swept                  bool
+	escalatedRestartLimits bool
+	inFlight               atomic.Int32
+	wg                     sync.WaitGroup
+	// agentSlots counts the sessions this process is running for one agent, so a
+	// claim batch larger than the agent's concurrent budget does not make every
+	// session of the batch park at once.
+	agentSlotsMu sync.Mutex
+	agentSlots   map[int64]int
 	// attention escalates a session parked for a person. Nil keeps the runner
 	// usable without notifications (tests, embedded use).
 	attention AttentionSink
@@ -102,24 +106,43 @@ func NewRunner(stores *store.Store, engine Waker) *Runner {
 		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
 			return dataquality.LoadSettings(ctx, stores)
 		},
-		now:  func() time.Time { return time.Now().UTC() },
-		tick: tickInterval,
+		now:        func() time.Time { return time.Now().UTC() },
+		tick:       tickInterval,
+		agentSlots: map[int64]int{},
 	}
+}
+
+// acquireAgentSlot reserves one concurrent-session slot for an agent. It reports
+// false when the agent is already at its limit; the caller returns the session to
+// the queue instead of parking it, so a claim batch larger than the limit does not
+// livelock every session in the batch.
+func (r *Runner) acquireAgentSlot(agentID int64, limit int) bool {
+	r.agentSlotsMu.Lock()
+	defer r.agentSlotsMu.Unlock()
+	if r.agentSlots == nil {
+		r.agentSlots = map[int64]int{}
+	}
+	if r.agentSlots[agentID] >= limit {
+		return false
+	}
+	r.agentSlots[agentID]++
+	return true
+}
+
+// releaseAgentSlot frees one concurrent-session slot for an agent.
+func (r *Runner) releaseAgentSlot(agentID int64) {
+	r.agentSlotsMu.Lock()
+	defer r.agentSlotsMu.Unlock()
+	if r.agentSlots[agentID] <= 1 {
+		delete(r.agentSlots, agentID)
+		return
+	}
+	r.agentSlots[agentID]--
 }
 
 // Name identifies the runner in logs.
 func (*Runner) Name() string {
 	return "qualitysession"
-}
-
-// LastTick is when the loop last looked for due sessions. A zero value means the
-// process has not ticked yet (fresh start) or the runner stopped.
-func (r *Runner) LastTick() time.Time {
-	millis := r.lastTick.Load()
-	if millis == 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, millis).UTC()
 }
 
 // Run drives the loop until ctx is cancelled, then waits for in-flight wakes.
@@ -141,7 +164,6 @@ func (r *Runner) Run(ctx context.Context) {
 // workspace allows the runner and the worker pool has room.
 func (r *Runner) runOnce(ctx context.Context) {
 	now := r.now()
-	r.lastTick.Store(now.UnixNano())
 	if !r.swept {
 		r.swept = true
 		if reset, err := r.store.ResetStaleQualityAgentSessionLeases(ctx, now, restartLimit); err != nil {
@@ -158,11 +180,13 @@ func (r *Runner) runOnce(ctx context.Context) {
 	if !settings.AgentRunnerEnabled {
 		return
 	}
-	limit := settings.AgentRunnerMaxConcurrentSessions
-	if limit <= 0 {
-		limit = dataquality.DefaultAgentRunnerMaxConcurrentSessions
+	if !r.escalatedRestartLimits {
+		r.escalatedRestartLimits = true
+		r.escalateRestartLimits(ctx)
 	}
-	slots := limit - int(r.inFlight.Load())
+	// The worker pool is bounded by the workspace hard cap; each agent's own
+	// concurrency budget is enforced when its session starts.
+	slots := dataquality.MaxAgentRunnerConcurrentSessions - int(r.inFlight.Load())
 	if slots <= 0 {
 		return
 	}
@@ -177,54 +201,37 @@ func (r *Runner) runOnce(ctx context.Context) {
 		go func(session *store.QualityAgentSessionMessage) {
 			defer r.wg.Done()
 			defer r.inFlight.Add(-1)
-			r.host(ctx, settings, session)
+			r.host(ctx, session)
 		}(session)
 	}
 }
 
 // host runs one wake of one claimed session and persists its outcome.
-func (r *Runner) host(ctx context.Context, settings dataquality.Settings, session *store.QualityAgentSessionMessage) {
-	if code, reason, next := r.scopeBlocker(ctx, settings, session); code != "" {
+func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMessage) {
+	agent, code, reason, next := r.scopeBlocker(ctx, session)
+	if code != "" {
 		r.block(ctx, session, code, reason, next)
 		return
 	}
-	// Autonomy is the workspace write switch. It pauses autonomous target wakes;
-	// the owner's conversation (kind=2) stays available read-only.
-	if session.Kind == 1 && !settings.AgentAutonomyEnabled {
-		r.block(ctx, session, "autonomy-off", "agent autonomy is disabled in this workspace",
-			ptrTime(r.now().Add(5*time.Minute)))
-		return
+	concurrencyLimit := agent.MaxConcurrentSessions
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = dataquality.DefaultAgentRunnerMaxConcurrentSessions
 	}
-	config, err := r.store.GetQualityAgentConfig(ctx, session.AgentID)
-	if err != nil {
-		r.block(ctx, session, "internal-error", "the agent's configuration could not be read",
-			ptrTime(r.now().Add(retryWake)))
-		return
+	if concurrencyLimit < 1 {
+		concurrencyLimit = 1
 	}
-	if config == nil || config.State != store.QualityAgentStateActive {
-		r.block(ctx, session, "agent-disabled", "the agent is not active", nil)
-		return
-	}
-	if config.MaxConcurrentSessions > 0 {
-		running, err := r.store.CountQualityAgentSessionsByLease(ctx, session.WorkspaceID, session.AgentID, r.now())
-		if err != nil {
-			r.block(ctx, session, "internal-error", "the agent concurrency could not be read",
-				ptrTime(r.now().Add(retryWake)))
-			return
+	if !r.acquireAgentSlot(agent.ID, int(concurrencyLimit)) {
+		nextWake := ptrTime(r.now().Add(concurrencyRetryWake))
+		if _, err := r.store.ReleaseQualityAgentSessionLease(ctx, session.ResourceID, nextWake); err != nil {
+			slog.Error("failed to requeue a session over its agent concurrency limit",
+				slog.String("session", session.ResourceID), log.WithError(err))
 		}
-		if running > config.MaxConcurrentSessions {
-			r.block(ctx, session, "concurrency-limit", "the agent reached its concurrent session limit",
-				ptrTime(r.now().Add(time.Minute)))
-			return
-		}
+		return
 	}
-	workspaceTokenLimit := settings.AgentRunnerTokensPerHour
-	if workspaceTokenLimit <= 0 {
-		workspaceTokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
-	}
-	agentTokenLimit := config.TokensPerHour
-	if agentTokenLimit <= 0 {
-		agentTokenLimit = workspaceTokenLimit
+	defer r.releaseAgentSlot(agent.ID)
+	tokenLimit := agent.TokensPerHour
+	if tokenLimit <= 0 {
+		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
 	}
 	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
@@ -232,24 +239,14 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	spentAll, err := r.store.SumQualityAgentSessionTokensSinceAll(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
-	if err != nil {
-		r.block(ctx, session, "internal-error", "the workspace token spend could not be read",
-			ptrTime(r.now().Add(retryWake)))
-		return
-	}
-	if spent >= agentTokenLimit || spentAll >= workspaceTokenLimit {
+	if spent >= tokenLimit {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "token-budget", "the hourly agent token budget is spent", &nextWindow)
 		return
 	}
-	workspaceWakeLimit := settings.AgentRunnerWakesPerHour
-	if workspaceWakeLimit <= 0 {
-		workspaceWakeLimit = dataquality.DefaultAgentRunnerWakesPerHour
-	}
-	agentWakeLimit := int(config.WakesPerHour)
-	if agentWakeLimit <= 0 {
-		agentWakeLimit = workspaceWakeLimit
+	wakeLimit := int64(agent.WakesPerHour)
+	if wakeLimit <= 0 {
+		wakeLimit = int64(dataquality.DefaultAgentRunnerWakesPerHour)
 	}
 	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
@@ -257,13 +254,7 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	wakesAll, err := r.store.CountQualityAgentSessionWakesSinceAll(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
-	if err != nil {
-		r.block(ctx, session, "internal-error", "the workspace wake count could not be read",
-			ptrTime(r.now().Add(retryWake)))
-		return
-	}
-	if wakes >= int64(agentWakeLimit) || wakesAll >= int64(workspaceWakeLimit) {
+	if wakes >= wakeLimit {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "wake-budget", "the hourly agent wake budget is spent", &nextWindow)
 		return
@@ -272,7 +263,7 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 	wakeCtx, cancel := context.WithTimeout(ctx, wakeDeadline)
 	defer cancel()
 	outcome, err := r.engine.Wake(wakeCtx, session, agentrunner.Options{
-		CompactionTriggerTokens: settings.AgentRunnerCompactionTriggerTokens,
+		CompactionTriggerTokens: dataquality.DefaultAgentRunnerCompactionTriggerTokens,
 	})
 	if err != nil {
 		slog.Error("quality agent session wake failed",
@@ -284,8 +275,6 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 	progress, err := r.store.UpdateQualityAgentSessionProgress(ctx, session.ResourceID,
 		&store.QualityAgentSessionWakeResult{
 			WakeCountIncrement: 1,
-			TokensUsed:         outcome.TokensUsed,
-			ContextTokens:      outcome.ContextTokens,
 			ProcessedSeq:       outcome.ProcessedSeq,
 			EngineState:        outcome.EngineState,
 		})
@@ -298,7 +287,7 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 		// The triage analysis is done: park the queue row until its review. The session
 		// stays as the target's conversation and wakes again only when something new
 		// happens (a failure event, a person, or the review).
-		r.parkEnrollmentAfterTriage(ctx, session, settings)
+		r.parkEnrollmentAfterTriage(ctx, session)
 	}
 	if outcome.Blocked {
 		_, parked, parkErr := r.store.UpdateQualityAgentSessionState(ctx, progress.ResourceID, progress.Revision,
@@ -315,20 +304,18 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 		}
 		return
 	}
-	next := r.idleWake(settings)
+	next = r.idleWake()
 	if outcome.NextWakeAt != nil {
 		next = outcome.NextWakeAt
 	}
 	if outcome.TriageComplete {
 		// A triaged target sleeps until its review, not on the idle cadence: otherwise
 		// every DORMANT target would wake and re-triage once a day.
-		review := r.triageReviewAt(settings)
+		review := r.triageReviewAt()
 		if next == nil || review.Before(*next) {
 			next = &review
 		}
 	}
-	// An event or question that arrived while the wake ran makes the session due again
-	// immediately, so it is never lost behind the idle cadence.
 	// Only an event or question that arrived after the consumed watermark makes another
 	// wake immediately due; rows the wake itself wrote must not keep the session hot.
 	if pendingSeq, err := r.store.MaxQualityAgentInputSeqAfter(ctx, session.ID, outcome.ProcessedSeq); err == nil && pendingSeq > 0 {
@@ -340,50 +327,56 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 	}
 }
 
-// scopeBlocker reports why a session may not run any more, or "" when it is in scope.
-// It is the run-time half of the allowlist: an administrator can remove a database or
-// disable the agent after the session was created.
-func (r *Runner) scopeBlocker(ctx context.Context, _ dataquality.Settings, session *store.QualityAgentSessionMessage) (code, reason string, nextWake *time.Time) {
-	if session.Kind == 2 {
-		// The agent conversation has no target database.
-		if code, reason, next := r.agentStateBlocker(ctx, session.AgentID); code != "" {
-			return code, reason, next
+// escalateRestartLimits raises one owner attention for every session the lease sweep
+// just parked on the restart limit. The attention sink dedupes per session, so a
+// repeated pass converges on the open to-do.
+func (r *Runner) escalateRestartLimits(ctx context.Context) {
+	if r.attention == nil {
+		return
+	}
+	sessions, err := r.store.ListQualityAgentSessionsByBlockedCode(ctx, "restart-limit", restartEscalationLimit)
+	if err != nil {
+		slog.Error("failed to read the restart-limit sessions", log.WithError(err))
+		return
+	}
+	for _, session := range sessions {
+		agent, err := r.store.GetQualityAgentByID(ctx, session.AgentID)
+		if err != nil || agent == nil || agent.State != store.QualityAgentStateActive {
+			continue
 		}
-		return "", "", nil
+		r.attention(ctx, session, "restart-limit", session.BlockedReason)
+	}
+}
+
+// scopeBlocker reports why a session may not run any more, or "" when it is in scope,
+// together with the agent the session runs for.
+func (r *Runner) scopeBlocker(ctx context.Context, session *store.QualityAgentSessionMessage) (*store.QualityAgentMessage, string, string, *time.Time) {
+	agent, err := r.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil {
+		return nil, "internal-error", "the session's agent could not be read", ptrTime(r.now().Add(retryWake))
+	}
+	if agent == nil || agent.State == store.QualityAgentStateDisabled {
+		return nil, "agent-disabled", "the session's agent is disabled", nil
+	}
+	if session.Kind == 2 {
+		// The front-office conversation is read-only and may run while the agent is a
+		// draft or paused; only a disabled agent (terminal) stops answering.
+		return agent, "", "", nil
+	}
+	if agent.State != store.QualityAgentStateActive {
+		return nil, "agent-disabled", "the session's agent is not active", nil
 	}
 	if session.DatabaseRef == "" {
-		return "out-of-scope", "the session's database is no longer in the agent's scope", nil
-	}
-	config, err := r.store.GetQualityAgentConfig(ctx, session.AgentID)
-	if err != nil {
-		return "internal-error", "the agent's configuration could not be read", ptrTime(r.now().Add(retryWake))
-	}
-	if config == nil {
-		return "agent-disabled", "the session's agent has no runtime configuration", nil
-	}
-	if config.State != store.QualityAgentStateActive {
-		return "agent-disabled", "the agent is not active", nil
+		return agent, "out-of-scope", "the session's database is no longer in the agent's scope", nil
 	}
 	databases, err := r.store.ListQualityAgentDatabases(ctx, session.AgentID)
 	if err != nil {
-		return "internal-error", "the agent's scope could not be read", ptrTime(r.now().Add(retryWake))
+		return agent, "internal-error", "the agent's scope could not be read", ptrTime(r.now().Add(retryWake))
 	}
 	if !slices.Contains(databases, session.DatabaseRef) {
-		return "out-of-scope", "the session's database is no longer in the agent's scope", nil
+		return agent, "out-of-scope", "the session's database is no longer in the agent's scope", nil
 	}
-	return r.agentStateBlocker(ctx, session.AgentID)
-}
-
-// agentStateBlocker reports whether the session's agent identity is enabled.
-func (r *Runner) agentStateBlocker(ctx context.Context, agentID int64) (code, reason string, nextWake *time.Time) {
-	agent, err := r.store.GetQualityAgentByID(ctx, agentID)
-	if err != nil {
-		return "internal-error", "the session's agent could not be read", ptrTime(r.now().Add(retryWake))
-	}
-	if agent == nil || !agent.Enabled {
-		return "agent-disabled", "the session's agent is disabled", nil
-	}
-	return "", "", nil
+	return agent, "", "", nil
 }
 
 // block parks a session before or instead of a wake, keeping the transcript for a person
@@ -410,7 +403,7 @@ func attentionWorthy(code string) bool {
 		return false
 	}
 	switch code {
-	case "out-of-scope", "agent-disabled", "autonomy-off":
+	case "out-of-scope", "agent-disabled":
 		return false
 	default:
 		return true
@@ -420,7 +413,7 @@ func attentionWorthy(code string) bool {
 // parkEnrollmentAfterTriage marks the target's queue row dormant until its review. A
 // failure to update the queue row must not fail the wake: the transcript is already
 // recorded and the next review tick retries the queue side.
-func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.QualityAgentSessionMessage, settings dataquality.Settings) {
+func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.QualityAgentSessionMessage) {
 	enrollment, err := r.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.AgentID, session.TargetGUID)
 	if err != nil {
 		slog.Warn("failed to read the enrollment of a triaged session",
@@ -430,7 +423,7 @@ func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.Q
 	if enrollment == nil {
 		return
 	}
-	nextReview := r.triageReviewAt(settings)
+	nextReview := r.triageReviewAt()
 	if _, applied, err := r.store.UpdateQualityAgentEnrollmentAfterTriage(ctx, enrollment.ResourceID, nextReview); err != nil {
 		slog.Warn("failed to park a triaged enrollment",
 			slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
@@ -441,21 +434,13 @@ func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.Q
 }
 
 // triageReviewAt is when a triaged target is looked at again.
-func (r *Runner) triageReviewAt(settings dataquality.Settings) time.Time {
-	days := settings.AgentRunnerDormantReviewDays
-	if days <= 0 {
-		days = dataquality.DefaultAgentRunnerDormantReviewDays
-	}
-	return r.now().Add(time.Duration(days) * 24 * time.Hour)
+func (r *Runner) triageReviewAt() time.Time {
+	return r.now().Add(time.Duration(dataquality.DefaultAgentRunnerDormantReviewDays) * 24 * time.Hour)
 }
 
 // idleWake is the cadence a session sleeps on when nothing asks for an earlier wake.
-func (r *Runner) idleWake(settings dataquality.Settings) *time.Time {
-	seconds := settings.AgentRunnerIdleWakeSeconds
-	if seconds <= 0 {
-		seconds = dataquality.DefaultAgentRunnerIdleWakeSeconds
-	}
-	return ptrTime(r.now().Add(time.Duration(seconds) * time.Second))
+func (r *Runner) idleWake() *time.Time {
+	return ptrTime(r.now().Add(time.Duration(dataquality.DefaultAgentRunnerIdleWakeSeconds) * time.Second))
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }

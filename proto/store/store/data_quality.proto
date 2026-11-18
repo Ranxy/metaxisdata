@@ -1019,7 +1019,8 @@ message QualityLLMDiagnostic {
   bool debug_captured = 13;
 }
 
-// QualityContractCriticality ranks a target for the autonomy policy. It is read
+// QualityContractCriticality ranks a target for the plan's criticality and the
+// adoption guardrail. It is read
 // from the intent when declared; otherwise the plan derives a display value and
 // never writes it back.
 enum QualityContractCriticality {
@@ -1144,119 +1145,16 @@ message QualityContractPlanCadence {
   string timezone = 3;
 }
 
-// QualityChangeRequestState is the lifecycle of one change request.
-enum QualityChangeRequestState {
-  QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
-  // Waiting for a person's decision.
-  QUALITY_CHANGE_REQUEST_STATE_PROPOSED = 1;
-  // Approved, but not every item applied yet (a failed item can be retried).
-  QUALITY_CHANGE_REQUEST_STATE_APPROVED = 2;
-  QUALITY_CHANGE_REQUEST_STATE_APPLIED = 3;
-  QUALITY_CHANGE_REQUEST_STATE_REJECTED = 4;
-  // The published version it was written against is gone; it is not rebased.
-  QUALITY_CHANGE_REQUEST_STATE_EXPIRED = 5;
-}
-
-// QualityChangeRequestSource records who wrote the request.
-enum QualityChangeRequestSource {
-  QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REQUEST_SOURCE_HUMAN = 1;
-  QUALITY_CHANGE_REQUEST_SOURCE_AGENT = 2;
-}
-
-// QualityChangeRequestItemKind is one typed change a request carries. Red-line
-// actions (silent, close, publish, acknowledge schema change, owner, criticality)
-// are deliberately not representable.
-enum QualityChangeRequestItemKind {
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED = 0;
-  // Accept one pending proposal through the existing accept path.
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF = 1;
-  // Add, change or remove one plan declaration.
-  QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE = 2;
-}
-
-// QualityChangeRejectionReason is the structured reason a person rejected a
-// request. It is the first decision-memory signal: free text alone cannot be
-// evaluated later.
-enum QualityChangeRejectionReason {
-  QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED = 0;
-  QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT = 1;
-  QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT = 2;
-  QUALITY_CHANGE_REJECTION_REASON_NOISE = 3;
-  QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM = 4;
-  QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN = 5;
-  QUALITY_CHANGE_REJECTION_REASON_DEFER = 6;
-  QUALITY_CHANGE_REJECTION_REASON_OTHER = 7;
-}
-
-// QualityChangeRequestItem is one typed change. Which fields are read depends on
-// kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
-// one plan declaration.
-message QualityChangeRequestItem {
-  QualityChangeRequestItemKind kind = 1;
-  // SUGGESTION_REF: the proposal's immutable resource id.
-  string suggestion_resource_id = 2;
-  // COVERAGE_CHANGE: the declaration to add or modify.
-  QualityCoverageProperty property = 3;
-  string column = 4;
-  int32 min_checks = 5;
-  // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
-  bool remove = 6;
-  // SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
-  // dimension of its own and a rule requires one.
-  QualityDimension dimension = 7;
-}
-
-// QualityChangeRequestItems is the JSONB payload of quality_change_request.items.
-message QualityChangeRequestItems {
-  repeated QualityChangeRequestItem items = 1;
-}
-
-// QualityChangeRequestItemResult is one item's outcome. A request returns a result
-// per item: a batch never reports only "the whole request succeeded or failed".
-message QualityChangeRequestItemResult {
-  enum Status {
-    STATUS_UNSPECIFIED = 0;
-    STATUS_APPLIED = 1;
-    STATUS_FAILED = 2;
-    // Already true, so there was nothing to apply.
-    STATUS_SKIPPED = 3;
-  }
-  int32 index = 1;
-  Status status = 2;
-  string detail = 3;
-  // The resource the item created, when it created one.
-  string applied_resource_id = 4;
-}
-
-// QualityChangeRequestItemResults is the JSONB payload of
-// quality_change_request.item_results.
-message QualityChangeRequestItemResults {
-  repeated QualityChangeRequestItemResult results = 1;
-}
-
-// QualityChangeRejectionReasons is the JSONB payload of
-// quality_change_request.rationale_codes.
-message QualityChangeRejectionReasons {
-  repeated QualityChangeRejectionReason reasons = 1;
-}
-
 // QualityAgentSessionState is the durable lifecycle of one target's agent session.
 enum QualityAgentSessionState {
   QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
   QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
-  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  // Removed: pausing an agent is an agent-state transition, not a session one.
+  reserved 2;
+  reserved "QUALITY_AGENT_SESSION_STATE_PAUSED";
   // Blocked means "waiting for a person, a window or a dependency", not failed.
   QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
   QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
-}
-
-// QualityAgentSessionSource says who created a session: a person or the
-// enrollment queue. An automatic session is also distinguished by created_by.
-enum QualityAgentSessionSource {
-  QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED = 0;
-  QUALITY_AGENT_SESSION_SOURCE_MANUAL = 1;
-  QUALITY_AGENT_SESSION_SOURCE_AUTO = 2;
 }
 
 // QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
@@ -1279,8 +1177,9 @@ enum QualityAgentEnrollmentState {
   QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE = 2;
   // Triaged with nothing left to do; waits for its next review or an approval.
   QUALITY_AGENT_ENROLLMENT_STATE_DORMANT = 3;
-  // A person opted the target out; discovery never re-admits it.
-  QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED = 4;
+  // Removed: scope removal is OUT_OF_SCOPE and there is no manual exclusion.
+  reserved 4;
+  reserved "QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED";
   // The target's database left the runner's scope. Reversible.
   QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE = 5;
   // The registry object no longer exists. The row is kept for history.
@@ -1317,7 +1216,9 @@ message QualityAgentSessionEngineState {
   repeated string done = 1;
   int32 blocked_rounds = 2;
   string blocked_code = 3;
-  string phase = 4;
+  // Removed: the phase was written but never read.
+  reserved 4;
+  reserved "phase";
 }
 
 // QualityAgentSession is one target's durable agent conversation and wake schedule.
@@ -1330,17 +1231,18 @@ message QualityAgentSession {
   int32 target_type = 5;
   string database_ref = 6;
   int32 agent_id = 7;
-  string objective = 8;
+  // Removed: the wake objective is derived from the session mode.
+  reserved 8;
+  reserved "objective";
   QualityAgentSessionState state = 9;
   string blocked_code = 10;
   string blocked_reason = 11;
   // Incremented by every mutation; human mutations compare-and-set this value.
   int32 revision = 12;
   int32 wake_count = 13;
-  // Lifetime token spend, so an archived session still counts in metrics.
-  int64 tokens_used = 14;
-  // The largest real prompt_tokens of the last wake; the compaction trigger.
-  int32 context_tokens = 15;
+  // Removed: token accounting lives on transcript messages.
+  reserved 14, 15;
+  reserved "tokens_used", "context_tokens";
   // Rolling checkpoint summary and the message seq it replaces in model context.
   string summary = 16;
   int64 summary_through_seq = 17;
@@ -1350,11 +1252,15 @@ message QualityAgentSession {
   google.protobuf.Timestamp next_wake_at = 20;
   google.protobuf.Timestamp lease_until = 21;
   int32 restart_count = 22;
-  int32 created_by = 23;
+  // Removed: sessions are created by the enrollment runner only.
+  reserved 23;
+  reserved "created_by";
   google.protobuf.Timestamp created_at = 24;
   google.protobuf.Timestamp updated_at = 25;
   google.protobuf.Timestamp archived_at = 26;
-  QualityAgentSessionSource source = 27;
+  // Removed: sessions are always created by the enrollment runner.
+  reserved 27;
+  reserved "source";
   QualityAgentSessionMode mode = 28;
 }
 
@@ -1381,8 +1287,9 @@ message QualityAgentEnrollment {
   google.protobuf.Timestamp next_review_at = 14;
   google.protobuf.Timestamp discovered_at = 15;
   google.protobuf.Timestamp last_seen_at = 16;
-  int32 excluded_by = 17;
-  google.protobuf.Timestamp excluded_at = 18;
+  // Removed: there is no manual exclusion.
+  reserved 17, 18;
+  reserved "excluded_by", "excluded_at";
   int32 revision = 19;
   google.protobuf.Timestamp created_at = 20;
   google.protobuf.Timestamp updated_at = 21;
@@ -1421,8 +1328,9 @@ message QualityAgentMessage {
   // name); empty for model and runner messages.
   string reference = 20;
   int32 tokens = 13;
-  int32 prompt_tokens = 14;
-  int32 completion_tokens = 15;
+  // Removed: only the total token count is stored.
+  reserved 14, 15;
+  reserved "prompt_tokens", "completion_tokens";
   string error = 16;
   bool truncated = 17;
   // The store returns the existing row for a retried key.
@@ -1430,77 +1338,41 @@ message QualityAgentMessage {
   google.protobuf.Timestamp created_at = 19;
 }
 
-// QualityMemoryKind is what a memory records. Asset facts are observed and may be
-// written automatically; a decision or an event is a judgment and needs a person's
-// confirmation before it counts.
+// QualityMemoryKind is what a memory records. Only deterministic asset facts are
+// kept; there is no decision or event knowledge to confirm.
 enum QualityMemoryKind {
   QUALITY_MEMORY_KIND_UNSPECIFIED = 0;
   QUALITY_MEMORY_KIND_ASSET_FACT = 1;
-  QUALITY_MEMORY_KIND_DECISION = 2;
-  QUALITY_MEMORY_KIND_EVENT = 3;
+  // Removed: memories are deterministic asset facts only.
+  reserved 2, 3;
+  reserved "QUALITY_MEMORY_KIND_DECISION", "QUALITY_MEMORY_KIND_EVENT";
 }
 
 // QualityMemoryStatus is where one memory stands. A superseded or expired memory is
 // kept for the correction path, never silently deleted.
 enum QualityMemoryStatus {
   QUALITY_MEMORY_STATUS_UNSPECIFIED = 0;
-  QUALITY_MEMORY_STATUS_PROPOSED = 1;
   QUALITY_MEMORY_STATUS_CONFIRMED = 2;
-  QUALITY_MEMORY_STATUS_REJECTED = 3;
   QUALITY_MEMORY_STATUS_SUPERSEDED = 4;
   QUALITY_MEMORY_STATUS_EXPIRED = 5;
+  // Removed: agent-written asset facts are confirmed directly.
+  reserved 1, 3;
+  reserved "QUALITY_MEMORY_STATUS_PROPOSED", "QUALITY_MEMORY_STATUS_REJECTED";
 }
 
-// QualityMemorySource records who wrote the memory.
+// QualityMemorySource records who wrote the memory. Asset facts are written by the
+// agent only; human and system writers do not exist.
 enum QualityMemorySource {
   QUALITY_MEMORY_SOURCE_UNSPECIFIED = 0;
   QUALITY_MEMORY_SOURCE_AGENT = 1;
-  QUALITY_MEMORY_SOURCE_HUMAN = 2;
-  QUALITY_MEMORY_SOURCE_SYSTEM = 3;
+  reserved 2, 3;
+  reserved "QUALITY_MEMORY_SOURCE_HUMAN", "QUALITY_MEMORY_SOURCE_SYSTEM";
 }
 
-// QualityMemoryEvidenceList is the JSONB payload of quality_memory.evidence; the
-// references are deterministic, never sample payloads.
-message QualityMemoryEvidenceList {
-  repeated QualityInvestigationEvidence evidence = 1;
-}
-
-// QualityInvestigationStatus is where one investigation stands. A concluded
-// investigation is the normal result; a failed one records why the analysis could
-// not finish.
-enum QualityInvestigationStatus {
-  QUALITY_INVESTIGATION_STATUS_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_STATUS_CONCLUDED = 1;
-  QUALITY_INVESTIGATION_STATUS_FAILED = 2;
-  QUALITY_INVESTIGATION_STATUS_INTERRUPTED = 3;
-}
-
-// QualityInvestigationTrigger says what started the investigation. The reference is
-// the triggering object's resource name; it is never a payload snapshot.
-enum QualityInvestigationTrigger {
-  QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_TRIGGER_EXECUTION = 1;
-  QUALITY_INVESTIGATION_TRIGGER_ISSUE = 2;
-  QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE = 3;
-  QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP = 4;
-  QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT = 5;
-  QUALITY_INVESTIGATION_TRIGGER_MANUAL = 6;
-}
-
-// QualityInvestigationVerdict is the investigation's classification of the event. It
-// never replaces the engine's verdict; it explains it.
-enum QualityInvestigationVerdict {
-  QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED = 0;
-  QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE = 1;
-  QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR = 2;
-  QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE = 3;
-  QUALITY_INVESTIGATION_VERDICT_UNRELATED = 4;
-}
-
-// QualityInvestigationEvidence is one deterministic reference behind an
-// investigation: an execution, an issue, a schema fingerprint, a lineage edge. It is
-// a reference, never a copy of samples or payloads.
-message QualityInvestigationEvidence {
+// QualityMemoryEvidence is one deterministic reference behind an asset fact: an
+// execution, an issue, a schema fingerprint or a lineage edge. It is a reference,
+// never a copy of samples or payloads.
+message QualityMemoryEvidence {
   // A short kind such as EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE.
   string kind = 1;
   // The referenced resource name or value.
@@ -1508,54 +1380,10 @@ message QualityInvestigationEvidence {
   string note = 3;
 }
 
-// QualityInvestigationHypothesis is one candidate explanation and what the evidence
-// did to it.
-message QualityInvestigationHypothesis {
-  string statement = 1;
-  // CONFIRMED, REJECTED or OPEN.
-  string status = 2;
-}
-
-// QualityInvestigation is one agent's work product on one event: hypotheses,
-// deterministic evidence references, a verdict and its cost. It is not a second
-// verdict engine: an investigation conclusion never replaces the check's result and
-// never opens or closes an issue by itself.
-message QualityInvestigation {
-  QualityTargetPath target = 1;
-  QualityInvestigationTrigger trigger = 2;
-  string trigger_reference = 3;
-  QualityInvestigationStatus status = 4;
-  QualityInvestigationVerdict verdict = 5;
-  string summary = 6;
-  repeated QualityInvestigationHypothesis hypotheses = 7;
-  repeated QualityInvestigationEvidence evidence = 8;
-  // Names of change requests the investigation proposed.
-  repeated string action_refs = 9;
-  string provider = 10;
-  string model = 11;
-  string prompt_version = 12;
-  int64 prompt_tokens = 13;
-  int64 completion_tokens = 14;
-  // Set when the analysis failed; empty otherwise.
-  string failure_reason = 15;
-}
-
-// QualityInvestigationEvidenceList is the JSONB payload of
-// quality_investigation.evidence.
-message QualityInvestigationEvidenceList {
-  repeated QualityInvestigationEvidence evidence = 1;
-}
-
-// QualityInvestigationHypothesisList is the JSONB payload of
-// quality_investigation.hypotheses.
-message QualityInvestigationHypothesisList {
-  repeated QualityInvestigationHypothesis hypotheses = 1;
-}
-
-// QualityInvestigationActionRefs is the JSONB payload of
-// quality_investigation.action_refs.
-message QualityInvestigationActionRefs {
-  repeated string refs = 1;
+// QualityMemoryEvidenceList is the JSONB payload of quality_memory.evidence; the
+// references are deterministic, never sample payloads.
+message QualityMemoryEvidenceList {
+  repeated QualityMemoryEvidence evidence = 1;
 }
 
 // QualityContractPlan is a plan payload: either a published version's declaration

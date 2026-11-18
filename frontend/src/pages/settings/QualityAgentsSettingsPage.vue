@@ -53,18 +53,6 @@
             <p class="text-sm text-muted-foreground">{{ t("qualityAgents.pauseAllHint") }}</p>
           </div>
         </div>
-        <div class="flex items-start gap-3">
-          <Checkbox
-            id="qa-autonomy-enabled"
-            :checked="switches.autonomyEnabled"
-            :disabled="!canManage || savingSwitch"
-            @update:checked="saveSwitch('autonomy', $event === true)"
-          />
-          <div>
-            <Label for="qa-autonomy-enabled">{{ t("qualityAgents.autonomy") }}</Label>
-            <p class="text-sm text-muted-foreground">{{ t("qualityAgents.autonomyHint") }}</p>
-          </div>
-        </div>
       </CardContent>
     </Card>
 
@@ -158,15 +146,6 @@
                       @click="start(agent)"
                     >
                       {{ t("qualityAgents.start") }}
-                    </Button>
-                    <Button
-                      v-if="canManage"
-                      variant="ghost"
-                      size="sm"
-                      :disabled="busyAgent === agent.name"
-                      @click="rotateToken(agent)"
-                    >
-                      {{ t("qualityAgents.rotateToken") }}
                     </Button>
                     <Button
                       v-if="canManage"
@@ -485,29 +464,13 @@
         </div>
       </DialogContent>
     </Dialog>
-
-    <Dialog
-      :open="tokenOpen"
-      @update:open="tokenOpen = $event"
-    >
-      <DialogContent class="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{{ t("qualityAgents.tokenTitle") }}</DialogTitle>
-          <DialogDescription>{{ t("qualityAgents.tokenHint") }}</DialogDescription>
-        </DialogHeader>
-        <code class="block max-h-40 overflow-y-auto break-all rounded-md bg-muted px-2 py-1 text-xs">{{ issuedToken }}</code>
-        <div class="flex justify-end">
-          <Button @click="copyToken">{{ t("qualityAgents.copyToken") }}</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
 import { AlertTriangle, Loader2, Plus, RefreshCcw } from "lucide-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createQualityAgent,
@@ -515,7 +478,6 @@ import {
   listQualityAgents,
   pauseQualityAgent,
   type QualityAgentConfigInput,
-  rotateQualityAgentToken,
   startQualityAgent,
   updateQualityAgent,
 } from "@/api/data-quality";
@@ -597,7 +559,7 @@ const loading = ref(true);
 const error = ref("");
 const savingSwitch = ref(false);
 const busyAgent = ref("");
-const switches = ref({ runnerEnabled: false, autonomyEnabled: false });
+const switches = ref({ runnerEnabled: false });
 const dataQuality = ref<DataQualitySetting>(
   create(DataQualitySettingSchema, {})
 );
@@ -653,13 +615,6 @@ const editingAgent = ref<QualityAgent>();
 const creating = ref(false);
 const createError = ref("");
 const overlapAcknowledged = ref(false);
-const tokenOpen = ref(false);
-const issuedToken = ref("");
-watch(tokenOpen, (open) => {
-  if (!open) {
-    issuedToken.value = "";
-  }
-});
 const form = ref({
   displayName: "",
   description: "",
@@ -803,7 +758,6 @@ async function load() {
       setting.dataQuality ?? create(DataQualitySettingSchema, {});
     switches.value = {
       runnerEnabled: dataQuality.value.agentRunnerEnabled,
-      autonomyEnabled: dataQuality.value.agentAutonomyEnabled,
     };
   } catch (err) {
     error.value = formatError(err);
@@ -846,20 +800,17 @@ async function loadDatabases() {
   }
 }
 
-async function saveSwitch(kind: "runner" | "autonomy", value: boolean) {
+async function saveSwitch(kind: "runner", value: boolean) {
   savingSwitch.value = true;
   try {
     const next = create(DataQualitySettingSchema, { ...dataQuality.value });
     if (kind === "runner") {
       next.agentRunnerEnabled = value;
-    } else {
-      next.agentAutonomyEnabled = value;
     }
     const updated = await updateDataQualitySetting(next);
     dataQuality.value = updated.dataQuality ?? next;
     switches.value = {
       runnerEnabled: dataQuality.value.agentRunnerEnabled,
-      autonomyEnabled: dataQuality.value.agentAutonomyEnabled,
     };
     notify.success(t("qualityAgents.saved"));
   } catch (err) {
@@ -1088,12 +1039,10 @@ async function submitCreate() {
           Number(form.value.budgetConversationMessagesPerHour) || 0,
       },
     };
-    const response = await createQualityAgent({
+    await createQualityAgent({
       config,
       start: form.value.start,
     });
-    issuedToken.value = response.token;
-    tokenOpen.value = true;
     createOpen.value = false;
     await load();
     notify.success(t("qualityAgents.created"));
@@ -1140,28 +1089,6 @@ async function disable(agent: QualityAgent) {
     notify.error(formatError(err));
   } finally {
     busyAgent.value = "";
-  }
-}
-
-async function rotateToken(agent: QualityAgent) {
-  busyAgent.value = agent.name;
-  try {
-    const response = await rotateQualityAgentToken(agent.name);
-    issuedToken.value = response.token;
-    tokenOpen.value = true;
-  } catch (err) {
-    notify.error(formatError(err));
-  } finally {
-    busyAgent.value = "";
-  }
-}
-
-async function copyToken() {
-  try {
-    await navigator.clipboard.writeText(issuedToken.value);
-    notify.success(t("qualityAgents.tokenCopied"));
-  } catch {
-    notify.error(t("qualityAgents.tokenCopyFailed"));
   }
 }
 

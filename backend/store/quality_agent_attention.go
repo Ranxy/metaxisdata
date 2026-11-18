@@ -38,7 +38,6 @@ type QualityAgentAttentionMessage struct {
 	AgentID     int64
 	Kind        QualityAgentAttentionKind
 	SessionID   *int64
-	Reference   string
 	Title       string
 	Question    string
 	Status      QualityAgentAttentionStatus
@@ -49,8 +48,8 @@ type QualityAgentAttentionMessage struct {
 }
 
 const qualityAgentAttentionColumns = `id, resource_id, workspace_id, agent_id, kind,
-	session_id, reference, title, question, status, dedupe_key, resolved_by,
-	resolved_at, created_at`
+	session_id, title, question, status, dedupe_key, resolved_by, resolved_at,
+	created_at`
 
 // CreateQualityAgentAttention inserts one open escalation. The partial unique
 // index on (agent_id, dedupe_key) makes a retried runner pass converge on the
@@ -75,13 +74,13 @@ func (s *Store) CreateQualityAgentAttention(ctx context.Context, message *Qualit
 	}
 	row := s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_attention
-			(resource_id, workspace_id, agent_id, kind, session_id, reference, title,
+			(resource_id, workspace_id, agent_id, kind, session_id, title,
 			 question, status, dedupe_key, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (agent_id, dedupe_key) WHERE status = 1 DO NOTHING
 		RETURNING `+qualityAgentAttentionColumns,
 		resourceID, message.WorkspaceID, message.AgentID, int16(message.Kind),
-		message.SessionID, message.Reference, message.Title, message.Question,
+		message.SessionID, message.Title, message.Question,
 		int16(message.Status), message.DedupeKey, message.CreatedAt)
 	created, err := scanQualityAgentAttention(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -188,18 +187,6 @@ func (s *Store) ResolveQualityAgentAttention(ctx context.Context, resourceID str
 	return attention, true, nil
 }
 
-// CountOpenQualityAgentAttentions is the agent home's pending badge.
-func (s *Store) CountOpenQualityAgentAttentions(ctx context.Context, agentID int64) (int32, error) {
-	var count int32
-	countErr := s.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM quality_agent_attention WHERE agent_id = $1 AND status = $2`,
-		agentID, int16(QualityAgentAttentionStatusOpen)).Scan(&count)
-	if countErr != nil {
-		return 0, errors.Wrap(countErr, "failed to count the open quality agent attentions")
-	}
-	return count, nil
-}
-
 func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*QualityAgentAttentionMessage, error) {
 	var (
 		message    QualityAgentAttentionMessage
@@ -211,7 +198,7 @@ func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*Q
 	)
 	scanErr := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
-		&kind, &sessionID, &message.Reference, &message.Title, &message.Question,
+		&kind, &sessionID, &message.Title, &message.Question,
 		&status, &message.DedupeKey, &resolvedBy, &resolvedAt, &message.CreatedAt,
 	)
 	if scanErr != nil {
@@ -272,16 +259,15 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		answered, err = scanQualityAgentTranscript(tx.QueryRowContext(ctx, `
 			INSERT INTO quality_agent_message
 				(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-				 tool_call_id, tool_name, reference, tokens, prompt_tokens, completion_tokens,
-				 error, truncated, idempotency_key, created_by)
+				 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
 			VALUES ($1, $2,
 				(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-				$3, 0, $4, $5, $6, '{}', '', '', '', 0, 0, 0, '', false, $7, $8)
+				$3, 0, $4, $5, $6, '{}', '', '', '', 0, '', false, $7)
 			RETURNING `+qualityAgentTranscriptColumns,
 			*attention.SessionID, workspaceID, wake,
 			int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
 			int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK),
-			content, idempotencyKey, createdBy))
+			content, idempotencyKey))
 		if err != nil {
 			return nil, nil, false, errors.Wrap(err, "failed to append the attention reply")
 		}
@@ -321,14 +307,13 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO quality_agent_message
 				(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-				 tool_call_id, tool_name, reference, tokens, prompt_tokens, completion_tokens,
-				 error, truncated, idempotency_key, created_by)
+				 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
 			VALUES ($1, $2,
 				(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-				0, 0, $3, $4, $5, '{}', '', '', $6, 0, 0, 0, '', false, $7, $8)`,
+				0, 0, $3, $4, $5, '{}', '', '', $6, 0, '', false, $7)`,
 			conversationID, workspaceID, int16(role),
 			int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK),
-			body, resourceID, "attention-note:"+resourceID, createdBy); err != nil {
+			body, resourceID, "attention-note:"+resourceID); err != nil {
 			return nil, nil, false, errors.Wrap(err, "failed to record the reply in the conversation")
 		}
 		if _, err := tx.ExecContext(ctx, `

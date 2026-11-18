@@ -11,7 +11,6 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -52,8 +51,8 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "get_memory",
-		"record_investigation", "record_asset_fact", "record_decision",
-		"block_session", "schedule_wake", "get_table_context", "draft_checks",
+		"record_asset_fact", "block_session", "schedule_wake",
+		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals":
 		return true
 	default:
@@ -61,9 +60,9 @@ func handlesTool(name string) bool {
 	}
 }
 
-// executeTool dispatches one model tool call. The ten product tools are the
-// shared quality package's agent set; block_session and schedule_wake are this
-// product's wake control and stay here.
+// executeTool dispatches one model tool call. The product tools are the shared
+// quality package's agent set; block_session and schedule_wake are this product's
+// wake control and stay here.
 func (e *Engine) executeTool(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
@@ -79,12 +78,8 @@ func (e *Engine) executeTool(
 		return tools.ListRecentExecutions(ctx, agentSession)
 	case "get_memory":
 		return tools.GetMemory(ctx, agentSession)
-	case "record_investigation":
-		return tools.RecordInvestigation(ctx, agentSession, arguments)
 	case "record_asset_fact":
 		return tools.RecordAssetFact(ctx, agentSession, arguments)
-	case "record_decision":
-		return tools.RecordDecision(ctx, agentSession, arguments)
 	case "get_table_context":
 		return tools.GetTableContext(ctx, agentSession)
 	case "draft_checks":
@@ -148,25 +143,4 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		TableContext: e.tableContext,
 		DraftChecks:  e.draftChecks,
 	})
-}
-
-// planCriticality derives the target's plan criticality for the policy gate.
-func (e *Engine) planCriticality(ctx context.Context, session *store.QualityAgentSessionMessage) dataquality.AssetCriticality {
-	if session.TargetGUID == "" {
-		return dataquality.CriticalityExperimental
-	}
-	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
-	if err != nil {
-		return 0
-	}
-	contract, err := e.store.GetQualityContract(ctx, session.TargetGUID, storepb.MetaType(session.TargetType))
-	if err != nil {
-		return 0
-	}
-	var settings *storepb.QualityContractSettings
-	if contract != nil {
-		settings = contract.Settings
-	}
-	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(settings.GetIntent(), e.now()), quality.RuleShapes(rules))
-	return plan.Criticality
 }

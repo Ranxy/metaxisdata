@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -54,12 +53,6 @@ const (
 	maxPriorityRowsPerDatabase = 5000
 )
 
-// monitorObjective and triageObjective are the session objectives admission writes.
-const (
-	monitorObjective = "Keep this target trustworthy: review recent executions, investigate failures, and record what a person should know."
-	triageObjective  = "This target has no quality coverage yet. Inspect it, propose a quality plan and draft checks, and record what you conclude. A person approves every proposal."
-)
-
 // Store is the slice of *store.Store the enrollment runner needs.
 type Store interface {
 	GetWorkspaceID(ctx context.Context) (string, error)
@@ -85,11 +78,10 @@ type Store interface {
 	UpdateQualityAgentSessionMode(ctx context.Context, resourceID string, mode storepb.QualityAgentSessionMode) (bool, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
 	CountActiveQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error)
-	CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, source storepb.QualityAgentSessionSource, since time.Time) (int, error)
+	CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	CurrentDatabaseTime(ctx context.Context) (time.Time, error)
 	ListQualityAgents(ctx context.Context) ([]*store.QualityAgentMessage, error)
-	ListQualityAgentConfigs(ctx context.Context) ([]*store.QualityAgentConfigMessage, error)
 	ListQualityAgentDatabasesByAgent(ctx context.Context) (map[int64][]string, error)
 
 	ListQualityRules(ctx context.Context, find *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error)
@@ -114,16 +106,13 @@ type Runner struct {
 	lastScan map[string]time.Time
 	// scopeFingerprints remembers each agent's scope so a save invalidates only that
 	// agent's scan clocks.
-	scopeFingerprints  map[int64]string
-	scopeInitialized   bool
-	lastTick           atomic.Int64
-	lastEnrollmentScan atomic.Int64
+	scopeFingerprints map[int64]string
+	scopeInitialized  bool
 }
 
 // activeAgent is one ACTIVE built-in agent and its scope.
 type activeAgent struct {
 	agent     *store.QualityAgentMessage
-	config    *store.QualityAgentConfigMessage
 	databases []string
 }
 
@@ -149,24 +138,6 @@ func (*Runner) Name() string {
 	return "qualityenrollment"
 }
 
-// LastTick is when the loop last advanced the queue. Process-local.
-func (r *Runner) LastTick() time.Time {
-	millis := r.lastTick.Load()
-	if millis == 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, millis).UTC()
-}
-
-// LastEnrollmentScan is when discovery last finished a database scan. Process-local.
-func (r *Runner) LastEnrollmentScan() time.Time {
-	millis := r.lastEnrollmentScan.Load()
-	if millis == 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, millis).UTC()
-}
-
 // Run drives the queue until ctx is cancelled.
 func (r *Runner) Run(ctx context.Context) {
 	ticker := time.NewTicker(r.tick)
@@ -185,7 +156,6 @@ func (r *Runner) Run(ctx context.Context) {
 // effort: a failing agent is logged and the rest of the tick still runs.
 func (r *Runner) runOnce(ctx context.Context) {
 	now := r.now()
-	r.lastTick.Store(now.UnixNano())
 	ctx, cancel := context.WithTimeout(ctx, passTimeout)
 	defer cancel()
 
@@ -223,44 +193,31 @@ func (r *Runner) runOnce(ctx context.Context) {
 		}
 	}
 	for _, current := range agents {
-		if !settings.AgentAutonomyEnabled {
-			r.reasonCandidates(ctx, workspaceID, current.agent.ID, "autonomy-off")
-			continue
-		}
-		r.admit(ctx, workspaceID, settings, current, now)
+		r.admit(ctx, workspaceID, current, now)
 	}
 }
 
-// activeAgents loads the agents the runner may serve: an enabled identity with an
-// ACTIVE config and at least one database in scope.
+// activeAgents loads the agents the runner may serve: an ACTIVE agent with at least
+// one database in scope.
 func (r *Runner) activeAgents(ctx context.Context) ([]*activeAgent, error) {
-	configs, err := r.store.ListQualityAgentConfigs(ctx)
-	if err != nil {
-		return nil, err
-	}
 	agents, err := r.store.ListQualityAgents(ctx)
 	if err != nil {
 		return nil, err
-	}
-	byID := make(map[int64]*store.QualityAgentMessage, len(agents))
-	for _, agent := range agents {
-		byID[agent.ID] = agent
 	}
 	scopes, err := r.store.ListQualityAgentDatabasesByAgent(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*activeAgent, 0, len(configs))
-	for _, config := range configs {
-		agent := byID[config.AgentID]
-		if agent == nil || !agent.Enabled || config.State != store.QualityAgentStateActive {
+	out := make([]*activeAgent, 0, len(agents))
+	for _, agent := range agents {
+		if agent.State != store.QualityAgentStateActive {
 			continue
 		}
-		databases := scopes[config.AgentID]
+		databases := scopes[agent.ID]
 		if len(databases) == 0 {
 			continue
 		}
-		out = append(out, &activeAgent{agent: agent, config: config, databases: databases})
+		out = append(out, &activeAgent{agent: agent, databases: databases})
 	}
 	return out, nil
 }
@@ -354,9 +311,6 @@ func (r *Runner) promote(ctx context.Context, workspaceID string, enrollment *st
 		_, err := r.store.RequeueQualityAgentEnrollments(ctx, []string{enrollment.ResourceID}, "coverage-appeared")
 		return err
 	}
-	if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED {
-		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "paused-by-human")
-	}
 	_, modeErr := r.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID,
 		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)
 	if modeErr != nil {
@@ -405,9 +359,7 @@ func (r *Runner) recoverBlocked(ctx context.Context, workspaceID string, current
 				continue
 			}
 		case "agent-disabled":
-			if !current.agent.Enabled || current.config.State != store.QualityAgentStateActive {
-				continue
-			}
+			// This runner only serves active agents, so the block is stale.
 		default:
 			continue
 		}
@@ -433,7 +385,6 @@ func (r *Runner) scanDueDatabase(ctx context.Context, workspaceID string, agentI
 		return
 	}
 	r.lastScan[key] = now
-	r.lastEnrollmentScan.Store(now.UnixNano())
 }
 
 // scanDatabase reads one database's monitorable objects, upserts them and recomputes
@@ -654,23 +605,18 @@ func computePriority(signals prioritySignals) (int32, string) {
 }
 
 // admit creates or resumes sessions for one agent's pending enrollments, within its
-// own rate, active-set and event-reserve limits. The workspace hard caps still apply
-// in the session runner's token/wake checks.
-func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataquality.Settings, current *activeAgent, now time.Time) {
-	if !settings.AgentAutonomyEnabled {
-		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "autonomy-off")
-		return
-	}
-	maxNew := int(current.config.MaxNewSessionsPerHour)
+// own rate, active-set and event-reserve limits.
+func (r *Runner) admit(ctx context.Context, workspaceID string, current *activeAgent, now time.Time) {
+	maxNew := int(current.agent.MaxNewSessionsPerHour)
 	if maxNew <= 0 {
-		maxNew = settings.AgentRunnerMaxNewSessionsPerHour
+		maxNew = dataquality.DefaultAgentRunnerMaxNewSessionsPerHour
 	}
-	maxActive := int(current.config.MaxActiveSessions)
+	maxActive := int(current.agent.MaxActiveSessions)
 	if maxActive <= 0 {
-		maxActive = settings.AgentRunnerMaxActiveSessions
+		maxActive = dataquality.DefaultAgentRunnerMaxActiveSessions
 	}
 	created, err := r.store.CountQualityAgentSessionsCreatedSince(ctx, workspaceID, current.agent.ID,
-		storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_AUTO, now.Add(-time.Hour))
+		now.Add(-time.Hour))
 	if err != nil {
 		slog.Error("failed to count the automatic sessions", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
@@ -690,14 +636,11 @@ func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataqua
 	}
 	// Automated admission may only spend the share of the wake budget that is not
 	// reserved for failed checks and people.
-	wakeLimit := current.config.WakesPerHour
-	if wakeLimit <= 0 {
-		wakeLimit = int32(settings.AgentRunnerWakesPerHour)
-	}
+	wakeLimit := current.agent.WakesPerHour
 	if wakeLimit <= 0 {
 		wakeLimit = int32(dataquality.DefaultAgentRunnerWakesPerHour)
 	}
-	automaticShare := int(wakeLimit) * (100 - settings.AgentRunnerEventBudgetPercent) / 100
+	automaticShare := int(wakeLimit) * (100 - dataquality.DefaultAgentRunnerEventBudgetPercent) / 100
 	if automaticShare < 1 {
 		automaticShare = 1
 	}
@@ -768,11 +711,11 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *acti
 		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
 	}
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
-		!slices.Contains(current.config.Capabilities, "suggest") {
+		!slices.Contains(current.agent.Capabilities, "suggest") {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-suggest-disabled")
 	}
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR &&
-		!slices.Contains(current.config.Capabilities, "patrol") {
+		!slices.Contains(current.agent.Capabilities, "patrol") {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-patrol-disabled")
 	}
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx) {
@@ -783,9 +726,6 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *acti
 		return err
 	}
 	if session != nil && session.ArchivedAt == nil {
-		if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED {
-			return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "paused-by-human")
-		}
 		if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED {
 			switch session.BlockedCode {
 			case "out-of-scope", "agent-disabled":
@@ -819,8 +759,6 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *acti
 		TargetType:  enrollment.TargetType,
 		DatabaseRef: enrollment.DatabaseRef,
 		AgentID:     agentID,
-		Objective:   objectiveFor(mode),
-		Source:      storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_AUTO,
 		Mode:        mode,
 		NextWakeAt:  &nextWake,
 	})
@@ -847,14 +785,6 @@ func (r *Runner) llmConfiguredFor(ctx context.Context) bool {
 		return false
 	}
 	return r.llmConfigured(ctx)
-}
-
-// objectiveFor returns the session objective admission writes.
-func objectiveFor(mode storepb.QualityAgentSessionMode) string {
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
-		return triageObjective
-	}
-	return monitorObjective
 }
 
 func intPointer(value int) *int { return &value }
