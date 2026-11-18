@@ -2064,6 +2064,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.SetQualityAgentAdoptionRequest"><span class="badge">M</span>SetQualityAgentAdoptionRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.StageQualityPlanRequest"><span class="badge">M</span>StageQualityPlanRequest</a>
                 </li>
               
@@ -27407,6 +27411,37 @@ redaction list matches field names and this body must not enter the ledger. </p>
 
         
       
+        <h3 id="metaxisdata.v1.SetQualityAgentAdoptionRequest">SetQualityAgentAdoptionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>adoption</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentAdoptionSetting">QualityAgentAdoptionSetting</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.StageQualityPlanRequest">StageQualityPlanRequest</h3>
         <p></p>
 
@@ -31831,6 +31866,14 @@ attention is a no-op.</p></td>
               </tr>
             
               <tr>
+                <td>SetQualityAgentAdoption</td>
+                <td><a href="#metaxisdata.v1.SetQualityAgentAdoptionRequest">SetQualityAgentAdoptionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
+                <td><p>Let the owner turn automatic adoption off or back to paused; administrators may
+also set ACTIVE. The rest of the configuration stays administrator-managed.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityAgent</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityAgentRequest">UpdateQualityAgentRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
@@ -32703,6 +32746,16 @@ runner&#39;s database scope, with its queue state, priority and session link.</p
                 <td>DismissQualityAgentAttention</td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>SetQualityAgentAdoption</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgents/*}:setAdoption</td>
                 <td>*</td>
               </tr>
               

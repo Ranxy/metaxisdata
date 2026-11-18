@@ -3,10 +3,10 @@ package agentrunner
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -43,6 +43,7 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 
 // scopeSummary renders the agent's queue health as bounded text.
 func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
+	language := e.ownerLanguage(ctx, session)
 	rows, err := e.store.QualityAgentEnrollmentSummary(ctx, session.WorkspaceID, session.AgentID)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the agent scope summary")
@@ -57,18 +58,20 @@ func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSe
 		outOfScope += row.OutOfScope
 		gone += row.Gone
 	}
-	lines := []string{
-		fmt.Sprintf("Scope: %d target(s) discovered.", total),
-		fmt.Sprintf("Queue: %d pending, %d active, %d dormant, %d excluded, %d out of scope, %d gone.", pending, active, dormant, excluded, outOfScope, gone),
+	return agentlang.ScopeSummary(language, total, pending, active, dormant, excluded, outOfScope, gone), nil
+}
+
+// ownerLanguage reads the agent owner's server-prose language, defaulting to English.
+func (e *Engine) ownerLanguage(ctx context.Context, session *store.QualityAgentSessionMessage) string {
+	config, err := e.store.GetQualityAgentConfig(ctx, session.AgentID)
+	if err != nil || config == nil || config.OwnerPrincipalID == nil {
+		return agentlang.English
 	}
-	if pending > 0 {
-		lines = append(lines, "The agent is still admitting pending targets.")
+	owner, err := e.store.GetUserByID(ctx, int(*config.OwnerPrincipalID))
+	if err != nil {
+		return agentlang.English
 	}
-	if dormant > 0 {
-		lines = append(lines, "Dormant targets are waiting for their review or for a person's decision.")
-	}
-	lines = append(lines, "A model is not configured, so this is the deterministic summary; configure an LLM provider to ask follow-up questions.")
-	return strings.Join(lines, "\n"), nil
+	return agentlang.Of(owner)
 }
 
 // conversationToolResult executes one front-office tool. The result is small JSON or

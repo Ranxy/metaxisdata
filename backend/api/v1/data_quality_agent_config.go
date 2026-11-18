@@ -643,3 +643,44 @@ func qualityAgentRuleTypesToV1(values []int16) []v1pb.QualityRuleType {
 	}
 	return out
 }
+
+// SetQualityAgentAdoption changes the adoption mode without exposing the rest of
+// the configuration. An owner may turn it off or return it to PAUSED; ACTIVE stays
+// an administrator decision.
+func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *connect.Request[v1pb.SetQualityAgentAdoptionRequest]) (*connect.Response[v1pb.QualityAgent], error) {
+	workspaceID, resourceID, err := s.qualityAgentResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	agent, config, err := s.qualityAgentConversationAccess(ctx, resourceID, false)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.GetAdoption() == nil {
+		return nil, connectErrorInvalid("an adoption setting is required")
+	}
+	mode, err := qualityAgentAdoptionModeFromV1(req.Msg.GetAdoption().GetMode())
+	if err != nil {
+		return nil, err
+	}
+	admin, err := s.callerIsQualityAgentAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if mode == store.QualityAgentAdoptionModeActive && !admin {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only an administrator may enable automatic adoption"))
+	}
+	config.AdoptionMode = mode
+	if mode == store.QualityAgentAdoptionModeOff || mode == store.QualityAgentAdoptionModeUnspecified {
+		config.AdoptionMode = store.QualityAgentAdoptionModeOff
+	}
+	if _, err := s.store.UpdateQualityAgentConfig(ctx, config); err != nil {
+		return nil, err
+	}
+	view, err := s.qualityAgentView(ctx, workspaceID, agent)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(view), nil
+}

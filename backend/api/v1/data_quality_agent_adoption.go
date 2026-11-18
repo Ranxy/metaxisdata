@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -30,6 +32,16 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 	if session == nil || session.Kind == 2 || session.TargetGUID == "" {
 		return
 	}
+	err := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqadopt:%d", session.AgentID), func() error {
+		s.adoptQualitySuggestionsLocked(ctx, session)
+		return nil
+	})
+	if err != nil && !errors.Is(err, store.ErrQualityAgentBusy) {
+		slog.Warn("failed to run the quality agent adoption pass", log.WithError(err))
+	}
+}
+
+func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, session *store.QualityAgentSessionMessage) {
 	config, err := s.store.GetQualityAgentConfig(ctx, session.AgentID)
 	if err != nil || config == nil {
 		return
@@ -60,10 +72,12 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 	}
 	// Without an owner the agent still queues its drafts and escalates to the
 	// administrators; only the rule write needs an owner to attribute the rule to.
+	var owner *store.UserMessage
 	agentCtx := ctx
 	canAdopt := false
 	if ownerID != nil {
-		owner, ownerErr := s.store.GetUserByID(ctx, int(*ownerID))
+		var ownerErr error
+		owner, ownerErr = s.store.GetUserByID(ctx, int(*ownerID))
 		if ownerErr == nil && owner != nil {
 			if agentUser, userErr := s.store.GetUserByID(ctx, agent.PrincipalID); userErr == nil && agentUser != nil {
 				agentCtx = context.WithValue(ctx, common.UserContextKey, agentUser)
@@ -157,13 +171,17 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 	if err != nil || len(remaining) == 0 {
 		return
 	}
+	language := agentlang.English
+	if owner != nil {
+		language = agentlang.Of(owner)
+	}
 	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 		WorkspaceID: session.WorkspaceID,
 		AgentID:     session.AgentID,
 		Kind:        store.QualityAgentAttentionKindProposalPending,
 		Reference:   targetGUID,
-		Title:       "Check drafts are waiting for review",
-		Question:    fmt.Sprintf("%d draft(s) for this target were not auto-adopted and need your decision.", len(remaining)),
+		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
+		Question:    agentlang.ProposalQuestion(language, len(remaining)),
 		DedupeKey:   "proposal:" + targetGUID,
 		CreatedAt:   time.Now().UTC(),
 	})
