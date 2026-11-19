@@ -6875,6 +6875,7 @@ after the session so a message always carries its parent in the name.)
 | error | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | reference | [string](#string) |  | The object an event or wake is about (for example a quality execution resource name); empty for model and runner messages. |
+| reasoning | [string](#string) |  | Display-only model reasoning for this assistant turn. Empty when the provider returned none; never sent back to the provider. |
 
 
 

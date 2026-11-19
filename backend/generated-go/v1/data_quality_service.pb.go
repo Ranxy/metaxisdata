@@ -19933,7 +19933,10 @@ type QualityAgentSessionMessage struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// The object an event or wake is about (for example a quality execution resource
 	// name); empty for model and runner messages.
-	Reference     string `protobuf:"bytes,15,opt,name=reference,proto3" json:"reference,omitempty"`
+	Reference string `protobuf:"bytes,15,opt,name=reference,proto3" json:"reference,omitempty"`
+	// Display-only model reasoning for this assistant turn. Empty when the provider
+	// returned none; never sent back to the provider.
+	Reasoning     string `protobuf:"bytes,16,opt,name=reasoning,proto3" json:"reasoning,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -20069,6 +20072,13 @@ func (x *QualityAgentSessionMessage) GetCreateTime() *timestamppb.Timestamp {
 func (x *QualityAgentSessionMessage) GetReference() string {
 	if x != nil {
 		return x.Reference
+	}
+	return ""
+}
+
+func (x *QualityAgentSessionMessage) GetReasoning() string {
+	if x != nil {
+		return x.Reasoning
 	}
 	return ""
 }
@@ -22087,7 +22097,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vupdate_time\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12=\n" +
 	"\farchive_time\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\varchiveTime\x12;\n" +
-	"\x04mode\x18\x16 \x01(\x0e2'.metaxisdata.v1.QualityAgentSessionModeR\x04modeJ\x04\b\x05\x10\x06J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x15\x10\x16R\tobjectiveR\vtokens_usedR\x0econtext_tokensR\x06source\"\xaa\x04\n" +
+	"\x04mode\x18\x16 \x01(\x0e2'.metaxisdata.v1.QualityAgentSessionModeR\x04modeJ\x04\b\x05\x10\x06J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x15\x10\x16R\tobjectiveR\vtokens_usedR\x0econtext_tokensR\x06source\"\xc8\x04\n" +
 	"\x1aQualityAgentSessionMessage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x03R\x03seq\x12\x12\n" +
@@ -22107,7 +22117,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x05error\x18\r \x01(\tR\x05error\x12;\n" +
 	"\vcreate_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12\x1c\n" +
-	"\treference\x18\x0f \x01(\tR\treference\"8\n" +
+	"\treference\x18\x0f \x01(\tR\treference\x12\x1c\n" +
+	"\treasoning\x18\x10 \x01(\tR\treasoning\"8\n" +
 	"\x1dGetQualityAgentSessionRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\xf7\x02\n" +
 	"\x1fListQualityAgentSessionsRequest\x12\x1b\n" +

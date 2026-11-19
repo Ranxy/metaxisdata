@@ -14141,6 +14141,11 @@ components:
                     description: |-
                         The object an event or wake is about (for example a quality execution resource
                          name); empty for model and runner messages.
+                reasoning:
+                    type: string
+                    description: |-
+                        Display-only model reasoning for this assistant turn. Empty when the provider
+                         returned none; never sent back to the provider.
             description: |-
                 QualityAgentSessionMessage is one append-only transcript entry of a session. (The
                  internal store row type is QualityAgentTranscriptMessage; the v1 resource is named

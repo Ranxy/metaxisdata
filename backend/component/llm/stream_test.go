@@ -168,3 +168,44 @@ func TestIdleTimeoutReaderCancelsAStalledStream(t *testing.T) {
 	}
 	require.True(t, ir.timedOut())
 }
+
+func TestParseStreamEmitsReasoningWithoutMixingItIntoContent(t *testing.T) {
+	t.Parallel()
+
+	chunks, err := collectStream(t, `data: {"choices":[{"delta":{"reasoning_content":"think "}}]}
+data: {"choices":[{"delta":{"reasoning":"more"}}]}
+data: {"choices":[{"delta":{"content":"answer"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+`)
+	require.NoError(t, err)
+	require.Equal(t, "think ", chunks[0].Reasoning)
+	require.Equal(t, "more", chunks[1].Reasoning)
+	require.Equal(t, "answer", chunks[2].Content)
+	require.Empty(t, chunks[2].Reasoning)
+}
+
+func TestParseNonStreamingCompletionEmitsReasoning(t *testing.T) {
+	t.Parallel()
+
+	ch := make(chan StreamChunk, 8)
+	require.NoError(t, parseNonStreamingCompletion(context.Background(), `{
+		"choices": [{
+			"message": {"content": "answer", "reasoning_content": "thought"},
+			"finish_reason": "stop"
+		}]
+	}`, ch))
+	close(ch)
+
+	var content, reasoning string
+	for chunk := range ch {
+		if chunk.Content != "" {
+			content = chunk.Content
+		}
+		if chunk.Reasoning != "" {
+			reasoning = chunk.Reasoning
+		}
+	}
+	require.Equal(t, "answer", content)
+	require.Equal(t, "thought", reasoning)
+}

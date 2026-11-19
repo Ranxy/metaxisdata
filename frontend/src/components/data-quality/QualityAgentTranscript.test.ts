@@ -88,6 +88,32 @@ describe("QualityAgentTranscript", () => {
     wrapper.unmount();
   });
 
+  it("folds the model reasoning behind a Thinking trigger", async () => {
+    const assistant = message({
+      content: "The table is healthy.",
+      reasoning: "check the row count before answering",
+    });
+    const wrapper = mountTranscript([assistant]);
+
+    expect(wrapper.text()).toContain("Thinking");
+    expect(wrapper.text()).not.toContain("check the row count");
+
+    const trigger = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Thinking"));
+    await trigger?.trigger("click");
+    expect(wrapper.text()).toContain("check the row count before answering");
+    wrapper.unmount();
+  });
+
+  it("hides the Thinking block when the provider returned no reasoning", () => {
+    const wrapper = mountTranscript([
+      message({ content: "No reasoning here." }),
+    ]);
+    expect(wrapper.text()).not.toContain("Thinking");
+    wrapper.unmount();
+  });
+
   it("keeps runner notes folded and shows a wake summary", async () => {
     const engine = message({
       role: QualityAgentMessageRole.ENGINE,

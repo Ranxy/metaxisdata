@@ -358,9 +358,10 @@ func executeOne(cfg Config, call llm.ToolCall) toolOutcome {
 // token usage the provider reported for this turn (nil when it reported none).
 func streamOneTurn(ctx context.Context, cfg Config, llmMsgs []llm.Message, ch chan<- Event) (Message, *llm.Usage, error) {
 	var (
-		fullContent strings.Builder
-		toolCalls   []llm.ToolCall
-		turnUsage   *llm.Usage
+		fullContent   strings.Builder
+		fullReasoning strings.Builder
+		toolCalls     []llm.ToolCall
+		turnUsage     *llm.Usage
 	)
 
 	streamCh := llm.Stream(ctx, llm.StreamRequest{
@@ -387,6 +388,9 @@ func streamOneTurn(ctx context.Context, cfg Config, llmMsgs []llm.Message, ch ch
 				return Message{}, nil, ctx.Err()
 			}
 		}
+		if chunk.Reasoning != "" {
+			_, _ = fullReasoning.WriteString(chunk.Reasoning)
+		}
 		if len(chunk.ToolCalls) > 0 {
 			toolCalls = chunk.ToolCalls
 		}
@@ -398,6 +402,7 @@ func streamOneTurn(ctx context.Context, cfg Config, llmMsgs []llm.Message, ch ch
 	return Message{
 		Role:      "assistant",
 		Content:   fullContent.String(),
+		Reasoning: fullReasoning.String(),
 		ToolCalls: toolCalls,
 	}, turnUsage, nil
 }

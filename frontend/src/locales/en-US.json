@@ -3358,6 +3358,8 @@
     "statusIdle": "Waiting for the next wake",
     "statusRunning": "Running now",
     "statusTitle": "Status",
+    "thinking": "Thinking",
+    "thinkingHint": "The model reasoning for this turn. It is not part of the answer.",
     "toolArguments": "Arguments",
     "toolEmptyResult": "Empty result",
     "toolError": "Error",

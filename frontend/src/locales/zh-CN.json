@@ -3358,6 +3358,8 @@
     "statusIdle": "等待下次唤醒",
     "statusRunning": "正在运行",
     "statusTitle": "状态",
+    "thinking": "思考过程",
+    "thinkingHint": "模型本轮的思考内容，不属于最终回答。",
     "toolArguments": "参数",
     "toolEmptyResult": "空结果",
     "toolError": "错误",

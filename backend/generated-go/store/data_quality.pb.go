@@ -7614,8 +7614,11 @@ type QualityAgentMessage struct {
 	// The store returns the existing row for a retried key.
 	IdempotencyKey string                 `protobuf:"bytes,18,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Display-only model reasoning for this assistant turn. Empty when the provider
+	// returned none; never sent back to the provider.
+	Reasoning     string `protobuf:"bytes,21,opt,name=reasoning,proto3" json:"reasoning,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualityAgentMessage) Reset() {
@@ -7772,6 +7775,13 @@ func (x *QualityAgentMessage) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *QualityAgentMessage) GetReasoning() string {
+	if x != nil {
+		return x.Reasoning
+	}
+	return ""
 }
 
 // QualityMemoryEvidence is one deterministic reference behind an asset fact: an
@@ -8660,7 +8670,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\targuments\x18\x03 \x01(\tR\targuments\"X\n" +
 	"\x13QualityToolCallList\x12A\n" +
 	"\n" +
-	"tool_calls\x18\x01 \x03(\v2\".metaxisdata.store.QualityToolCallR\ttoolCalls\"\xc3\x05\n" +
+	"tool_calls\x18\x01 \x03(\v2\".metaxisdata.store.QualityToolCallR\ttoolCalls\"\xe1\x05\n" +
 	"\x13QualityAgentMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
@@ -8684,7 +8694,8 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\ttruncated\x18\x11 \x01(\bR\ttruncated\x12'\n" +
 	"\x0fidempotency_key\x18\x12 \x01(\tR\x0eidempotencyKey\x129\n" +
 	"\n" +
-	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10R\rprompt_tokensR\x11completion_tokens\"]\n" +
+	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
+	"\treasoning\x18\x15 \x01(\tR\treasoningJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10R\rprompt_tokensR\x11completion_tokens\"]\n" +
 	"\x15QualityMemoryEvidence\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1c\n" +
 	"\treference\x18\x02 \x01(\tR\treference\x12\x12\n" +

@@ -315,6 +315,7 @@ func (e *Engine) modelWake(
 					Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
 					Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
 					Content:        event.Assistant.Content,
+					Reasoning:      event.Assistant.Reasoning,
 					ToolCalls:      toolCallsToStore(event.Assistant.ToolCalls),
 					Tokens:         usageTokens(usage),
 					IdempotencyKey: assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),

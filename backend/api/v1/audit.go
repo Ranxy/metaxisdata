@@ -188,6 +188,7 @@ func redactAuditResponse(message proto.Message) proto.Message {
 			return message
 		}
 		cloned.Content = ""
+		cloned.Reasoning = ""
 		cloned.ToolCalls = nil
 		return cloned
 	case *v1pb.QualityAgentSession:
@@ -204,6 +205,7 @@ func redactAuditResponse(message proto.Message) proto.Message {
 		}
 		for _, item := range cloned.QualityAgentSessionMessages {
 			item.Content = ""
+			item.Reasoning = ""
 			item.ToolCalls = nil
 		}
 		return cloned

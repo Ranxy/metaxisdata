@@ -353,6 +353,7 @@ func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, messa
 		Role:       v1pb.QualityAgentMessageRole(message.Role),
 		Origin:     v1pb.QualityAgentMessageOrigin(message.Origin),
 		Content:    message.Content,
+		Reasoning:  message.Reasoning,
 		ToolCallId: message.ToolCallID,
 		ToolName:   message.ToolName,
 		Reference:  message.Reference,

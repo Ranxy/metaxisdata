@@ -1553,6 +1553,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_message (
     -- 1 WAKE, 2 EVENT, 3 ASK, 4 RUNNER, 5 MODEL, 6 COMPACTION (QualityAgentMessageOrigin).
     origin INT2 NOT NULL DEFAULT 0,
     content TEXT NOT NULL DEFAULT '',
+    -- Display-only model reasoning; never sent back to the provider.
+    reasoning TEXT NOT NULL DEFAULT '',
     -- Stored as QualityToolCallList (proto/store/store/data_quality.proto)
     tool_calls JSONB NOT NULL DEFAULT '{}',
     tool_call_id TEXT NOT NULL DEFAULT '',
@@ -1578,6 +1580,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
 COMMENT ON TABLE quality_agent_message IS 'Append-only transcript of one quality agent session';
 COMMENT ON COLUMN quality_agent_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_agent_message.reasoning IS 'Display-only model reasoning; never sent back to the provider';
 COMMENT ON COLUMN quality_agent_message.tool_calls IS 'Stored as QualityToolCallList (proto/store/store/data_quality.proto)';
 ALTER SEQUENCE quality_agent_message_id_seq RESTART WITH 101;
 

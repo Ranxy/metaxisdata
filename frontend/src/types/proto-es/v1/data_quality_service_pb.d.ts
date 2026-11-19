@@ -9434,6 +9434,14 @@ export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.Quality
    * @generated from field: string reference = 15;
    */
   reference: string;
+
+  /**
+   * Display-only model reasoning for this assistant turn. Empty when the provider
+   * returned none; never sent back to the provider.
+   *
+   * @generated from field: string reasoning = 16;
+   */
+  reasoning: string;
 };
 
 /**

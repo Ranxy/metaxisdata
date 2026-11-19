@@ -108,6 +108,28 @@
           v-else-if="message.role === QualityAgentMessageRole.ASSISTANT"
           class="space-y-2"
         >
+          <Collapsible
+            v-if="message.reasoning.trim()"
+            class="rounded-md border bg-muted/20"
+          >
+            <CollapsibleTrigger
+              class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-accent/40"
+            >
+              <span class="inline-flex items-center gap-1.5 font-medium">
+                <Brain class="h-4 w-4" />
+                {{ t("qualityAgent.thinking") }}
+              </span>
+              <ChevronDown class="h-4 w-4" />
+            </CollapsibleTrigger>
+            <CollapsibleContent class="border-t px-3 py-2">
+              <p class="mb-1 text-[11px] text-muted-foreground">
+                {{ t("qualityAgent.thinkingHint") }}
+              </p>
+              <pre
+                class="whitespace-pre-wrap break-words font-mono text-[11px] text-muted-foreground"
+              >{{ message.reasoning }}</pre>
+            </CollapsibleContent>
+          </Collapsible>
           <AsyncMarkdown
             v-if="message.content"
             mode="chat"
@@ -188,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown } from "lucide-vue-next";
+import { Brain, ChevronDown } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";

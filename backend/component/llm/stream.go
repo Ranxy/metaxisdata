@@ -99,7 +99,10 @@ func sendStreamChunk(ctx context.Context, ch chan<- StreamChunk, chunk StreamChu
 }
 
 type StreamChunk struct {
-	Content   string
+	Content string
+	// Reasoning is display-only model reasoning. It is never sent back to the
+	// provider; a provider that does not return it simply emits none.
+	Reasoning string
 	ToolCalls []ToolCall
 	// Usage is the token usage the provider reported for this turn, if any.
 	Usage *Usage
@@ -341,6 +344,11 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- StreamChunk) err
 					return ctx.Err()
 				}
 			}
+			if reasoning := firstNonEmpty(choice.Delta.ReasoningContent, choice.Delta.Reasoning); reasoning != "" {
+				if !sendStreamChunk(ctx, ch, StreamChunk{Reasoning: reasoning}) {
+					return ctx.Err()
+				}
+			}
 			for _, tc := range choice.Delta.ToolCalls {
 				acc := toolCallBufs[tc.Index]
 				if acc == nil {
@@ -444,6 +452,11 @@ func parseNonStreamingCompletion(ctx context.Context, body string, ch chan<- Str
 	}
 	if choice.Message.Content != "" {
 		if !sendStreamChunk(ctx, ch, StreamChunk{Content: choice.Message.Content}) {
+			return ctx.Err()
+		}
+	}
+	if reasoning := firstNonEmpty(choice.Message.ReasoningContent, choice.Message.Reasoning); reasoning != "" {
+		if !sendStreamChunk(ctx, ch, StreamChunk{Reasoning: reasoning}) {
 			return ctx.Err()
 		}
 	}
@@ -581,3 +594,15 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 func (b *boundedBuffer) String() string { return b.buf.String() }
+
+// firstNonEmpty returns the first non-empty value. Providers disagree on the
+// reasoning field name: the DeepSeek-compatible name is `reasoning_content`,
+// while some gateways use `reasoning`.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}

@@ -61,6 +61,7 @@ type QualityAgentTranscriptMessage struct {
 	Role           storepb.QualityAgentMessageRole
 	Origin         storepb.QualityAgentMessageOrigin
 	Content        string
+	Reasoning      string
 	ToolCalls      *storepb.QualityToolCallList
 	ToolCallID     string
 	ToolName       string
@@ -85,7 +86,7 @@ const qualityAgentSessionReadColumns = qualityAgentSessionColumns + `,
 	(SELECT MAX(m.created_at) FROM quality_agent_message m WHERE m.session_id = quality_agent_session.id) AS last_activity_at`
 
 const qualityAgentTranscriptColumns = `id, session_id, workspace_id, seq, wake, turn, role,
-	origin, content, tool_calls, tool_call_id, tool_name, reference, tokens, error,
+	origin, content, reasoning, tool_calls, tool_call_id, tool_name, reference, tokens, error,
 	truncated, idempotency_key, created_at`
 
 // CreateQualityAgentSessionInput is one session creation. A duplicate active session
@@ -516,15 +517,16 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	}
 	message, err := scanQualityAgentTranscript(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_message
-			(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-			 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
+			(session_id, workspace_id, seq, wake, turn, role, origin, content, reasoning,
+			 tool_calls, tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
 		VALUES ($1, $2,
 			(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING `+qualityAgentTranscriptColumns,
 		input.SessionID, input.WorkspaceID, input.Wake, input.Turn, int16(input.Role),
-		int16(input.Origin), input.Content, toolCalls, input.ToolCallID, input.ToolName,
-		input.Reference, input.Tokens, input.Error, input.Truncated, input.IdempotencyKey))
+		int16(input.Origin), input.Content, input.Reasoning, toolCalls, input.ToolCallID,
+		input.ToolName, input.Reference, input.Tokens, input.Error, input.Truncated,
+		input.IdempotencyKey))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to append the session message")
 	}
@@ -729,8 +731,9 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.SessionID, &message.WorkspaceID, &message.Seq, &message.Wake,
-		&message.Turn, &role, &origin, &message.Content, &toolCalls, &message.ToolCallID,
-		&message.ToolName, &message.Reference, &message.Tokens, &message.Error,
+		&message.Turn, &role, &origin, &message.Content, &message.Reasoning, &toolCalls,
+		&message.ToolCallID, &message.ToolName, &message.Reference, &message.Tokens,
+		&message.Error,
 		&message.Truncated, &message.IdempotencyKey, &message.CreatedAt,
 	); err != nil {
 		return nil, err
