@@ -31,15 +31,13 @@
           {{ t("qualityAgents.start") }}
         </Button>
         <Button
-          v-if="canManage"
+          v-if="agent"
           size="sm"
           variant="outline"
           as-child
         >
-          <RouterLink
-            :to="{ name: 'QualityAgentDiagnostics', params: { workspace: String(route.params.workspace), agentId: String(route.params.agentId) } }"
-          >
-            {{ t("qualityAgent.openDiagnostics") }}
+          <RouterLink :to="sessionsRoute">
+            {{ t("qualityAgent.workSessionsTitle") }}
           </RouterLink>
         </Button>
       </template>
@@ -195,6 +193,84 @@
         </div>
       </div>
     </PageState>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0">
+            <CardTitle class="text-base">{{ t("qualityAgent.workSessionsTitle") }}</CardTitle>
+            <CardDescription>{{ t("qualityAgent.workSessionsHint") }}</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            as-child
+          >
+            <RouterLink :to="sessionsRoute">
+              {{ t("qualityAgent.workSessionsViewAll") }}
+            </RouterLink>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent class="space-y-2 pt-4">
+        <p
+          v-if="sessionsLoading && sessions.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("common.loading") }}
+        </p>
+        <p
+          v-else-if="sessionsError"
+          class="text-sm text-destructive"
+        >
+          {{ sessionsError }}
+        </p>
+        <p
+          v-else-if="sessions.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("qualityAgent.workSessionsEmpty") }}
+        </p>
+        <div
+          v-for="session in sessions"
+          :key="session.name"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+        >
+          <div class="min-w-0">
+            <RouterLink
+              :to="sessionRoute(session)"
+              class="font-medium hover:underline"
+            >
+              {{ agentSessionTargetName(session) }}
+            </RouterLink>
+            <p class="truncate text-xs text-muted-foreground">
+              {{ agentSessionTargetPath(session) }}
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-1">
+            <Badge :variant="agentSessionStateVariant(session.state)">
+              {{ t(agentSessionStateKey(session.state)) }}
+            </Badge>
+            <Badge :variant="agentSessionModeVariant(session.mode)">
+              {{ t(agentSessionModeKey(session.mode)) }}
+            </Badge>
+            <Badge
+              v-if="agentSessionHeartbeat(session).running"
+              variant="info"
+            >
+              {{ t("qualityAgent.sessionRunning") }}
+            </Badge>
+            <span
+              v-if="session.lastActivityTime"
+              class="text-xs text-muted-foreground"
+              :title="formatDateTime(session.lastActivityTime, locale)"
+            >
+              {{ formatRelativeTime(session.lastActivityTime, locale) }}
+            </span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
     <Card v-if="agent">
       <CardHeader class="border-b">
@@ -362,6 +438,7 @@ import {
   listQualityAgentAttentions,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
+  listQualityAgentSessionsPage,
   pauseQualityAgent,
   replyQualityAgentAttention,
   sendQualityAgentMessage,
@@ -398,11 +475,25 @@ import {
   QualityAgentAttentionStatus,
   QualityAgentMessageRole,
   type QualityAgentReport,
+  type QualityAgentSession,
   type QualityAgentSessionMessage,
   QualityAgentState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { formatDateTime } from "@/utils/datetime";
-import { qualityAgentName } from "@/utils/qualityAgent";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import {
+  qualityAgentName,
+  qualityAgentSessionRoute,
+  qualityAgentSessionsRoute,
+} from "@/utils/qualityAgent";
+import {
+  agentSessionHeartbeat,
+  agentSessionModeKey,
+  agentSessionModeVariant,
+  agentSessionStateKey,
+  agentSessionStateVariant,
+  agentSessionTargetName,
+  agentSessionTargetPath,
+} from "@/utils/qualityAgentSession";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -423,6 +514,9 @@ const reports = ref<QualityAgentReport[]>([]);
 const reportOpen = ref(false);
 const selectedReport = ref<QualityAgentReport>();
 const messages = ref<QualityAgentSessionMessage[]>([]);
+const sessions = ref<QualityAgentSession[]>([]);
+const sessionsLoading = ref(false);
+const sessionsError = ref("");
 const chatLoading = ref(true);
 const chatError = ref("");
 const composer = ref("");
@@ -455,6 +549,13 @@ const visibleMessages = computed(() =>
 const agentName = computed(() =>
   qualityAgentName(String(route.params.workspace), String(route.params.agentId))
 );
+const sessionsRoute = computed(() =>
+  qualityAgentSessionsRoute(agentName.value)
+);
+
+function sessionRoute(session: QualityAgentSession) {
+  return qualityAgentSessionRoute(agentName.value, session.name);
+}
 
 function stateLabel(state: QualityAgentState | undefined): string {
   switch (state) {
@@ -510,6 +611,22 @@ async function loadConversation() {
     chatError.value = formatError(err);
   } finally {
     chatLoading.value = false;
+  }
+}
+
+async function loadSessions() {
+  sessionsLoading.value = true;
+  sessionsError.value = "";
+  try {
+    const page = await listQualityAgentSessionsPage({
+      agent: agentName.value,
+      pageSize: 5,
+    });
+    sessions.value = page.sessions;
+  } catch (err) {
+    sessionsError.value = formatError(err);
+  } finally {
+    sessionsLoading.value = false;
   }
 }
 
@@ -710,7 +827,12 @@ async function start() {
 onMounted(async () => {
   await loadAgent();
   if (agent.value) {
-    await Promise.all([loadConversation(), loadReports(), loadAttentions()]);
+    await Promise.all([
+      loadConversation(),
+      loadReports(),
+      loadAttentions(),
+      loadSessions(),
+    ]);
   }
 });
 

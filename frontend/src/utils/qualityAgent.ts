@@ -47,3 +47,50 @@ export function qualityAgentPath(name: string): string {
     ? "/data-quality/agents"
     : `/data-quality/agents/${params.workspace}/${params.agentId}`;
 }
+
+/** Builds the agent's work-session list route from the agent resource name. */
+export function qualityAgentSessionsRoute(name: string) {
+  const params = qualityAgentRouteParams(name);
+  return params === undefined
+    ? { name: "QualityAgents" }
+    : { name: "QualityAgentSessions", params };
+}
+
+/** The resource id inside `workspaces/{workspace}/qualityAgentSessions/{id}`. */
+export function qualityAgentSessionId(name: string): string {
+  const parts = name.split("/");
+  if (
+    parts.length < 4 ||
+    parts[0] !== "workspaces" ||
+    parts[2] !== "qualityAgentSessions" ||
+    parts[1] === "" ||
+    parts[3] === ""
+  ) {
+    return "";
+  }
+  return parts[3];
+}
+
+/** Builds the full session resource name from the route's workspace and id. */
+export function qualityAgentSessionName(
+  workspace: string,
+  sessionId: string
+): string {
+  return `workspaces/${workspace}/qualityAgentSessions/${sessionId}`;
+}
+
+/** Builds one work-session detail route from the agent and session names. */
+export function qualityAgentSessionRoute(
+  agentName: string,
+  sessionName: string
+) {
+  const params = qualityAgentRouteParams(agentName);
+  const sessionId = qualityAgentSessionId(sessionName);
+  if (params === undefined || sessionId === "") {
+    return { name: "QualityAgents" };
+  }
+  return {
+    name: "QualityAgentSession",
+    params: { ...params, sessionId },
+  };
+}

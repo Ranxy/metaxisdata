@@ -1,0 +1,475 @@
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import {
+  QualityAgentMessageOrigin,
+  QualityAgentMessageRole,
+  type QualityAgentSession,
+  type QualityAgentSessionMessage,
+  QualityAgentSessionMode,
+  QualityAgentSessionState,
+  type QualityToolCall,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import { formatTargetPath, type QualityBadgeVariant } from "./dataQuality";
+
+/**
+ * Display vocabulary and pure helpers for a quality agent's target work
+ * sessions: one long-lived conversation per target, grouped by wake.
+ *
+ * The session row carries the durable state and heartbeat; the transcript rows
+ * carry the wake's user message, the model's answer and tool calls, the tool
+ * results and the runner's notes. These helpers keep the list, the detail page
+ * and the home card rendering the same values the same way, and keep the proto
+ * enums off the screen.
+ */
+
+/** A running session whose lease is live but whose transcript stopped growing. */
+export const AGENT_SESSION_STALE_AFTER_MS = 10 * 60 * 1000;
+
+const WAKE_FINISHED_PREFIX = "wake finished:";
+const TOOL_ARGUMENTS_PREVIEW_LENGTH = 120;
+
+// ---- session state and mode ----
+
+/** The label key for a session's durable lifecycle state. */
+export function agentSessionStateKey(state: QualityAgentSessionState): string {
+  switch (state) {
+    case QualityAgentSessionState.ENABLED:
+      return "qualityAgent.stateEnabled";
+    case QualityAgentSessionState.BLOCKED:
+      return "qualityAgent.stateBlocked";
+    case QualityAgentSessionState.ARCHIVED:
+      return "qualityAgent.stateArchived";
+    default:
+      return "qualityAgent.stateUnspecified";
+  }
+}
+
+/** The badge variant for a session's state. Only a blocker is a warning. */
+export function agentSessionStateVariant(
+  state: QualityAgentSessionState
+): QualityBadgeVariant {
+  switch (state) {
+    case QualityAgentSessionState.ENABLED:
+      return "success";
+    case QualityAgentSessionState.BLOCKED:
+      return "warning";
+    case QualityAgentSessionState.ARCHIVED:
+      return "neutral";
+    default:
+      return "outline";
+  }
+}
+
+/** The label key for what a session's wake does: monitor or triage. */
+export function agentSessionModeKey(mode: QualityAgentSessionMode): string {
+  switch (mode) {
+    case QualityAgentSessionMode.MONITOR:
+      return "qualityAgent.modeMonitor";
+    case QualityAgentSessionMode.TRIAGE:
+      return "qualityAgent.modeTriage";
+    default:
+      return "qualityAgent.modeUnspecified";
+  }
+}
+
+/** The badge variant for a session's mode. Triage is the one still proposing. */
+export function agentSessionModeVariant(
+  mode: QualityAgentSessionMode
+): QualityBadgeVariant {
+  switch (mode) {
+    case QualityAgentSessionMode.MONITOR:
+      return "info";
+    case QualityAgentSessionMode.TRIAGE:
+      return "warning";
+    default:
+      return "outline";
+  }
+}
+
+export interface AgentSessionHeartbeat {
+  /** The server derives this from a live lease; it is not the durable state. */
+  running: boolean;
+  /**
+   * Running, but the newest transcript entry is old. A crashed process leaves
+   * the lease live for the rest of its duration, so this is the only liveness
+   * signal the client has.
+   */
+  stale: boolean;
+}
+
+/** Whether a session is running, and whether that claim looks stale. */
+export function agentSessionHeartbeat(
+  session: QualityAgentSession,
+  now = Date.now()
+): AgentSessionHeartbeat {
+  const running = session.running;
+  const lastActivity = timestampMillis(session.lastActivityTime);
+  const stale =
+    running &&
+    lastActivity !== undefined &&
+    now - lastActivity >= AGENT_SESSION_STALE_AFTER_MS;
+  return { running, stale };
+}
+
+function timestampMillis(value: Timestamp | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const seconds = Number(value.seconds);
+  const nanos = Number(value.nanos ?? 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+  return seconds * 1000 + Math.floor(nanos / 1_000_000);
+}
+
+// ---- transcript vocabulary ----
+
+/** The label key for one transcript entry's role. */
+export function agentMessageRoleKey(role: QualityAgentMessageRole): string {
+  switch (role) {
+    case QualityAgentMessageRole.SYSTEM:
+      return "qualityAgent.roleSystem";
+    case QualityAgentMessageRole.USER:
+      return "qualityAgent.roleUser";
+    case QualityAgentMessageRole.ASSISTANT:
+      return "qualityAgent.roleAssistant";
+    case QualityAgentMessageRole.TOOL:
+      return "qualityAgent.roleTool";
+    case QualityAgentMessageRole.ENGINE:
+      return "qualityAgent.roleEngine";
+    case QualityAgentMessageRole.COMPACTION:
+      return "qualityAgent.roleCompaction";
+    default:
+      return "qualityAgent.roleUnspecified";
+  }
+}
+
+/** The label key for what produced a user or engine message. */
+export function agentMessageOriginKey(
+  origin: QualityAgentMessageOrigin
+): string {
+  switch (origin) {
+    case QualityAgentMessageOrigin.WAKE:
+      return "qualityAgent.originWake";
+    case QualityAgentMessageOrigin.EVENT:
+      return "qualityAgent.originEvent";
+    case QualityAgentMessageOrigin.ASK:
+      return "qualityAgent.originAsk";
+    case QualityAgentMessageOrigin.RUNNER:
+      return "qualityAgent.originRunner";
+    case QualityAgentMessageOrigin.MODEL:
+      return "qualityAgent.originModel";
+    case QualityAgentMessageOrigin.COMPACTION:
+      return "qualityAgent.originCompaction";
+    default:
+      return "qualityAgent.originUnspecified";
+  }
+}
+
+/** One wake's slice of the transcript, with the header data the page shows. */
+export interface AgentWakeGroup {
+  /** The wake number; zero holds the session's system message. */
+  wake: number;
+  /** The group's messages, oldest first. */
+  messages: QualityAgentSessionMessage[];
+  /** The first message's timestamp, which is when the wake began its record. */
+  startTime?: Timestamp;
+  /** The origin of the wake's user message; UNSPECIFIED when it has none. */
+  origin: QualityAgentMessageOrigin;
+  /**
+   * The wake's own conclusion: the text of the last runner note, with the
+   * runner's `wake finished: ` prefix stripped. Empty when the wake recorded none.
+   */
+  summary: string;
+}
+
+/**
+ * Group a transcript into wakes, oldest wake first.
+ *
+ * The transcript is append-only but a caller merges an older page and a live
+ * page, so the input is ordered defensively by `seq` before grouping. A wake
+ * with no user message (the system-message group 0, or a compaction checkpoint
+ * recorded between wakes) still forms a group; the header falls back to the
+ * group's first message.
+ */
+export function groupMessagesByWake(
+  messages: readonly QualityAgentSessionMessage[]
+): AgentWakeGroup[] {
+  const ordered = [...messages].sort(compareSeq);
+  const groups = new Map<number, AgentWakeGroup>();
+  for (const message of ordered) {
+    let group = groups.get(message.wake);
+    if (!group) {
+      group = {
+        wake: message.wake,
+        messages: [],
+        startTime: message.createTime,
+        origin: QualityAgentMessageOrigin.UNSPECIFIED,
+        summary: "",
+      };
+      groups.set(message.wake, group);
+    }
+    group.messages.push(message);
+  }
+  return [...groups.values()]
+    .sort((left, right) => left.wake - right.wake)
+    .map((group) => ({
+      ...group,
+      origin:
+        group.messages.find(
+          (message) => message.role === QualityAgentMessageRole.USER
+        )?.origin ?? QualityAgentMessageOrigin.UNSPECIFIED,
+      summary: wakeSummary(group.messages),
+    }));
+}
+
+/** The text of the last runner note, which is how a wake records its outcome. */
+function wakeSummary(messages: QualityAgentSessionMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== QualityAgentMessageRole.ENGINE) {
+      continue;
+    }
+    const text = message.content.trim();
+    if (!text) {
+      continue;
+    }
+    return text.startsWith(WAKE_FINISHED_PREFIX)
+      ? text.slice(WAKE_FINISHED_PREFIX.length).trim()
+      : text;
+  }
+  return "";
+}
+
+/**
+ * Merge transcript pages without duplicating a message.
+ *
+ * The initial load returns the newest page, "load earlier" prepends an older
+ * page and the live poll appends everything after the watermark; a message can
+ * therefore arrive in two of them. Entries are deduplicated by `seq` and kept in
+ * ascending order so wake grouping never depends on arrival order.
+ */
+export function mergeTranscriptMessages(
+  existing: readonly QualityAgentSessionMessage[],
+  incoming: readonly QualityAgentSessionMessage[]
+): QualityAgentSessionMessage[] {
+  const bySeq = new Map<string, QualityAgentSessionMessage>();
+  for (const message of [...existing, ...incoming]) {
+    bySeq.set(message.seq.toString(), message);
+  }
+  return [...bySeq.values()].sort(compareSeq);
+}
+
+/** The newest `seq` in a transcript, or zero for an empty one. */
+export function lastTranscriptSeq(
+  messages: readonly QualityAgentSessionMessage[]
+): bigint {
+  let last = 0n;
+  for (const message of messages) {
+    if (message.seq > last) {
+      last = message.seq;
+    }
+  }
+  return last;
+}
+
+/** The tool result answering one tool call, when the transcript has it. */
+export function toolResultForCall(
+  messages: readonly QualityAgentSessionMessage[],
+  toolCallId: string
+): QualityAgentSessionMessage | undefined {
+  if (!toolCallId) {
+    return undefined;
+  }
+  return messages.find(
+    (message) =>
+      message.role === QualityAgentMessageRole.TOOL &&
+      message.toolCallId === toolCallId
+  );
+}
+
+/**
+ * Tool results whose call is missing from the transcript.
+ *
+ * A crash can leave a result without its assistant row (an interrupted wake), and
+ * a provider may omit the call id; those rows are shown on their own instead of
+ * being dropped.
+ */
+export function orphanToolResults(
+  messages: readonly QualityAgentSessionMessage[]
+): QualityAgentSessionMessage[] {
+  const called = new Set<string>();
+  for (const message of messages) {
+    for (const call of message.toolCalls) {
+      if (call.id !== "") {
+        called.add(call.id);
+      }
+    }
+  }
+  return messages.filter(
+    (message) =>
+      message.role === QualityAgentMessageRole.TOOL &&
+      !called.has(message.toolCallId)
+  );
+}
+
+/**
+ * A tool call's arguments as one readable line: JSON objects become
+ * `key: value` pairs, anything else stays as it was written. Empty for a call
+ * without arguments.
+ */
+export function toolCallArgumentsPreview(
+  call: QualityToolCall,
+  maxLength = TOOL_ARGUMENTS_PREVIEW_LENGTH
+): string {
+  const raw = call.arguments.trim();
+  if (!raw || raw === "{}") {
+    return "";
+  }
+  return truncateText(formatArguments(raw), maxLength);
+}
+
+function formatArguments(raw: string): string {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const entries = Object.entries(parsed as Record<string, unknown>);
+      if (entries.length > 0) {
+        return entries
+          .map(([key, value]) => `${key}: ${formatArgumentValue(value)}`)
+          .join(", ");
+      }
+    }
+  } catch {
+    // Not JSON: a provider may pass a plain string, which is shown as written.
+  }
+  return raw;
+}
+
+function formatArgumentValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? String(value) : serialized;
+}
+
+/** Rune-safe truncation, so a cut never splits a character. */
+export function truncateText(text: string, maxLength: number): string {
+  const characters = Array.from(text);
+  if (characters.length <= maxLength) {
+    return text;
+  }
+  return `${characters.slice(0, Math.max(0, maxLength - 1)).join("")}…`;
+}
+
+// ---- event references ----
+
+/** The execution prefix a runner event reference carries. */
+const EXECUTION_REFERENCE_PREFIX = "qualityExecutions/";
+
+/** Where an event's execution reference opens, shaped for a RouterLink `to`. */
+export interface AgentEventExecutionReference {
+  /** The bare execution id, for the link's label. */
+  id: string;
+  route: {
+    name: "DataQualityExecutionDetail";
+    params: { executionId: string[] };
+  };
+}
+
+/**
+ * The execution page an event's reference points at.
+ *
+ * The runner records an event's subject as a short reference
+ * (`qualityExecutions/123`), while the execution page needs the full resource
+ * name (`workspaces/{workspace}/qualityExecutions/123`) because its Get cannot
+ * resolve the `-` shorthand. The workspace therefore comes from the session's own
+ * resource name. A reference in an unexpected shape returns null, and the caller
+ * falls back to showing it as text instead of rendering a dead link.
+ */
+export function agentEventExecutionReference(
+  reference: string,
+  sessionName: string
+): AgentEventExecutionReference | null {
+  const trimmed = reference.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith("workspaces/")) {
+    const segments = trimmed.split("/");
+    if (
+      segments.length !== 4 ||
+      !segments[1] ||
+      segments[2] !== "qualityExecutions" ||
+      !segments[3]
+    ) {
+      return null;
+    }
+    return executionReference(segments, segments[3]);
+  }
+  if (trimmed.startsWith(EXECUTION_REFERENCE_PREFIX)) {
+    const id = trimmed.slice(EXECUTION_REFERENCE_PREFIX.length);
+    if (!id || id.includes("/")) {
+      return null;
+    }
+    const workspace = workspaceIDFromSessionName(sessionName);
+    if (!workspace) {
+      return null;
+    }
+    return executionReference(
+      ["workspaces", workspace, "qualityExecutions", id],
+      id
+    );
+  }
+  return null;
+}
+
+function executionReference(
+  segments: string[],
+  id: string
+): AgentEventExecutionReference {
+  return {
+    id,
+    route: {
+      name: "DataQualityExecutionDetail",
+      params: { executionId: segments },
+    },
+  };
+}
+
+/** The workspace id inside `workspaces/{workspace}/qualityAgentSessions/{id}`. */
+function workspaceIDFromSessionName(name: string): string {
+  const segments = name.split("/");
+  if (
+    segments.length >= 4 &&
+    segments[0] === "workspaces" &&
+    segments[1] &&
+    segments[2] === "qualityAgentSessions"
+  ) {
+    return segments[1];
+  }
+  return "";
+}
+
+// ---- target display ----
+
+/** A session's target name: the object's own name, or its GUID as a fallback. */
+export function agentSessionTargetName(session: QualityAgentSession): string {
+  return session.target?.path?.object || session.target?.metaGuid || "-";
+}
+
+/** A session's object path for a subtitle, e.g. `schema.orders`; the database is separate. */
+export function agentSessionTargetPath(session: QualityAgentSession): string {
+  return formatTargetPath(session.target?.path);
+}
+
+function compareSeq(
+  left: QualityAgentSessionMessage,
+  right: QualityAgentSessionMessage
+): number {
+  if (left.seq === right.seq) {
+    return 0;
+  }
+  return left.seq < right.seq ? -1 : 1;
+}

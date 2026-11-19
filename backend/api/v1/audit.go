@@ -177,9 +177,10 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 
 // redactAuditResponse strips product prose from the response copy the ledger
 // stores. The request-side field redaction cannot see these: a conversation reply
-// is named message_body in the request but content in the response, and a
-// diagnostics transcript is a repeated message content. The handler still returns
-// the original, unmodified response.
+// is named message_body in the request but content in the response. The
+// work-session list branch is defence in depth for a future audited caller; the
+// product reads are deliberately un-audited. The handler still returns the
+// original, unmodified response.
 func redactAuditResponse(message proto.Message) proto.Message {
 	switch response := message.(type) {
 	case *v1pb.QualityAgentSessionMessage:
@@ -188,6 +189,7 @@ func redactAuditResponse(message proto.Message) proto.Message {
 			return message
 		}
 		cloned.Content = ""
+		cloned.Reasoning = ""
 		cloned.ToolCalls = nil
 		return cloned
 	case *v1pb.QualityAgentSession:
@@ -204,6 +206,7 @@ func redactAuditResponse(message proto.Message) proto.Message {
 		}
 		for _, item := range cloned.QualityAgentSessionMessages {
 			item.Content = ""
+			item.Reasoning = ""
 			item.ToolCalls = nil
 		}
 		return cloned

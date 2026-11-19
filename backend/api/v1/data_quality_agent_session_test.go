@@ -107,6 +107,7 @@ func TestConvertQualityAgentMessageRendersTheToolCalls(t *testing.T) {
 		Role:      storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
 		Origin:    storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
 		Content:   "looking",
+		Reasoning: "checking the plan",
 		Reference: "qualityExecutions/123",
 		ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{
 			{Id: "call_1", Name: "get_target_summary", Arguments: "{}"},
@@ -117,6 +118,7 @@ func TestConvertQualityAgentMessageRendersTheToolCalls(t *testing.T) {
 	require.Len(t, message.GetToolCalls(), 1)
 	require.Equal(t, "get_target_summary", message.GetToolCalls()[0].GetName())
 	require.Equal(t, "qualityExecutions/123", message.GetReference())
+	require.Equal(t, "checking the plan", message.GetReasoning())
 	require.Equal(t, int64(7), message.GetSeq())
 }
 

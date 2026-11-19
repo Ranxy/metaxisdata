@@ -93,6 +93,7 @@ const (
 	DataQualityService_ListQualityContractRevisions_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
 	DataQualityService_GetQualityContractRevision_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
 	DataQualityService_GetQualityLLMUsage_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
+	DataQualityService_GetQualityAgentSession_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
 	DataQualityService_ListQualityAgentSessions_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
 	DataQualityService_ResumeQualityAgentSession_FullMethodName            = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentSession"
 	DataQualityService_ListQualityAgentSessionMessages_FullMethodName      = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
@@ -395,12 +396,19 @@ type DataQualityServiceClient interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error)
-	// List the workspace's sessions by newest activity first.
+	// Read one session's durable state. The owner and administrators may read; the
+	// list and detail of a session are product reads, so they are not audited.
+	GetQualityAgentSession(ctx context.Context, in *GetQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// List the workspace's sessions by newest activity first. An administrator sees
+	// every session; the owner must filter by an agent they own.
 	ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error)
-	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
-	// a restart-limit/internal-error block; it is not a product action.
+	// Resume a stuck session. Administrator-only recovery, used from the work-session
+	// detail after a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(ctx context.Context, in *ResumeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
-	// Read one session's transcript. after_seq polls for new messages.
+	// Read one session's transcript. after_seq polls for new messages. The owner and
+	// administrators may read; the transcript is product data, so reads are not
+	// audited, while waking a stuck session above remains an audited administrator
+	// action.
 	ListQualityAgentSessionMessages(ctx context.Context, in *ListQualityAgentSessionMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionMessagesResponse, error)
 }
 
@@ -1178,6 +1186,16 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityAgentSession(ctx context.Context, in *GetQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityAgentSessionsResponse)
@@ -1505,12 +1523,19 @@ type DataQualityServiceServer interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error)
-	// List the workspace's sessions by newest activity first.
+	// Read one session's durable state. The owner and administrators may read; the
+	// list and detail of a session are product reads, so they are not audited.
+	GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// List the workspace's sessions by newest activity first. An administrator sees
+	// every session; the owner must filter by an agent they own.
 	ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error)
-	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
-	// a restart-limit/internal-error block; it is not a product action.
+	// Resume a stuck session. Administrator-only recovery, used from the work-session
+	// detail after a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(context.Context, *ResumeQualityAgentSessionRequest) (*QualityAgentSession, error)
-	// Read one session's transcript. after_seq polls for new messages.
+	// Read one session's transcript. after_seq polls for new messages. The owner and
+	// administrators may read; the transcript is product data, so reads are not
+	// audited, while waking a stuck session above remains an audited administrator
+	// action.
 	ListQualityAgentSessionMessages(context.Context, *ListQualityAgentSessionMessagesRequest) (*ListQualityAgentSessionMessagesResponse, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
@@ -1740,6 +1765,9 @@ func (UnimplementedDataQualityServiceServer) GetQualityContractRevision(context.
 }
 func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentSession not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentSessions not implemented")
@@ -3057,6 +3085,24 @@ func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentSession(ctx, req.(*GetQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ListQualityAgentSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityAgentSessionsRequest)
 	if err := dec(in); err != nil {
@@ -3393,6 +3439,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityLLMUsage",
 			Handler:    _DataQualityService_GetQualityLLMUsage_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentSession",
+			Handler:    _DataQualityService_GetQualityAgentSession_Handler,
 		},
 		{
 			MethodName: "ListQualityAgentSessions",

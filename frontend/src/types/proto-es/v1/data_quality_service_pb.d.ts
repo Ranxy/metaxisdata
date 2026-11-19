@@ -9434,6 +9434,14 @@ export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.Quality
    * @generated from field: string reference = 15;
    */
   reference: string;
+
+  /**
+   * Display-only model reasoning for this assistant turn. Empty when the provider
+   * returned none; never sent back to the provider.
+   *
+   * @generated from field: string reasoning = 16;
+   */
+  reasoning: string;
 };
 
 /**
@@ -9441,6 +9449,24 @@ export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.Quality
  * Use `create(QualityAgentSessionMessageSchema)` to create a new message.
  */
 export declare const QualityAgentSessionMessageSchema: GenMessage<QualityAgentSessionMessage>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentSessionRequest
+ */
+export declare type GetQualityAgentSessionRequest = Message<"metaxisdata.v1.GetQualityAgentSessionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentSessionRequest.
+ * Use `create(GetQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentSessionRequestSchema: GenMessage<GetQualityAgentSessionRequest>;
 
 /**
  * @generated from message metaxisdata.v1.ListQualityAgentSessionsRequest
@@ -9488,7 +9514,8 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
   mode: QualityAgentSessionMode;
 
   /**
-   * Administrator diagnostics filter: keep only this agent's sessions.
+   * Keep only this agent's sessions. An administrator may omit it to read every
+   * session in the workspace; an owner must set it to an agent they own.
    *
    * @generated from field: string agent = 9;
    */
@@ -9568,12 +9595,22 @@ export declare type ListQualityAgentSessionMessagesRequest = Message<"metaxisdat
   pageToken: string;
 
   /**
-   * Return messages with seq greater than this, ascending; the polling watermark. The
-   * two modes are mutually exclusive: combining this with page_token is InvalidArgument.
+   * Return messages with seq greater than this, ascending; the polling watermark.
+   * Mutually exclusive with page_token and before_seq.
    *
    * @generated from field: int64 after_seq = 4;
    */
   afterSeq: bigint;
+
+  /**
+   * Return the page of messages with seq less than this, newest first (the caller
+   * reverses it). It is how the UI walks older history while a live wake appends
+   * rows; the offset page_token cannot stay anchored under appends.
+   * Mutually exclusive with page_token and after_seq.
+   *
+   * @generated from field: int64 before_seq = 5;
+   */
+  beforeSeq: bigint;
 };
 
 /**
@@ -12450,7 +12487,19 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityLLMUsageSchema;
   },
   /**
-   * List the workspace's sessions by newest activity first.
+   * Read one session's durable state. The owner and administrators may read; the
+   * list and detail of a session are product reads, so they are not audited.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentSession
+   */
+  getQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * List the workspace's sessions by newest activity first. An administrator sees
+   * every session; the owner must filter by an agent they own.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentSessions
    */
@@ -12460,8 +12509,8 @@ export declare const DataQualityService: GenService<{
     output: typeof ListQualityAgentSessionsResponseSchema;
   },
   /**
-   * Resume a stuck session. Administrator-only recovery, used from diagnostics after
-   * a restart-limit/internal-error block; it is not a product action.
+   * Resume a stuck session. Administrator-only recovery, used from the work-session
+   * detail after a restart-limit/internal-error block; it is not a product action.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ResumeQualityAgentSession
    */
@@ -12471,7 +12520,10 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityAgentSessionSchema;
   },
   /**
-   * Read one session's transcript. after_seq polls for new messages.
+   * Read one session's transcript. after_seq polls for new messages. The owner and
+   * administrators may read; the transcript is product data, so reads are not
+   * audited, while waking a stuck session above remains an audited administrator
+   * action.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages
    */

@@ -887,6 +887,7 @@ QualityAgentMessage is one append-only transcript entry of a session.
 | truncated | [bool](#bool) |  |  |
 | idempotency_key | [string](#string) |  | The store returns the existing row for a retried key. |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| reasoning | [string](#string) |  | Display-only model reasoning for this assistant turn. Empty when the provider returned none; never sent back to the provider. |
 
 
 

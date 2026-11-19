@@ -20,9 +20,37 @@ const (
 	qualityAgentSessionPrefix = "qualityAgentSessions/"
 )
 
-// ListQualityAgentSessions lists the workspace's target work threads. It is the
-// administrator diagnostics view; the agent conversation is read through the
-// conversation RPCs.
+// GetQualityAgentSession reads one target work thread. The owner and
+// administrators may read; an unauthorized caller gets NotFound so the response
+// does not disclose that the session exists. Reads are product reads and are not
+// audited; resuming a stuck session is the audited administrator action.
+func (s *DataQualityService) GetQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
+	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
+	if err != nil {
+		return nil, err
+	}
+	session, err := s.fetchQualityAgentSession(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if session.Kind != 1 {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
+	allowed, err := s.callerCanReadQualityAgent(ctx, session.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
+	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, session, time.Now().UTC())), nil
+}
+
+// ListQualityAgentSessions lists the workspace's target work threads. An
+// administrator may read every session; an owner must name an agent they own,
+// which keeps a workspace-wide walk out of the product read surface.
 func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *connect.Request[v1pb.ListQualityAgentSessionsRequest]) (*connect.Response[v1pb.ListQualityAgentSessionsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -39,16 +67,22 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	}
 	limit := offset.limit + 1
 	find := &store.FindQualityAgentSessionMessage{WorkspaceID: &workspaceID, Kind: 1, Limit: &limit, Offset: &offset.offset}
-	if agentName := strings.TrimSpace(req.Msg.GetAgent()); agentName != "" {
+	agentName := strings.TrimSpace(req.Msg.GetAgent())
+	if agentName != "" {
 		_, agentResourceID, err := s.qualityAgentResourceID(ctx, agentName)
 		if err != nil {
 			return nil, err
 		}
-		agent, err := s.fetchQualityAgent(ctx, agentResourceID)
-		if err != nil {
-			return nil, err
+		agent := s.fetchQualityAgentForCaller(ctx, agentResourceID)
+		if agent == nil {
+			return nil, connect.NewError(connect.CodeNotFound,
+				errors.Errorf("quality agent %q not found", agentResourceID))
 		}
 		find.AgentID = &agent.ID
+	} else if admin, adminErr := s.callerIsQualityAgentAdmin(ctx); adminErr != nil {
+		return nil, adminErr
+	} else if !admin {
+		return nil, connectErrorInvalid("agent is required for a non-administrator")
 	}
 	if guid := strings.TrimSpace(req.Msg.GetTargetGuid()); guid != "" {
 		find.TargetGUID = &guid
@@ -118,12 +152,31 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+	if session.Kind != 1 {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
+	allowed, err := s.callerCanReadQualityAgent(ctx, session.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
 	afterSeq := req.Msg.GetAfterSeq()
+	beforeSeq := req.Msg.GetBeforeSeq()
 	if afterSeq < 0 {
 		return nil, connectErrorInvalid("after_seq cannot be negative")
 	}
-	if afterSeq > 0 && req.Msg.GetPageToken() != "" {
-		return nil, connectErrorInvalid("after_seq and page_token are mutually exclusive")
+	if beforeSeq < 0 {
+		return nil, connectErrorInvalid("before_seq cannot be negative")
+	}
+	if afterSeq > 0 && beforeSeq > 0 {
+		return nil, connectErrorInvalid("after_seq and before_seq are mutually exclusive")
+	}
+	if (afterSeq > 0 || beforeSeq > 0) && req.Msg.GetPageToken() != "" {
+		return nil, connectErrorInvalid("page_token cannot be combined with after_seq or before_seq")
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:        req.Msg.GetPageToken(),
@@ -136,9 +189,15 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	}
 	limit := offset.limit + 1
 	find := &store.FindQualityAgentTranscriptMessage{SessionID: session.ID, Limit: limit}
-	if afterSeq > 0 {
+	switch {
+	case beforeSeq > 0:
+		// Older history anchored to the oldest loaded seq, so a live append cannot
+		// shift the page the caller is walking.
+		find.BeforeSeq = beforeSeq
+		find.NewestFirst = true
+	case afterSeq > 0:
 		find.AfterSeq = afterSeq
-	} else {
+	default:
 		// The newest page: read backwards, then hand the client chronological order.
 		find.NewestFirst = true
 		find.Offset = offset.offset
@@ -155,7 +214,7 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 		slicesReverse(messages)
 	}
 	response := &v1pb.ListQualityAgentSessionMessagesResponse{}
-	if find.AfterSeq == 0 && more {
+	if find.AfterSeq == 0 && find.BeforeSeq == 0 && more {
 		nextPageToken, tokenErr := offset.getNextPageToken()
 		if tokenErr != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(tokenErr, "failed to marshal next page token"))
@@ -215,6 +274,27 @@ func (s *DataQualityService) fetchQualityAgentSession(ctx context.Context, resou
 			errors.Errorf("quality agent session %q not found", resourceID))
 	}
 	return message, nil
+}
+
+// callerCanReadQualityAgent reports whether the caller owns the session's agent or
+// is an administrator. It is the authorization boundary for the product session
+// reads; the ACL only proves the member baseline permission.
+func (s *DataQualityService) callerCanReadQualityAgent(ctx context.Context, agentID int64) (bool, error) {
+	agent, err := s.store.GetQualityAgentByID(ctx, agentID)
+	if err != nil {
+		return false, err
+	}
+	if agent == nil {
+		return false, nil
+	}
+	admin, err := s.callerIsQualityAgentAdmin(ctx)
+	if err != nil {
+		return false, err
+	}
+	if admin {
+		return true, nil
+	}
+	return agent.OwnerPrincipalID != nil && int32(currentUserID(ctx)) == *agent.OwnerPrincipalID, nil
 }
 
 // convertQualityAgentSessionToV1 renders one session. "Running" is derived from the
@@ -294,6 +374,7 @@ func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, messa
 		Role:       v1pb.QualityAgentMessageRole(message.Role),
 		Origin:     v1pb.QualityAgentMessageOrigin(message.Origin),
 		Content:    message.Content,
+		Reasoning:  message.Reasoning,
 		ToolCallId: message.ToolCallID,
 		ToolName:   message.ToolName,
 		Reference:  message.Reference,

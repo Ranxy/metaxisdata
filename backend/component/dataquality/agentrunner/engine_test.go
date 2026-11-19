@@ -173,6 +173,7 @@ func toolCall(id, name, arguments string) llm.ToolCall {
 // scriptedTurn is one LLM turn a scripted provider plays.
 type scriptedTurn struct {
 	content   string
+	reasoning string
 	toolCalls []llm.ToolCall
 }
 
@@ -188,7 +189,7 @@ func scriptedChat(turns []scriptedTurn) Chat {
 				events <- agent.Event{Type: agent.EventTurnStart, Turn: number}
 				events <- agent.Event{Type: agent.EventUsage, Turn: number,
 					Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}}
-				assistant := agent.Message{Role: "assistant", Content: turn.content, ToolCalls: turn.toolCalls}
+				assistant := agent.Message{Role: "assistant", Content: turn.content, Reasoning: turn.reasoning, ToolCalls: turn.toolCalls}
 				events <- agent.Event{Type: agent.EventAssistant, Assistant: &assistant, Turn: number}
 				for _, call := range turn.toolCalls {
 					results, err := cfg.Executor(call)
@@ -258,7 +259,7 @@ func TestWakeRecordsTheConversation(t *testing.T) {
 
 	stores := newFakeStore()
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
-		{content: "let me look", toolCalls: []llm.ToolCall{toolCall("call_1", "get_target_summary", "{}")}},
+		{content: "let me look", reasoning: "check the plan first", toolCalls: []llm.ToolCall{toolCall("call_1", "get_target_summary", "{}")}},
 		{content: "nothing needs attention"},
 	}), resolveToModel, nil)
 
@@ -282,6 +283,7 @@ func TestWakeRecordsTheConversation(t *testing.T) {
 
 	assistant := stores.messages[3]
 	require.Equal(t, "let me look", assistant.Content)
+	require.Equal(t, "check the plan first", assistant.Reasoning)
 	require.Len(t, assistant.ToolCalls.GetToolCalls(), 1)
 	require.Equal(t, "get_target_summary", assistant.ToolCalls.GetToolCalls()[0].GetName())
 	require.Equal(t, int32(110), assistant.Tokens)

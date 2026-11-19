@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,4 +65,20 @@ func TestConvertToLlmReturnsEmptySliceForNoMessages(t *testing.T) {
 	messages := ConvertToLlm(nil)
 	require.NotNil(t, messages)
 	require.Empty(t, messages)
+}
+
+// Reasoning is display-only: it must never cross the boundary into the request
+// sent to the provider.
+func TestConvertToLlmDropsReasoning(t *testing.T) {
+	t.Parallel()
+
+	converted := ConvertToLlm([]Message{{
+		Role:      "assistant",
+		Content:   "answer",
+		Reasoning: "private chain of thought",
+	}})
+	require.Len(t, converted, 1)
+	encoded, err := json.Marshal(converted)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "private chain of thought")
 }

@@ -1336,6 +1336,9 @@ message QualityAgentMessage {
   // The store returns the existing row for a retried key.
   string idempotency_key = 18;
   google.protobuf.Timestamp created_at = 19;
+  // Display-only model reasoning for this assistant turn. Empty when the provider
+  // returned none; never sent back to the provider.
+  string reasoning = 21;
 }
 
 // QualityMemoryKind is what a memory records. Only deterministic asset facts are

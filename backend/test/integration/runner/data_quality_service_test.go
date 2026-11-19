@@ -3518,9 +3518,9 @@ func TestDataQualityTargetWithoutScheduleRowRealServerIntegration(t *testing.T) 
 // the internal qualityAgent role and the user directory hides that principal, a
 // non-administrator owner can list and read exactly the agent they own, the state
 // machine is the only lifecycle truth with DISABLED terminal, and the workspace runner
-// switch round-trips. The reflection block pins the final client surface: the 17
-// surviving agent RPCs are callable and the deleted token, enrollment, session-get,
-// memory and action-policy RPCs cannot be called again without failing here.
+// switch round-trips. The reflection block pins the final client surface: the 18
+// surviving agent RPCs are callable and the deleted token, enrollment, memory and
+// action-policy RPCs cannot be called again without failing here.
 func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	fixture := setupQualityMySQLFixture(t, false)
 	adminToken := fixture.env.AdminToken()
@@ -3680,13 +3680,13 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, readBack.Msg.GetState())
 
-	// The final client surface: the 17 agent RPCs survived, the 20 external-agent RPCs
+	// The final client surface: the 18 agent RPCs survived, the 19 external-agent RPCs
 	// did not. Reflection makes the deletion an assertion instead of a compile-only
 	// promise.
 	clientSurface := reflect.TypeOf((*v1connect.DataQualityServiceClient)(nil)).Elem()
 	for _, removed := range []string{
 		"RotateQualityAgentToken",
-		"GetQualityAgentReport", "GetQualityAgentSession",
+		"GetQualityAgentReport",
 		"GetQualityAgentRunnerStatus", "GetQualityAgentMetrics",
 		"ListQualityAgentEnrollments", "GetQualityAgentEnrollmentSummary",
 		"GetQualityActionPolicy", "StageQualityPlan",
@@ -3704,7 +3704,8 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		"SetQualityAgentAdoption", "SendQualityAgentMessage",
 		"ListQualityAgentConversationMessages", "ListQualityAgentReports",
 		"ListQualityAgentAttentions", "ReplyQualityAgentAttention", "DismissQualityAgentAttention",
-		"ListQualityAgentSessions", "ListQualityAgentSessionMessages", "ResumeQualityAgentSession",
+		"GetQualityAgentSession", "ListQualityAgentSessions", "ListQualityAgentSessionMessages",
+		"ResumeQualityAgentSession",
 	} {
 		_, present := clientSurface.MethodByName(kept)
 		require.Truef(t, present, "the surviving agent RPC %s is missing from the client surface", kept)
@@ -3734,8 +3735,8 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 // gets a deterministic reply with no model configured, adoption round-trips under the
 // owner/administrator split, the enrollment runner admits the covered fixture table as
 // a MONITOR session whose deterministic wake records an asset fact through the tool
-// pipeline, the administrator diagnostics read the transcript and recover a parked
-// session, a blocked escalation is answered by resuming its session, and the patrol
+// pipeline, the work-session reads expose the transcript and an administrator recovers
+// a parked session, a blocked escalation is answered by resuming its session, and the patrol
 // report runner generates a daily report over a failing period and escalates its
 // anomaly for the owner to dismiss. None of the deleted change-request, investigation,
 // memory-admin, token, action-policy or enrollment RPCs is called.
@@ -3743,6 +3744,7 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	fixture := setupQualityMySQLFixture(t, false)
 	adminToken := fixture.env.AdminToken()
 	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "writer-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "writer-stranger")
 
 	// Coverage makes the enrollment runner admit the fixture table as a MONITOR session
 	// (a TRIAGE admission would need a model); the published contract gives the
@@ -3882,15 +3884,57 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Equal(t, v1pb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, session.GetMode())
 	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, session.GetState())
 
-	// Diagnostics are administrator-only.
+	// Work sessions are product reads: the owner and administrators may read,
+	// while a stranger must not learn that the session exists.
+	ownerSession, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+	require.NoError(t, err, "the owner reads their own work session")
+	require.Equal(t, session.GetName(), ownerSession.Msg.GetName())
+	// The front-office conversation is a kind=2 session and is not part of the
+	// target work-session surface; its raw system/tool rows are not exposed by
+	// the product conversation read either.
+	require.NotEmpty(t, agent.GetConversation())
+	_, err = fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentSessionRequest{Name: agent.GetConversation()}))
+	require.Error(t, err, "the conversation session is not a work session")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	ownerSessions, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{
+			Parent: "workspaces/-",
+			Agent:  agent.GetName(),
+		}))
+	require.NoError(t, err, "the owner lists their own agent's sessions")
+	require.Contains(t,
+		qualityAgentSessionNames(ownerSessions.Msg.GetQualityAgentSessions()), session.GetName())
 	_, err = fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
-	require.Error(t, err, "the session diagnostics are not an owner surface")
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	require.Error(t, err, "an owner must name an agent")
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	_, err = fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	require.NoError(t, err, "the owner reads the transcript")
+
+	_, err = fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(strangerToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+	require.Error(t, err, "a stranger cannot read the session")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	_, err = fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(strangerToken, &v1pb.ListQualityAgentSessionsRequest{
+			Parent: "workspaces/-",
+			Agent:  agent.GetName(),
+		}))
+	require.Error(t, err, "a stranger cannot list another agent's sessions")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	_, err = fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(strangerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
+	require.Error(t, err, "a stranger cannot read another agent's transcript")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	adminSessions, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err, "an administrator lists every session")
+	require.Contains(t,
+		qualityAgentSessionNames(adminSessions.Msg.GetQualityAgentSessions()), session.GetName())
 
 	// The deterministic monitor wake surveys the published plan and records the gap as an
 	// asset fact through the agent's tool path, attributed to its internal principal.
@@ -3899,6 +3943,63 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 			strings.Contains(message.GetContent(), "deterministic survey")
 	})
 	require.NotEmpty(t, survey.GetContent())
+	ownerMessages, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
+	require.NoError(t, err, "the owner reads the populated transcript")
+	require.NotEmpty(t, ownerMessages.Msg.GetQualityAgentSessionMessages())
+	ownerContents := make([]string, 0, len(ownerMessages.Msg.GetQualityAgentSessionMessages()))
+	for _, message := range ownerMessages.Msg.GetQualityAgentSessionMessages() {
+		ownerContents = append(ownerContents, message.GetContent())
+	}
+	require.Contains(t, strings.Join(ownerContents, "\n"), "deterministic survey",
+		"the owner sees the runner's wake conclusion")
+	if len(ownerMessages.Msg.GetQualityAgentSessionMessages()) > 1 {
+		anchor := ownerMessages.Msg.GetQualityAgentSessionMessages()[1].GetSeq()
+		older, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+			withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{
+				Parent:    session.GetName(),
+				BeforeSeq: anchor,
+				PageSize:  100,
+			}))
+		require.NoError(t, err, "the owner walks older history by seq anchor")
+		for _, message := range older.Msg.GetQualityAgentSessionMessages() {
+			require.Less(t, message.GetSeq(), anchor)
+		}
+	}
+
+	adminSession, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+	require.NoError(t, err, "an administrator reads the same work session")
+	require.Equal(t, session.GetName(), adminSession.Msg.GetName())
+
+	// A reasoning value survives the store -> API path the owner reads. The
+	// deterministic wake has no model, so append a row through the store; the
+	// owner's read is still the assertion that matters.
+	reasoningWorkspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	storedSession, err := fixture.env.Store.GetQualityAgentSession(fixture.ctx, resourceIDFromName(session.GetName()))
+	require.NoError(t, err)
+	require.NotNil(t, storedSession)
+	appended, err := fixture.env.Store.AppendQualityAgentTranscriptMessage(fixture.ctx, &store.QualityAgentTranscriptMessage{
+		SessionID:      storedSession.ID,
+		WorkspaceID:    reasoningWorkspaceID,
+		Wake:           survey.GetWake(),
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:        "reasoning probe",
+		Reasoning:      "the model's private thought",
+		IdempotencyKey: "integration:reasoning-probe",
+	})
+	require.NoError(t, err)
+	reasoned, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{
+			Parent:   session.GetName(),
+			AfterSeq: appended.Seq - 1,
+			PageSize: 10,
+		}))
+	require.NoError(t, err)
+	require.Len(t, reasoned.Msg.GetQualityAgentSessionMessages(), 1)
+	require.Equal(t, "the model's private thought", reasoned.Msg.GetQualityAgentSessionMessages()[0].GetReasoning())
 	var fact *store.QualityMemoryMessage
 	require.Eventually(t, func() bool {
 		facts, err := fixture.env.Store.ListQualityMemories(fixture.ctx,
@@ -3942,7 +4043,7 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Equal(t, v1pb.QualityAgentReportFrequency_QUALITY_AGENT_REPORT_FREQUENCY_DAILY,
 		updated.Msg.GetReportSchedule().GetFrequency())
 
-	// Administrator diagnostics: a stuck session is recovered through the resume RPC.
+	// Administrator recovery: a stuck session is resumed through the audited RPC.
 	sessionResourceID := resourceIDFromName(session.GetName())
 	parkSession := func() *store.QualityAgentSessionMessage {
 		var parked *store.QualityAgentSessionMessage
@@ -4233,8 +4334,17 @@ func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, age
 	return session
 }
 
+// qualityAgentSessionNames extracts the resource names from a session list.
+func qualityAgentSessionNames(sessions []*v1pb.QualityAgentSession) []string {
+	names := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		names = append(names, session.GetName())
+	}
+	return names
+}
+
 // waitForQualityAgentSessionMessage waits until one session transcript entry matches
-// match and returns it. The transcript is read through the administrator diagnostics RPC.
+// match and returns it. The transcript is read through the work-session transcript RPC.
 func waitForQualityAgentSessionMessage(t *testing.T, fixture *qualityFixture, sessionName string, match func(*v1pb.QualityAgentSessionMessage) bool) *v1pb.QualityAgentSessionMessage {
 	t.Helper()
 

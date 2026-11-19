@@ -5,8 +5,12 @@ import "github.com/Ranxy/metaxisdata/backend/component/llm"
 // Message is the internal message type used throughout the agent loop.
 // It is richer than the raw LLM Message and is converted to Message at the LLM boundary.
 type Message struct {
-	Role       string         // "system" | "user" | "assistant" | "toolResult"
-	Content    string         // text content (for user/assistant/toolResult)
+	Role    string // "system" | "user" | "assistant" | "toolResult"
+	Content string // text content (for user/assistant/toolResult)
+	// Reasoning is display-only model reasoning. ConvertToLlm deliberately does
+	// not send it back: reasoning models reject their own reasoning in the
+	// conversation, and it is not part of the answer contract.
+	Reasoning  string
 	ToolCalls  []llm.ToolCall // for assistant role
 	ToolCallID string         // for toolResult role
 	ToolName   string         // for toolResult role

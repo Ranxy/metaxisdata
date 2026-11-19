@@ -488,12 +488,14 @@ schedule, reacts to failed checks, drafts checks into the review queue and escal
 
 - **Data Quality → Agents** (`/data-quality/agents`) lists the agents you may see: administrators see every agent, other members see the
 ones they own.
-- **An agent's home** is its working page: the conversation with its owner, its **Patrol reports**, its **Needs you** attention list,
-its auto-adoption setting, and its scope and state.
+- **An agent's home** is its working page: the conversation with its owner, its **Work sessions**, its **Patrol reports**, its
+**Needs you** attention list, its auto-adoption setting, and its scope and state.
+- **Work sessions** (`/data-quality/agents/{workspace}/{id}/sessions`) lists one long-lived conversation per target the agent watches.
+Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
+its arguments and result, and the runner's notes. The owner and administrators can read it; only an administrator can resume a stuck
+session.
 - **Settings → Quality agents** (`/settings/quality-agents`) is where an administrator creates and edits agents and turns the runtime on
 or off.
-- **Diagnostics** (`/data-quality/agents/{workspace}/{id}/diagnostics`) is an administrator-only page with the agent's internal
-per-target sessions and transcripts; its only action is resuming a stuck session.
 
 ### Turning the runtime on
 
@@ -505,8 +507,8 @@ others.
 
 An administrator creates an agent with:
 
-- **Owner** — the person the agent works for. The owner is the only person who can talk to it; administrators can read its home, reports
-and attention list but cannot hold a conversation with it.
+- **Owner** — the person the agent works for. The owner is the only person who can talk to it; the owner and administrators can read its
+home, work sessions, reports and attention list, but administrators cannot hold a conversation with it.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
@@ -541,13 +543,13 @@ target's session. The owner also gets an in-app notification.
 the proposal and asset-fact tools inside its own runtime, and an adopted check is created through the normal check path under the
 guardrails above, owned by the agent's owner.
 
-### Budgets, blocks and diagnostics
+### Budgets, blocks and work sessions
 
 An agent that spends its hourly token or wake budget is **blocked** with `token-budget` or `wake-budget` and recovers at the hour
 boundary. A target whose database left the agent's scope is blocked with `out-of-scope`, and a target of a disabled agent with
 `agent-disabled`; both recover on their own once the cause is cleared. Other blocks need the owner. Blocked states appear in the
-attention list; the internal session list and transcripts are in the administrator diagnostics page, where a stuck session can be
-resumed.
+attention list and on the **Work sessions** page. Its transcript is read-only for the owner; an administrator can resume a stuck
+session there, and the resume action is recorded in the audit log.
 
 ### External consumers
 

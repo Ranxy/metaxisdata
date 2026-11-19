@@ -430,3 +430,32 @@ func TestRunLoopAcceptsANonStreamingProvider(t *testing.T) {
 	require.Equal(t, "plain answer", content)
 	require.True(t, ended)
 }
+
+func TestRunLoopCapturesReasoningOnTheAssistantEvent(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"checking the table \"}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"before answering\"}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"It has 3 rows.\"}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n")
+	}))
+	t.Cleanup(server.Close)
+
+	events := collectEvents(t, RunLoop(context.Background(), Config{
+		Provider: llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		MaxTurns: 1,
+	}))
+
+	var assistant *Message
+	for _, evt := range events {
+		if evt.Type == EventAssistant {
+			assistant = evt.Assistant
+		}
+	}
+	require.NotNil(t, assistant)
+	require.Equal(t, "checking the table before answering", assistant.Reasoning)
+	require.Equal(t, "It has 3 rows.", assistant.Content)
+}

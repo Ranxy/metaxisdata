@@ -153,7 +153,8 @@ func TestMigrateSchemaSerializesConcurrentReplicas(t *testing.T) {
 func catalogSnapshot(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 	rows, err := db.QueryContext(context.Background(), `
-		SELECT table_name || '.' || column_name || ':' || data_type || ':' || is_nullable
+		SELECT table_name || '.' || column_name || ':' || data_type || ':' || is_nullable ||
+			':' || COALESCE(column_default, '')
 		FROM information_schema.columns
 		WHERE table_schema = current_schema()
 		UNION ALL

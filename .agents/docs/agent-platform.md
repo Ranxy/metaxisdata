@@ -1,6 +1,6 @@
 # Built-in agents: runtime, tool catalog, product presets — Reference
 
-> Cross-cutting map for the built-in AI agent stack: `backend/component/agent/`, `component/agent/tool/`, `component/agent/transcript/`, `component/tools/{metadata,lineage,quality}/`, `backend/mcp/`, `component/dataquality/agentrunner/` and `api/v1/explain_sql_*.go`. Product behavior of the quality agents (identity, sessions, enrollment, diagnostics, invariants) belongs to [data-quality.md](data-quality.md); the MCP wire contract belongs to [mcp-server.md](mcp-server.md). Also related: [iam-and-permissions.md](iam-and-permissions.md), [rate-limiting.md](rate-limiting.md), [metrics.md](metrics.md).
+> Cross-cutting map for the built-in AI agent stack: `backend/component/agent/`, `component/agent/tool/`, `component/agent/transcript/`, `component/tools/{metadata,lineage,quality}/`, `backend/mcp/`, `component/dataquality/agentrunner/` and `api/v1/explain_sql_*.go`. Product behavior of the quality agents (identity, sessions, enrollment, work-session reads, invariants) belongs to [data-quality.md](data-quality.md); the MCP wire contract belongs to [mcp-server.md](mcp-server.md). Also related: [iam-and-permissions.md](iam-and-permissions.md), [rate-limiting.md](rate-limiting.md), [metrics.md](metrics.md).
 
 ## What it is
 
@@ -40,7 +40,7 @@ Execution order (`Set.Execute`): registry lookup → identity → IAM when `Auth
 
 ## Sessions and transcripts
 
-`component/agent/transcript/` is storage-agnostic: `Entry`/`Role`, `BuildConversation` (system + checkpoint + non-ENGINE messages), `RepairToolCalls`, `EstimateTokens`, `PruneToolResults`, `RetainedCut`/`BalancedCut` and `PlanCompaction`. The mapping between the DQ `storepb.QualityAgentTranscriptMessage` and `Entry` lives only in `agentrunner/session_port.go`; the core imports neither `storepb` nor the store. The compaction summary call, checkpoint prompts, persistence and the `summary_through_seq` watermark stay in the product layer. The table is not generalized; a second product needing long sessions is the trigger to decide.
+`component/agent/transcript/` is storage-agnostic: `Entry`/`Role`, `BuildConversation` (system + checkpoint + non-ENGINE messages), `RepairToolCalls`, `EstimateTokens`, `PruneToolResults`, `RetainedCut`/`BalancedCut` and `PlanCompaction`. The mapping between the DQ `storepb.QualityAgentTranscriptMessage` and `Entry` lives only in `agentrunner/session_port.go`; the core imports neither `storepb` nor the store. The compaction summary call, checkpoint prompts, persistence and the `summary_through_seq` watermark stay in the product layer. Model reasoning is display-only: it is carried on the completed assistant message, persisted on the transcript row when the provider returns it, and deliberately kept out of `Entry` and the provider request. The table is not generalized; a second product needing long sessions is the trigger to decide.
 
 ## Decisions and known limits
 

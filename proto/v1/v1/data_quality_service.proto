@@ -757,15 +757,22 @@ service DataQualityService {
 
   // ---- Quality agent sessions ----
 
-  // List the workspace's sessions by newest activity first.
-  rpc ListQualityAgentSessions(ListQualityAgentSessionsRequest) returns (ListQualityAgentSessionsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentSessions"};
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+  // Read one session's durable state. The owner and administrators may read; the
+  // list and detail of a session are product reads, so they are not audited.
+  rpc GetQualityAgentSession(GetQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
-  // Resume a stuck session. Administrator-only recovery, used from diagnostics after
-  // a restart-limit/internal-error block; it is not a product action.
+  // List the workspace's sessions by newest activity first. An administrator sees
+  // every session; the owner must filter by an agent they own.
+  rpc ListQualityAgentSessions(ListQualityAgentSessionsRequest) returns (ListQualityAgentSessionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentSessions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Resume a stuck session. Administrator-only recovery, used from the work-session
+  // detail after a restart-limit/internal-error block; it is not a product action.
   rpc ResumeQualityAgentSession(ResumeQualityAgentSessionRequest) returns (QualityAgentSession) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:resume"
@@ -775,11 +782,13 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
-  // Read one session's transcript. after_seq polls for new messages.
+  // Read one session's transcript. after_seq polls for new messages. The owner and
+  // administrators may read; the transcript is product data, so reads are not
+  // audited, while waking a stuck session above remains an audited administrator
+  // action.
   rpc ListQualityAgentSessionMessages(ListQualityAgentSessionMessagesRequest) returns (ListQualityAgentSessionMessagesResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages"};
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 }
 
@@ -4676,6 +4685,14 @@ message QualityAgentSessionMessage {
   // The object an event or wake is about (for example a quality execution resource
   // name); empty for model and runner messages.
   string reference = 15;
+  // Display-only model reasoning for this assistant turn. Empty when the provider
+  // returned none; never sent back to the provider.
+  string reasoning = 16;
+}
+
+message GetQualityAgentSessionRequest {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message ListQualityAgentSessionsRequest {
@@ -4691,7 +4708,8 @@ message ListQualityAgentSessionsRequest {
   reserved "source";
   // UNSPECIFIED keeps both monitor and triage sessions.
   QualityAgentSessionMode mode = 8;
-  // Administrator diagnostics filter: keep only this agent's sessions.
+  // Keep only this agent's sessions. An administrator may omit it to read every
+  // session in the workspace; an owner must set it to an agent they own.
   string agent = 9 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}];
 }
 
@@ -4712,9 +4730,14 @@ message ListQualityAgentSessionMessagesRequest {
   // A page token from a previous response; walks towards older messages. Mutually
   // exclusive with after_seq.
   string page_token = 3;
-  // Return messages with seq greater than this, ascending; the polling watermark. The
-  // two modes are mutually exclusive: combining this with page_token is InvalidArgument.
+  // Return messages with seq greater than this, ascending; the polling watermark.
+  // Mutually exclusive with page_token and before_seq.
   int64 after_seq = 4;
+  // Return the page of messages with seq less than this, newest first (the caller
+  // reverses it). It is how the UI walks older history while a live wake appends
+  // rows; the offset page_token cannot stay anchored under appends.
+  // Mutually exclusive with page_token and after_seq.
+  int64 before_seq = 5;
 }
 
 message ListQualityAgentSessionMessagesResponse {

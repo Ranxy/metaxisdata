@@ -235,9 +235,10 @@ func TestRedactAuditResponseKeepsProseOutOfTheLedger(t *testing.T) {
 	t.Parallel()
 
 	message := &v1pb.QualityAgentSessionMessage{
-		Name:    "workspaces/ws/qualityAgentSessions/s/messages/1",
-		Seq:     1,
-		Content: "customer secret pasted into the chat",
+		Name:      "workspaces/ws/qualityAgentSessions/s/messages/1",
+		Seq:       1,
+		Content:   "customer secret pasted into the chat",
+		Reasoning: "the model's private reasoning",
 		ToolCalls: []*v1pb.QualityToolCall{
 			{Id: "call-1", Name: "get_scope_summary", Arguments: `{"secret":"x"}`},
 		},
@@ -245,6 +246,7 @@ func TestRedactAuditResponseKeepsProseOutOfTheLedger(t *testing.T) {
 	redacted, ok := redactAuditResponse(message).(*v1pb.QualityAgentSessionMessage)
 	require.True(t, ok)
 	require.Empty(t, redacted.GetContent())
+	require.Empty(t, redacted.GetReasoning())
 	require.Empty(t, redacted.GetToolCalls())
 	require.Equal(t, "customer secret pasted into the chat", message.GetContent(), "the response returned to the client is not mutated")
 
@@ -254,6 +256,7 @@ func TestRedactAuditResponseKeepsProseOutOfTheLedger(t *testing.T) {
 	redactedList, ok := redactAuditResponse(list).(*v1pb.ListQualityAgentSessionMessagesResponse)
 	require.True(t, ok)
 	require.Empty(t, redactedList.GetQualityAgentSessionMessages()[0].GetContent())
+	require.Empty(t, redactedList.GetQualityAgentSessionMessages()[0].GetReasoning())
 
 	attention := &v1pb.QualityAgentAttention{Title: "owner-only title", Question: "owner-only question"}
 	redactedAttention, ok := redactAuditResponse(attention).(*v1pb.QualityAgentAttention)

@@ -293,8 +293,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         // The agents the caller may see: administrators see every agent, an owner
-        // sees the ones they own. The per-target sessions are internal and have no
-        // product page.
+        // sees the ones they own.
         path: "agents",
         name: "QualityAgents",
         component: () => import("@/pages/data-quality/QualityAgentsPage.vue"),
@@ -315,18 +314,37 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        // Hidden administrator diagnostics: the raw work threads and their
-        // transcripts for one agent, plus the audited resume action. No product
-        // navigation points here except the admin-only link on the agent home.
-        path: "agents/:workspace/:agentId/diagnostics",
-        name: "QualityAgentDiagnostics",
+        // The agent's per-target work sessions. The owner and administrators may
+        // read; the raw transcript rows stay on the detail route.
+        path: "agents/:workspace/:agentId/sessions",
+        name: "QualityAgentSessions",
         component: () =>
-          import("@/pages/data-quality/QualityAgentDiagnosticsPage.vue"),
+          import("@/pages/data-quality/QualityAgentSessionsPage.vue"),
         meta: {
           requiresAuth: true,
           layout: "default",
-          permission: "metaxisdata.dataQuality.agents.manage",
+          permission: "metaxisdata.dataQuality.agents.get",
         },
+      },
+      {
+        path: "agents/:workspace/:agentId/sessions/:sessionId",
+        name: "QualityAgentSession",
+        component: () =>
+          import("@/pages/data-quality/QualityAgentSessionPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.agents.get",
+        },
+      },
+      {
+        // The old administrator diagnostics page became the product work-session
+        // surface; keep the URL working for bookmarks and old notifications.
+        path: "agents/:workspace/:agentId/diagnostics",
+        redirect: (to) => ({
+          name: "QualityAgentSessions",
+          params: to.params,
+        }),
       },
       {
         // Every check across targets, for audit and search. It is a directory,
