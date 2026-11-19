@@ -114,3 +114,102 @@ func TestProfileID(t *testing.T) {
 	// stays part of the id.
 	require.Equal(t, "other/local", ProfileID("other/local"))
 }
+
+// modelTestConfigs mirrors a profile that enables two models at different prices.
+func modelTestConfigs() []ResolvedConfig {
+	return []ResolvedConfig{
+		{ProfileName: "llm-provider-profiles/main", ModelName: "fast"},
+		{ProfileName: "llm-provider-profiles/main", ModelName: "reasoner"},
+		{ProfileName: "llm-provider-profiles/other", ModelName: "reasoner"},
+	}
+}
+
+func TestFindModelConfig(t *testing.T) {
+	t.Parallel()
+
+	configs := modelTestConfigs()
+
+	found := FindModelConfig(configs, "llm-provider-profiles/main", "reasoner")
+	require.NotNil(t, found)
+	require.Equal(t, "reasoner", found.ModelName)
+	require.Equal(t, "llm-provider-profiles/main", found.ProfileName)
+
+	// A bare profile id resolves; the model stays exact.
+	found = FindModelConfig(configs, "main", "fast")
+	require.NotNil(t, found)
+	require.Equal(t, "fast", found.ModelName)
+
+	// The same model on another profile is a different config.
+	found = FindModelConfig(configs, "other", "reasoner")
+	require.NotNil(t, found)
+	require.Equal(t, "llm-provider-profiles/other", found.ProfileName)
+
+	require.Nil(t, FindModelConfig(configs, "main", "reasoner-pro"))
+	require.Nil(t, FindModelConfig(configs, "main", ""))
+	require.Nil(t, FindModelConfig(configs, "", "fast"))
+	require.Nil(t, FindModelConfig(nil, "main", "fast"))
+}
+
+func TestResolveModelConfig(t *testing.T) {
+	t.Parallel()
+
+	configs := modelTestConfigs()
+
+	resolved, err := ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "reasoner")
+	require.NoError(t, err)
+	require.Equal(t, "reasoner", resolved.ModelName)
+
+	// Both halves are required: there is no "first enabled model" default.
+	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	resolved, err = ResolveModelConfig(configs, nil, "", "reasoner")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// The profile exists but does not enable that model.
+	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/other", "fast")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	// The pair exists but the workspace allowlist rejects the profile.
+	resolved, err = ResolveModelConfig(configs, []string{"llm-provider-profiles/other"}, "llm-provider-profiles/main", "fast")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// A model name is exact, not a prefix.
+	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "fast-mini")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+}
+
+func TestNormalizeProfileName(t *testing.T) {
+	t.Parallel()
+
+	name, err := NormalizeProfileName("llm-provider-profiles/main")
+	require.NoError(t, err)
+	require.Equal(t, "llm-provider-profiles/main", name)
+
+	// A bare id is accepted and canonicalized, because older settings may hold one.
+	name, err = NormalizeProfileName(" main ")
+	require.NoError(t, err)
+	require.Equal(t, "llm-provider-profiles/main", name)
+
+	_, err = NormalizeProfileName("")
+	require.Error(t, err)
+
+	_, err = NormalizeProfileName("   ")
+	require.Error(t, err)
+
+	_, err = NormalizeProfileName("other/main")
+	require.Error(t, err)
+
+	_, err = NormalizeProfileName("llm-provider-profiles/")
+	require.Error(t, err)
+}

@@ -31,6 +31,37 @@ func ProfileID(profile string) string {
 	return trimmed
 }
 
+// NormalizeProfileName returns the canonical resource-name form of a profile
+// reference. A bare id is accepted because an older workspace setting may hold
+// one; an empty or malformed value is an error rather than a silent pass.
+func NormalizeProfileName(profile string) (string, error) {
+	id := ProfileID(profile)
+	if id == "" {
+		return "", errors.New("an LLM provider profile is required")
+	}
+	if strings.Contains(id, "/") {
+		return "", errors.Errorf("LLM profile %q is not a profile resource name", profile)
+	}
+	return profileNamePrefix + id, nil
+}
+
+// FindModelConfig returns the enabled config for an exact profile and model pair,
+// or nil. The model is compared exactly: a profile can enable several models at
+// different prices, so the model is never inferred.
+func FindModelConfig(configs []ResolvedConfig, profile, model string) *ResolvedConfig {
+	wantedID := ProfileID(profile)
+	model = strings.TrimSpace(model)
+	if wantedID == "" || model == "" {
+		return nil
+	}
+	for i := range configs {
+		if ProfileID(configs[i].ProfileName) == wantedID && configs[i].ModelName == model {
+			return &configs[i]
+		}
+	}
+	return nil
+}
+
 // FindConfig returns the enabled config the profile reference names, or nil. The
 // reference is a v1 resource name while the config may hold either form, so the
 // comparison normalizes both sides.
@@ -102,4 +133,25 @@ func ResolveConfig(configs []ResolvedConfig, allowed []string, requested string)
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profiles are allowed"))
 	}
 	return &allowedConfigs[0], nil
+}
+
+// ResolveModelConfig picks one exact profile and model pair. Unlike ResolveConfig
+// there is no default: a missing half is InvalidArgument, a profile outside the
+// allowlist is InvalidArgument, and a profile that does not currently enable the
+// model is NotFound. The caller decides what "no model" means.
+func ResolveModelConfig(configs []ResolvedConfig, allowed []string, profile, model string) (*ResolvedConfig, error) {
+	if strings.TrimSpace(profile) == "" || strings.TrimSpace(model) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("an LLM provider profile and a model are required"))
+	}
+	if !ProfileAllowed(profile, allowed) {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.Errorf("LLM profile %q is not allowed by the workspace settings", profile))
+	}
+	config := FindModelConfig(configs, profile, model)
+	if config == nil {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("LLM profile %q does not enable model %q", profile, model))
+	}
+	return config, nil
 }
