@@ -43,7 +43,11 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 
 // scopeSummary renders the agent's queue health as bounded text.
 func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
-	language, err := e.sessionLanguage(ctx, session)
+	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the session agent language")
+	}
+	language, err := e.sessionLanguage(ctx, agent)
 	if err != nil {
 		return "", err
 	}

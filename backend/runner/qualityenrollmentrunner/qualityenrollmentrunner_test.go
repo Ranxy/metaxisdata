@@ -47,9 +47,16 @@ func TestAdmissionSkipsTriageWithoutAModel(t *testing.T) {
 		Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
 	}}
 	runner := testRunner(fake)
-	runner.llmConfigured = func(context.Context) bool { return false }
+	var checked *store.QualityAgentMessage
+	runner.llmConfigured = func(_ context.Context, agent *store.QualityAgentMessage) bool {
+		checked = agent
+		return false
+	}
 
 	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+
+	require.NotNil(t, checked, "admission asks about the agent it is admitting for")
+	require.Equal(t, int64(7), checked.ID)
 
 	require.Empty(t, fake.created)
 	require.Equal(t, []string{"enr-1"}, fake.blockedReasons)
@@ -70,7 +77,7 @@ func TestAdmissionCreatesAutomaticSession(t *testing.T) {
 	}}
 	fake.sessionsByTarget = map[string]*store.QualityAgentSessionMessage{"i;d;public;t": nil}
 	runner := testRunner(fake)
-	runner.llmConfigured = func(context.Context) bool { return true }
+	runner.llmConfigured = func(context.Context, *store.QualityAgentMessage) bool { return true }
 
 	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
@@ -289,7 +296,7 @@ func testRunner(stores Store) *Runner {
 		loadSettings: func(context.Context) (dataquality.Settings, error) {
 			return testSettings(), nil
 		},
-		llmConfigured: func(context.Context) bool { return true },
+		llmConfigured: func(context.Context, *store.QualityAgentMessage) bool { return true },
 		now:           func() time.Time { return time.Unix(10_000, 0).UTC() },
 		tick:          time.Second,
 		scanInterval:  time.Hour,

@@ -227,7 +227,7 @@ func scriptedChat(turns []scriptedTurn) Chat {
 	}
 }
 
-func resolveToModel(context.Context) (llm.ResolvedConfig, bool, error) {
+func resolveToModel(context.Context, *store.QualityAgentMessage) (llm.ResolvedConfig, bool, error) {
 	return llm.ResolvedConfig{ModelName: "test-model"}, true, nil
 }
 
@@ -820,4 +820,52 @@ func TestWakePassesTheWakeStartToAdoption(t *testing.T) {
 	_, err := engine.Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.Equal(t, fixed, got, "the hook sees the wake start")
+}
+
+// The model resolver decides per agent, so a wake must hand it the session's own
+// agent, not a workspace-wide default.
+func TestWakeResolvesTheSessionsAgentProvider(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.agent = &store.QualityAgentMessage{
+		ID:              1,
+		State:           store.QualityAgentStateActive,
+		ProviderProfile: "llm-provider-profiles/main",
+		ProviderModel:   "reasoner",
+	}
+	var seen *store.QualityAgentMessage
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "nothing to do"}}),
+		func(_ context.Context, agent *store.QualityAgentMessage) (llm.ResolvedConfig, bool, error) {
+			seen = agent
+			return llm.ResolvedConfig{ModelName: "reasoner"}, true, nil
+		}, nil)
+
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.NotNil(t, seen)
+	require.Equal(t, "llm-provider-profiles/main", seen.ProviderProfile)
+	require.Equal(t, "reasoner", seen.ProviderModel)
+}
+
+// A session whose agent row disappeared still resolves; the resolver reports "no
+// model" and the deterministic survey keeps the front office usable.
+func TestWakePassesAMissingAgentToTheResolver(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.agent = nil
+	called := false
+	engine := NewModelEngine(stores, scriptedChat(nil),
+		func(_ context.Context, agent *store.QualityAgentMessage) (llm.ResolvedConfig, bool, error) {
+			called = true
+			require.Nil(t, agent)
+			return llm.ResolvedConfig{}, false, nil
+		}, nil)
+
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.False(t, outcome.Blocked)
+	require.Contains(t, outcome.Summary, "surveyed")
 }
