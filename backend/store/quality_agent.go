@@ -58,6 +58,11 @@ type QualityAgentMessage struct {
 	Description string
 	// Language is the BCP-47 tag for owner-visible prose. Empty follows the owner.
 	Language string
+	// ProviderProfile is the LLM provider profile resource name the agent runs on,
+	// and ProviderModel is the model that profile must enable. Both are set
+	// together; empty means not configured.
+	ProviderProfile string
+	ProviderModel   string
 
 	State QualityAgentState
 	// OwnerPrincipalID is the only human allowed to talk to the agent. Nil means
@@ -91,12 +96,12 @@ type QualityAgentMessage struct {
 }
 
 const qualityAgentColumns = `id, resource_id, principal_id, display_name, description, language,
-	state, owner_principal_id, capabilities, report_frequency, report_time,
-	report_timezone, report_weekday, adoption_mode, adoption_rule_types,
-	adoption_confidence_threshold, adoption_allow_critical, adoption_max_per_day,
-	conversation_messages_per_hour, tokens_per_hour, wakes_per_hour,
-	max_concurrent_sessions, max_new_sessions_per_hour, max_active_sessions,
-	created_by, created_at, updated_at`
+	provider_profile, provider_model, state, owner_principal_id, capabilities,
+	report_frequency, report_time, report_timezone, report_weekday, adoption_mode,
+	adoption_rule_types, adoption_confidence_threshold, adoption_allow_critical,
+	adoption_max_per_day, conversation_messages_per_hour, tokens_per_hour,
+	wakes_per_hour, max_concurrent_sessions, max_new_sessions_per_hour,
+	max_active_sessions, created_by, created_at, updated_at`
 
 // CreateQualityAgent creates the agent principal, its row with the default
 // runtime configuration and its workspace role binding. The principal is a
@@ -293,6 +298,8 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 			max_new_sessions_per_hour = $17,
 			max_active_sessions = $18,
 			language = $19,
+			provider_profile = $20,
+			provider_model = $21,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING `+qualityAgentColumns,
@@ -302,7 +309,8 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		message.AdoptionConfidenceThreshold, message.AdoptionAllowCritical,
 		message.AdoptionMaxPerDay, message.ConversationMessagesPerHour,
 		message.TokensPerHour, message.WakesPerHour, message.MaxConcurrentSessions,
-		message.MaxNewSessionsPerHour, message.MaxActiveSessions, message.Language))
+		message.MaxNewSessionsPerHour, message.MaxActiveSessions, message.Language,
+		message.ProviderProfile, message.ProviderModel))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, common.Errorf(common.NotFound, "quality agent %d not found", message.ID)
@@ -464,7 +472,8 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.PrincipalID, &message.DisplayName,
-		&message.Description, &message.Language, &state, &ownerPrincipalID, &capabilities,
+		&message.Description, &message.Language, &message.ProviderProfile,
+		&message.ProviderModel, &state, &ownerPrincipalID, &capabilities,
 		&reportFrequency, &message.ReportTime, &message.ReportTimezone,
 		&message.ReportWeekday, &adoptionMode, &ruleTypes,
 		&message.AdoptionConfidenceThreshold, &message.AdoptionAllowCritical,
