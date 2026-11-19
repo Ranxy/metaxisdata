@@ -306,6 +306,12 @@
             {{ t("qualityAgents.providerUnavailableHint") }}
           </p>
           <p
+            v-else-if="!form.providerProfile || !form.providerModel"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("qualityAgents.providerRequiredHint") }}
+          </p>
+          <p
             v-if="dataQuality.enableLlmAnalysis === false"
             class="text-xs text-muted-foreground"
           >

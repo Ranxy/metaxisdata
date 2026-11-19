@@ -3475,6 +3475,7 @@
     "providerProfile": "LLM provider",
     "providerProfileHint": "The provider profile this agent's model calls use. The profile must currently enable the chosen model.",
     "providerProfilePlaceholder": "Select a provider",
+    "providerRequiredHint": "Choose a provider profile and a model. An agent cannot be created or saved without both.",
     "providerUnavailable": "unavailable",
     "providerUnavailableHint": "The saved provider or model is no longer available. Choose an enabled provider and model before saving.",
     "reportDaily": "Daily",

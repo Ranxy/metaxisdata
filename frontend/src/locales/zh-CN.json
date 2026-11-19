@@ -3475,6 +3475,7 @@
     "providerProfile": "LLM 提供商配置",
     "providerProfileHint": "该 Agent 调用模型时使用的提供商配置；所选配置必须启用对应模型。",
     "providerProfilePlaceholder": "选择提供商配置",
+    "providerRequiredHint": "请选择提供商配置与模型；缺少任一项都无法创建或保存 Agent。",
     "providerUnavailable": "不可用",
     "providerUnavailableHint": "已保存的提供商配置或模型已不可用。请在保存前重新选择可用的提供商配置与模型。",
     "reportDaily": "每日",
