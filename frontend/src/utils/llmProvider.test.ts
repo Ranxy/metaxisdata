@@ -3,7 +3,7 @@ import {
   buildProviderOptions,
   enabledModelsFor,
   isProviderAllowed,
-  providerLabel,
+  profileTitle,
 } from "./llmProvider";
 
 describe("isProviderAllowed", () => {
@@ -106,12 +106,26 @@ describe("enabledModelsFor", () => {
   });
 });
 
-describe("providerLabel", () => {
-  it("uses the profile title and falls back to the reference", () => {
-    const options = [{ name: "llm-provider-profiles/main", title: "Main" }];
-    expect(providerLabel("llm-provider-profiles/main", options)).toBe("Main");
-    expect(providerLabel("llm-provider-profiles/gone", options)).toBe(
+describe("profileTitle", () => {
+  it("uses the profile title, including for a profile the options exclude", () => {
+    const profiles = [
+      { name: "llm-provider-profiles/main", title: "Main" },
+      { name: "llm-provider-profiles/gone", title: "Gone but titled" },
+    ];
+    expect(profileTitle("llm-provider-profiles/main", profiles)).toBe("Main");
+    expect(profileTitle("llm-provider-profiles/gone", profiles)).toBe(
+      "Gone but titled"
+    );
+  });
+
+  it("falls back to the reference when there is no title", () => {
+    expect(profileTitle("llm-provider-profiles/gone", [])).toBe(
       "llm-provider-profiles/gone"
     );
+    expect(
+      profileTitle("llm-provider-profiles/untitled", [
+        { name: "llm-provider-profiles/untitled", title: "" },
+      ])
+    ).toBe("llm-provider-profiles/untitled");
   });
 });

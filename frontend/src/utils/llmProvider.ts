@@ -57,10 +57,15 @@ export function enabledModelsFor(
     .map((model) => model.name);
 }
 
-/** The display label of a stored profile reference, falling back to the reference. */
-export function providerLabel(
+/**
+ * The display label of a stored profile reference, falling back to the reference. It
+ * reads the raw profile list on purpose: a stored profile that is no longer allowed or
+ * enabled still has a title worth showing next to its unavailable marker.
+ */
+export function profileTitle(
   name: string,
-  options: readonly ProviderOption[]
+  profiles: readonly { name: string; title: string }[]
 ): string {
-  return options.find((option) => option.name === name)?.title ?? name;
+  const profile = profiles.find((candidate) => candidate.name === name);
+  return profile?.title || name;
 }

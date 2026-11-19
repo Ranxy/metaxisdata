@@ -60,39 +60,41 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn() },
 }));
 
-const allowedProfile = "llm-provider-profiles/main";
+const mainProfile = "llm-provider-profiles/main";
+const secondaryProfile = "llm-provider-profiles/secondary";
+const singleProfile = "llm-provider-profiles/single";
+
+function providerProfile(
+  name: string,
+  title: string,
+  models: Array<{ name: string; enabled: boolean }>
+): LlmProviderProfile {
+  return {
+    name,
+    title,
+    models,
+    $typeName: "metaxisdata.v1.LlmProviderProfile",
+  } as LlmProviderProfile;
+}
 
 function providerProfiles(): LlmProviderProfile[] {
   return [
-    {
-      name: allowedProfile,
-      title: "Main",
-      type: 1,
-      baseUrl: "",
-      apiKey: "",
-      models: [
-        { name: "fast", enabled: true },
-        { name: "reasoner", enabled: true },
-        { name: "retired", enabled: false },
-      ],
-      createTime: undefined,
-      updateTime: undefined,
-      maskedApiKey: "",
-      maxOutputTokens: 0,
-      $typeName: "metaxisdata.v1.LlmProviderProfile",
-    } as LlmProviderProfile,
-    {
-      name: "llm-provider-profiles/other",
-      title: "Other",
-      models: [{ name: "other-model", enabled: true }],
-      $typeName: "metaxisdata.v1.LlmProviderProfile",
-    } as LlmProviderProfile,
-    {
-      name: "llm-provider-profiles/disabled",
-      title: "Disabled",
-      models: [{ name: "idle", enabled: false }],
-      $typeName: "metaxisdata.v1.LlmProviderProfile",
-    } as LlmProviderProfile,
+    providerProfile(mainProfile, "Main", [
+      { name: "fast", enabled: true },
+      { name: "reasoner", enabled: true },
+      { name: "retired", enabled: false },
+    ]),
+    providerProfile(secondaryProfile, "Secondary", [
+      { name: "fast", enabled: true },
+      { name: "other", enabled: true },
+    ]),
+    providerProfile(singleProfile, "Single", [{ name: "only", enabled: true }]),
+    providerProfile("llm-provider-profiles/excluded", "Excluded", [
+      { name: "x", enabled: true },
+    ]),
+    providerProfile("llm-provider-profiles/disabled", "Disabled", [
+      { name: "idle", enabled: false },
+    ]),
   ];
 }
 
@@ -108,6 +110,7 @@ interface PageVm {
   modelOptions: string[];
   providerUnavailable: boolean;
   modelUnavailable: boolean;
+  profilesError: boolean;
   canCreate: boolean;
   setProviderProfile: (value: unknown) => void;
 }
@@ -174,6 +177,17 @@ async function openCreate(wrapper: ReturnType<typeof mount>) {
   await flushPromises();
 }
 
+async function openEdit(wrapper: ReturnType<typeof mount>) {
+  const button = wrapper
+    .findAll("button")
+    .find(
+      (candidate) =>
+        candidate.text().trim() === i18n.global.t("qualityAgents.edit")
+    );
+  await button?.trigger("click");
+  await flushPromises();
+}
+
 describe("QualityAgentsSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -188,7 +202,11 @@ describe("QualityAgentsSettingsPage", () => {
     mocks.listProfiles.mockResolvedValue({ profiles: providerProfiles() });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
-        allowedLlmProviderProfiles: [allowedProfile],
+        allowedLlmProviderProfiles: [
+          mainProfile,
+          secondaryProfile,
+          singleProfile,
+        ],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           agentRunnerEnabled: true,
@@ -207,7 +225,9 @@ describe("QualityAgentsSettingsPage", () => {
     await openCreate(wrapper);
 
     expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
-      allowedProfile,
+      mainProfile,
+      secondaryProfile,
+      singleProfile,
     ]);
     // The dialog renders the selected value; the list is filtered by the helper.
     expect(dialogText()).toContain(
@@ -223,7 +243,7 @@ describe("QualityAgentsSettingsPage", () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
 
-    vm(wrapper).setProviderProfile(allowedProfile);
+    vm(wrapper).setProviderProfile(mainProfile);
     await nextTick();
 
     expect(vm(wrapper).modelOptions).toEqual(["fast", "reasoner"]);
@@ -246,12 +266,46 @@ describe("QualityAgentsSettingsPage", () => {
     expect(mocks.createQualityAgent).toHaveBeenCalledTimes(1);
     const request = mocks.createQualityAgent.mock.calls[0]?.[0];
     expect(request.config).toMatchObject({
-      providerProfile: allowedProfile,
+      providerProfile: mainProfile,
       providerModel: "reasoner",
     });
   });
 
-  it("keeps an unavailable stored pair and saves both mask paths", async () => {
+  it("keeps an enabled model, auto-selects a single one and ignores a same-value click", async () => {
+    const wrapper = await mountPage();
+    await openCreate(wrapper);
+    const page = vm(wrapper);
+
+    page.setProviderProfile(mainProfile);
+    await nextTick();
+    page.form.providerModel = "reasoner";
+    await nextTick();
+
+    // Clicking the already-selected provider must not silently move the model.
+    page.setProviderProfile(mainProfile);
+    await nextTick();
+    expect(page.form.providerModel).toBe("reasoner");
+
+    // A profile that does not enable the current model requires a new choice.
+    page.setProviderProfile(secondaryProfile);
+    await nextTick();
+    expect(page.modelOptions).toEqual(["fast", "other"]);
+    expect(page.form.providerModel).toBe("");
+
+    // A profile that also enables the current model keeps it.
+    page.form.providerModel = "fast";
+    await nextTick();
+    page.setProviderProfile(mainProfile);
+    await nextTick();
+    expect(page.form.providerModel).toBe("fast");
+
+    // A profile that enables exactly one model selects it; several require a choice.
+    page.setProviderProfile(singleProfile);
+    await nextTick();
+    expect(page.form.providerModel).toBe("only");
+  });
+
+  it("keeps an unavailable stored pair, marks it and still saves other edits", async () => {
     mocks.listQualityAgents.mockResolvedValue([
       create(QualityAgentSchema, {
         name: "workspaces/ws/qualityAgents/a",
@@ -266,15 +320,12 @@ describe("QualityAgentsSettingsPage", () => {
     ]);
     const wrapper = await mountPage();
 
-    const edit = wrapper
-      .findAll("button")
-      .find(
-        (candidate) =>
-          candidate.text().trim() === i18n.global.t("qualityAgents.edit")
-      );
-    await edit?.trigger("click");
-    await flushPromises();
+    // The list marks the pair and does not invent a title it could not load.
+    expect(wrapper.text()).toContain(
+      "llm-provider-profiles/gone · ghost (unavailable)"
+    );
 
+    await openEdit(wrapper);
     // An edit keeps a stored value it can no longer resolve, marked instead of
     // silently cleared.
     expect(vm(wrapper).form.providerProfile).toBe("llm-provider-profiles/gone");
@@ -284,13 +335,64 @@ describe("QualityAgentsSettingsPage", () => {
       i18n.global.t("qualityAgents.providerUnavailableHint")
     );
 
-    dialogButton(i18n.global.t("qualityAgents.saveAction"))?.click();
+    const save = dialogButton(i18n.global.t("qualityAgents.saveAction"));
+    // The server accepts an update that leaves the stale pair alone, so an unrelated
+    // edit is not a dead end.
+    expect(save?.disabled).toBe(false);
+    save?.click();
     await flushPromises();
 
     expect(mocks.updateQualityAgent).toHaveBeenCalledTimes(1);
-    const paths = mocks.updateQualityAgent.mock.calls[0]?.[1];
+    const [entity, paths] = mocks.updateQualityAgent.mock.calls[0] ?? [];
+    expect(entity.providerProfile).toBe("llm-provider-profiles/gone");
+    expect(entity.providerModel).toBe("ghost");
     expect(paths).toEqual(
       expect.arrayContaining(["provider_profile", "provider_model"])
+    );
+  });
+
+  it("reports an unreadable profile list instead of marking pairs unavailable", async () => {
+    mocks.listProfiles.mockRejectedValue(new Error("permission denied"));
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/a",
+        displayName: "Agent A",
+        owner: "users/1",
+        providerProfile: mainProfile,
+        providerModel: "fast",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.PAUSED,
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    // The title is unknown when the list failed, but the pair is not called unavailable.
+    expect(wrapper.text()).toContain(`${mainProfile} · fast`);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("qualityAgents.providerUnavailable")
+    );
+    await openEdit(wrapper);
+    expect(vm(wrapper).profilesError).toBe(true);
+    expect(dialogText()).toContain(
+      i18n.global.t("qualityAgents.providerProfilesError")
+    );
+  });
+
+  it("shows not-configured for an agent without a pair", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/b",
+        displayName: "Agent B",
+        owner: "users/1",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.DRAFT,
+      }),
+    ]);
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("qualityAgents.providerNotConfigured")
     );
   });
 });

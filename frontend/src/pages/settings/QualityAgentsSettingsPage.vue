@@ -265,7 +265,7 @@
                 </SelectContent>
               </Select>
               <p class="text-xs text-muted-foreground">
-                {{ providerOptions.length === 0 ? t("qualityAgents.providerNoProfiles") : t("qualityAgents.providerProfileHint") }}
+                {{ profilesLoaded && providerOptions.length === 0 ? t("qualityAgents.providerNoProfiles") : t("qualityAgents.providerProfileHint") }}
               </p>
             </div>
             <div class="space-y-1">
@@ -283,7 +283,7 @@
                     v-if="modelUnavailable"
                     :value="form.providerModel"
                   >
-                    {{ form.providerModel }} ({{ t("qualityAgents.providerUnavailable") }})
+                    {{ t("qualityAgents.providerUnavailableOption", { name: form.providerModel }) }}
                   </SelectItem>
                   <SelectItem
                     v-for="model in modelOptions"
@@ -300,7 +300,13 @@
             </div>
           </div>
           <p
-            v-if="providerUnavailable || modelUnavailable"
+            v-if="profilesError"
+            class="text-xs text-warning"
+          >
+            {{ t("qualityAgents.providerProfilesError") }}
+          </p>
+          <p
+            v-else-if="providerUnavailable || modelUnavailable"
             class="text-xs text-warning"
           >
             {{ t("qualityAgents.providerUnavailableHint") }}
@@ -312,7 +318,7 @@
             {{ t("qualityAgents.providerRequiredHint") }}
           </p>
           <p
-            v-if="dataQuality.enableLlmAnalysis === false"
+            v-if="dataQualityLoaded && dataQuality.enableLlmAnalysis === false"
             class="text-xs text-muted-foreground"
           >
             {{ t("qualityAgents.providerAnalysisOff") }}
@@ -651,7 +657,7 @@ import {
   buildProviderOptions,
   enabledModelsFor,
   type ProviderOption,
-  providerLabel,
+  profileTitle,
 } from "@/utils/llmProvider";
 import { qualityAgentRoute } from "@/utils/qualityAgent";
 
@@ -677,6 +683,11 @@ const dataQuality = ref<DataQualitySetting>(
 // enable a model, so the dialog cannot offer a profile the agent could not run on.
 const providerProfiles = ref<LlmProviderProfile[]>([]);
 const providerOptions = ref<ProviderOption[]>([]);
+// "Loaded but empty" and "could not load" mean different things: the first lets the
+// page say no profile is usable, the second must not mislabel every stored pair.
+const profilesLoaded = ref(false);
+const profilesError = ref(false);
+const dataQualityLoaded = ref(false);
 
 interface DatabaseGroup {
   instance: string;
@@ -764,6 +775,7 @@ const modelOptions = computed(() =>
 // silently move the agent to another model.
 const providerUnavailable = computed(
   () =>
+    profilesLoaded.value &&
     form.value.providerProfile !== "" &&
     !providerOptions.value.some(
       (option) => option.name === form.value.providerProfile
@@ -771,10 +783,11 @@ const providerUnavailable = computed(
 );
 const unavailableProviderLabel = computed(
   () =>
-    `${providerLabel(form.value.providerProfile, providerOptions.value)} (${t("qualityAgents.providerUnavailable")})`
+    `${profileTitle(form.value.providerProfile, providerProfiles.value)} (${t("qualityAgents.providerUnavailable")})`
 );
 const modelUnavailable = computed(
   () =>
+    profilesLoaded.value &&
     form.value.providerModel !== "" &&
     !modelOptions.value.includes(form.value.providerModel)
 );
@@ -851,7 +864,10 @@ function agentProviderLabel(agent: QualityAgent): string {
   if (!agent.providerProfile || !agent.providerModel) {
     return t("qualityAgents.providerNotConfigured");
   }
-  const label = `${providerLabel(agent.providerProfile, providerOptions.value)} · ${agent.providerModel}`;
+  const label = `${profileTitle(agent.providerProfile, providerProfiles.value)} · ${agent.providerModel}`;
+  if (!profilesLoaded.value) {
+    return label;
+  }
   const models = enabledModelsFor(
     providerProfiles.value,
     agent.providerProfile
@@ -869,6 +885,11 @@ function agentProviderLabel(agent: QualityAgent): string {
 
 function setProviderProfile(value: unknown) {
   const next = String(value);
+  // The select emits the same value when the selected item is clicked again; re-running
+  // the model adjustment would silently replace a pinned model.
+  if (next === form.value.providerProfile) {
+    return;
+  }
   form.value.providerProfile = next;
   const models = enabledModelsFor(providerProfiles.value, next);
   if (models.includes(form.value.providerModel)) {
@@ -930,6 +951,7 @@ async function load() {
     users.value = userList;
     dataQuality.value =
       setting.dataQuality ?? create(DataQualitySettingSchema, {});
+    dataQualityLoaded.value = true;
     switches.value = {
       runnerEnabled: dataQuality.value.agentRunnerEnabled,
     };
@@ -941,15 +963,28 @@ async function load() {
   }
 }
 
-/** Loads the profiles the dialog may offer. A denied or failed read leaves none. */
+/**
+ * Loads the profiles the dialog may offer. A denied or failed read is remembered, so the
+ * page reports "could not load" instead of claiming every stored pair is unavailable.
+ */
 async function loadProfiles(allowed: string[]) {
   try {
-    const response = await listProfiles({ pageSize: 100 });
-    providerProfiles.value = response.profiles;
-    providerOptions.value = buildProviderOptions(response.profiles, allowed);
+    const profiles = await listAll(async (pageToken) => {
+      const response = await listProfiles({ pageSize: 100, pageToken });
+      return {
+        items: response.profiles,
+        nextPageToken: response.nextPageToken,
+      };
+    });
+    providerProfiles.value = profiles;
+    providerOptions.value = buildProviderOptions(profiles, allowed);
+    profilesLoaded.value = true;
+    profilesError.value = false;
   } catch {
     providerProfiles.value = [];
     providerOptions.value = [];
+    profilesLoaded.value = false;
+    profilesError.value = true;
   }
 }
 
