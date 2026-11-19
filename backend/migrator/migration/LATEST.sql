@@ -1437,7 +1437,7 @@ COMMENT ON TABLE quality_agent IS 'Built-in quality agents: the internal princip
 COMMENT ON COLUMN quality_agent.principal_id IS 'The internal principal the agent acts as (type SERVICE_ACCOUNT); never an API caller';
 COMMENT ON COLUMN quality_agent.state IS 'Stored as QualityAgentState (v1 QualityAgentState); the only lifecycle truth';
 COMMENT ON COLUMN quality_agent.language IS 'BCP-47 language for owner-visible agent prose; empty follows the owner profile';
-COMMENT ON COLUMN quality_agent.provider_profile IS 'LLM provider profile resource name; set with provider_model and validated against the enabled profiles';
+COMMENT ON COLUMN quality_agent.provider_profile IS 'LLM provider profile resource name; set with provider_model and validated against the enabled models of the allowed profiles';
 COMMENT ON COLUMN quality_agent.provider_model IS 'Model the agent runs on; the profile must enable it. Empty means not configured';
 COMMENT ON COLUMN quality_agent.capabilities IS 'JSON array of capability ids; validated against the server capability catalog';
 COMMENT ON COLUMN quality_agent.adoption_rule_types IS 'JSON array of QualityRuleType numbers; empty means the default low-risk set';

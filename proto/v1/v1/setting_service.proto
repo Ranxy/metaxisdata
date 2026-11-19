@@ -162,8 +162,9 @@ message WorkspaceProfileSetting {
 
 // DataQualitySetting configures the data quality subsystem for the workspace.
 message DataQualitySetting {
-  // Whether the LLM-assisted entries (rule draft, failure explanation, column
-  // labels) are enabled. Off by default: the rule engine is fully offline.
+  // Whether the model-backed paths are enabled: the rule drafts, failure
+  // explanations and column labels, and the quality agents' model wakes. Off by
+  // default: the rule engine and the agents' deterministic paths are fully offline.
   bool enable_llm_analysis = 1;
 
   // The LLM provider profile the quality analyses use, as a profile resource

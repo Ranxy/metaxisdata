@@ -4226,7 +4226,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| enable_llm_analysis | [bool](#bool) |  | Whether the LLM-assisted entries (rule draft, failure explanation, column labels) are enabled. Off by default: the rule engine is fully offline. |
+| enable_llm_analysis | [bool](#bool) |  | Whether the model-backed paths are enabled: the rule drafts, failure explanations and column labels, and the quality agents&#39; model wakes. Off by default: the rule engine and the agents&#39; deterministic paths are fully offline. |
 | llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
 | store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
 | failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
@@ -11168,7 +11168,7 @@ usually the SQL naming something the analyzer cannot see.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | masked_api_key | [string](#string) |  |  |
-| max_output_tokens | [int32](#int32) |  | The answer budget one analysis requests from this profile, in output tokens. Zero means the server default (32768); an explicit value must be 256-131072. The provider or model may cap lower: the first request that exceeds it is retried once at 4096 tokens, and a still-rejected request is reported on the failed analysis as PROVIDER_STATUS.
+| max_output_tokens | [int32](#int32) |  | The answer budget one model call requests from this profile, in output tokens. Zero means the server default (32768); an explicit value must be 256-131072. The provider or model may cap lower: the first request that exceeds it is retried once at 4096 tokens, and a still-rejected request is reported on the failed call as PROVIDER_STATUS. It applies to the data quality analyses and to the quality agents that pin this profile.
 
 An update with an empty field mask writes this field only when it is non-zero (proto3 cannot distinguish an omitted int32 from an explicit zero); send an explicit `max_output_tokens` mask to reset it to the server default. |
 

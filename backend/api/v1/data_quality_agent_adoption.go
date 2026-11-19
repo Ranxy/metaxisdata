@@ -64,11 +64,10 @@ func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *c
 		!containsCapability(agent.Capabilities, agentcapability.Adopt) {
 		return nil, connectErrorInvalid("automatic adoption requires the %q capability", agentcapability.Adopt)
 	}
-	agent.AdoptionMode = mode
 	if mode == store.QualityAgentAdoptionModeOff || mode == store.QualityAgentAdoptionModeUnspecified {
-		agent.AdoptionMode = store.QualityAgentAdoptionModeOff
+		mode = store.QualityAgentAdoptionModeOff
 	}
-	updated, err := s.store.UpdateQualityAgentConfig(ctx, agent)
+	updated, err := s.store.UpdateQualityAgentAdoption(ctx, agent.ID, mode)
 	if err != nil {
 		return nil, err
 	}

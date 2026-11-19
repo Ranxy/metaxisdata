@@ -351,8 +351,9 @@ func (x *WorkspaceProfileSetting) GetDataQuality() *DataQualitySetting {
 // DataQualitySetting configures the data quality subsystem for the workspace.
 type DataQualitySetting struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Whether the LLM-assisted entries (rule draft, failure explanation, column
-	// labels) are enabled. Off by default: the rule engine is fully offline.
+	// Whether the model-backed paths are enabled: the rule drafts, failure
+	// explanations and column labels, and the quality agents' model wakes. Off by
+	// default: the rule engine and the agents' deterministic paths are fully offline.
 	EnableLlmAnalysis bool `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
 	// The LLM provider profile the quality analyses use, as a profile resource
 	// name. Empty means the first allowed profile.

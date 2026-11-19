@@ -152,6 +152,10 @@ func ResolveModelConfig(configs []ResolvedConfig, allowed []string, profile, mod
 	}
 	config := FindModelConfig(configs, profile, model)
 	if config == nil {
+		if FindConfig(configs, profile) == nil {
+			return nil, connect.NewError(connect.CodeNotFound,
+				errors.Errorf("LLM profile %q was not found or enables no model", profile))
+		}
 		return nil, connect.NewError(connect.CodeNotFound,
 			errors.Errorf("LLM profile %q does not enable model %q", profile, model))
 	}

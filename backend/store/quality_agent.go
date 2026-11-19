@@ -270,6 +270,11 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 	if message == nil || message.ID <= 0 {
 		return nil, common.Errorf(common.Invalid, "an agent config needs an agent id")
 	}
+	// The API requires the pair, but the store is the last line of defense for a future
+	// caller: a profile without a model (or the reverse) could never resolve.
+	if (message.ProviderProfile == "") != (message.ProviderModel == "") {
+		return nil, common.Errorf(common.Invalid, "an agent needs both a provider profile and a model")
+	}
 	capabilities, err := marshalStrings(message.Capabilities)
 	if err != nil {
 		return nil, err
@@ -316,6 +321,22 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 			return nil, common.Errorf(common.NotFound, "quality agent %d not found", message.ID)
 		}
 		return nil, errors.Wrap(err, "failed to update the quality agent config")
+	}
+	return updated, nil
+}
+
+// UpdateQualityAgentAdoption writes only the guardrail mode. Writing the whole config
+// row from the adoption RPC would let a toggle revert a concurrent provider change.
+func (s *Store) UpdateQualityAgentAdoption(ctx context.Context, agentID int64, mode QualityAgentAdoptionMode) (*QualityAgentMessage, error) {
+	updated, err := scanQualityAgent(s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_agent SET adoption_mode = $2, updated_at = NOW()
+		WHERE id = $1
+		RETURNING `+qualityAgentColumns, agentID, int16(mode)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.NotFound, "quality agent %d not found", agentID)
+		}
+		return nil, errors.Wrap(err, "failed to update the quality agent adoption")
 	}
 	return updated, nil
 }

@@ -22024,7 +22024,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\blanguage\x18\x11 \x01(\tR\blanguage\x12S\n" +
 	"\x0fadoption_status\x18\x12 \x01(\v2*.metaxisdata.v1.QualityAgentAdoptionStatusR\x0eadoptionStatus\x12)\n" +
 	"\x10provider_profile\x18\x13 \x01(\tR\x0fproviderProfile\x12%\n" +
-	"\x0eprovider_model\x18\x14 \x01(\tR\rproviderModelJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabled\"\xbd\x04\n" +
+	"\x0eprovider_model\x18\x14 \x01(\tR\rproviderModelJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabled\"\xc7\x04\n" +
 	"\x19CreateQualityAgentRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12 \n" +
@@ -22037,9 +22037,9 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x06budget\x18\t \x01(\v2\".metaxisdata.v1.QualityAgentBudgetR\x06budget\x12\x14\n" +
 	"\x05start\x18\n" +
 	" \x01(\bR\x05start\x12\x1a\n" +
-	"\blanguage\x18\v \x01(\tR\blanguage\x12)\n" +
-	"\x10provider_profile\x18\f \x01(\tR\x0fproviderProfile\x12%\n" +
-	"\x0eprovider_model\x18\r \x01(\tR\rproviderModel\"N\n" +
+	"\blanguage\x18\v \x01(\tR\blanguage\x12.\n" +
+	"\x10provider_profile\x18\f \x01(\tB\x03\xe0A\x02R\x0fproviderProfile\x12*\n" +
+	"\x0eprovider_model\x18\r \x01(\tB\x03\xe0A\x02R\rproviderModel\"N\n" +
 	"\x16GetQualityAgentRequest\x124\n" +
 	"\x04name\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +
 	"\x18metaxisdata/QualityAgentR\x04name\"\x9d\x01\n" +

@@ -211,11 +211,12 @@ type LlmProviderProfile struct {
 	CreateTime   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	UpdateTime   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	MaskedApiKey string                 `protobuf:"bytes,9,opt,name=masked_api_key,json=maskedApiKey,proto3" json:"masked_api_key,omitempty"`
-	// The answer budget one analysis requests from this profile, in output tokens.
+	// The answer budget one model call requests from this profile, in output tokens.
 	// Zero means the server default (32768); an explicit value must be 256-131072.
 	// The provider or model may cap lower: the first request that exceeds it is
 	// retried once at 4096 tokens, and a still-rejected request is reported on the
-	// failed analysis as PROVIDER_STATUS.
+	// failed call as PROVIDER_STATUS. It applies to the data quality analyses and to
+	// the quality agents that pin this profile.
 	//
 	// An update with an empty field mask writes this field only when it is non-zero
 	// (proto3 cannot distinguish an omitted int32 from an explicit zero); send an

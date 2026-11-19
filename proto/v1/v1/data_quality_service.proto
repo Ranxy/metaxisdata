@@ -3834,8 +3834,8 @@ message QualityAgent {
   repeated string databases = 9;
   // Capability ids: "suggest", "adopt", "patrol"; extensible server-side.
   repeated string capabilities = 10;
-  // Field 11 was the pre-release provider choice; the number stays reserved and
-  // is never reused.
+  // Field 11 was the pre-release provider choice. Its number stays reserved and is
+  // never reused; the name is reused at 19 because no persisted payload ever held it.
   reserved 11;
   QualityAgentReportSchedule report_schedule = 12;
   QualityAgentAdoptionSetting adoption = 13;
@@ -3881,9 +3881,9 @@ message CreateQualityAgentRequest {
   // The LLM provider profile the agent runs on ("llm-provider-profiles/{id}").
   // Required and set together with provider_model; that profile must currently
   // enable the model.
-  string provider_profile = 12;
+  string provider_profile = 12 [(google.api.field_behavior) = REQUIRED];
   // The model the agent runs on. Required and set together with provider_profile.
-  string provider_model = 13;
+  string provider_model = 13 [(google.api.field_behavior) = REQUIRED];
 }
 
 // GetQualityAgentRequest reads one agent with its configuration.

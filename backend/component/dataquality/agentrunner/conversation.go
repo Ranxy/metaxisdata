@@ -45,7 +45,7 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
 	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to read the session agent language")
+		return "", errors.Wrap(err, "failed to read the session agent")
 	}
 	language := e.sessionLanguage(ctx, agent)
 	rows, err := e.store.QualityAgentEnrollmentSummary(ctx, session.WorkspaceID, session.AgentID)
