@@ -109,6 +109,16 @@ func (f *fakeStore) AppendQualityAgentTranscriptMessage(_ context.Context, input
 	return &message, nil
 }
 
+func (f *fakeStore) UpdateQualityAgentSystemMessage(_ context.Context, sessionID int64, content string) (bool, error) {
+	for _, message := range f.messages {
+		if message.SessionID == sessionID && message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
+			message.Content = content
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error) {
 	var matches []*store.QualityAgentTranscriptMessage
 	for _, message := range f.messages {
@@ -754,4 +764,35 @@ func TestWakeAuditsProposeTools(t *testing.T) {
 	require.Equal(t, "record_asset_fact", sink.entries[0].Tool)
 	require.Equal(t, 7, sink.entries[0].Principal.ID)
 	require.Nil(t, sink.entries[0].Failure)
+}
+
+// A language change rewrites the existing system row instead of appending a
+// second system prompt, and the wake carries a short reminder for models that
+// mirror long English instructions.
+func TestWakeUpdatesTheSystemPromptLanguage(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.agent.Language = "zh-CN"
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "no work"}}), resolveToModel, nil)
+	session := testSession()
+
+	_, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	system := stores.messages[0]
+	require.Contains(t, system.Content, "Simplified Chinese (zh-CN)")
+	require.Contains(t, stores.messages[1].Content, "Owner-facing language: Simplified Chinese (zh-CN)")
+
+	stores.agent.Language = "en-US"
+	_, err = engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	systemCount := 0
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
+			systemCount++
+			require.Contains(t, message.Content, "English (en-US)")
+			require.NotContains(t, message.Content, "Simplified Chinese (zh-CN)")
+		}
+	}
+	require.Equal(t, 1, systemCount, "the system prompt is updated in place")
 }

@@ -1537,6 +1537,7 @@ export interface QualityAgentConfigInput {
   displayName: string;
   description?: string;
   owner: string;
+  language?: string;
   databases: string[];
   capabilities: string[];
   reportSchedule?: {
@@ -1574,6 +1575,7 @@ export async function createQualityAgent(options: {
     displayName: config.displayName,
     description: config.description ?? "",
     owner: config.owner,
+    language: config.language ?? "",
     databases: config.databases,
     capabilities: config.capabilities,
     reportSchedule: config.reportSchedule,

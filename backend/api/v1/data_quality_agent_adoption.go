@@ -210,10 +210,7 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 	if err != nil || len(remaining) == 0 {
 		return
 	}
-	language := agentlang.English
-	if owner != nil {
-		language = agentlang.Of(owner)
-	}
+	language := agentlang.ForAgent(agent, owner)
 	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 		WorkspaceID: session.WorkspaceID,
 		AgentID:     session.AgentID,

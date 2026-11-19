@@ -3835,6 +3835,18 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		"the deterministic conversation wake never answered: %s", fixture.env.ServerLogs())
 	require.Empty(t, reply.GetToolCalls(),
 		"the owner's conversation stays product content, not the model's raw tool calls")
+	conversation, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentConversationMessagesRequest{
+			Parent:   agent.GetName(),
+			PageSize: 100,
+		}))
+	require.NoError(t, err)
+	for _, message := range conversation.Msg.GetQualityAgentConversationMessages() {
+		if message.GetRole() == v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER {
+			require.Equal(t, v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK, message.GetOrigin(),
+				"the owner conversation hides internal wake/event inputs")
+		}
+	}
 	adminConversation, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityAgentConversationMessagesRequest{
 			Parent:   agent.GetName(),

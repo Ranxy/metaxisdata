@@ -19,6 +19,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -53,6 +54,7 @@ type Store interface {
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
+	UpdateQualityAgentSystemMessage(ctx context.Context, sessionID int64, content string) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 	QualityAgentEnrollmentSummary(ctx context.Context, workspaceID string, agentID int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error)
@@ -149,7 +151,11 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if session == nil || session.ID == 0 {
 		return Outcome{}, common.Errorf(common.Invalid, "a session is required")
 	}
-	system, err := e.ensureSystemMessage(ctx, session)
+	language, err := e.sessionLanguage(ctx, session)
+	if err != nil {
+		return Outcome{}, err
+	}
+	system, err := e.ensureSystemMessage(ctx, session, language)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -168,7 +174,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 		Wake:           wake,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
-		Content:        wakePrompt(session, wake, pending),
+		Content:        wakePrompt(session, wake, pending) + "\n\n" + languageReminder(language),
 		IdempotencyKey: fmt.Sprintf("wake:%d", wake),
 	})
 	if err != nil {
@@ -639,7 +645,7 @@ func (e *Engine) reviewFailedExecution(ctx context.Context, session *store.Quali
 // ensureSystemMessage returns the session's system message, creating it on the first
 // wake. The system message is never compacted away: the context builder always
 // prepends it.
-func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.QualityAgentSessionMessage) (*store.QualityAgentTranscriptMessage, error) {
+func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.QualityAgentSessionMessage, language string) (*store.QualityAgentTranscriptMessage, error) {
 	systemRole := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM
 	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
 		SessionID: session.ID,
@@ -649,16 +655,40 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the session's system message")
 	}
+	desired := renderSystemPrompt(specForSession(session), language)
 	if len(messages) > 0 {
+		if messages[0].Content != desired {
+			if _, err := e.store.UpdateQualityAgentSystemMessage(ctx, session.ID, desired); err != nil {
+				return nil, errors.Wrap(err, "failed to update the session system message")
+			}
+			messages[0].Content = desired
+		}
 		return messages[0], nil
 	}
 	return e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 		Wake:           0,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
-		Content:        specForSession(session).Prompt.Render(),
+		Content:        desired,
 		IdempotencyKey: "system:v1",
 	})
+}
+
+// sessionLanguage is the single language decision for a session: the agent's
+// configured language, then its owner's profile language, then English.
+func (e *Engine) sessionLanguage(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
+	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the session agent language")
+	}
+	if agent == nil {
+		return agentlang.English, nil
+	}
+	var owner *store.UserMessage
+	if agent.OwnerPrincipalID != nil {
+		owner, _ = e.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
+	}
+	return agentlang.ForAgent(agent, owner), nil
 }
 
 // repairInterruptedToolCalls closes the trailing assistant tool call a crash left

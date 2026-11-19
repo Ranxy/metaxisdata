@@ -56,6 +56,8 @@ type QualityAgentMessage struct {
 	PrincipalID int
 	DisplayName string
 	Description string
+	// Language is the BCP-47 tag for owner-visible prose. Empty follows the owner.
+	Language string
 
 	State QualityAgentState
 	// OwnerPrincipalID is the only human allowed to talk to the agent. Nil means
@@ -88,7 +90,7 @@ type QualityAgentMessage struct {
 	UpdatedAt time.Time
 }
 
-const qualityAgentColumns = `id, resource_id, principal_id, display_name, description,
+const qualityAgentColumns = `id, resource_id, principal_id, display_name, description, language,
 	state, owner_principal_id, capabilities, report_frequency, report_time,
 	report_timezone, report_weekday, adoption_mode, adoption_rule_types,
 	adoption_confidence_threshold, adoption_allow_critical, adoption_max_per_day,
@@ -290,6 +292,7 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 			max_concurrent_sessions = $16,
 			max_new_sessions_per_hour = $17,
 			max_active_sessions = $18,
+			language = $19,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING `+qualityAgentColumns,
@@ -299,7 +302,7 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		message.AdoptionConfidenceThreshold, message.AdoptionAllowCritical,
 		message.AdoptionMaxPerDay, message.ConversationMessagesPerHour,
 		message.TokensPerHour, message.WakesPerHour, message.MaxConcurrentSessions,
-		message.MaxNewSessionsPerHour, message.MaxActiveSessions))
+		message.MaxNewSessionsPerHour, message.MaxActiveSessions, message.Language))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, common.Errorf(common.NotFound, "quality agent %d not found", message.ID)
@@ -461,7 +464,7 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.PrincipalID, &message.DisplayName,
-		&message.Description, &state, &ownerPrincipalID, &capabilities,
+		&message.Description, &message.Language, &state, &ownerPrincipalID, &capabilities,
 		&reportFrequency, &message.ReportTime, &message.ReportTimezone,
 		&message.ReportWeekday, &adoptionMode, &ruleTypes,
 		&message.AdoptionConfidenceThreshold, &message.AdoptionAllowCritical,

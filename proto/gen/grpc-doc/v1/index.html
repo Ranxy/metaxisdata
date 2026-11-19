@@ -14911,6 +14911,14 @@ replaced. The raw value is never returned. </p></td>
                   <td><p>Whether to start the agent immediately; default false keeps it DRAFT. </p></td>
                 </tr>
               
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>BCP-47 language for owner-visible prose; empty defaults to the owner&#39;s
+profile language, then en-US. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -19191,6 +19199,14 @@ conversation session, created lazily. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>BCP-47 tag of the language the agent writes owner-visible prose in. Empty
+follows the owner&#39;s profile language; supported values are en-US and zh-CN. </p></td>
                 </tr>
               
             </tbody>

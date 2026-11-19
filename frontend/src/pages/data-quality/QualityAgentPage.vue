@@ -155,6 +155,10 @@
                 <span class="truncate">{{ agent?.owner || "-" }}</span>
               </div>
               <div class="flex items-center justify-between">
+                <span class="text-muted-foreground">{{ t("qualityAgents.language") }}</span>
+                <span class="truncate">{{ agentLanguageLabel(agent?.language) }}</span>
+              </div>
+              <div class="flex items-center justify-between">
                 <span class="text-muted-foreground">{{ t("qualityAgents.columnDatabases") }}</span>
                 <span>{{ agent?.databases.length ?? 0 }}</span>
               </div>
@@ -486,6 +490,17 @@ const sessionsRoute = computed(() =>
 
 function sessionRoute(session: QualityAgentSession) {
   return qualityAgentSessionRoute(agentName.value, session.name);
+}
+
+function agentLanguageLabel(language: string | undefined): string {
+  switch (language) {
+    case "zh-CN":
+      return t("qualityAgents.languageChinese");
+    case "en-US":
+      return t("qualityAgents.languageEnglish");
+    default:
+      return t("qualityAgents.languageFollowOwner");
+  }
 }
 
 function stateLabel(state: QualityAgentState | undefined): string {

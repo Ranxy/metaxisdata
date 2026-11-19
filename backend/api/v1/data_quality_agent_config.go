@@ -13,6 +13,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -238,8 +239,13 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 	if err := agentcapability.Validate(capabilities); err != nil {
 		return nil, nil, connectErrorInvalid("%v", err)
 	}
+	language := strings.TrimSpace(agent.GetLanguage())
+	if !agentlang.Supported(language) {
+		return nil, nil, connectErrorInvalid("language must be en-US or zh-CN")
+	}
 	config := &store.QualityAgentMessage{
 		OwnerPrincipalID:            principalIDPointer(owner),
+		Language:                    language,
 		Capabilities:                capabilities,
 		AdoptionMode:                store.QualityAgentAdoptionModePaused,
 		AdoptionConfidenceThreshold: 0.7,
@@ -353,6 +359,8 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 				merged.Databases = patch.GetDatabases()
 			case "capabilities":
 				merged.Capabilities = patch.GetCapabilities()
+			case "language":
+				merged.Language = patch.GetLanguage()
 			case "report_schedule":
 				merged.ReportSchedule = patch.GetReportSchedule()
 			case "adoption":
@@ -410,6 +418,7 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 	}
 	return &v1pb.QualityAgent{
 		Owner:        formatQualityAgentOwner(agent.OwnerPrincipalID),
+		Language:     agent.Language,
 		Databases:    databases,
 		Capabilities: agent.Capabilities,
 		ReportSchedule: &v1pb.QualityAgentReportSchedule{
@@ -571,6 +580,7 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 		Name:         common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
 		DisplayName:  agent.DisplayName,
 		Description:  agent.Description,
+		Language:     agent.Language,
 		CreatedBy:    formatQualityContractPublisher(agent.CreatedBy),
 		CreateTime:   timestamppb.New(agent.CreatedAt),
 		UpdateTime:   timestamppb.New(agent.UpdatedAt),

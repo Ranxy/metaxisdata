@@ -159,11 +159,13 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 	}
 	for _, message := range messages {
 		// The front office is product content only: SYSTEM prompts, ENGINE notes,
-		// tool results and compaction rows stay on the work-session transcript.
-		// Strip tool calls as well; the model's raw tool arguments are not part of
-		// the owner's conversation.
-		if message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
-			message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT {
+		// wake/event inputs, tool results and compaction rows stay on the work-session
+		// transcript. Only an owner's question and the assistant's answer belong here.
+		// Strip tool calls as well; the model's raw tool arguments are not part of the
+		// owner's conversation.
+		isOwnerQuestion := message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
+			message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK
+		if !isOwnerQuestion && message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT {
 			continue
 		}
 		message.ToolCalls = &storepb.QualityToolCallList{}

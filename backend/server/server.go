@@ -311,12 +311,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		if err != nil || agent == nil {
 			return
 		}
-		language := agentlang.English
+		var owner *store.UserMessage
 		if agent.OwnerPrincipalID != nil {
-			if owner, ownerErr := s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID)); ownerErr == nil {
-				language = agentlang.Of(owner)
-			}
+			owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 		}
+		language := agentlang.ForAgent(agent, owner)
 		attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 			WorkspaceID: session.WorkspaceID,
 			AgentID:     session.AgentID,

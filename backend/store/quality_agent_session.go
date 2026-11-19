@@ -760,6 +760,25 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 	return &message, nil
 }
 
+// UpdateQualityAgentSystemMessage replaces the stored system prompt for one
+// session. The language contract is rendered at wake time, so an agent language
+// change updates the existing row instead of appending a second system message.
+func (s *Store) UpdateQualityAgentSystemMessage(ctx context.Context, sessionID int64, content string) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_message
+		SET content = $2
+		WHERE session_id = $1 AND role = $3`,
+		sessionID, content, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to update the session system message")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read the updated system message count")
+	}
+	return affected > 0, nil
+}
+
 // AdvanceQualityAgentSessionWake makes an enabled session due now without touching its
 // lease (a wake already running keeps it) or its state. An event or a person's message
 // uses it to request an immediate wake.

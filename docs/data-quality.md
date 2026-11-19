@@ -511,6 +511,8 @@ An administrator creates an agent with:
 
 - **Owner** — the person the agent works for. The owner is the only person who can talk to it; the owner and administrators can read its
 home, work sessions, reports and attention list, but administrators cannot hold a conversation with it.
+- **Language** — English or Simplified Chinese, or *follow the owner*. The agent writes owner-visible answers, reports and escalations in
+this language; table names, column names and other identifiers stay unchanged. Raw work-session internals remain English.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails

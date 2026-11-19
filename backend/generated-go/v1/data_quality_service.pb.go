@@ -15621,8 +15621,11 @@ type QualityAgent struct {
 	Budget         *QualityAgentBudget          `protobuf:"bytes,14,opt,name=budget,proto3" json:"budget,omitempty"`
 	// Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent's
 	// conversation session, created lazily.
-	Conversation  string                 `protobuf:"bytes,15,opt,name=conversation,proto3" json:"conversation,omitempty"`
-	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	Conversation string                 `protobuf:"bytes,15,opt,name=conversation,proto3" json:"conversation,omitempty"`
+	UpdateTime   *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	// BCP-47 tag of the language the agent writes owner-visible prose in. Empty
+	// follows the owner's profile language; supported values are en-US and zh-CN.
+	Language      string `protobuf:"bytes,17,opt,name=language,proto3" json:"language,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15755,6 +15758,13 @@ func (x *QualityAgent) GetUpdateTime() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *QualityAgent) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
 type CreateQualityAgentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
@@ -15771,7 +15781,10 @@ type CreateQualityAgentRequest struct {
 	Adoption       *QualityAgentAdoptionSetting `protobuf:"bytes,8,opt,name=adoption,proto3" json:"adoption,omitempty"`
 	Budget         *QualityAgentBudget          `protobuf:"bytes,9,opt,name=budget,proto3" json:"budget,omitempty"`
 	// Whether to start the agent immediately; default false keeps it DRAFT.
-	Start         bool `protobuf:"varint,10,opt,name=start,proto3" json:"start,omitempty"`
+	Start bool `protobuf:"varint,10,opt,name=start,proto3" json:"start,omitempty"`
+	// BCP-47 language for owner-visible prose; empty defaults to the owner's
+	// profile language, then en-US.
+	Language      string `protobuf:"bytes,11,opt,name=language,proto3" json:"language,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15874,6 +15887,13 @@ func (x *CreateQualityAgentRequest) GetStart() bool {
 		return x.Start
 	}
 	return false
+}
+
+func (x *CreateQualityAgentRequest) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
 }
 
 // GetQualityAgentRequest reads one agent with its configuration.
@@ -21728,7 +21748,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x17max_concurrent_sessions\x18\x03 \x01(\x05R\x15maxConcurrentSessions\x128\n" +
 	"\x19max_new_sessions_per_hour\x18\x04 \x01(\x05R\x15maxNewSessionsPerHour\x12.\n" +
 	"\x13max_active_sessions\x18\x05 \x01(\x05R\x11maxActiveSessions\x12C\n" +
-	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\"\xb6\x05\n" +
+	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\"\xd2\x05\n" +
 	"\fQualityAgent\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -21747,7 +21767,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x06budget\x18\x0e \x01(\v2\".metaxisdata.v1.QualityAgentBudgetR\x06budget\x12\"\n" +
 	"\fconversation\x18\x0f \x01(\tR\fconversation\x12;\n" +
 	"\vupdate_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"updateTimeJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabledR\x10provider_profile\"\xcf\x03\n" +
+	"updateTime\x12\x1a\n" +
+	"\blanguage\x18\x11 \x01(\tR\blanguageJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabledR\x10provider_profile\"\xeb\x03\n" +
 	"\x19CreateQualityAgentRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12 \n" +
@@ -21759,7 +21780,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\badoption\x18\b \x01(\v2+.metaxisdata.v1.QualityAgentAdoptionSettingR\badoption\x12:\n" +
 	"\x06budget\x18\t \x01(\v2\".metaxisdata.v1.QualityAgentBudgetR\x06budget\x12\x14\n" +
 	"\x05start\x18\n" +
-	" \x01(\bR\x05start\"N\n" +
+	" \x01(\bR\x05start\x12\x1a\n" +
+	"\blanguage\x18\v \x01(\tR\blanguage\"N\n" +
 	"\x16GetQualityAgentRequest\x124\n" +
 	"\x04name\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +
 	"\x18metaxisdata/QualityAgentR\x04name\"\x9d\x01\n" +
