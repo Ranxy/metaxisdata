@@ -292,6 +292,7 @@
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityAgentRequest](#metaxisdata-v1-GetQualityAgentRequest)
+    - [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
     - [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse)
@@ -5434,6 +5435,21 @@ GetQualityAgentRequest reads one agent with its configuration.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentSessionRequest"></a>
+
+### GetQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityCodeTableRequest"></a>
 
 ### GetQualityCodeTableRequest
@@ -6010,7 +6026,7 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both monitor and triage sessions. |
-| agent | [string](#string) |  | Administrator diagnostics filter: keep only this agent&#39;s sessions. |
+| agent | [string](#string) |  | Keep only this agent&#39;s sessions. An administrator may omit it to read every session in the workspace; an owner must set it to an agent they own. |
 
 
 
@@ -9647,9 +9663,10 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
-| ListQualityAgentSessions | [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest) | [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse) | List the workspace&#39;s sessions by newest activity first. |
-| ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a stuck session. Administrator-only recovery, used from diagnostics after a restart-limit/internal-error block; it is not a product action. |
-| ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. |
+| GetQualityAgentSession | [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Read one session&#39;s durable state. The owner and administrators may read; the list and detail of a session are product reads, so they are not audited. |
+| ListQualityAgentSessions | [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest) | [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse) | List the workspace&#39;s sessions by newest activity first. An administrator sees every session; the owner must filter by an agent they own. |
+| ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a stuck session. Administrator-only recovery, used from the work-session detail after a restart-limit/internal-error block; it is not a product action. |
+| ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. The owner and administrators may read; the transcript is product data, so reads are not audited, while waking a stuck session above remains an audited administrator action. |
 
  
 

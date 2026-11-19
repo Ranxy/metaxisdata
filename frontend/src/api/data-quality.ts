@@ -30,6 +30,7 @@ import {
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
   GetQualityAgentRequestSchema,
+  GetQualityAgentSessionRequestSchema,
   GetQualityCodeTableRequestSchema,
   GetQualityConsumptionCoverageRequestSchema,
   type GetQualityConsumptionCoverageResponse,
@@ -532,9 +533,6 @@ export async function listQualityRules(options: {
     nextPageToken: response.nextPageToken,
   };
 }
-
-/** Every rule the caller can see, walking the cursor pages. */
-const listAllPageSize = 1000;
 
 export async function listAllQualityRules(
   options: { pageSize?: number; state?: QualityRuleState } = {}
@@ -1780,32 +1778,39 @@ export interface QualityAgentSessionListOptions {
 }
 
 /**
- * The workspace's agent sessions, one live session per target, newest activity
- * first. `state` defaults to every non-archived session; archived sessions are a
- * tombstone and must be asked for explicitly.
+ * One page of the agent's work sessions, newest activity first. `state` defaults
+ * to every non-archived session; archived sessions are a tombstone and must be
+ * asked for explicitly.
  */
-export async function listQualityAgentSessions(
+export async function listQualityAgentSessionsPage(
   options: QualityAgentSessionListOptions = {}
-): Promise<QualityAgentSession[]> {
-  return await listAll(async (pageToken) => {
-    const request = create(ListQualityAgentSessionsRequestSchema, {
-      parent: WORKSPACE_PARENT,
-      state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
-      database: options.database ?? "",
-      targetGuid: options.targetGuid ?? "",
-      mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
-      agent: options.agent ?? "",
-      pageSize: listAllPageSize,
-      pageToken,
-    });
-    const response = await dataQualityClient.listQualityAgentSessions(request, {
-      signal: options.signal,
-    });
-    return {
-      items: response.qualityAgentSessions,
-      nextPageToken: response.nextPageToken,
-    };
+): Promise<{ sessions: QualityAgentSession[]; nextPageToken: string }> {
+  const request = create(ListQualityAgentSessionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
+    database: options.database ?? "",
+    targetGuid: options.targetGuid ?? "",
+    mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
+    agent: options.agent ?? "",
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
   });
+  const response = await dataQualityClient.listQualityAgentSessions(request, {
+    signal: options.signal,
+  });
+  return {
+    sessions: response.qualityAgentSessions,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Read one target work session's durable state. */
+export async function getQualityAgentSession(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityAgentSession> {
+  const request = create(GetQualityAgentSessionRequestSchema, { name });
+  return await dataQualityClient.getQualityAgentSession(request, { signal });
 }
 
 /** Resume a stuck (blocked) session; administrator recovery from diagnostics. */

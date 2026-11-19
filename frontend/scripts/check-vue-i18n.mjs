@@ -120,6 +120,13 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.impact.distance",
   "dataQuality.impact.window",
   "dataQuality.impact.footnote",
+  // The session vocabulary helpers in src/utils/qualityAgentSession.ts return a
+  // label key for a session state, mode, transcript role or origin; the checker
+  // cannot follow a key a helper returns.
+  "qualityAgent.state",
+  "qualityAgent.mode",
+  "qualityAgent.role",
+  "qualityAgent.origin",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key

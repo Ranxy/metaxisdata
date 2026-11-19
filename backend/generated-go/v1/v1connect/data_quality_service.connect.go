@@ -253,6 +253,9 @@ const (
 	// DataQualityServiceGetQualityLLMUsageProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityLLMUsage RPC.
 	DataQualityServiceGetQualityLLMUsageProcedure = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
+	// DataQualityServiceGetQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentSession RPC.
+	DataQualityServiceGetQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
 	// DataQualityServiceListQualityAgentSessionsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityAgentSessions RPC.
 	DataQualityServiceListQualityAgentSessionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
@@ -548,12 +551,19 @@ type DataQualityServiceClient interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
-	// List the workspace's sessions by newest activity first.
+	// Read one session's durable state. The owner and administrators may read; the
+	// list and detail of a session are product reads, so they are not audited.
+	GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// List the workspace's sessions by newest activity first. An administrator sees
+	// every session; the owner must filter by an agent they own.
 	ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error)
-	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
-	// a restart-limit/internal-error block; it is not a product action.
+	// Resume a stuck session. Administrator-only recovery, used from the work-session
+	// detail after a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(context.Context, *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
-	// Read one session's transcript. after_seq polls for new messages.
+	// Read one session's transcript. after_seq polls for new messages. The owner and
+	// administrators may read; the transcript is product data, so reads are not
+	// audited, while waking a stuck session above remains an audited administrator
+	// action.
 	ListQualityAgentSessionMessages(context.Context, *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error)
 }
 
@@ -1006,6 +1016,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityAgentSession: connect.NewClient[v1.GetQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
 		listQualityAgentSessions: connect.NewClient[v1.ListQualityAgentSessionsRequest, v1.ListQualityAgentSessionsResponse](
 			httpClient,
 			baseURL+DataQualityServiceListQualityAgentSessionsProcedure,
@@ -1102,6 +1118,7 @@ type dataQualityServiceClient struct {
 	listQualityContractRevisions         *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
 	getQualityContractRevision           *connect.Client[v1.GetQualityContractRevisionRequest, v1.GetQualityContractRevisionResponse]
 	getQualityLLMUsage                   *connect.Client[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage]
+	getQualityAgentSession               *connect.Client[v1.GetQualityAgentSessionRequest, v1.QualityAgentSession]
 	listQualityAgentSessions             *connect.Client[v1.ListQualityAgentSessionsRequest, v1.ListQualityAgentSessionsResponse]
 	resumeQualityAgentSession            *connect.Client[v1.ResumeQualityAgentSessionRequest, v1.QualityAgentSession]
 	listQualityAgentSessionMessages      *connect.Client[v1.ListQualityAgentSessionMessagesRequest, v1.ListQualityAgentSessionMessagesResponse]
@@ -1478,6 +1495,11 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, req *
 	return c.getQualityLLMUsage.CallUnary(ctx, req)
 }
 
+// GetQualityAgentSession calls metaxisdata.v1.DataQualityService.GetQualityAgentSession.
+func (c *dataQualityServiceClient) GetQualityAgentSession(ctx context.Context, req *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.getQualityAgentSession.CallUnary(ctx, req)
+}
+
 // ListQualityAgentSessions calls metaxisdata.v1.DataQualityService.ListQualityAgentSessions.
 func (c *dataQualityServiceClient) ListQualityAgentSessions(ctx context.Context, req *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error) {
 	return c.listQualityAgentSessions.CallUnary(ctx, req)
@@ -1778,12 +1800,19 @@ type DataQualityServiceHandler interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
-	// List the workspace's sessions by newest activity first.
+	// Read one session's durable state. The owner and administrators may read; the
+	// list and detail of a session are product reads, so they are not audited.
+	GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// List the workspace's sessions by newest activity first. An administrator sees
+	// every session; the owner must filter by an agent they own.
 	ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error)
-	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
-	// a restart-limit/internal-error block; it is not a product action.
+	// Resume a stuck session. Administrator-only recovery, used from the work-session
+	// detail after a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(context.Context, *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
-	// Read one session's transcript. after_seq polls for new messages.
+	// Read one session's transcript. after_seq polls for new messages. The owner and
+	// administrators may read; the transcript is product data, so reads are not
+	// audited, while waking a stuck session above remains an audited administrator
+	// action.
 	ListQualityAgentSessionMessages(context.Context, *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error)
 }
 
@@ -2232,6 +2261,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentSessionProcedure,
+		svc.GetQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceListQualityAgentSessionsHandler := connect.NewUnaryHandler(
 		DataQualityServiceListQualityAgentSessionsProcedure,
 		svc.ListQualityAgentSessions,
@@ -2398,6 +2433,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityContractRevisionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityLLMUsageProcedure:
 			dataQualityServiceGetQualityLLMUsageHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentSessionProcedure:
+			dataQualityServiceGetQualityAgentSessionHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityAgentSessionsProcedure:
 			dataQualityServiceListQualityAgentSessionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceResumeQualityAgentSessionProcedure:
@@ -2703,6 +2740,10 @@ func (UnimplementedDataQualityServiceHandler) GetQualityContractRevision(context
 
 func (UnimplementedDataQualityServiceHandler) GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityLLMUsage is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentSession is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error) {
