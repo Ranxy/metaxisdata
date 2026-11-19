@@ -36,6 +36,10 @@ const (
 	// maxConversationMessages bounds one wake's transcript read; compaction keeps the
 	// real context well below this.
 	maxConversationMessages = 2000
+	// maxReasoningRunes bounds one assistant row's display-only reasoning. It is
+	// never sent back, so this only protects the transcript table and the read API
+	// from a provider that returns an unbounded reasoning block.
+	maxReasoningRunes = 64 * 1024
 )
 
 // Store is the slice of *store.Store the engine needs.
@@ -315,7 +319,7 @@ func (e *Engine) modelWake(
 					Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
 					Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
 					Content:        event.Assistant.Content,
-					Reasoning:      event.Assistant.Reasoning,
+					Reasoning:      truncateRunes(event.Assistant.Reasoning, maxReasoningRunes),
 					ToolCalls:      toolCallsToStore(event.Assistant.ToolCalls),
 					Tokens:         usageTokens(usage),
 					IdempotencyKey: assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),

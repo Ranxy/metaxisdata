@@ -154,6 +154,35 @@ describe("QualityAgentSessionPage", () => {
     });
   });
 
+  it("loads older history by seq anchor rather than a shifting page token", async () => {
+    const newer = create(QualityAgentSessionMessageSchema, {
+      name: `${SESSION}/messages/100`,
+      seq: 100n,
+      wake: 1,
+      role: QualityAgentMessageRole.ASSISTANT,
+      origin: QualityAgentMessageOrigin.MODEL,
+      content: "newest message",
+      createTime: timestampFromDate(START),
+    });
+    mocks.listQualityAgentSessionMessages
+      .mockResolvedValueOnce({ messages: [newer], nextPageToken: "offset:1" })
+      .mockResolvedValueOnce({ messages: [], nextPageToken: "" });
+    const wrapper = await mountPage();
+
+    const loadEarlier = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Load earlier"));
+    expect(loadEarlier).toBeDefined();
+    await loadEarlier?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.listQualityAgentSessionMessages).toHaveBeenLastCalledWith(
+      SESSION,
+      expect.objectContaining({ beforeSeq: 100n })
+    );
+    wrapper.unmount();
+  });
+
   it("renders the archived session, its transcript and the folded reasoning", async () => {
     const wrapper = await mountPage();
 

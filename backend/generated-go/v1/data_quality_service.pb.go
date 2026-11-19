@@ -20345,9 +20345,14 @@ type ListQualityAgentSessionMessagesRequest struct {
 	// A page token from a previous response; walks towards older messages. Mutually
 	// exclusive with after_seq.
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// Return messages with seq greater than this, ascending; the polling watermark. The
-	// two modes are mutually exclusive: combining this with page_token is InvalidArgument.
-	AfterSeq      int64 `protobuf:"varint,4,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
+	// Return messages with seq greater than this, ascending; the polling watermark.
+	// Mutually exclusive with page_token and before_seq.
+	AfterSeq int64 `protobuf:"varint,4,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
+	// Return the page of messages with seq less than this, newest first (the caller
+	// reverses it). It is how the UI walks older history while a live wake appends
+	// rows; the offset page_token cannot stay anchored under appends.
+	// Mutually exclusive with page_token and after_seq.
+	BeforeSeq     int64 `protobuf:"varint,5,opt,name=before_seq,json=beforeSeq,proto3" json:"before_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -20406,6 +20411,13 @@ func (x *ListQualityAgentSessionMessagesRequest) GetPageToken() string {
 func (x *ListQualityAgentSessionMessagesRequest) GetAfterSeq() int64 {
 	if x != nil {
 		return x.AfterSeq
+	}
+	return 0
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) GetBeforeSeq() int64 {
+	if x != nil {
+		return x.BeforeSeq
 	}
 	return 0
 }
@@ -22138,13 +22150,15 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"h\n" +
 	" ResumeQualityAgentSessionRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12+\n" +
-	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"\x9e\x01\n" +
+	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"\xbd\x01\n" +
 	"&ListQualityAgentSessionMessagesRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1b\n" +
-	"\tafter_seq\x18\x04 \x01(\x03R\bafterSeq\"\xc2\x01\n" +
+	"\tafter_seq\x18\x04 \x01(\x03R\bafterSeq\x12\x1d\n" +
+	"\n" +
+	"before_seq\x18\x05 \x01(\x03R\tbeforeSeq\"\xc2\x01\n" +
 	"'ListQualityAgentSessionMessagesResponse\x12o\n" +
 	"\x1equality_agent_session_messages\x18\x01 \x03(\v2*.metaxisdata.v1.QualityAgentSessionMessageR\x1bqualityAgentSessionMessages\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xfe\x05\n" +

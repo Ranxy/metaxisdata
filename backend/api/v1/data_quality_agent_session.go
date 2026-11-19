@@ -33,6 +33,10 @@ func (s *DataQualityService) GetQualityAgentSession(ctx context.Context, req *co
 	if err != nil {
 		return nil, err
 	}
+	if session.Kind != 1 {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
 	allowed, err := s.callerCanReadQualityAgent(ctx, session.AgentID)
 	if err != nil {
 		return nil, err
@@ -148,6 +152,10 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+	if session.Kind != 1 {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("quality agent session %q not found", resourceID))
+	}
 	allowed, err := s.callerCanReadQualityAgent(ctx, session.AgentID)
 	if err != nil {
 		return nil, err
@@ -157,11 +165,18 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 			errors.Errorf("quality agent session %q not found", resourceID))
 	}
 	afterSeq := req.Msg.GetAfterSeq()
+	beforeSeq := req.Msg.GetBeforeSeq()
 	if afterSeq < 0 {
 		return nil, connectErrorInvalid("after_seq cannot be negative")
 	}
-	if afterSeq > 0 && req.Msg.GetPageToken() != "" {
-		return nil, connectErrorInvalid("after_seq and page_token are mutually exclusive")
+	if beforeSeq < 0 {
+		return nil, connectErrorInvalid("before_seq cannot be negative")
+	}
+	if afterSeq > 0 && beforeSeq > 0 {
+		return nil, connectErrorInvalid("after_seq and before_seq are mutually exclusive")
+	}
+	if (afterSeq > 0 || beforeSeq > 0) && req.Msg.GetPageToken() != "" {
+		return nil, connectErrorInvalid("page_token cannot be combined with after_seq or before_seq")
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:        req.Msg.GetPageToken(),
@@ -174,9 +189,15 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	}
 	limit := offset.limit + 1
 	find := &store.FindQualityAgentTranscriptMessage{SessionID: session.ID, Limit: limit}
-	if afterSeq > 0 {
+	switch {
+	case beforeSeq > 0:
+		// Older history anchored to the oldest loaded seq, so a live append cannot
+		// shift the page the caller is walking.
+		find.BeforeSeq = beforeSeq
+		find.NewestFirst = true
+	case afterSeq > 0:
 		find.AfterSeq = afterSeq
-	} else {
+	default:
 		// The newest page: read backwards, then hand the client chronological order.
 		find.NewestFirst = true
 		find.Offset = offset.offset
@@ -193,7 +214,7 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 		slicesReverse(messages)
 	}
 	response := &v1pb.ListQualityAgentSessionMessagesResponse{}
-	if find.AfterSeq == 0 && more {
+	if find.AfterSeq == 0 && find.BeforeSeq == 0 && more {
 		nextPageToken, tokenErr := offset.getNextPageToken()
 		if tokenErr != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(tokenErr, "failed to marshal next page token"))

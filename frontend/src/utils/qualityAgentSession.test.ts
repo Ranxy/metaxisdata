@@ -296,6 +296,19 @@ describe("tool pairing", () => {
     expect(toolResultForCall(messages, "")).toBeUndefined();
     expect(toolResultForCall(messages, "call-missing")).toBe(orphan);
     expect(orphanToolResults(messages)).toEqual([orphan]);
+
+    const emptyID = messageFixture({
+      role: QualityAgentMessageRole.TOOL,
+      toolCallId: "",
+      toolName: "get_memory",
+      content: "no id",
+    });
+    const callWithoutID = messageFixture({
+      toolCalls: [
+        create(QualityToolCallSchema, { id: "", name: "get_memory" }),
+      ],
+    });
+    expect(orphanToolResults([callWithoutID, emptyID])).toEqual([emptyID]);
   });
 });
 

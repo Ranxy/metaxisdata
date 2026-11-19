@@ -1813,7 +1813,7 @@ export async function getQualityAgentSession(
   return await dataQualityClient.getQualityAgentSession(request, { signal });
 }
 
-/** Resume a stuck (blocked) session; administrator recovery from diagnostics. */
+/** Resume a stuck (blocked) session; administrator recovery from the work-session detail. */
 export async function resumeQualityAgentSession(
   name: string,
   expectedRevision: number,
@@ -1827,15 +1827,17 @@ export async function resumeQualityAgentSession(
 }
 
 /**
- * One page of a session's transcript. With no `afterSeq` the NEWEST page is
+ * One page of a session's transcript. With no watermark the NEWEST page is
  * returned in chronological order and `nextPageToken` walks towards older
- * messages; with `afterSeq` only newer messages are returned, ascending, and no
- * token is issued. The two modes are mutually exclusive.
+ * messages; with `afterSeq` only newer messages are returned, ascending; with
+ * `beforeSeq` the page strictly older than that seq is returned, still in
+ * chronological order. The modes are mutually exclusive.
  */
 export async function listQualityAgentSessionMessages(
   sessionName: string,
   options: {
     afterSeq?: bigint;
+    beforeSeq?: bigint;
     pageSize?: number;
     pageToken?: string;
     signal?: AbortSignal;
@@ -1846,6 +1848,7 @@ export async function listQualityAgentSessionMessages(
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
     afterSeq: options.afterSeq ?? 0n,
+    beforeSeq: options.beforeSeq ?? 0n,
   });
   const response = await dataQualityClient.listQualityAgentSessionMessages(
     request,

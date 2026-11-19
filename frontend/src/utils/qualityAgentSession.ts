@@ -301,7 +301,9 @@ export function orphanToolResults(
   const called = new Set<string>();
   for (const message of messages) {
     for (const call of message.toolCalls) {
-      called.add(call.id);
+      if (call.id !== "") {
+        called.add(call.id);
+      }
     }
   }
   return messages.filter(
@@ -457,7 +459,7 @@ export function agentSessionTargetName(session: QualityAgentSession): string {
   return session.target?.path?.object || session.target?.metaGuid || "-";
 }
 
-/** A session's target path for a subtitle: `schema.orders` or `db.schema.orders`. */
+/** A session's object path for a subtitle, e.g. `schema.orders`; the database is separate. */
 export function agentSessionTargetPath(session: QualityAgentSession): string {
   return formatTargetPath(session.target?.path);
 }

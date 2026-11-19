@@ -30,11 +30,11 @@
     </PageHeader>
 
     <Alert
-      v-if="error"
+      v-if="agentError"
       variant="destructive"
     >
       <AlertTriangle class="h-4 w-4" />
-      <AlertDescription>{{ error }}</AlertDescription>
+      <AlertDescription>{{ agentError }}</AlertDescription>
     </Alert>
 
     <Card>
@@ -120,7 +120,7 @@
       </div>
 
       <PageState
-        :loading="isLoading && sessions.length === 0"
+        :loading="!initialized || (isLoading && sessions.length === 0)"
         :error="loadError"
         :title="t('qualityAgent.sessionsLoadFailed')"
       >
@@ -168,7 +168,7 @@
                   {{ agentSessionTargetName(session) }}
                 </RouterLink>
                 <p class="truncate text-xs text-muted-foreground">
-                  {{ agentSessionTargetPath(session) }}
+                  {{ databaseLabel(session) }} · {{ agentSessionTargetPath(session) }}
                 </p>
               </TableCell>
               <TableCell class="hidden md:table-cell">
@@ -324,6 +324,8 @@ const agentName = computed(() =>
 
 const agent = ref<QualityAgent>();
 const error = ref("");
+const agentError = ref("");
+const initialized = ref(false);
 const stateFilter = ref(String(QualityAgentSessionState.UNSPECIFIED));
 const modeFilter = ref(String(QualityAgentSessionMode.UNSPECIFIED));
 const databaseFilter = ref("-");
@@ -421,18 +423,26 @@ function sessionRoute(session: QualityAgentSession) {
   return qualityAgentSessionRoute(agentName.value, session.name);
 }
 
+/** The database segment a session is scoped to, for the target subtitle. */
+function databaseLabel(session: QualityAgentSession): string {
+  const parts = session.database.split("/");
+  return parts[parts.length - 1] || session.database || "-";
+}
+
 async function loadAgent() {
-  error.value = "";
+  agentError.value = "";
   try {
     agent.value = await getQualityAgent(agentName.value);
   } catch (err) {
-    error.value = formatError(err);
+    agentError.value = formatError(err);
   }
 }
 
 async function refresh() {
   error.value = "";
+  agentError.value = "";
   await Promise.all([loadAgent(), refreshPage()]);
+  initialized.value = true;
 }
 
 watch([stateFilter, modeFilter, databaseFilter], () => {
@@ -440,8 +450,17 @@ watch([stateFilter, modeFilter, databaseFilter], () => {
   void reset();
 });
 
+watch(agentName, async () => {
+  agent.value = undefined;
+  error.value = "";
+  agentError.value = "";
+  initialized.value = false;
+  await Promise.all([loadAgent(), reset()]);
+  initialized.value = true;
+});
+
 onMounted(async () => {
-  await loadAgent();
-  await reset();
+  await Promise.all([loadAgent(), reset()]);
+  initialized.value = true;
 });
 </script>

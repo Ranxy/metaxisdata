@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
+
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
 // mutatingMethodPrefixes are the verb prefixes a write RPC uses. A method that
@@ -77,4 +79,26 @@ func isMutatingMethod(fullName string) bool {
 		}
 	}
 	return false
+}
+
+// The work-session reads are product reads and must stay out of the permanent
+// ledger; only the administrator resume action is audited. The generic
+// write-verb walk above cannot see that split, so pin the annotations here.
+func TestQualityAgentSessionReadsAreNotAuditedAndResumeIs(t *testing.T) {
+	t.Parallel()
+
+	service := v1pb.File_v1_data_quality_service_proto.Services().ByName("DataQualityService")
+	require.NotNil(t, service)
+	for _, name := range []string{
+		"GetQualityAgentSession",
+		"ListQualityAgentSessions",
+		"ListQualityAgentSessionMessages",
+	} {
+		method := service.Methods().ByName(protoreflect.Name(name))
+		require.NotNilf(t, method, "the %s method is missing", name)
+		require.Falsef(t, methodAudited(method), "%s must stay a read-baseline RPC", name)
+	}
+	resume := service.Methods().ByName("ResumeQualityAgentSession")
+	require.NotNil(t, resume)
+	require.True(t, methodAudited(resume), "resuming a stuck session is an audited administrator action")
 }

@@ -56,7 +56,7 @@
         >
           <RefreshCcw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': isLoading || isPolling }"
+            :class="{ 'animate-spin': isLoading }"
           />
           {{ t("common.refresh") }}
         </Button>
@@ -124,7 +124,7 @@
               </template>
 
               <div
-                v-if="nextPageToken"
+                v-if="hasEarlier"
                 class="flex flex-col items-start gap-2"
               >
                 <Button
@@ -205,6 +205,13 @@
               <dt class="text-muted-foreground">{{ t("qualityAgent.sessionRestarts") }}</dt>
               <dd class="text-right tabular-nums">{{ session.restartCount }}</dd>
             </dl>
+
+            <p
+              v-if="pollError"
+              class="text-xs text-destructive"
+            >
+              {{ pollError }}
+            </p>
 
             <div
               v-if="heartbeat.stale"
@@ -307,9 +314,9 @@ const authStore = useAuthStore();
 
 const session = ref<QualityAgentSession>();
 const messages = ref<QualityAgentSessionMessage[]>([]);
-const nextPageToken = ref("");
+const hasEarlier = ref(false);
 const isLoading = ref(false);
-const isPolling = ref(false);
+const pollError = ref("");
 const messagesLoading = ref(false);
 const loadError = ref("");
 const messagesError = ref("");
@@ -357,6 +364,9 @@ const statusLabel = computed(() => {
   if (session.value.state === QualityAgentSessionState.ARCHIVED) {
     return t("qualityAgent.statusArchived");
   }
+  if (session.value.state === QualityAgentSessionState.BLOCKED) {
+    return t("qualityAgent.statusBlocked");
+  }
   if (heartbeat.value.running) {
     return t("qualityAgent.statusRunning");
   }
@@ -389,6 +399,9 @@ const targetRoute = computed(() => {
 
 /** The newest "model turn N started" note, while a wake is in flight. */
 const currentTurn = computed((): number | undefined => {
+  if (!heartbeat.value.running) {
+    return undefined;
+  }
   for (let index = messages.value.length - 1; index >= 0; index -= 1) {
     const message = messages.value[index];
     if (message.role !== QualityAgentMessageRole.ENGINE) {
@@ -421,7 +434,7 @@ async function loadMessages(signal?: AbortSignal) {
       return;
     }
     messages.value = page.messages;
-    nextPageToken.value = page.nextPageToken;
+    hasEarlier.value = page.nextPageToken !== "";
   } catch (err) {
     if (!signal?.aborted) {
       messagesError.value = formatError(err);
@@ -432,6 +445,9 @@ async function loadMessages(signal?: AbortSignal) {
 }
 
 async function load() {
+  if (disposed) {
+    return;
+  }
   isLoading.value = true;
   loadError.value = "";
   error.value = "";
@@ -450,7 +466,12 @@ async function reload() {
 }
 
 async function loadEarlier() {
-  if (!nextPageToken.value || loadingEarlier.value) {
+  if (!hasEarlier.value || loadingEarlier.value) {
+    return;
+  }
+  const oldest = messages.value[0]?.seq ?? 0n;
+  if (oldest === 0n) {
+    hasEarlier.value = false;
     return;
   }
   loadingEarlier.value = true;
@@ -458,10 +479,14 @@ async function loadEarlier() {
   try {
     const older = await listQualityAgentSessionMessages(sessionName.value, {
       pageSize: MESSAGE_PAGE_SIZE,
-      pageToken: nextPageToken.value,
+      beforeSeq: oldest,
     });
+    if (older.messages.length === 0) {
+      hasEarlier.value = false;
+      return;
+    }
     messages.value = mergeTranscriptMessages(older.messages, messages.value);
-    nextPageToken.value = older.nextPageToken;
+    hasEarlier.value = older.messages.length >= MESSAGE_PAGE_SIZE;
   } catch (err) {
     loadEarlierError.value = formatError(err);
   } finally {
@@ -471,27 +496,23 @@ async function loadEarlier() {
 
 /** Append everything newer than the watermark, including a burst larger than one page. */
 async function poll(signal: AbortSignal) {
-  isPolling.value = true;
-  try {
-    await loadSession(signal);
-    let after = lastSeq.value;
-    for (;;) {
-      const page = await listQualityAgentSessionMessages(sessionName.value, {
-        afterSeq: after,
-        pageSize: POLL_PAGE_SIZE,
-        signal,
-      });
-      if (signal.aborted || page.messages.length === 0) {
-        return;
-      }
-      messages.value = mergeTranscriptMessages(messages.value, page.messages);
-      after = lastTranscriptSeq(page.messages);
-      if (page.messages.length < POLL_PAGE_SIZE) {
-        return;
-      }
+  pollError.value = "";
+  await loadSession(signal);
+  let after = lastSeq.value;
+  for (;;) {
+    const page = await listQualityAgentSessionMessages(sessionName.value, {
+      afterSeq: after,
+      pageSize: POLL_PAGE_SIZE,
+      signal,
+    });
+    if (signal.aborted || page.messages.length === 0) {
+      return;
     }
-  } finally {
-    isPolling.value = false;
+    messages.value = mergeTranscriptMessages(messages.value, page.messages);
+    after = lastTranscriptSeq(page.messages);
+    if (page.messages.length < POLL_PAGE_SIZE) {
+      return;
+    }
   }
 }
 
@@ -499,6 +520,9 @@ const fastPolling = usePolling(poll, {
   intervalMs: RUNNING_POLL_INTERVAL_MS,
   shouldContinue: () => heartbeat.value.running,
   continueOnError: true,
+  onError: (err) => {
+    pollError.value = formatError(err);
+  },
 });
 
 const idlePolling = usePolling(poll, {
@@ -507,10 +531,15 @@ const idlePolling = usePolling(poll, {
     session.value !== undefined &&
     session.value.state !== QualityAgentSessionState.ARCHIVED,
   continueOnError: true,
+  onError: (err) => {
+    pollError.value = formatError(err);
+  },
 });
 
+let disposed = false;
+
 function syncPolling() {
-  if (!session.value) {
+  if (disposed || !session.value) {
     return;
   }
   if (heartbeat.value.running) {
@@ -551,12 +580,26 @@ async function resume() {
   }
 }
 
+watch(sessionName, async () => {
+  fastPolling.stop();
+  idlePolling.stop();
+  session.value = undefined;
+  messages.value = [];
+  hasEarlier.value = false;
+  pollError.value = "";
+  loadError.value = "";
+  messagesError.value = "";
+  await load();
+  syncPolling();
+});
+
 onMounted(async () => {
   await load();
   syncPolling();
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   fastPolling.stop();
   idlePolling.stop();
 });

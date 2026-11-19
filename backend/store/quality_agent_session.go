@@ -559,6 +559,9 @@ type FindQualityAgentTranscriptMessage struct {
 	SessionID int64
 	// AfterSeq returns messages with seq greater than this; the polling watermark.
 	AfterSeq int64
+	// BeforeSeq returns messages with seq less than this; the stable older-page
+	// anchor. It takes precedence over AfterSeq when both are set.
+	BeforeSeq int64
 	// ExcludeEngine drops engine notes, which are UI/runner bookkeeping and never part
 	// of the model context.
 	ExcludeEngine bool
@@ -579,8 +582,15 @@ func (s *Store) ListQualityAgentTranscriptMessages(ctx context.Context, find *Fi
 	if find == nil || find.SessionID == 0 {
 		return nil, common.Errorf(common.Invalid, "a session id is required")
 	}
-	where := "session_id = $1 AND seq > $2"
-	args := []any{find.SessionID, find.AfterSeq}
+	where := "session_id = $1"
+	args := []any{find.SessionID}
+	if find.BeforeSeq > 0 {
+		args = append(args, find.BeforeSeq)
+		where += " AND seq < $2"
+	} else {
+		args = append(args, find.AfterSeq)
+		where += " AND seq > $2"
+	}
 	if find.ExcludeEngine {
 		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE))
 		where += ` AND role <> $` + strconv.Itoa(len(args))

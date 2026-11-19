@@ -3890,13 +3890,22 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
 	require.NoError(t, err, "the owner reads their own work session")
 	require.Equal(t, session.GetName(), ownerSession.Msg.GetName())
+	// The front-office conversation is a kind=2 session and is not part of the
+	// target work-session surface; its raw system/tool rows are not exposed by
+	// the product conversation read either.
+	require.NotEmpty(t, agent.GetConversation())
+	_, err = fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentSessionRequest{Name: agent.GetConversation()}))
+	require.Error(t, err, "the conversation session is not a work session")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 	ownerSessions, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{
 			Parent: "workspaces/-",
 			Agent:  agent.GetName(),
 		}))
 	require.NoError(t, err, "the owner lists their own agent's sessions")
-	require.Len(t, ownerSessions.Msg.GetQualityAgentSessions(), 1)
+	require.Contains(t,
+		qualityAgentSessionNames(ownerSessions.Msg.GetQualityAgentSessions()), session.GetName())
 	_, err = fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
 	require.Error(t, err, "an owner must name an agent")
@@ -3924,7 +3933,8 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	adminSessions, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
 	require.NoError(t, err, "an administrator lists every session")
-	require.NotEmpty(t, adminSessions.Msg.GetQualityAgentSessions())
+	require.Contains(t,
+		qualityAgentSessionNames(adminSessions.Msg.GetQualityAgentSessions()), session.GetName())
 
 	// The deterministic monitor wake surveys the published plan and records the gap as an
 	// asset fact through the agent's tool path, attributed to its internal principal.
@@ -3937,6 +3947,59 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
 	require.NoError(t, err, "the owner reads the populated transcript")
 	require.NotEmpty(t, ownerMessages.Msg.GetQualityAgentSessionMessages())
+	ownerContents := make([]string, 0, len(ownerMessages.Msg.GetQualityAgentSessionMessages()))
+	for _, message := range ownerMessages.Msg.GetQualityAgentSessionMessages() {
+		ownerContents = append(ownerContents, message.GetContent())
+	}
+	require.Contains(t, strings.Join(ownerContents, "\n"), "deterministic survey",
+		"the owner sees the runner's wake conclusion")
+	if len(ownerMessages.Msg.GetQualityAgentSessionMessages()) > 1 {
+		anchor := ownerMessages.Msg.GetQualityAgentSessionMessages()[1].GetSeq()
+		older, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+			withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{
+				Parent:    session.GetName(),
+				BeforeSeq: anchor,
+				PageSize:  100,
+			}))
+		require.NoError(t, err, "the owner walks older history by seq anchor")
+		for _, message := range older.Msg.GetQualityAgentSessionMessages() {
+			require.Less(t, message.GetSeq(), anchor)
+		}
+	}
+
+	adminSession, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+	require.NoError(t, err, "an administrator reads the same work session")
+	require.Equal(t, session.GetName(), adminSession.Msg.GetName())
+
+	// A reasoning value survives the store -> API path the owner reads. The
+	// deterministic wake has no model, so append a row through the store; the
+	// owner's read is still the assertion that matters.
+	reasoningWorkspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	storedSession, err := fixture.env.Store.GetQualityAgentSession(fixture.ctx, resourceIDFromName(session.GetName()))
+	require.NoError(t, err)
+	require.NotNil(t, storedSession)
+	appended, err := fixture.env.Store.AppendQualityAgentTranscriptMessage(fixture.ctx, &store.QualityAgentTranscriptMessage{
+		SessionID:      storedSession.ID,
+		WorkspaceID:    reasoningWorkspaceID,
+		Wake:           survey.GetWake(),
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:        "reasoning probe",
+		Reasoning:      "the model's private thought",
+		IdempotencyKey: "integration:reasoning-probe",
+	})
+	require.NoError(t, err)
+	reasoned, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{
+			Parent:   session.GetName(),
+			AfterSeq: appended.Seq - 1,
+			PageSize: 10,
+		}))
+	require.NoError(t, err)
+	require.Len(t, reasoned.Msg.GetQualityAgentSessionMessages(), 1)
+	require.Equal(t, "the model's private thought", reasoned.Msg.GetQualityAgentSessionMessages()[0].GetReasoning())
 	var fact *store.QualityMemoryMessage
 	require.Eventually(t, func() bool {
 		facts, err := fixture.env.Store.ListQualityMemories(fixture.ctx,
@@ -4269,6 +4332,15 @@ func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, age
 	}, 150*time.Second, 500*time.Millisecond,
 		"the enrollment runner never admitted the covered target: %s", fixture.env.ServerLogs())
 	return session
+}
+
+// qualityAgentSessionNames extracts the resource names from a session list.
+func qualityAgentSessionNames(sessions []*v1pb.QualityAgentSession) []string {
+	names := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		names = append(names, session.GetName())
+	}
+	return names
 }
 
 // waitForQualityAgentSessionMessage waits until one session transcript entry matches

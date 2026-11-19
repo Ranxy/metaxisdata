@@ -17231,8 +17231,18 @@ exclusive with after_seq. </p></td>
                   <td>after_seq</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>Return messages with seq greater than this, ascending; the polling watermark. The
-two modes are mutually exclusive: combining this with page_token is InvalidArgument. </p></td>
+                  <td><p>Return messages with seq greater than this, ascending; the polling watermark.
+Mutually exclusive with page_token and before_seq. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>before_seq</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Return the page of messages with seq less than this, newest first (the caller
+reverses it). It is how the UI walks older history while a live wake appends
+rows; the offset page_token cannot stay anchored under appends.
+Mutually exclusive with page_token and after_seq. </p></td>
                 </tr>
               
             </tbody>

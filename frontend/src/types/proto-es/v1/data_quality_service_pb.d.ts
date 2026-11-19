@@ -9595,12 +9595,22 @@ export declare type ListQualityAgentSessionMessagesRequest = Message<"metaxisdat
   pageToken: string;
 
   /**
-   * Return messages with seq greater than this, ascending; the polling watermark. The
-   * two modes are mutually exclusive: combining this with page_token is InvalidArgument.
+   * Return messages with seq greater than this, ascending; the polling watermark.
+   * Mutually exclusive with page_token and before_seq.
    *
    * @generated from field: int64 after_seq = 4;
    */
   afterSeq: bigint;
+
+  /**
+   * Return the page of messages with seq less than this, newest first (the caller
+   * reverses it). It is how the UI walks older history while a live wake appends
+   * rows; the offset page_token cannot stay anchored under appends.
+   * Mutually exclusive with page_token and after_seq.
+   *
+   * @generated from field: int64 before_seq = 5;
+   */
+  beforeSeq: bigint;
 };
 
 /**

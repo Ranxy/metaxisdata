@@ -1575,6 +1575,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_message_seq
     ON quality_agent_message(session_id, seq);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_message_key
     ON quality_agent_message(session_id, idempotency_key) WHERE idempotency_key <> '';
+CREATE INDEX IF NOT EXISTS idx_quality_agent_message_session_activity
+    ON quality_agent_message(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
     ON quality_agent_message(workspace_id, created_at DESC);
 COMMENT ON TABLE quality_agent_message IS 'Append-only transcript of one quality agent session';

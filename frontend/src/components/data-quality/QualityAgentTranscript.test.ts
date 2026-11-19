@@ -114,15 +114,22 @@ describe("QualityAgentTranscript", () => {
     wrapper.unmount();
   });
 
-  it("keeps runner notes folded and shows a wake summary", async () => {
+  it("keeps a long runner note folded and shows its wake summary", async () => {
+    const detail = "wake finished: " + "detail ".repeat(30);
     const engine = message({
       role: QualityAgentMessageRole.ENGINE,
       origin: QualityAgentMessageOrigin.RUNNER,
-      content: "wake finished: reviewed the failure",
+      content: detail,
     });
     const wrapper = mountTranscript([engine]);
-    expect(wrapper.text()).toContain("reviewed the failure");
-    expect(wrapper.text()).toContain("Engine");
+    expect(wrapper.text()).toContain("detail detail");
+    expect(wrapper.text()).not.toContain(detail.trim());
+
+    const trigger = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Engine"));
+    await trigger?.trigger("click");
+    expect(wrapper.text()).toContain(detail.trim());
     wrapper.unmount();
   });
 

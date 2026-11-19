@@ -5988,7 +5988,8 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  | A page token from a previous response; walks towards older messages. Mutually exclusive with after_seq. |
-| after_seq | [int64](#int64) |  | Return messages with seq greater than this, ascending; the polling watermark. The two modes are mutually exclusive: combining this with page_token is InvalidArgument. |
+| after_seq | [int64](#int64) |  | Return messages with seq greater than this, ascending; the polling watermark. Mutually exclusive with page_token and before_seq. |
+| before_seq | [int64](#int64) |  | Return the page of messages with seq less than this, newest first (the caller reverses it). It is how the UI walks older history while a live wake appends rows; the offset page_token cannot stay anchored under appends. Mutually exclusive with page_token and after_seq. |
 
 
 
