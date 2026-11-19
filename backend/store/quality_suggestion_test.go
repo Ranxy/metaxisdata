@@ -429,3 +429,21 @@ func TestQualitySuggestionQueriesPinTheContractualPredicates(t *testing.T) {
 	require.Contains(t, qualitySuggestionSignatureStatesQuery, "(array_agg(source) FILTER (WHERE status = $1))[1]")
 	require.Contains(t, qualitySuggestionSignatureStatesQuery, "($7::bigint IS NULL OR agent_id = $7)")
 }
+
+// TestQualitySuggestionWhereQueuedAfterUsesRefreshTime guards the adoption
+// eligibility predicate: a draft refreshed in place keeps its original created_at,
+// so comparing only created_at would make it ineligible forever.
+func TestQualitySuggestionWhereQueuedAfterUsesRefreshTime(t *testing.T) {
+	t.Parallel()
+
+	cutoff := time.Now().UTC().Add(-time.Minute)
+	where, args, err := qualitySuggestionWhere(&FindQualitySuggestionMessage{QueuedAfter: &cutoff})
+	require.NoError(t, err)
+	require.Contains(t, where, "COALESCE(refreshed_at, created_at) >= $1")
+	require.Equal(t, []any{cutoff}, args)
+
+	where, args, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{})
+	require.NoError(t, err)
+	require.NotContains(t, where, "refreshed_at")
+	require.Empty(t, args)
+}

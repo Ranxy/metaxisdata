@@ -170,6 +170,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 		return Outcome{}, err
 	}
 	wake := session.WakeCount + 1
+	wakeStartedAt := e.now()
 	_, err = e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 		Wake:           wake,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
@@ -180,7 +181,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if err != nil {
 		return Outcome{}, err
 	}
-	outcome, err := e.runWake(ctx, session, wake, system, pending, options)
+	outcome, err := e.runWake(ctx, session, wake, system, pending, wakeStartedAt, options)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -192,7 +193,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 }
 
 // runWake selects the model wake or the deterministic survey.
-func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage, options Options) (Outcome, error) {
+func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage, wakeStartedAt time.Time, options Options) (Outcome, error) {
 	if e.resolveModel != nil && e.chat != nil {
 		config, ok, err := e.resolveModel(ctx)
 		if err == nil && ok {
@@ -200,7 +201,7 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 			if wakeErr == nil && session.Kind != 2 &&
 				session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
 				e.adoption != nil {
-				e.adoption(ctx, session)
+				e.adoption(ctx, session, wakeStartedAt)
 			}
 			return outcome, wakeErr
 		}

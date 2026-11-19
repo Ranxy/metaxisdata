@@ -446,6 +446,16 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if strings.TrimSpace(rule.GetTitle()) == "" {
 		return nil, connectErrorInvalid("title is required")
 	}
+	ruleType := storepb.QualityRuleType(rule.GetRuleType())
+	// The dimension is a property of the rule type. A client that leaves it unset
+	// (the automatic adoption path, a script, a new caller) gets the type's default
+	// instead of a server-side validation failure; an explicit choice wins.
+	dimension := storepb.QualityDimension(rule.GetDimension())
+	if dimension == storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED {
+		if derived, ok := dataquality.DimensionForRuleType(ruleType); ok {
+			dimension = derived
+		}
+	}
 
 	var suggestion *store.QualitySuggestionMessage
 	if name := strings.TrimSpace(suggestionName); name != "" {
@@ -479,12 +489,12 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if target == nil {
 		return nil, connectErrorInvalid("target is required")
 	}
-	validated, _, err := s.validateRuleInput(ctx, workspaceID, storepb.QualityRuleType(rule.GetRuleType()),
+	validated, _, err := s.validateRuleInput(ctx, workspaceID, ruleType,
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
 		return nil, err
 	}
-	if err := requireReadOnlySourceForNewRule(storepb.QualityRuleType(rule.GetRuleType()), validated); err != nil {
+	if err := requireReadOnlySourceForNewRule(ruleType, validated); err != nil {
 		return nil, err
 	}
 	if err := requireReferenceConnectionBudget(validated); err != nil {
@@ -531,7 +541,7 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		ResourceID:     resourceID,
 		Title:          rule.GetTitle(),
 		Description:    rule.GetDescription(),
-		Dimension:      storepb.QualityDimension(rule.GetDimension()),
+		Dimension:      dimension,
 		RuleType:       storepb.QualityRuleType(rule.GetRuleType()),
 		TargetGUID:     validated.Target.GUID,
 		TargetType:     validated.Target.MetaType,

@@ -684,6 +684,19 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
+  // Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+  // or an administrator uses this to clear drafts an earlier failed pass left
+  // behind; it makes no decision on their behalf and writes only what the
+  // configured allowlist, confidence and daily cap already permit.
+  rpc AdoptQualityAgentPendingSuggestions(AdoptQualityAgentPendingSuggestionsRequest) returns (AdoptQualityAgentPendingSuggestionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:adoptPendingSuggestions"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
   // Replace the masked configuration of one agent. Administrator only.
   rpc UpdateQualityAgent(UpdateQualityAgentRequest) returns (QualityAgent) {
     option (google.api.http) = {
@@ -3775,6 +3788,17 @@ message QualityAgentAdoptionSetting {
   bool allow_critical = 5;
 }
 
+// QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
+// so an owner can tell "nothing was eligible" from "the write kept failing".
+message QualityAgentAdoptionStatus {
+  int32 adopted_last_24h = 1;
+  int32 failed_last_24h = 2;
+  int32 pending_draft_count = 3;
+  // The most recent write failure, with its error class; empty when none.
+  string last_failure_reason = 4;
+  google.protobuf.Timestamp last_failure_time = 5;
+}
+
 // QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
 // default; the workspace hard caps still apply.
 message QualityAgentBudget {
@@ -3823,6 +3847,8 @@ message QualityAgent {
   // BCP-47 tag of the language the agent writes owner-visible prose in. Empty
   // follows the owner's profile language; supported values are en-US and zh-CN.
   string language = 17;
+  // What auto-adoption has actually done recently; read-only.
+  QualityAgentAdoptionStatus adoption_status = 18;
 }
 
 message CreateQualityAgentRequest {
@@ -4046,6 +4072,24 @@ message SetQualityAgentAdoptionRequest {
     (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
   ];
   QualityAgentAdoptionSetting adoption = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
+// adoption guardrails to the rule drafts already in its review queue.
+message AdoptQualityAgentPendingSuggestionsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+}
+
+// AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+message AdoptQualityAgentPendingSuggestionsResponse {
+  int32 adopted = 1;
+  int32 skipped = 2;
+  int32 failed = 3;
+  int32 remaining_pending = 4;
 }
 
 // UpdateQualityAgentRequest replaces the masked configuration fields.

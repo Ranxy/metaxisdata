@@ -799,3 +799,25 @@ func TestWakeUpdatesTheSystemPromptLanguage(t *testing.T) {
 	require.Equal(t, 1, systemCount, "the system prompt is updated in place")
 	require.Equal(t, 1, stores.systemUpdates, "the stored system row is rewritten")
 }
+
+// The adoption hook must receive the wake's start, not the moment the model loop
+// ended: eligibility is computed against it, and a draft from an earlier wake must
+// not slip in because the pass ran late.
+func TestWakePassesTheWakeStartToAdoption(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "done"}}), resolveToModel, nil)
+	fixed := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	engine.now = func() time.Time { return fixed }
+	var got time.Time
+	engine.SetAdoption(func(_ context.Context, _ *store.QualityAgentSessionMessage, since time.Time) {
+		got = since
+	})
+	session := testSession()
+	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
+
+	_, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.Equal(t, fixed, got, "the hook sees the wake start")
+}

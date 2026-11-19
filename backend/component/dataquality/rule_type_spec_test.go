@@ -58,6 +58,8 @@ func TestRuleTypeSpecsCoverTheEnum(t *testing.T) {
 		require.NotNil(t, spec.Arm, "%s has no config arm", spec.Type)
 		require.NotNil(t, spec.Compiler, "%s has no compiler", spec.Type)
 		require.NotNil(t, spec.Validator, "%s has no validator", spec.Type)
+		require.NotEqual(t, storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED, spec.Dimension,
+			"%s has no dimension", spec.Type)
 		judgeOrThresholds := 0
 		if spec.Judge != nil {
 			judgeOrThresholds++
@@ -76,6 +78,41 @@ func TestRuleTypeSpecsCoverTheEnum(t *testing.T) {
 	}
 	require.False(t, seen[storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED],
 		"UNSPECIFIED must not have a spec")
+}
+
+// TestDimensionForRuleType pins the type-to-dimension mapping the create path
+// uses to fill a rule whose caller left the field unset. The automatic adoption
+// path depends on it: its drafts carry no dimension.
+func TestDimensionForRuleType(t *testing.T) {
+	t.Parallel()
+
+	dimension, ok := DimensionForRuleType(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED)
+	require.False(t, ok)
+	require.Equal(t, storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED, dimension)
+	_, ok = DimensionForRuleType(storepb.QualityRuleType(99))
+	require.False(t, ok)
+
+	for _, spec := range ruleTypeSpecs {
+		derived, found := DimensionForRuleType(spec.Type)
+		require.True(t, found, "%s has no default dimension", spec.Type)
+		require.Equal(t, spec.Dimension, derived, "%s", spec.Type)
+	}
+
+	// The low-risk types the agent adopts by default keep the dimensions the
+	// authoring form has always shown.
+	for ruleType, want := range map[storepb.QualityRuleType]storepb.QualityDimension{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:       storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:    storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:          storepb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:           storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:   storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:       storepb.QualityDimension_QUALITY_DIMENSION_TIMELINESS,
+	} {
+		derived, found := DimensionForRuleType(ruleType)
+		require.True(t, found)
+		require.Equal(t, want, derived, "%s", ruleType)
+	}
 }
 
 // TestRuleTypeSpecContract pins the per-type sets the rest of the package derives

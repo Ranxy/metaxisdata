@@ -114,6 +114,22 @@ func (s *Store) GetOpenQualityAgentAttentionByDedupe(ctx context.Context, agentI
 	return message, nil
 }
 
+// SetOpenQualityAgentAttentionQuestion refreshes the wording of the one open item
+// for an agent/dedupe key. It never re-notifies: the notification is sent only when
+// the item is first created, while the question must stay truthful as later passes
+// change the counts behind it.
+func (s *Store) SetOpenQualityAgentAttentionQuestion(ctx context.Context, agentID int64, dedupeKey, question string) error {
+	_, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention
+		SET question = $3
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $4`,
+		agentID, dedupeKey, question, int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return errors.Wrap(err, "failed to update the open quality agent attention")
+	}
+	return nil
+}
+
 // GetQualityAgentAttentionByResourceID reads one escalation; nil means absent.
 func (s *Store) GetQualityAgentAttentionByResourceID(ctx context.Context, resourceID string) (*QualityAgentAttentionMessage, error) {
 	message, err := scanQualityAgentAttention(s.GetDB().QueryRowContext(ctx,

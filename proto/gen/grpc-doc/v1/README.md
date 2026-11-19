@@ -252,6 +252,8 @@
     - [AcceptedValuesQuery](#metaxisdata-v1-AcceptedValuesQuery)
     - [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest)
     - [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse)
+    - [AdoptQualityAgentPendingSuggestionsRequest](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest)
+    - [AdoptQualityAgentPendingSuggestionsResponse](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
     - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
     - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
@@ -363,6 +365,7 @@
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting)
+    - [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus)
     - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
@@ -4690,6 +4693,40 @@ AcceptedValuesQuery is the accepted set a single-column query returns.
 
 
 
+<a name="metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest"></a>
+
+### AdoptQualityAgentPendingSuggestionsRequest
+AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
+adoption guardrails to the rule drafts already in its review queue.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse"></a>
+
+### AdoptQualityAgentPendingSuggestionsResponse
+AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| adopted | [int32](#int32) |  |  |
+| skipped | [int32](#int32) |  |  |
+| failed | [int32](#int32) |  |  |
+| remaining_pending | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-AggregateConfig"></a>
 
 ### AggregateConfig
@@ -6697,6 +6734,7 @@ an administrator edits. There is no token or external API surface.
 | conversation | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent&#39;s conversation session, created lazily. |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | language | [string](#string) |  | BCP-47 tag of the language the agent writes owner-visible prose in. Empty follows the owner&#39;s profile language; supported values are en-US and zh-CN. |
+| adoption_status | [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus) |  | What auto-adoption has actually done recently; read-only. |
 
 
 
@@ -6716,6 +6754,26 @@ QualityAgentAdoptionSetting is the guardrail configuration of the adopt capabili
 | confidence_threshold | [double](#double) |  | Minimum confidence (0..1) a draft needs; 0 means the server default (0.7). |
 | max_per_day | [int32](#int32) |  | Daily adoption ceiling; 0 means the server default (10). |
 | allow_critical | [bool](#bool) |  | Whether critical assets may be auto-adopted; default false. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentAdoptionStatus"></a>
+
+### QualityAgentAdoptionStatus
+QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
+so an owner can tell &#34;nothing was eligible&#34; from &#34;the write kept failing&#34;.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| adopted_last_24h | [int32](#int32) |  |  |
+| failed_last_24h | [int32](#int32) |  |  |
+| pending_draft_count | [int32](#int32) |  |  |
+| last_failure_reason | [string](#string) |  | The most recent write failure, with its error class; empty when none. |
+| last_failure_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -9661,6 +9719,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
 | DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
 | SetQualityAgentAdoption | [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Let the owner turn automatic adoption off or back to paused; administrators may also set ACTIVE. The rest of the configuration stays administrator-managed. |
+| AdoptQualityAgentPendingSuggestions | [AdoptQualityAgentPendingSuggestionsRequest](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest) | [AdoptQualityAgentPendingSuggestionsResponse](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse) | Apply the agent&#39;s adoption guardrails to its pending rule drafts now. The owner or an administrator uses this to clear drafts an earlier failed pass left behind; it makes no decision on their behalf and writes only what the configured allowlist, confidence and daily cap already permit. |
 | UpdateQualityAgent | [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Replace the masked configuration of one agent. Administrator only. |
 | StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. The owner or an administrator may start it. |
 | PauseQualityAgent | [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Pause an ACTIVE agent. The owner and administrators may pause; only an administrator may edit the configuration. |

@@ -85,6 +85,7 @@ const (
 	DataQualityService_ReplyQualityAgentAttention_FullMethodName           = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
 	DataQualityService_DismissQualityAgentAttention_FullMethodName         = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
 	DataQualityService_SetQualityAgentAdoption_FullMethodName              = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
+	DataQualityService_AdoptQualityAgentPendingSuggestions_FullMethodName  = "/metaxisdata.v1.DataQualityService/AdoptQualityAgentPendingSuggestions"
 	DataQualityService_UpdateQualityAgent_FullMethodName                   = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
 	DataQualityService_StartQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/StartQualityAgent"
 	DataQualityService_PauseQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/PauseQualityAgent"
@@ -374,6 +375,11 @@ type DataQualityServiceClient interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+	// or an administrator uses this to clear drafts an earlier failed pass left
+	// behind; it makes no decision on their behalf and writes only what the
+	// configured allowlist, confidence and daily cap already permit.
+	AdoptQualityAgentPendingSuggestions(ctx context.Context, in *AdoptQualityAgentPendingSuggestionsRequest, opts ...grpc.CallOption) (*AdoptQualityAgentPendingSuggestionsResponse, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
@@ -1106,6 +1112,16 @@ func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, 
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) AdoptQualityAgentPendingSuggestions(ctx context.Context, in *AdoptQualityAgentPendingSuggestionsRequest, opts ...grpc.CallOption) (*AdoptQualityAgentPendingSuggestionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdoptQualityAgentPendingSuggestionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_AdoptQualityAgentPendingSuggestions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgent)
@@ -1501,6 +1517,11 @@ type DataQualityServiceServer interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error)
+	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+	// or an administrator uses this to clear drafts an earlier failed pass left
+	// behind; it makes no decision on their behalf and writes only what the
+	// configured allowlist, confidence and daily cap already permit.
+	AdoptQualityAgentPendingSuggestions(context.Context, *AdoptQualityAgentPendingSuggestionsRequest) (*AdoptQualityAgentPendingSuggestionsResponse, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
@@ -1741,6 +1762,9 @@ func (UnimplementedDataQualityServiceServer) DismissQualityAgentAttention(contex
 }
 func (UnimplementedDataQualityServiceServer) SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetQualityAgentAdoption not implemented")
+}
+func (UnimplementedDataQualityServiceServer) AdoptQualityAgentPendingSuggestions(context.Context, *AdoptQualityAgentPendingSuggestionsRequest) (*AdoptQualityAgentPendingSuggestionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdoptQualityAgentPendingSuggestions not implemented")
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityAgent not implemented")
@@ -2941,6 +2965,24 @@ func _DataQualityService_SetQualityAgentAdoption_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_AdoptQualityAgentPendingSuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdoptQualityAgentPendingSuggestionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).AdoptQualityAgentPendingSuggestions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_AdoptQualityAgentPendingSuggestions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).AdoptQualityAgentPendingSuggestions(ctx, req.(*AdoptQualityAgentPendingSuggestionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_UpdateQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateQualityAgentRequest)
 	if err := dec(in); err != nil {
@@ -3407,6 +3449,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetQualityAgentAdoption",
 			Handler:    _DataQualityService_SetQualityAgentAdoption_Handler,
+		},
+		{
+			MethodName: "AdoptQualityAgentPendingSuggestions",
+			Handler:    _DataQualityService_AdoptQualityAgentPendingSuggestions_Handler,
 		},
 		{
 			MethodName: "UpdateQualityAgent",

@@ -3,6 +3,8 @@ import type { Duration, Timestamp } from "@bufbuild/protobuf/wkt";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   AcknowledgeQualityTargetSchemaRequestSchema,
+  AdoptQualityAgentPendingSuggestionsRequestSchema,
+  type AdoptQualityAgentPendingSuggestionsResponse,
   type BatchCreateQualityRuleResult,
   BatchCreateQualityRulesRequestSchema,
   type BatchUpdateQualityRuleResult,
@@ -1652,6 +1654,19 @@ export async function setQualityAgentAdoption(
     adoption: { mode },
   });
   return await dataQualityClient.setQualityAgentAdoption(request, { signal });
+}
+
+/** Apply the agent's adoption guardrails to every pending rule draft now. */
+export async function adoptQualityAgentPendingSuggestions(
+  name: string,
+  signal?: AbortSignal
+): Promise<AdoptQualityAgentPendingSuggestionsResponse> {
+  const request = create(AdoptQualityAgentPendingSuggestionsRequestSchema, {
+    name,
+  });
+  return await dataQualityClient.adoptQualityAgentPendingSuggestions(request, {
+    signal,
+  });
 }
 
 /** Disable an agent permanently; its sessions stop waking. */

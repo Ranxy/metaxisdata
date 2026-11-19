@@ -16,7 +16,7 @@ const LONG_RUNNING_SERVICE = /\/(?:[^/]+\.)?(?:ExplainSQLService|LLMService)\//;
  * server-side. The prefix families are exhaustive for those.
  */
 const LONG_RUNNING_METHOD =
-  /^(?:Batch)?(?:Sync|Run|Suggest|Profile|Preview|Subscribe|Explain|Export)[A-Za-z]*$/;
+  /^(?:Batch)?(?:Sync|Run|Suggest|Profile|Preview|Subscribe|Explain|Export|Adopt)[A-Za-z]*$/;
 
 /** The deadline for the RPC at `path`, or undefined when it has none. */
 export function requestTimeoutMs(path: string): number | undefined {

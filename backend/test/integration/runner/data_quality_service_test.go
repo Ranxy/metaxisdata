@@ -3683,7 +3683,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, readBack.Msg.GetState())
 
-	// The final client surface: the 18 agent RPCs survived, the 19 external-agent RPCs
+	// The final client surface: the 19 agent RPCs survived, the 19 external-agent RPCs
 	// did not. Reflection makes the deletion an assertion instead of a compile-only
 	// promise.
 	clientSurface := reflect.TypeOf((*v1connect.DataQualityServiceClient)(nil)).Elem()
@@ -3704,7 +3704,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	for _, kept := range []string{
 		"CreateQualityAgent", "GetQualityAgent", "ListQualityAgents", "UpdateQualityAgent",
 		"StartQualityAgent", "PauseQualityAgent", "DisableQualityAgent",
-		"SetQualityAgentAdoption", "SendQualityAgentMessage",
+		"SetQualityAgentAdoption", "AdoptQualityAgentPendingSuggestions", "SendQualityAgentMessage",
 		"ListQualityAgentConversationMessages", "ListQualityAgentReports",
 		"ListQualityAgentAttentions", "ReplyQualityAgentAttention", "DismissQualityAgentAttention",
 		"GetQualityAgentSession", "ListQualityAgentSessions", "ListQualityAgentSessionMessages",
@@ -4425,4 +4425,225 @@ func insertFailedQualityExecution(t *testing.T, fixture *qualityFixture, rule *s
 		finishedAt,
 	)
 	require.NoError(t, err, "write the failed execution of rule %d", rule.ID)
+}
+
+// TestQualityAgentAdoptionRealServerIntegration is the regression guard for the
+// automatic adoption write: a draft carries no dimension, the create path derives
+// it from the rule type, and a write failure must be recorded with its real cause.
+// It drives the explicit adoption pass, so no model is needed.
+func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "adoption-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "adoption-stranger")
+
+	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:       "workspaces/-",
+			DisplayName:  "adopting agent",
+			Owner:        ownerName,
+			Databases:    scope,
+			Capabilities: []string{"suggest", "adopt"},
+			Adoption: &v1pb.QualityAgentAdoptionSetting{
+				Mode:                v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE,
+				RuleTypes:           []v1pb.QualityRuleType{v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, v1pb.QualityRuleType_QUALITY_RULE_TYPE_RANGE},
+				ConfidenceThreshold: 0.7,
+				MaxPerDay:           10,
+			},
+			Start: true,
+		}))
+	require.NoError(t, err)
+	agent := created.Msg.GetAgent()
+	agentResourceID := resourceIDFromName(agent.GetName())
+	storedAgent, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, agentResourceID)
+	require.NoError(t, err)
+	require.NotNil(t, storedAgent)
+
+	seedDraftOn := func(targetGUID string, ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig, title string, confidence float64) *v1pb.QualitySuggestion {
+		t.Helper()
+		resourceID, err := common.RandomString(12)
+		require.NoError(t, err)
+		stored, _, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+			ResourceID: resourceID,
+			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+			AgentID:    &storedAgent.ID,
+			TargetGUID: targetGUID,
+			TargetType: storepb.MetaType_TABLE,
+			Signature:  dataquality.RuleSignature(ruleType, config),
+			Payload: &storepb.QualitySuggestionPayload{
+				Payload: &storepb.QualitySuggestionPayload_Rule{
+					Rule: &storepb.QualityRuleDraftConfig{
+						Config:     config,
+						Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+						Title:      title,
+						Rationale:  "integration fixture draft",
+						Confidence: confidence,
+					},
+				},
+			},
+			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+			Confidence: confidence,
+		})
+		require.NoError(t, err)
+		return &v1pb.QualitySuggestion{Name: "workspaces/-/qualitySuggestions/" + stored.ResourceID}
+	}
+	seedDraft := func(ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig, title string, confidence float64) *v1pb.QualitySuggestion {
+		t.Helper()
+		return seedDraftOn(fixture.usersGUID, ruleType, config, title, confidence)
+	}
+
+	minRows := int64(1)
+	rowCountConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+		RowCount: &storepb.RowCountConfig{MinRows: &minRows},
+	}}
+	seedDraft(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountConfig, "users has rows", 0.95)
+
+	// A member who is neither the owner nor an administrator cannot trigger an
+	// adoption pass.
+	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(strangerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The owner may run the pass explicitly; it applies the same guardrails as a wake.
+	pass, err := fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pass.Msg.GetAdopted(), "the valid draft is adopted")
+	require.Zero(t, pass.Msg.GetFailed())
+
+	rules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityRulesRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			PageSize:   100,
+		}))
+	require.NoError(t, err)
+	var adoptedRule *v1pb.QualityRule
+	for _, rule := range rules.Msg.GetQualityRules() {
+		if rule.GetTitle() == "users has rows" {
+			adoptedRule = rule
+			break
+		}
+	}
+	require.NotNil(t, adoptedRule, "the adopted rule exists")
+	require.Equal(t, v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, adoptedRule.GetDimension(),
+		"the create path derives the dimension from the rule type")
+	require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, adoptedRule.GetState())
+
+	read, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, read.Msg.GetAdoptionStatus().GetAdoptedLast_24H())
+	require.EqualValues(t, 0, read.Msg.GetAdoptionStatus().GetPendingDraftCount())
+
+	// A draft the create path cannot write stays pending and records the real cause,
+	// not the old generic "rule creation failed".
+	lowerBound := "0"
+	badConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
+		Range: &storepb.RangeConfig{Column: "no_such_column", Min: &lowerBound, Inclusive: true},
+	}}
+	bad := seedDraft(storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, badConfig, "missing column", 0.95)
+	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pass.Msg.GetFailed())
+	require.EqualValues(t, 1, pass.Msg.GetRemainingPending())
+
+	read, err = fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.Contains(t, read.Msg.GetAdoptionStatus().GetLastFailureReason(), "rule creation failed")
+	require.NotEqual(t, "rule creation failed", read.Msg.GetAdoptionStatus().GetLastFailureReason(),
+		"the durable reason carries the real error")
+	require.NotNil(t, read.Msg.GetAdoptionStatus().GetLastFailureTime())
+
+	storedBad, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(resourceIDFromName(bad.GetName())),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedBad.Status,
+		"a failed write returns the draft to the queue")
+
+	// A draft on a database outside the agent's current scope is never written as a
+	// rule by the explicit retry: the wake path could not reach it either.
+	outOfScopeTarget := "another-instance;another_db;;users"
+	seedDraftOn(outOfScopeTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountConfig,
+		"outside the agent scope", 0.95)
+	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.Zero(t, pass.Msg.GetAdopted(), "an out-of-scope target is not adopted")
+	require.EqualValues(t, 1, pass.Msg.GetSkipped(), "the out-of-scope draft is counted as skipped")
+	require.EqualValues(t, 1, pass.Msg.GetFailed(), "the invalid in-scope draft still fails")
+	require.EqualValues(t, 2, pass.Msg.GetRemainingPending())
+	outOfScopeRules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityRulesRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: outOfScopeTarget,
+			PageSize:   100,
+		}))
+	require.NoError(t, err)
+	require.Empty(t, outOfScopeRules.Msg.GetQualityRules(), "no rule is written outside the agent scope")
+
+	// A draft refreshed in place keeps its original created_at; eligibility must use
+	// the later of created_at and refreshed_at or the refreshed draft is never adopted.
+	scratchConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+		RowCount: &storepb.RowCountConfig{},
+	}}
+	scratchSignature := dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, scratchConfig) + "|scratch"
+	scratchID, err := common.RandomString(12)
+	require.NoError(t, err)
+	_, _, err = fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+		ResourceID: scratchID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		TargetGUID: "instances/scratch;db;;users",
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  scratchSignature,
+		Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+			Rule: &storepb.QualityRuleDraftConfig{
+				Config: rowCountConfig, Severity: storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, Title: "scratch", Confidence: 0.9,
+			},
+		}},
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.9,
+		CreatedAt:  time.Now().UTC().Add(-2 * time.Hour),
+	})
+	require.NoError(t, err)
+	refreshed, wasCreated, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+		ResourceID: scratchID + "b",
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		TargetGUID: "instances/scratch;db;;users",
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  scratchSignature,
+		Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+			Rule: &storepb.QualityRuleDraftConfig{
+				Config: rowCountConfig, Severity: storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, Title: "scratch", Confidence: 0.9,
+			},
+		}},
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.9,
+		CreatedAt:  time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	require.False(t, wasCreated, "the same identity refreshes the existing row")
+	require.NotNil(t, refreshed.RefreshedAt)
+	cutoff := time.Now().UTC().Add(-30 * time.Minute)
+	limit := 100
+	queued, err := fixture.env.Store.ListQualitySuggestions(fixture.ctx, &store.FindQualitySuggestionMessage{
+		QueuedAfter: &cutoff,
+		Limit:       &limit,
+	})
+	require.NoError(t, err)
+	found := false
+	for _, suggestion := range queued {
+		if suggestion.ResourceID == scratchID {
+			found = true
+		}
+	}
+	require.True(t, found, "a draft refreshed after the cutoff is eligible even with an old created_at")
 }
