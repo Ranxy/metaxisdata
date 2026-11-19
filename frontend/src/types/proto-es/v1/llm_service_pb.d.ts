@@ -113,11 +113,12 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
   maskedApiKey: string;
 
   /**
-   * The answer budget one analysis requests from this profile, in output tokens.
+   * The answer budget one model call requests from this profile, in output tokens.
    * Zero means the server default (32768); an explicit value must be 256-131072.
    * The provider or model may cap lower: the first request that exceeds it is
    * retried once at 4096 tokens, and a still-rejected request is reported on the
-   * failed analysis as PROVIDER_STATUS.
+   * failed call as PROVIDER_STATUS. It applies to the data quality analyses and to
+   * the quality agents that pin this profile.
    *
    * An update with an empty field mask writes this field only when it is non-zero
    * (proto3 cannot distinguish an omitted int32 from an explicit zero); send an

@@ -1185,19 +1185,26 @@ async function submitEdit() {
       conversationMessagesPerHour:
         Number(form.value.budgetConversationMessagesPerHour) || 0,
     });
-    await updateQualityAgent(next, [
+    const paths = [
       "display_name",
       "description",
       "owner",
       "language",
-      "provider_profile",
-      "provider_model",
       "databases",
       "capabilities",
       "report_schedule",
       "adoption",
       "budget",
-    ]);
+    ];
+    // Only write the pair when it actually changed. Resending the value this dialog loaded
+    // would revert a provider change another administrator made meanwhile.
+    if (
+      form.value.providerProfile !== editingAgent.value.providerProfile ||
+      form.value.providerModel !== editingAgent.value.providerModel
+    ) {
+      paths.push("provider_profile", "provider_model");
+    }
+    await updateQualityAgent(next, paths);
     createOpen.value = false;
     editingAgent.value = undefined;
     await load();

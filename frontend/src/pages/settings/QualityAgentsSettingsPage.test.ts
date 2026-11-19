@@ -346,6 +346,36 @@ describe("QualityAgentsSettingsPage", () => {
     const [entity, paths] = mocks.updateQualityAgent.mock.calls[0] ?? [];
     expect(entity.providerProfile).toBe("llm-provider-profiles/gone");
     expect(entity.providerModel).toBe("ghost");
+    // An unchanged pair is not rewritten, so a dialog opened earlier cannot revert a
+    // provider change made meanwhile.
+    expect(paths).not.toContain("provider_profile");
+    expect(paths).not.toContain("provider_model");
+  });
+
+  it("writes both pair paths when the model changes", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/c",
+        displayName: "Agent C",
+        owner: "users/1",
+        providerProfile: mainProfile,
+        providerModel: "fast",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.ACTIVE,
+      }),
+    ]);
+    const wrapper = await mountPage();
+    await openEdit(wrapper);
+
+    vm(wrapper).form.providerModel = "reasoner";
+    await nextTick();
+    dialogButton(i18n.global.t("qualityAgents.saveAction"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityAgent).toHaveBeenCalledTimes(1);
+    const [entity, paths] = mocks.updateQualityAgent.mock.calls[0] ?? [];
+    expect(entity.providerModel).toBe("reasoner");
     expect(paths).toEqual(
       expect.arrayContaining(["provider_profile", "provider_model"])
     );
