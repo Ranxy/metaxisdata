@@ -522,7 +522,8 @@ only profiles the workspace allows that enable at least one model; a profile tha
 call the agent makes — wakes, compaction, triage and the drafts it writes — uses this pair. If the profile or model is later deleted,
 disabled or removed from the allowlist, the agent stops reasoning instead of silently switching: its conversation answers with the
 deterministic scope summary, triage waits for a person, and Settings → Quality agents marks the pair as unavailable until you choose
-another. Agents do not follow the workspace provider in Settings → Data Quality; that setting is the analyses' default.
+another. Editing the agent's other fields still works while the pair is stale; only a changed pair is validated. Agents do not follow the
+workspace provider in Settings → Data Quality; that setting is the analyses' default.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
@@ -642,7 +643,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | An agent is blocked with `token-budget` or `wake-budget` | It spent its hourly budget and recovers at the hour boundary; an administrator can raise the budget. |
 | An agent is blocked with `out-of-scope`, `agent-disabled` or `needs-human` | The scope changed, the agent was disabled, or the model reported the same blocker three times; fix the cause, then answer the attention item. |
 | The owner cannot talk to the agent | Only the owner may; administrators can read but not send. |
-| An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, disabled, or outside the allowlist); fix it under Settings → LLM providers, then edit the agent. |
+| An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, disabled, or outside the allowlist); restore it under Settings → LLM providers or the allowlist under Settings → General, then edit the agent. |
 | The agent dialog offers no provider | No allowed profile enables a model; create or enable one under Settings → LLM providers. |
 
 ## See also

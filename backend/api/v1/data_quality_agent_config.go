@@ -64,8 +64,13 @@ func (s *DataQualityService) UpdateQualityAgent(ctx context.Context, req *connec
 	if err := s.validateQualityAgentOwner(ctx, next.OwnerPrincipalID); err != nil {
 		return nil, err
 	}
-	if err := s.validateQualityAgentProvider(ctx, next.ProviderProfile, next.ProviderModel); err != nil {
-		return nil, err
+	// A stored pair that no longer resolves is tolerated by the runtime, so an edit
+	// that leaves it alone (a rename, a budget change) must not be refused; only a
+	// changed pair is checked against the registry.
+	if next.ProviderProfile != agent.ProviderProfile || next.ProviderModel != agent.ProviderModel {
+		if err := s.validateQualityAgentProvider(ctx, next.ProviderProfile, next.ProviderModel); err != nil {
+			return nil, err
+		}
 	}
 	updated, err := s.store.UpdateQualityAgentConfig(ctx, next)
 	if err != nil {
@@ -481,7 +486,9 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 // and stores it in canonical form. The pair is required: the model is never
 // inferred from the profile, because one profile can enable several models at
 // different prices. Whether the profile currently enables the model is a
-// service-level check against the registry.
+// service-level check against the registry. A bare profile id is accepted for the
+// same reason `llm.ResolveConfig` accepts one (older references may hold it); the
+// stored value is always the resource name.
 func normalizeQualityAgentProvider(profile, model string) (string, string, error) {
 	profile = strings.TrimSpace(profile)
 	model = strings.TrimSpace(model)

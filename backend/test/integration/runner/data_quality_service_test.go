@@ -3608,6 +3608,9 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NotEqual(t, agent.GetName(), second.Msg.GetAgent().GetName())
 	require.Equal(t, "fast", agent.GetProviderModel(), "an independent agent does not move the first one")
 
+	beforeCreate, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
+	require.NoError(t, err)
 	_, err = fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
 			Parent:          "workspaces/-",
@@ -3620,6 +3623,23 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		}))
 	require.Error(t, err, "a model the profile does not enable is refused")
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	afterCreate, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
+	require.NoError(t, err)
+	require.Len(t, afterCreate.Msg.GetQualityAgents(), len(beforeCreate.Msg.GetQualityAgents()),
+		"a refused creation leaves no agent row or principal")
+
+	// The adopt capability is a prerequisite: an armed mode is refused instead of being
+	// stored and then read back converged to off.
+	_, err = fixture.dataQuality.SetQualityAgentAdoption(fixture.ctx,
+		withToken(adminToken, &v1pb.SetQualityAgentAdoptionRequest{
+			Name: agent.GetName(),
+			Adoption: &v1pb.QualityAgentAdoptionSetting{
+				Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_PAUSED,
+			},
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	// The response view reads the pair back, and a masked update that does not name it
 	// keeps it.
@@ -3635,6 +3655,37 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "reasoner", updatedSecond.Msg.GetProviderModel(),
 		"an update that does not name the model keeps it")
+
+	// Disabling the pinned model changes nothing about the configuration: the read keeps
+	// the pair and an edit that leaves it alone is still accepted. The wake is what loses
+	// the model (deterministic conversation, triage parks needs-human).
+	llmClient := v1connect.NewLLMServiceClient(httpClient, fixture.env.BaseURL)
+	_, err = llmClient.UpdateLLMProviderProfile(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateLLMProviderProfileRequest{
+			Profile: &v1pb.LlmProviderProfile{
+				Name: providerProfile,
+				Models: []*v1pb.LlmProviderModel{
+					{Name: "fast", Enabled: true},
+					{Name: "reasoner", Enabled: false},
+				},
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"models"}},
+		}))
+	require.NoError(t, err, "disable the model the second agent pins")
+	staleView, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentRequest{Name: second.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, "reasoner", staleView.Msg.GetProviderModel(),
+		"the stored pair is configuration, not availability")
+	require.Equal(t, providerProfile, staleView.Msg.GetProviderProfile())
+	unrelated, err := fixture.dataQuality.UpdateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateQualityAgentRequest{
+			QualityAgent: &v1pb.QualityAgent{Name: second.Msg.GetAgent().GetName(), Language: "en-US"},
+			UpdateMask:   &fieldmaskpb.FieldMask{Paths: []string{"language"}},
+		}))
+	require.NoError(t, err, "an edit that leaves the stale pair alone is accepted")
+	require.Equal(t, "reasoner", unrelated.Msg.GetProviderModel())
+	require.Equal(t, "en-US", unrelated.Msg.GetLanguage())
 
 	// CreateQualityAgentResponse carries no token field any more and
 	// RotateQualityAgentToken does not exist, so there is no credential to assert: the
