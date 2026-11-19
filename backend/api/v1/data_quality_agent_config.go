@@ -213,6 +213,13 @@ func (s *DataQualityService) qualityAgentView(ctx context.Context, workspaceID s
 		return nil, err
 	}
 	view := convertQualityAgentToV1(workspaceID, agent, databases)
+	// The configured guardrails are not the outcome. Surface what auto-adoption
+	// actually did, so an owner can tell an empty queue from a broken write.
+	status, err := s.store.GetQualityAgentAdoptionStatus(ctx, agent.ID, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	view.AdoptionStatus = convertQualityAgentAdoptionStatusToV1(status)
 	conversation, err := s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
 	if err != nil {
 		return nil, err
@@ -610,6 +617,23 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
 		},
 	}
+}
+
+// convertQualityAgentAdoptionStatusToV1 renders the read-only adoption outcome.
+func convertQualityAgentAdoptionStatusToV1(status *store.QualityAgentAdoptionStatusMessage) *v1pb.QualityAgentAdoptionStatus {
+	if status == nil {
+		return nil
+	}
+	view := &v1pb.QualityAgentAdoptionStatus{
+		AdoptedLast_24H:   status.AdoptedLast24h,
+		FailedLast_24H:    status.FailedLast24h,
+		PendingDraftCount: status.PendingDraftCount,
+		LastFailureReason: status.LastFailureReason,
+	}
+	if status.LastFailureTime != nil {
+		view.LastFailureTime = timestamppb.New(*status.LastFailureTime)
+	}
+	return view
 }
 
 func qualityAgentStateToV1(state store.QualityAgentState) v1pb.QualityAgentState {

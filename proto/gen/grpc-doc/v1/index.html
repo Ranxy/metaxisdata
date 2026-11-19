@@ -1136,6 +1136,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest"><span class="badge">M</span>AdoptQualityAgentPendingSuggestionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse"><span class="badge">M</span>AdoptQualityAgentPendingSuggestionsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.AggregateConfig"><span class="badge">M</span>AggregateConfig</a>
                 </li>
               
@@ -1577,6 +1585,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentAdoptionSetting"><span class="badge">M</span>QualityAgentAdoptionSetting</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentAdoptionStatus"><span class="badge">M</span>QualityAgentAdoptionStatus</a>
                 </li>
               
                 <li>
@@ -14102,6 +14114,75 @@ for NULL (a NULL in the set would make NOT IN unknown for every row). </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest">AdoptQualityAgentPendingSuggestionsRequest</h3>
+        <p>AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured</p><p>adoption guardrails to the rule drafts already in its review queue.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse">AdoptQualityAgentPendingSuggestionsResponse</h3>
+        <p>AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>adopted</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>skipped</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>remaining_pending</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.AggregateConfig">AggregateConfig</h3>
         <p>AggregateConfig bounds the value one aggregate over one column produces.</p>
 
@@ -19209,6 +19290,13 @@ conversation session, created lazily. </p></td>
 follows the owner&#39;s profile language; supported values are en-US and zh-CN. </p></td>
                 </tr>
               
+                <tr>
+                  <td>adoption_status</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentAdoptionStatus">QualityAgentAdoptionStatus</a></td>
+                  <td></td>
+                  <td><p>What auto-adoption has actually done recently; read-only. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -19260,6 +19348,58 @@ low-risk set. </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p>Whether critical assets may be auto-adopted; default false. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentAdoptionStatus">QualityAgentAdoptionStatus</h3>
+        <p>QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,</p><p>so an owner can tell "nothing was eligible" from "the write kept failing".</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>adopted_last_24h</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_last_24h</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>pending_draft_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_failure_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The most recent write failure, with its error class; empty when none. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_failure_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -28148,6 +28288,16 @@ also set ACTIVE. The rest of the configuration stays administrator-managed.</p><
               </tr>
             
               <tr>
+                <td>AdoptQualityAgentPendingSuggestions</td>
+                <td><a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest">AdoptQualityAgentPendingSuggestionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse">AdoptQualityAgentPendingSuggestionsResponse</a></td>
+                <td><p>Apply the agent&#39;s adoption guardrails to its pending rule drafts now. The owner
+or an administrator uses this to clear drafts an earlier failed pass left
+behind; it makes no decision on their behalf and writes only what the
+configured allowlist, confidence and daily cap already permit.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityAgent</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityAgentRequest">UpdateQualityAgentRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
@@ -28857,6 +29007,16 @@ action.</p></td>
                 <td>SetQualityAgentAdoption</td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualityAgents/*}:setAdoption</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>AdoptQualityAgentPendingSuggestions</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgents/*}:adoptPendingSuggestions</td>
                 <td>*</td>
               </tr>
               

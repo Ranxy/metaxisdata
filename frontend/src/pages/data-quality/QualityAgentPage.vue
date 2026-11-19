@@ -172,6 +172,32 @@
                 </Badge>
               </div>
               <div
+                v-if="agent?.adoptionStatus && agent.capabilities.includes('adopt')"
+                class="space-y-1 border-t pt-2 text-xs"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-muted-foreground">{{ t("qualityAgent.adoptionStatusLabel") }}</span>
+                  <span>
+                    {{ t("qualityAgent.adoptionStatusSummary", {
+                      adopted: agent.adoptionStatus.adoptedLast24h,
+                      failed: agent.adoptionStatus.failedLast24h,
+                      pending: agent.adoptionStatus.pendingDraftCount,
+                    }) }}
+                  </span>
+                </div>
+                <p
+                  v-if="agent.adoptionStatus.lastFailureReason"
+                  class="break-words text-destructive"
+                >
+                  {{ t("qualityAgent.adoptionLastFailure", {
+                    reason: agent.adoptionStatus.lastFailureReason,
+                  }) }}
+                  <span v-if="agent.adoptionStatus.lastFailureTime">
+                    · {{ formatDateTime(agent.adoptionStatus.lastFailureTime, locale) }}
+                  </span>
+                </p>
+              </div>
+              <div
                 v-if="canChat && agent?.capabilities.includes('adopt')"
                 class="flex items-center justify-between gap-2 border-t pt-2"
               >
@@ -185,6 +211,16 @@
                   {{ adoptionEnabled ? t("qualityAgent.adoptionDisable") : t("qualityAgent.adoptionEnable") }}
                 </Button>
               </div>
+              <Button
+                v-if="canAdopt"
+                size="sm"
+                variant="secondary"
+                class="w-full"
+                :disabled="busy || !adoptionEnabled || (agent?.adoptionStatus?.pendingDraftCount ?? 0) === 0"
+                @click="adoptPending"
+              >
+                {{ t("qualityAgent.adoptPending") }}
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -372,6 +408,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import {
+  adoptQualityAgentPendingSuggestions,
   getQualityAgent,
   listQualityAgentAttentions,
   listQualityAgentConversationMessages,
@@ -471,6 +508,14 @@ const adoptionEnabled = computed(
   () =>
     agent.value?.adoption?.mode === QualityAgentAdoptionMode.ACTIVE ||
     agent.value?.adoption?.mode === QualityAgentAdoptionMode.PAUSED
+);
+// The backend lets the owner or an administrator run a pass; the button mirrors
+// that, while the guardrails still decide what is actually written.
+const canAdopt = computed(
+  () =>
+    (canChat.value || canManage.value) &&
+    agent.value?.state === QualityAgentState.ACTIVE &&
+    agent.value?.capabilities.includes("adopt") === true
 );
 const visibleMessages = computed(() =>
   messages.value.filter(
@@ -707,6 +752,34 @@ async function toggleAdoption() {
       : QualityAgentAdoptionMode.PAUSED;
     agent.value = await setQualityAgentAdoption(agentName.value, mode);
     notify.success(t("qualityAgent.adoptionUpdated"));
+  } catch (err) {
+    notify.error(formatError(err));
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function adoptPending() {
+  if (!agent.value || busy.value) {
+    return;
+  }
+  busy.value = true;
+  try {
+    const result = await adoptQualityAgentPendingSuggestions(agentName.value);
+    agent.value = await getQualityAgent(agentName.value);
+    await loadAttentions();
+    await loadSessions();
+    const message = t("qualityAgent.adoptPendingSuccess", {
+      adopted: result.adopted,
+      skipped: result.skipped,
+      failed: result.failed,
+      remaining: result.remainingPending,
+    });
+    if (result.failed > 0) {
+      notify.warning(message);
+    } else {
+      notify.success(message);
+    }
   } catch (err) {
     notify.error(formatError(err));
   } finally {

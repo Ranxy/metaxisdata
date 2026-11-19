@@ -105,12 +105,35 @@ func BlockedQuestion(lang, reason string) string {
 	return "The session is blocked: " + reason
 }
 
-// ProposalQuestion names how many drafts wait for the owner.
-func ProposalQuestion(lang string, count int) string {
+// ProposalCounts is the outcome of one adoption pass for one target.
+type ProposalCounts struct {
+	Remaining int
+	Adopted   int
+	Skipped   int
+	Failed    int
+	// Failure is the most recent write failure, already bounded by the caller.
+	Failure string
+}
+
+// ProposalQuestion names what is left in the owner's queue and why. It separates a
+// policy skip from a write failure: the owner cannot fix a server error by deciding
+// a draft.
+func ProposalQuestion(lang string, counts ProposalCounts) string {
+	failure := strings.TrimSpace(counts.Failure)
 	if IsChinese(lang) {
-		return fmt.Sprintf("该目标有 %d 条草案未被自动采纳，需要你决定。", count)
+		question := fmt.Sprintf("该目标还有 %d 条草案需要处理：本轮自动采纳 %d 条，按策略跳过 %d 条，写入失败 %d 条。",
+			counts.Remaining, counts.Adopted, counts.Skipped, counts.Failed)
+		if failure != "" {
+			question += "最近一次失败：" + failure + "。"
+		}
+		return question
 	}
-	return fmt.Sprintf("%d draft(s) for this target were not auto-adopted and need your decision.", count)
+	question := fmt.Sprintf("%d draft(s) for this target still need a decision: %d auto-adopted, %d skipped by policy, %d failed to write this pass.",
+		counts.Remaining, counts.Adopted, counts.Skipped, counts.Failed)
+	if failure != "" {
+		question += " Last failure: " + failure + "."
+	}
+	return question
 }
 
 // ReportQuestion names the anomalies in a generated report.

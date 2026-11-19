@@ -145,11 +145,13 @@ type FindQualitySuggestionMessage struct {
 	Database    string
 	Schema      string
 	TablePrefix string
-	// CreatedAfter keeps suggestions queued after an instant; adoption uses it to
-	// consider only the drafts of the triage wake that just finished.
-	CreatedAfter *time.Time
-	Limit        *int
-	Offset       *int
+	// QueuedAfter keeps suggestions created or refreshed after an instant. Adoption
+	// uses it to consider only the drafts of the triage wake that just finished; a
+	// draft refreshed in place keeps its original created_at, so the comparison is
+	// against the later of the two timestamps.
+	QueuedAfter *time.Time
+	Limit       *int
+	Offset      *int
 }
 
 // qualitySuggestionWhere builds the predicate and positional arguments for a
@@ -193,9 +195,9 @@ func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any, 
 		args = append(args, *find.AgentID)
 		where = append(where, fmt.Sprintf("agent_id = $%d", len(args)))
 	}
-	if find.CreatedAfter != nil {
-		args = append(args, *find.CreatedAfter)
-		where = append(where, fmt.Sprintf("created_at >= $%d", len(args)))
+	if find.QueuedAfter != nil {
+		args = append(args, *find.QueuedAfter)
+		where = append(where, fmt.Sprintf("COALESCE(refreshed_at, created_at) >= $%d", len(args)))
 	}
 	if find.TargetGUID != nil && strings.TrimSpace(*find.TargetGUID) != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", strings.TrimSpace(*find.TargetGUID))

@@ -385,6 +385,9 @@ export function defaultOnEmptyForNewRule(
     : undefined;
 }
 
+// The authoring default. The server keeps the same mapping in its rule-type
+// table and derives the value when a caller leaves the dimension unset (the
+// automatic adoption path does), so the two must agree.
 const DIMENSION_BY_RULE_TYPE: Partial<
   Record<QualityRuleType, QualityDimension>
 > = {

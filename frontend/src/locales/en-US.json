@@ -3268,9 +3268,14 @@
     "viewRun": "View Run"
   },
   "qualityAgent": {
+    "adoptPending": "Adopt pending drafts now",
+    "adoptPendingSuccess": "Adopted {adopted}, skipped {skipped}, failed {failed}; {remaining} still pending.",
     "adoptionDisable": "Turn off auto-adoption",
     "adoptionEnable": "Restore PAUSED",
     "adoptionLabel": "Auto-adoption",
+    "adoptionLastFailure": "Last failure: {reason}",
+    "adoptionStatusLabel": "Adoption outcome",
+    "adoptionStatusSummary": "{adopted} adopted · {failed} failed · {pending} pending",
     "adoptionUpdated": "Adoption setting updated",
     "agentReply": "Agent",
     "allDatabases": "All databases",

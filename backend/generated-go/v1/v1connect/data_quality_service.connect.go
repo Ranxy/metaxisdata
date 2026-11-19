@@ -229,6 +229,9 @@ const (
 	// DataQualityServiceSetQualityAgentAdoptionProcedure is the fully-qualified name of the
 	// DataQualityService's SetQualityAgentAdoption RPC.
 	DataQualityServiceSetQualityAgentAdoptionProcedure = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
+	// DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure is the fully-qualified name of the
+	// DataQualityService's AdoptQualityAgentPendingSuggestions RPC.
+	DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure = "/metaxisdata.v1.DataQualityService/AdoptQualityAgentPendingSuggestions"
 	// DataQualityServiceUpdateQualityAgentProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityAgent RPC.
 	DataQualityServiceUpdateQualityAgentProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
@@ -529,6 +532,11 @@ type DataQualityServiceClient interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
+	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+	// or an administrator uses this to clear drafts an earlier failed pass left
+	// behind; it makes no decision on their behalf and writes only what the
+	// configured allowlist, confidence and daily cap already permit.
+	AdoptQualityAgentPendingSuggestions(context.Context, *connect.Request[v1.AdoptQualityAgentPendingSuggestionsRequest]) (*connect.Response[v1.AdoptQualityAgentPendingSuggestionsResponse], error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
@@ -968,6 +976,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("SetQualityAgentAdoption")),
 			connect.WithClientOptions(opts...),
 		),
+		adoptQualityAgentPendingSuggestions: connect.NewClient[v1.AdoptQualityAgentPendingSuggestionsRequest, v1.AdoptQualityAgentPendingSuggestionsResponse](
+			httpClient,
+			baseURL+DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("AdoptQualityAgentPendingSuggestions")),
+			connect.WithClientOptions(opts...),
+		),
 		updateQualityAgent: connect.NewClient[v1.UpdateQualityAgentRequest, v1.QualityAgent](
 			httpClient,
 			baseURL+DataQualityServiceUpdateQualityAgentProcedure,
@@ -1110,6 +1124,7 @@ type dataQualityServiceClient struct {
 	replyQualityAgentAttention           *connect.Client[v1.ReplyQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	dismissQualityAgentAttention         *connect.Client[v1.DismissQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	setQualityAgentAdoption              *connect.Client[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent]
+	adoptQualityAgentPendingSuggestions  *connect.Client[v1.AdoptQualityAgentPendingSuggestionsRequest, v1.AdoptQualityAgentPendingSuggestionsResponse]
 	updateQualityAgent                   *connect.Client[v1.UpdateQualityAgentRequest, v1.QualityAgent]
 	startQualityAgent                    *connect.Client[v1.StartQualityAgentRequest, v1.QualityAgent]
 	pauseQualityAgent                    *connect.Client[v1.PauseQualityAgentRequest, v1.QualityAgent]
@@ -1454,6 +1469,12 @@ func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, 
 	return c.setQualityAgentAdoption.CallUnary(ctx, req)
 }
 
+// AdoptQualityAgentPendingSuggestions calls
+// metaxisdata.v1.DataQualityService.AdoptQualityAgentPendingSuggestions.
+func (c *dataQualityServiceClient) AdoptQualityAgentPendingSuggestions(ctx context.Context, req *connect.Request[v1.AdoptQualityAgentPendingSuggestionsRequest]) (*connect.Response[v1.AdoptQualityAgentPendingSuggestionsResponse], error) {
+	return c.adoptQualityAgentPendingSuggestions.CallUnary(ctx, req)
+}
+
 // UpdateQualityAgent calls metaxisdata.v1.DataQualityService.UpdateQualityAgent.
 func (c *dataQualityServiceClient) UpdateQualityAgent(ctx context.Context, req *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {
 	return c.updateQualityAgent.CallUnary(ctx, req)
@@ -1778,6 +1799,11 @@ type DataQualityServiceHandler interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
+	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+	// or an administrator uses this to clear drafts an earlier failed pass left
+	// behind; it makes no decision on their behalf and writes only what the
+	// configured allowlist, confidence and daily cap already permit.
+	AdoptQualityAgentPendingSuggestions(context.Context, *connect.Request[v1.AdoptQualityAgentPendingSuggestionsRequest]) (*connect.Response[v1.AdoptQualityAgentPendingSuggestionsResponse], error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
 	// Activate a DRAFT or PAUSED agent. The owner or an administrator may start it.
@@ -2213,6 +2239,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("SetQualityAgentAdoption")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceAdoptQualityAgentPendingSuggestionsHandler := connect.NewUnaryHandler(
+		DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure,
+		svc.AdoptQualityAgentPendingSuggestions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("AdoptQualityAgentPendingSuggestions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceUpdateQualityAgentHandler := connect.NewUnaryHandler(
 		DataQualityServiceUpdateQualityAgentProcedure,
 		svc.UpdateQualityAgent,
@@ -2417,6 +2449,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceDismissQualityAgentAttentionHandler.ServeHTTP(w, r)
 		case DataQualityServiceSetQualityAgentAdoptionProcedure:
 			dataQualityServiceSetQualityAgentAdoptionHandler.ServeHTTP(w, r)
+		case DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure:
+			dataQualityServiceAdoptQualityAgentPendingSuggestionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityAgentProcedure:
 			dataQualityServiceUpdateQualityAgentHandler.ServeHTTP(w, r)
 		case DataQualityServiceStartQualityAgentProcedure:
@@ -2708,6 +2742,10 @@ func (UnimplementedDataQualityServiceHandler) DismissQualityAgentAttention(conte
 
 func (UnimplementedDataQualityServiceHandler) SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.SetQualityAgentAdoption is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) AdoptQualityAgentPendingSuggestions(context.Context, *connect.Request[v1.AdoptQualityAgentPendingSuggestionsRequest]) (*connect.Response[v1.AdoptQualityAgentPendingSuggestionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.AdoptQualityAgentPendingSuggestions is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityAgent(context.Context, *connect.Request[v1.UpdateQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {

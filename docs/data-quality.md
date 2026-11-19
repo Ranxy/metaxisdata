@@ -520,7 +520,8 @@ below) and *Patrol* (the scheduled review of the scope and its reports).
 - **Report schedule** — off, daily or weekly, with a time, a time zone and (for weekly) a weekday.
 - **Adoption guardrails** — off, paused or active; the eligible rule types, a minimum model confidence, a daily ceiling, and whether
 critical assets may be adopted. *Paused* creates an adopted check disabled for the owner to enable; *Active* creates it enabled. The
-owner can turn adoption off or back to paused; the rest is administrator-managed.
+owner can turn adoption off or back to paused; the rest is administrator-managed. A draft carries no dimension of its own: the adopted
+check takes the dimension its rule type measures, the same default the check editor offers.
 - **Budgets** — tokens and wakes per hour, concurrent sessions, new sessions per hour, active sessions and conversation messages per
 hour. Zero means the server default; the server's hard cap still applies.
 
@@ -541,8 +542,15 @@ answers with a deterministic scope summary.
 enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Reports are
 generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** Three things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
-adoption pass, and a report that found new failures. The owner answers or dismisses it from the agent's home; answering resumes the
-target's session. The owner also gets an in-app notification.
+adoption pass, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
+names the most recent write failure. The owner answers or dismisses it from the agent's home; answering resumes the target's session.
+The owner also gets an in-app notification.
+- **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks adopted, drafts that failed to write, and
+drafts still pending — plus the most recent write failure. **Adopt pending drafts now** runs the same guardrails over drafts already
+in the queue; the owner or an administrator can use it to clear drafts a failed pass left behind, drafts above the daily ceiling
+from an earlier pass, or drafts whose wake failed after drafting. It does not bypass the rule-type allowlist, the confidence
+threshold, the critical-asset switch, the agent's current database scope or the daily ceiling; drafts outside the scope are skipped
+and stay pending.
 - **Does not write freely.** An agent cannot publish a contract, decide a proposal, edit a check or change settings. Its only writes are
 the proposal and asset-fact tools inside its own runtime, and an adopted check is created through the normal check path under the
 guardrails above, owned by the agent's owner.

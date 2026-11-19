@@ -3268,9 +3268,14 @@
     "viewRun": "查看运行"
   },
   "qualityAgent": {
+    "adoptPending": "立即采纳待处理草案",
+    "adoptPendingSuccess": "已采纳 {adopted} 条，跳过 {skipped} 条，失败 {failed} 条；仍有 {remaining} 条待处理。",
     "adoptionDisable": "关闭自动采纳",
     "adoptionEnable": "恢复为 PAUSED",
     "adoptionLabel": "自动采纳",
+    "adoptionLastFailure": "最近失败：{reason}",
+    "adoptionStatusLabel": "自动采纳结果",
+    "adoptionStatusSummary": "已采纳 {adopted} · 失败 {failed} · 待审 {pending}",
     "adoptionUpdated": "采纳设置已更新",
     "agentReply": "Agent",
     "allDatabases": "全部数据库",

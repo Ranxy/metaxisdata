@@ -24,6 +24,11 @@ describe("requestTimeoutMs", () => {
         "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
       )
     ).toBeUndefined();
+    expect(
+      requestTimeoutMs(
+        "/metaxisdata.v1.DataQualityService/AdoptQualityAgentPendingSuggestions"
+      )
+    ).toBeUndefined();
   });
 
   it("leaves the LLM-backed data-quality work alone", () => {

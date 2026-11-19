@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"context"
+	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
@@ -33,9 +34,10 @@ func WithTableContext(reader TableContextReader) Option {
 }
 
 // AdoptionFunc runs after a successful triage wake: it applies the agent's
-// auto-adoption guardrails to the drafts that wake queued. A nil hook leaves every
-// draft in the review queue.
-type AdoptionFunc func(ctx context.Context, session *store.QualityAgentSessionMessage)
+// auto-adoption guardrails to the drafts that wake queued. since is when the wake
+// started, so a draft that a previous pass merely refreshed cannot be mistaken for
+// a new one. A nil hook leaves every draft in the review queue.
+type AdoptionFunc func(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time)
 
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.
 func WithDraftChecks(draft DraftChecksFunc) Option {

@@ -20,6 +20,9 @@ import (
 type ruleTypeSpec struct {
 	// Type is the enum value this row describes; it is the row's key.
 	Type storepb.QualityRuleType
+	// Dimension is what a check of this type measures. It seeds the rule's
+	// dimension when the caller does not choose one; it is never optional.
+	Dimension storepb.QualityDimension
 	// Title is the label-suggestion title; empty means the type is not suggested.
 	Title string
 
@@ -98,6 +101,18 @@ func ruleTypeSpecFor(ruleType storepb.QualityRuleType) (ruleTypeSpec, bool) {
 	return ruleTypeSpec{}, false
 }
 
+// DimensionForRuleType returns the dimension a check of this type measures.
+// The second result is false for UNSPECIFIED and for a type this build does not
+// know, so a caller can leave the field for validation to reject instead of
+// inventing a dimension.
+func DimensionForRuleType(ruleType storepb.QualityRuleType) (storepb.QualityDimension, bool) {
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok || spec.Dimension == storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED {
+		return storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED, false
+	}
+	return spec.Dimension, true
+}
+
 // ruleTypeSpecForConfig returns the descriptor named by the config's oneof arm.
 func ruleTypeSpecForConfig(config *storepb.QualityRuleConfig) (ruleTypeSpec, bool) {
 	if config == nil {
@@ -114,12 +129,13 @@ func ruleTypeSpecForConfig(config *storepb.QualityRuleConfig) (ruleTypeSpec, boo
 // proto enum order.
 var ruleTypeSpecs = []ruleTypeSpec{
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		Trend:    trendRowCountShape,
-		Title:    "row count",
-		Arm:      armRowCount,
-		Views:    true,
-		Compiler: compileRowCount,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		Trend:     trendRowCountShape,
+		Title:     "row count",
+		Arm:       armRowCount,
+		Views:     true,
+		Compiler:  compileRowCount,
 		Validator: func(_ ResolvedTarget, config *storepb.QualityRuleConfig) error {
 			return validateRowCountConfig(config.GetRowCount())
 		},
@@ -127,12 +143,13 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe: observeRowCount,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		Trend:    trendRowCountChangeShape,
-		Title:    "row count change",
-		Arm:      armRowCountChange,
-		Views:    true,
-		Compiler: compileRowCountChange,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		Trend:     trendRowCountChangeShape,
+		Title:     "row count change",
+		Arm:       armRowCountChange,
+		Views:     true,
+		Compiler:  compileRowCountChange,
 		Validator: func(_ ResolvedTarget, config *storepb.QualityRuleConfig) error {
 			return validateRowCountChangeConfig(config.GetRowCountChange())
 		},
@@ -140,11 +157,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe: observeRowCount,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		Sampling: true,
-		Trend:    trendNullPercentShape,
-		Title:    "null percent",
-		Arm:      armNullPercent,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		Sampling:  true,
+		Trend:     trendNullPercentShape,
+		Title:     "null percent",
+		Arm:       armNullPercent,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetNullPercent().GetColumn())
 		},
@@ -162,11 +180,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft: labelDraftNullPercent,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "unique",
-		Arm:      armUnique,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "unique",
+		Arm:       armUnique,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetUnique().GetColumn())
 		},
@@ -197,11 +216,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftUnique,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "unique combination",
-		Arm:      armUniqueCombination,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "unique combination",
+		Arm:       armUniqueCombination,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetUniqueCombination().GetColumns()
 		},
@@ -228,11 +248,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftUniqueCombination,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "accepted values",
-		Arm:      armAcceptedValues,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "accepted values",
+		Arm:       armAcceptedValues,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetAcceptedValues().GetColumn())
 		},
@@ -270,11 +291,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftAcceptedValues,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "range",
-		Arm:      armRange,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "range",
+		Arm:       armRange,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetRange().GetColumn())
 		},
@@ -298,11 +320,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftRange,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "format",
-		Arm:      armRegex,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "format",
+		Arm:       armRegex,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetRegex().GetColumn())
 		},
@@ -340,11 +363,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft: labelDraftRegex,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "string length",
-		Arm:      armStringLength,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "string length",
+		Arm:       armStringLength,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetStringLength().GetColumn())
 		},
@@ -368,10 +392,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftStringLength,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		Trend: trendPercentCapableShape,
-		Title: "referential integrity",
-		Arm:   armReferentialIntegrity,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY,
+		Trend:     trendPercentCapableShape,
+		Title:     "referential integrity",
+		Arm:       armReferentialIntegrity,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetReferentialIntegrity().GetChildColumn())
 		},
@@ -404,11 +429,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     countObservation,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Title:    "cross column",
-		Arm:      armCrossColumn,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Title:     "cross column",
+		Arm:       armCrossColumn,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			cross := config.GetCrossColumn()
 			return twoColumns(cross.GetLeftColumn(), cross.GetRightColumn())
@@ -445,10 +471,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     countObservation,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		Trend: trendFreshnessShape,
-		Title: "freshness",
-		Arm:   armFreshness,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_TIMELINESS,
+		Trend:     trendFreshnessShape,
+		Title:     "freshness",
+		Arm:       armFreshness,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetFreshness().GetTimestampColumn())
 		},
@@ -465,10 +492,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft: labelDraftFreshness,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		Trend: trendCustomSQLShape,
-		Title: "custom SQL",
-		Arm:   armCustomSQL,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_ACCURACY,
+		Trend:     trendCustomSQLShape,
+		Title:     "custom SQL",
+		Arm:       armCustomSQL,
 		Discriminators: func(config *storepb.QualityRuleConfig) []string {
 			custom := config.GetCustomSql()
 			if custom == nil {
@@ -490,10 +518,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:   observeCustomSQL,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-		Trend: trendPercentCapableShape,
-		Title: "expression",
-		Arm:   armCELExpression,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_ACCURACY,
+		Trend:     trendPercentCapableShape,
+		Title:     "expression",
+		Arm:       armCELExpression,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetCelExpression().GetColumns()
 		},
@@ -517,7 +546,8 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Validator:   validateCELExpressionConfig,
 	},
 	{
-		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY,
 		// schema_drift observes the registry rather than a numeric value, so it has no trend.
 		Arm:   armSchemaDrift,
 		Views: true,
@@ -544,10 +574,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		},
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		Sampling: true,
-		Trend:    trendPercentCapableShape,
-		Arm:      armGroupCheck,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		Sampling:  true,
+		Trend:     trendPercentCapableShape,
+		Arm:       armGroupCheck,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetGroupCheck().GetColumns()
 		},
@@ -566,10 +597,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     observeGroupCheck,
 	},
 	{
-		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		Sampling: true,
-		Trend:    trendAggregateShape,
-		Arm:      armAggregate,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_ACCURACY,
+		Sampling:  true,
+		Trend:     trendAggregateShape,
+		Arm:       armAggregate,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetAggregate().GetColumn())
 		},
@@ -593,9 +625,10 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:   observeAggregate,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		Trend: trendCrossTableShape,
-		Arm:   armCrossTable,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY,
+		Trend:     trendCrossTableShape,
+		Arm:       armCrossTable,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			cross := config.GetCrossTable()
 			return twoColumns(cross.GetLeftColumn(), cross.GetRightColumn())
@@ -627,10 +660,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:   observeCrossTable,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
-		Trend: trendPercentCapableShape,
-		Title: "standard code",
-		Arm:   armStandardCode,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+		Trend:     trendPercentCapableShape,
+		Title:     "standard code",
+		Arm:       armStandardCode,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetStandardCode().GetColumn())
 		},
@@ -660,9 +694,10 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftStandardCode,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
-		Trend: trendPercentCapableShape,
-		Arm:   armSegmentCheck,
+		Type:      storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
+		Dimension: storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		Trend:     trendPercentCapableShape,
+		Arm:       armSegmentCheck,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetSegmentCheck().GetColumns()
 		},

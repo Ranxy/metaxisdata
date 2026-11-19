@@ -5648,6 +5648,48 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:adoptPendingSuggestions:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+                 or an administrator uses this to clear drafts an earlier failed pass left
+                 behind; it makes no decision on their behalf and writes only what the
+                 configured allowlist, confidence and daily cap already permit.
+            operationId: DataQualityService_AdoptQualityAgentPendingSuggestions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AdoptQualityAgentPendingSuggestionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AdoptQualityAgentPendingSuggestionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:disable:
         post:
             tags:
@@ -8555,6 +8597,33 @@ components:
                     type: integer
                     description: How many checks were re-baselined. Zero means they were already current.
                     format: int32
+        AdoptQualityAgentPendingSuggestionsRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+            description: |-
+                AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
+                 adoption guardrails to the rule drafts already in its review queue.
+        AdoptQualityAgentPendingSuggestionsResponse:
+            type: object
+            properties:
+                adopted:
+                    type: integer
+                    format: int32
+                skipped:
+                    type: integer
+                    format: int32
+                failed:
+                    type: integer
+                    format: int32
+                remainingPending:
+                    type: integer
+                    format: int32
+            description: AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
         AggregateConfig:
             type: object
             properties:
@@ -13761,6 +13830,10 @@ components:
                     description: |-
                         BCP-47 tag of the language the agent writes owner-visible prose in. Empty
                          follows the owner's profile language; supported values are en-US and zh-CN.
+                adoptionStatus:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityAgentAdoptionStatus'
+                    description: What auto-adoption has actually done recently; read-only.
             description: |-
                 QualityAgent is one built-in quality agent: a service-account identity that exists
                  only as the in-process runner's IAM and audit actor, plus the runtime configuration
@@ -13818,6 +13891,27 @@ components:
                     type: boolean
                     description: Whether critical assets may be auto-adopted; default false.
             description: QualityAgentAdoptionSetting is the guardrail configuration of the adopt capability.
+        QualityAgentAdoptionStatus:
+            type: object
+            properties:
+                adoptedLast24h:
+                    type: integer
+                    format: int32
+                failedLast24h:
+                    type: integer
+                    format: int32
+                pendingDraftCount:
+                    type: integer
+                    format: int32
+                lastFailureReason:
+                    type: string
+                    description: The most recent write failure, with its error class; empty when none.
+                lastFailureTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
+                 so an owner can tell "nothing was eligible" from "the write kept failing".
         QualityAgentAttention:
             type: object
             properties:

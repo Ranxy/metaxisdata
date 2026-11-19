@@ -7040,6 +7040,47 @@ export declare type QualityAgentAdoptionSetting = Message<"metaxisdata.v1.Qualit
 export declare const QualityAgentAdoptionSettingSchema: GenMessage<QualityAgentAdoptionSetting>;
 
 /**
+ * QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
+ * so an owner can tell "nothing was eligible" from "the write kept failing".
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAdoptionStatus
+ */
+export declare type QualityAgentAdoptionStatus = Message<"metaxisdata.v1.QualityAgentAdoptionStatus"> & {
+  /**
+   * @generated from field: int32 adopted_last_24h = 1;
+   */
+  adoptedLast24h: number;
+
+  /**
+   * @generated from field: int32 failed_last_24h = 2;
+   */
+  failedLast24h: number;
+
+  /**
+   * @generated from field: int32 pending_draft_count = 3;
+   */
+  pendingDraftCount: number;
+
+  /**
+   * The most recent write failure, with its error class; empty when none.
+   *
+   * @generated from field: string last_failure_reason = 4;
+   */
+  lastFailureReason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_failure_time = 5;
+   */
+  lastFailureTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAdoptionStatus.
+ * Use `create(QualityAgentAdoptionStatusSchema)` to create a new message.
+ */
+export declare const QualityAgentAdoptionStatusSchema: GenMessage<QualityAgentAdoptionStatus>;
+
+/**
  * QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
  * default; the workspace hard caps still apply.
  *
@@ -7183,6 +7224,13 @@ export declare type QualityAgent = Message<"metaxisdata.v1.QualityAgent"> & {
    * @generated from field: string language = 17;
    */
   language: string;
+
+  /**
+   * What auto-adoption has actually done recently; read-only.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentAdoptionStatus adoption_status = 18;
+   */
+  adoptionStatus?: QualityAgentAdoptionStatus;
 };
 
 /**
@@ -7774,6 +7822,60 @@ export declare type SetQualityAgentAdoptionRequest = Message<"metaxisdata.v1.Set
  * Use `create(SetQualityAgentAdoptionRequestSchema)` to create a new message.
  */
 export declare const SetQualityAgentAdoptionRequestSchema: GenMessage<SetQualityAgentAdoptionRequest>;
+
+/**
+ * AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
+ * adoption guardrails to the rule drafts already in its review queue.
+ *
+ * @generated from message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest
+ */
+export declare type AdoptQualityAgentPendingSuggestionsRequest = Message<"metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest.
+ * Use `create(AdoptQualityAgentPendingSuggestionsRequestSchema)` to create a new message.
+ */
+export declare const AdoptQualityAgentPendingSuggestionsRequestSchema: GenMessage<AdoptQualityAgentPendingSuggestionsRequest>;
+
+/**
+ * AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+ *
+ * @generated from message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse
+ */
+export declare type AdoptQualityAgentPendingSuggestionsResponse = Message<"metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse"> & {
+  /**
+   * @generated from field: int32 adopted = 1;
+   */
+  adopted: number;
+
+  /**
+   * @generated from field: int32 skipped = 2;
+   */
+  skipped: number;
+
+  /**
+   * @generated from field: int32 failed = 3;
+   */
+  failed: number;
+
+  /**
+   * @generated from field: int32 remaining_pending = 4;
+   */
+  remainingPending: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse.
+ * Use `create(AdoptQualityAgentPendingSuggestionsResponseSchema)` to create a new message.
+ */
+export declare const AdoptQualityAgentPendingSuggestionsResponseSchema: GenMessage<AdoptQualityAgentPendingSuggestionsResponse>;
 
 /**
  * UpdateQualityAgentRequest replaces the masked configuration fields.
@@ -12432,6 +12534,19 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof SetQualityAgentAdoptionRequestSchema;
     output: typeof QualityAgentSchema;
+  },
+  /**
+   * Apply the agent's adoption guardrails to its pending rule drafts now. The owner
+   * or an administrator uses this to clear drafts an earlier failed pass left
+   * behind; it makes no decision on their behalf and writes only what the
+   * configured allowlist, confidence and daily cap already permit.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.AdoptQualityAgentPendingSuggestions
+   */
+  adoptQualityAgentPendingSuggestions: {
+    methodKind: "unary";
+    input: typeof AdoptQualityAgentPendingSuggestionsRequestSchema;
+    output: typeof AdoptQualityAgentPendingSuggestionsResponseSchema;
   },
   /**
    * Replace the masked configuration of one agent. Administrator only.
