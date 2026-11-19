@@ -344,7 +344,7 @@ func parseStream(ctx context.Context, body io.Reader, ch chan<- StreamChunk) err
 					return ctx.Err()
 				}
 			}
-			if reasoning := firstNonEmpty(choice.Delta.ReasoningContent, choice.Delta.Reasoning); reasoning != "" {
+			if reasoning := reasoningText(choice.Delta.ReasoningContent, choice.Delta.Reasoning); reasoning != "" {
 				if !sendStreamChunk(ctx, ch, StreamChunk{Reasoning: reasoning}) {
 					return ctx.Err()
 				}
@@ -455,7 +455,7 @@ func parseNonStreamingCompletion(ctx context.Context, body string, ch chan<- Str
 			return ctx.Err()
 		}
 	}
-	if reasoning := firstNonEmpty(choice.Message.ReasoningContent, choice.Message.Reasoning); reasoning != "" {
+	if reasoning := reasoningText(choice.Message.ReasoningContent, choice.Message.Reasoning); reasoning != "" {
 		if !sendStreamChunk(ctx, ch, StreamChunk{Reasoning: reasoning}) {
 			return ctx.Err()
 		}
@@ -595,13 +595,18 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 
 func (b *boundedBuffer) String() string { return b.buf.String() }
 
-// firstNonEmpty returns the first non-empty value. Providers disagree on the
-// reasoning field name: the DeepSeek-compatible name is `reasoning_content`,
-// while some gateways use `reasoning`.
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
+// reasoningText reads the display-only reasoning a provider returned. The
+// DeepSeek-compatible name is `reasoning_content`; some gateways use
+// `reasoning`. Both are kept as raw JSON and only a non-empty string is used, so
+// an unexpected object cannot fail the whole chunk.
+func reasoningText(values ...json.RawMessage) string {
+	for _, raw := range values {
+		if len(raw) == 0 {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(raw, &text); err == nil && text != "" {
+			return text
 		}
 	}
 	return ""

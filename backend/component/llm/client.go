@@ -1,6 +1,8 @@
 // Package llm provides LLM client capabilities.
 package llm
 
+import "encoding/json"
+
 // Message represents a chat message sent to the LLM API.
 type Message struct {
 	Role       string     `json:"role"`
@@ -155,8 +157,8 @@ type chatStreamChunk struct {
 		Index int `json:"index"`
 		Delta struct {
 			Content          string           `json:"content"`
-			ReasoningContent string           `json:"reasoning_content"`
-			Reasoning        string           `json:"reasoning"`
+			ReasoningContent json.RawMessage  `json:"reasoning_content"`
+			Reasoning        json.RawMessage  `json:"reasoning"`
 			ToolCalls        []streamToolCall `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
@@ -172,8 +174,8 @@ type chatCompletionResponse struct {
 	Choices []struct {
 		Message struct {
 			Content          string           `json:"content"`
-			ReasoningContent string           `json:"reasoning_content"`
-			Reasoning        string           `json:"reasoning"`
+			ReasoningContent json.RawMessage  `json:"reasoning_content"`
+			Reasoning        json.RawMessage  `json:"reasoning"`
 			ToolCalls        []streamToolCall `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason *string `json:"finish_reason"`

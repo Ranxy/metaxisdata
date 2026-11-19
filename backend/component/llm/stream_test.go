@@ -185,6 +185,18 @@ data: [DONE]
 	require.Empty(t, chunks[2].Reasoning)
 }
 
+func TestParseStreamIgnoresAnObjectShapedReasoningField(t *testing.T) {
+	t.Parallel()
+
+	chunks, err := collectStream(t, `data: {"choices":[{"delta":{"reasoning":{"summary":"object"},"content":"answer"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+`)
+	require.NoError(t, err)
+	require.Equal(t, "answer", chunks[0].Content)
+	require.Empty(t, chunks[0].Reasoning)
+}
+
 func TestParseNonStreamingCompletionEmitsReasoning(t *testing.T) {
 	t.Parallel()
 
