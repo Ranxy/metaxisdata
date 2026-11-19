@@ -4051,8 +4051,8 @@ message SetQualityAgentAdoptionRequest {
 // UpdateQualityAgentRequest replaces the masked configuration fields.
 message UpdateQualityAgentRequest {
   QualityAgent quality_agent = 1 [(google.api.field_behavior) = REQUIRED];
-  // Fields to replace: display_name, description, owner, databases, capabilities,
-  // report_schedule, adoption, budget.
+  // Fields to replace: display_name, description, owner, language, databases,
+  // capabilities, report_schedule, adoption, budget.
   google.protobuf.FieldMask update_mask = 2;
 }
 

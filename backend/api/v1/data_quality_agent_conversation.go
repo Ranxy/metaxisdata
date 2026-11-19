@@ -131,7 +131,11 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 		return nil, err
 	}
 	limit := offset.limit + 1
-	find := &store.FindQualityAgentTranscriptMessage{SessionID: conversation.ID, Limit: limit}
+	find := &store.FindQualityAgentTranscriptMessage{
+		SessionID:       conversation.ID,
+		Limit:           limit,
+		FrontOfficeOnly: true,
+	}
 	if afterSeq > 0 {
 		find.AfterSeq = afterSeq
 	} else {

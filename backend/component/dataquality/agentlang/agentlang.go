@@ -59,7 +59,7 @@ func IsChinese(lang string) bool {
 
 // ForAgent is the one language decision for an agent: its explicit setting wins,
 // then the owner's profile language, then English. Model prose and server prose
-// both use this so a agent never mixes the two.
+// both use this so an agent never mixes the two.
 func ForAgent(agent *store.QualityAgentMessage, owner *store.UserMessage) string {
 	if agent != nil && strings.TrimSpace(agent.Language) != "" {
 		return Normalize(agent.Language)

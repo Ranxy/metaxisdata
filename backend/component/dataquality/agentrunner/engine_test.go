@@ -22,12 +22,13 @@ import (
 
 // fakeStore is the in-memory slice of the store the engine tests need.
 type fakeStore struct {
-	messages     []*store.QualityAgentTranscriptMessage
-	memories     []*store.QualityMemoryMessage
-	executions   map[int64]*store.QualityExecutionMessage
-	memoryInputs []*store.CreateQualityMemoryInput
-	nextSeq      int64
-	agent        *store.QualityAgentMessage
+	messages      []*store.QualityAgentTranscriptMessage
+	memories      []*store.QualityMemoryMessage
+	executions    map[int64]*store.QualityExecutionMessage
+	memoryInputs  []*store.CreateQualityMemoryInput
+	nextSeq       int64
+	systemUpdates int
+	agent         *store.QualityAgentMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -113,6 +114,7 @@ func (f *fakeStore) UpdateQualityAgentSystemMessage(_ context.Context, sessionID
 	for _, message := range f.messages {
 		if message.SessionID == sessionID && message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
 			message.Content = content
+			f.systemUpdates++
 			return true, nil
 		}
 	}
@@ -795,4 +797,5 @@ func TestWakeUpdatesTheSystemPromptLanguage(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, systemCount, "the system prompt is updated in place")
+	require.Equal(t, 1, stores.systemUpdates, "the stored system row is rewritten")
 }

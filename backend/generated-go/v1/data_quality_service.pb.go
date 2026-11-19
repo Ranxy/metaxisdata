@@ -16881,8 +16881,8 @@ func (x *SetQualityAgentAdoptionRequest) GetAdoption() *QualityAgentAdoptionSett
 type UpdateQualityAgentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	QualityAgent *QualityAgent          `protobuf:"bytes,1,opt,name=quality_agent,json=qualityAgent,proto3" json:"quality_agent,omitempty"`
-	// Fields to replace: display_name, description, owner, databases, capabilities,
-	// report_schedule, adoption, budget.
+	// Fields to replace: display_name, description, owner, language, databases,
+	// capabilities, report_schedule, adoption, budget.
 	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

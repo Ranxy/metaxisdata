@@ -241,7 +241,7 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 	}
 	language := strings.TrimSpace(agent.GetLanguage())
 	if !agentlang.Supported(language) {
-		return nil, nil, connectErrorInvalid("language must be en-US or zh-CN")
+		return nil, nil, connectErrorInvalid("language must be empty, en-US or zh-CN")
 	}
 	config := &store.QualityAgentMessage{
 		OwnerPrincipalID:            principalIDPointer(owner),

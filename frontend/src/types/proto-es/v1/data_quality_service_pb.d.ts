@@ -7787,8 +7787,8 @@ export declare type UpdateQualityAgentRequest = Message<"metaxisdata.v1.UpdateQu
   qualityAgent?: QualityAgent;
 
   /**
-   * Fields to replace: display_name, description, owner, databases, capabilities,
-   * report_schedule, adoption, budget.
+   * Fields to replace: display_name, description, owner, language, databases,
+   * capabilities, report_schedule, adoption, budget.
    *
    * @generated from field: google.protobuf.FieldMask update_mask = 2;
    */

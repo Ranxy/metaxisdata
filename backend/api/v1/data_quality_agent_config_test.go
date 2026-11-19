@@ -105,17 +105,23 @@ func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 		OwnerPrincipalID:            int32Pointer(7),
 		State:                       store.QualityAgentStatePaused,
 		Capabilities:                []string{"suggest"},
+		Language:                    "zh-CN",
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
 	}
 	next, databases, err := applyQualityAgentUpdate(&v1pb.QualityAgent{
 		Capabilities: []string{"suggest", "patrol"},
-		Language:     "zh-CN",
-	}, current, []string{"instances/i/databases/d"}, []string{"capabilities", "language"})
+		Language:     "en-US",
+	}, current, []string{"instances/i/databases/d"}, []string{"capabilities"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"instances/i/databases/d"}, databases)
-	require.Equal(t, "zh-CN", next.Language)
+	require.Equal(t, "zh-CN", next.Language, "an unrelated update keeps the stored language")
+
+	languageNext, _, err := applyQualityAgentUpdate(&v1pb.QualityAgent{Language: "en-US"},
+		current, []string{"instances/i/databases/d"}, []string{"language"})
+	require.NoError(t, err)
+	require.Equal(t, "en-US", languageNext.Language)
 	require.Equal(t, int64(5), next.ID, "the update keeps the row it writes")
 	require.NotNil(t, next.OwnerPrincipalID)
 	require.Equal(t, []string{"suggest", "patrol"}, next.Capabilities)

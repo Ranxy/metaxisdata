@@ -658,8 +658,12 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 	desired := renderSystemPrompt(specForSession(session), language)
 	if len(messages) > 0 {
 		if messages[0].Content != desired {
-			if _, err := e.store.UpdateQualityAgentSystemMessage(ctx, session.ID, desired); err != nil {
+			updated, err := e.store.UpdateQualityAgentSystemMessage(ctx, session.ID, desired)
+			if err != nil {
 				return nil, errors.Wrap(err, "failed to update the session system message")
+			}
+			if !updated {
+				return nil, errors.New("the session system message disappeared while updating it")
 			}
 			messages[0].Content = desired
 		}

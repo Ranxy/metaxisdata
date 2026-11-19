@@ -31,3 +31,34 @@ func TestForAgentPrefersTheExplicitAgentLanguage(t *testing.T) {
 	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{}, owner))
 	require.Equal(t, English, ForAgent(&store.QualityAgentMessage{}, nil))
 }
+
+func TestOf(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, Chinese, Of(&store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}))
+	require.Equal(t, English, Of(&store.UserMessage{Profile: &storepb.UserProfile{Language: "en-US"}}))
+	require.Equal(t, English, Of(nil))
+	require.Equal(t, English, Of(&store.UserMessage{}))
+}
+
+func TestLocalizedServerProse(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, AttentionTitle(Chinese, store.QualityAgentAttentionKindProposalPending), "草案")
+	require.Contains(t, AttentionTitle(English, store.QualityAgentAttentionKindProposalPending), "drafts")
+	require.Contains(t, BlockedQuestion(Chinese, "model failed"), "model failed")
+	require.Contains(t, ProposalQuestion(Chinese, 3), "3")
+	require.Contains(t, ReportQuestion(English, 2, 1), "2")
+	require.Contains(t, ScopeSummary(Chinese, 10, 1, 2, 3, 4, 5), "范围")
+	require.Contains(t, ReportReady(Chinese, "2026-11-01", "2026-11-07"), "巡检报告")
+}
+
+func TestForAgentEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	owner := &store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}
+	require.Equal(t, Chinese, ForAgent(nil, owner))
+	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{Language: "  zh-CN  "}, nil))
+	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{Language: "  "}, owner))
+	require.True(t, Supported(" zh-CN "))
+}

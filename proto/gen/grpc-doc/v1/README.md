@@ -8663,7 +8663,7 @@ UpdateQualityAgentRequest replaces the masked configuration fields.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, databases, capabilities, report_schedule, adoption, budget. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, language, databases, capabilities, report_schedule, adoption, budget. |
 
 
 

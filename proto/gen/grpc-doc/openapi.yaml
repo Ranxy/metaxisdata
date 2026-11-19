@@ -5483,8 +5483,8 @@ paths:
                 - name: updateMask
                   in: query
                   description: |-
-                    Fields to replace: display_name, description, owner, databases, capabilities,
-                     report_schedule, adoption, budget.
+                    Fields to replace: display_name, description, owner, language, databases,
+                     capabilities, report_schedule, adoption, budget.
                   schema:
                     type: string
                     format: field-mask

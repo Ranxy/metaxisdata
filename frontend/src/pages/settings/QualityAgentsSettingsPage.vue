@@ -845,9 +845,7 @@ function openCreate() {
     displayName: "",
     description: "",
     owner: users.value[0]?.name ?? "",
-    language: users.value[0]?.language?.toLowerCase().startsWith("zh")
-      ? "zh-CN"
-      : "en-US",
+    language: "follow",
     capabilities: ["suggest", "patrol"],
     databases: [],
     start: true,

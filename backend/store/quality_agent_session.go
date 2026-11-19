@@ -570,8 +570,12 @@ type FindQualityAgentTranscriptMessage struct {
 	// InputsOnly keeps only external inputs (a user message whose origin is an event or
 	// a person's question). It is how the wake watermark and the pending list are read.
 	InputsOnly bool
-	Limit      int
-	Offset     int
+	// FrontOfficeOnly keeps the owner conversation product rows: an owner question
+	// (user + ASK) or an assistant answer. It is applied in SQL so pagination and the
+	// after_seq watermark count only visible rows.
+	FrontOfficeOnly bool
+	Limit           int
+	Offset          int
 	// NewestFirst returns the most recent page first; the caller reverses it when it
 	// needs chronological order.
 	NewestFirst bool
@@ -605,6 +609,13 @@ func (s *Store) ListQualityAgentTranscriptMessages(ctx context.Context, find *Fi
 		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK))
 		where += ` AND role = $` + strconv.Itoa(len(args)-2) + ` AND origin IN ($` +
 			strconv.Itoa(len(args)-1) + `, $` + strconv.Itoa(len(args)) + `)`
+	}
+	if find.FrontOfficeOnly {
+		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER))
+		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK))
+		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT))
+		where += ` AND ((role = $` + strconv.Itoa(len(args)-2) + ` AND origin = $` +
+			strconv.Itoa(len(args)-1) + `) OR role = $` + strconv.Itoa(len(args)) + `)`
 	}
 	limit := find.Limit
 	if limit <= 0 {

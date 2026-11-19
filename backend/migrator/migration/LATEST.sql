@@ -1582,7 +1582,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_message_session_activity
     ON quality_agent_message(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
     ON quality_agent_message(workspace_id, created_at DESC);
-COMMENT ON TABLE quality_agent_message IS 'Append-only transcript of one quality agent session';
+COMMENT ON TABLE quality_agent_message IS 'Transcript of one quality agent session; append-only except the SYSTEM prompt row, rewritten when its rendered content changes';
 COMMENT ON COLUMN quality_agent_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.reasoning IS 'Display-only model reasoning; never sent back to the provider';
