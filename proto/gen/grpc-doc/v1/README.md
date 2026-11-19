@@ -6738,6 +6738,8 @@ QualityAgentAttention is one owner escalation inside an agent.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | resolve_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | resolved_by | [string](#string) |  | Format: users/{user}; empty while open. |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target this escalation is about. Empty for an agent-level event such as a report anomaly. |
+| pending_draft_titles | [string](#string) | repeated | Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING attention. The owner sees what is waiting before replying, without needing the suggestion queue&#39;s own permission. |
 
 
 

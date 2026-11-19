@@ -890,6 +890,34 @@ func (s *Store) CountQualityAgentConversationMessagesSince(ctx context.Context, 
 	return total, nil
 }
 
+// ListQualityAgentSessionsByIDs reads sessions by internal id for a batch of
+// readers, so an attention list can render each target without a query per row.
+func (s *Store) ListQualityAgentSessionsByIDs(ctx context.Context, workspaceID string, ids []int64) (map[int64]*QualityAgentSessionMessage, error) {
+	sessions := map[int64]*QualityAgentSessionMessage{}
+	if len(ids) == 0 {
+		return sessions, nil
+	}
+	rows, err := s.GetDB().QueryContext(ctx,
+		`SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
+		 WHERE workspace_id = $1 AND id = ANY($2)`,
+		workspaceID, pq.Array(ids))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality agent sessions by id")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		session, err := scanQualityAgentSession(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan a quality agent session")
+		}
+		sessions[session.ID] = session
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the quality agent sessions")
+	}
+	return sessions, nil
+}
+
 // GetQualityAgentSessionByID reads one session by row id; nil means absent.
 func (s *Store) GetQualityAgentSessionByID(ctx context.Context, id int64) (*QualityAgentSessionMessage, error) {
 	if id <= 0 {

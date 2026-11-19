@@ -67,6 +67,11 @@ async function mountPage() {
     history: createMemoryHistory(),
     routes: [
       {
+        path: "/data-quality/agents",
+        name: "QualityAgents",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/agents/:workspace/:agentId",
         name: "QualityAgent",
         component: Dummy,

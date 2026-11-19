@@ -4136,6 +4136,8 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Equal(t, ownerName, replied.Msg.GetResolvedBy())
 	require.Equal(t, session.GetName(), replied.Msg.GetSession(),
 		"the escalation points at the session the owner's answer resumes")
+	require.Equal(t, session.GetTarget().GetMetaGuid(), replied.Msg.GetTarget().GetMetaGuid(),
+		"the escalation carries the target it is about")
 	answer := waitForQualityAgentSessionMessage(t, fixture, session.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
 		return message.GetOrigin() == v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK &&
 			message.GetContent() == "Keep it covered; the sparse batch is expected."

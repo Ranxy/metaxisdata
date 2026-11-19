@@ -489,7 +489,9 @@ schedule, reacts to failed checks, drafts checks into the review queue and escal
 - **Data Quality → Agents** (`/data-quality/agents`) lists the agents you may see: administrators see every agent, other members see the
 ones they own.
 - **An agent's home** is its working page: the conversation with its owner, its **Work sessions**, its **Patrol reports**, its
-**Needs you** attention list, its auto-adoption setting, and its scope and state.
+**Needs you** attention list, its auto-adoption setting, and its scope and state. A breadcrumb and the **Conversation / Work sessions**
+tabs keep the agent and its two views visible; the attention list leads with each target and expands in place instead of opening a
+reply dialog.
 - **Work sessions** (`/data-quality/agents/{workspace}/{id}/sessions`) lists one long-lived conversation per target the agent watches.
 Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
 its arguments and result, and the runner's notes. The owner and administrators can read it; only an administrator can resume a stuck

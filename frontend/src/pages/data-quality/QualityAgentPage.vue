@@ -4,16 +4,14 @@
       :title="agent?.displayName || t('qualityAgents.title')"
       :description="agent?.description || ''"
     >
+      <template #breadcrumb>
+        <QualityAgentBreadcrumb
+          :agent-name="agentName"
+          :agent-label="agent?.displayName || agentId"
+          variant="home"
+        />
+      </template>
       <template #actions>
-        <Button
-          variant="outline"
-          size="sm"
-          as-child
-        >
-          <RouterLink :to="{ name: 'QualityAgents' }">
-            {{ t("common.back") }}
-          </RouterLink>
-        </Button>
         <Button
           v-if="(canManage || canChat) && agent && agent.state === QualityAgentState.ACTIVE"
           size="sm"
@@ -30,18 +28,13 @@
         >
           {{ t("qualityAgents.start") }}
         </Button>
-        <Button
-          v-if="agent"
-          size="sm"
-          variant="outline"
-          as-child
-        >
-          <RouterLink :to="sessionsRoute">
-            {{ t("qualityAgent.workSessionsTitle") }}
-          </RouterLink>
-        </Button>
       </template>
     </PageHeader>
+
+    <QualityAgentTabs
+      :agent-name="agentName"
+      active="conversation"
+    />
 
     <Alert
       v-if="error"
@@ -196,6 +189,43 @@
 
     <Card v-if="agent">
       <CardHeader class="border-b">
+        <div class="flex flex-wrap items-center gap-2">
+          <CardTitle class="text-base">{{ t("qualityAgent.attentionTitle") }}</CardTitle>
+          <Badge
+            v-if="attentions.length > 0"
+            variant="warning"
+          >
+            {{ attentions.length }}
+          </Badge>
+        </div>
+        <CardDescription>{{ t("qualityAgent.attentionHint") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-2 pt-4">
+        <p
+          v-if="attentions.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("qualityAgent.attentionEmpty") }}
+        </p>
+        <QualityAgentAttentionItem
+          v-for="attention in attentions"
+          :key="attention.name"
+          :attention="attention"
+          :agent-name="agentName"
+          :can-reply="canChat"
+          @resolved="onAttentionResolved"
+        />
+        <p
+          v-if="!canChat && attentions.length > 0"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("qualityAgent.attentionReadOnly") }}
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
             <CardTitle class="text-base">{{ t("qualityAgent.workSessionsTitle") }}</CardTitle>
@@ -274,60 +304,6 @@
 
     <Card v-if="agent">
       <CardHeader class="border-b">
-        <CardTitle class="text-base">{{ t("qualityAgent.attentionTitle") }}</CardTitle>
-        <CardDescription>{{ t("qualityAgent.attentionHint") }}</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-2 pt-4">
-        <p
-          v-if="attentions.length === 0"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("qualityAgent.attentionEmpty") }}
-        </p>
-        <div
-          v-for="attention in attentions"
-          :key="attention.name"
-          class="rounded-md border px-3 py-2 text-sm"
-        >
-          <div class="flex flex-wrap items-start justify-between gap-2">
-            <div class="min-w-0">
-              <p class="font-medium">{{ attention.title }}</p>
-              <p class="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                {{ attention.question }}
-              </p>
-            </div>
-            <div
-              v-if="canChat"
-              class="flex gap-1"
-            >
-              <Button
-                size="sm"
-                @click="openReply(attention)"
-              >
-                {{ t("qualityAgent.attentionReply") }}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                :disabled="busyAttention === attention.name"
-                @click="dismissAttention(attention)"
-              >
-                {{ t("qualityAgent.attentionDismiss") }}
-              </Button>
-            </div>
-          </div>
-        </div>
-        <p
-          v-if="!canChat && attentions.length > 0"
-          class="text-xs text-muted-foreground"
-        >
-          {{ t("qualityAgent.attentionReadOnly") }}
-        </p>
-      </CardContent>
-    </Card>
-
-    <Card v-if="agent">
-      <CardHeader class="border-b">
         <CardTitle class="text-base">{{ t("qualityAgent.reportsTitle") }}</CardTitle>
         <CardDescription>{{ t("qualityAgent.reportsHint") }}</CardDescription>
       </CardHeader>
@@ -368,47 +344,6 @@
     </Card>
 
     <Dialog
-      :open="replyOpen"
-      @update:open="replyOpen = $event"
-    >
-      <DialogContent class="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{{ t("qualityAgent.attentionDialogTitle") }}</DialogTitle>
-          <DialogDescription>{{ selectedAttention?.title }}</DialogDescription>
-        </DialogHeader>
-        <p class="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-          {{ selectedAttention?.question }}
-        </p>
-        <textarea
-          v-model="replyBody"
-          rows="4"
-          class="mt-2 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          :placeholder="t('qualityAgent.attentionDialogHint')"
-          :disabled="replying"
-        />
-        <div class="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            :disabled="replying"
-            @click="replyOpen = false"
-          >
-            {{ t("common.cancel") }}
-          </Button>
-          <Button
-            :disabled="replying || replyBody.trim() === ''"
-            @click="submitReply"
-          >
-            <Loader2
-              v-if="replying"
-              class="mr-2 h-4 w-4 animate-spin"
-            />
-            {{ t("qualityAgent.attentionSend") }}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog
       :open="reportOpen"
       @update:open="reportOpen = $event"
     >
@@ -433,20 +368,21 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import {
-  dismissQualityAgentAttention,
   getQualityAgent,
   listQualityAgentAttentions,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
   listQualityAgentSessionsPage,
   pauseQualityAgent,
-  replyQualityAgentAttention,
   sendQualityAgentMessage,
   setQualityAgentAdoption,
   startQualityAgent,
 } from "@/api/data-quality";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
+import QualityAgentAttentionItem from "@/components/data-quality/QualityAgentAttentionItem.vue";
+import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -461,7 +397,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -505,11 +440,6 @@ const error = ref("");
 const busy = ref(false);
 
 const attentions = ref<QualityAgentAttention[]>([]);
-const replyOpen = ref(false);
-const selectedAttention = ref<QualityAgentAttention>();
-const replyBody = ref("");
-const replying = ref(false);
-const busyAttention = ref("");
 const reports = ref<QualityAgentReport[]>([]);
 const reportOpen = ref(false);
 const selectedReport = ref<QualityAgentReport>();
@@ -546,8 +476,9 @@ const visibleMessages = computed(() =>
       message.content.trim() !== ""
   )
 );
+const agentId = computed(() => String(route.params.agentId));
 const agentName = computed(() =>
-  qualityAgentName(String(route.params.workspace), String(route.params.agentId))
+  qualityAgentName(String(route.params.workspace), agentId.value)
 );
 const sessionsRoute = computed(() =>
   qualityAgentSessionsRoute(agentName.value)
@@ -641,43 +572,11 @@ async function loadAttentions() {
   }
 }
 
-function openReply(attention: QualityAgentAttention) {
-  selectedAttention.value = attention;
-  replyBody.value = "";
-  replyOpen.value = true;
-}
-
-async function submitReply() {
-  const attention = selectedAttention.value;
-  if (!attention || replyBody.value.trim() === "") {
-    return;
-  }
-  replying.value = true;
-  try {
-    await replyQualityAgentAttention(attention.name, replyBody.value.trim(), {
-      requestId: `reply-${Date.now().toString(36)}`,
-    });
-    replyOpen.value = false;
-    notify.success(t("qualityAgent.attentionSent"));
-    await Promise.all([loadAttentions(), loadConversation()]);
-  } catch (err) {
-    notify.error(formatError(err));
-  } finally {
-    replying.value = false;
-  }
-}
-
-async function dismissAttention(attention: QualityAgentAttention) {
-  busyAttention.value = attention.name;
-  try {
-    await dismissQualityAgentAttention(attention.name);
-    notify.success(t("qualityAgent.attentionDismissed"));
-    await loadAttentions();
-  } catch (err) {
-    notify.error(formatError(err));
-  } finally {
-    busyAttention.value = "";
-  }
+async function onAttentionResolved(name: string) {
+  attentions.value = attentions.value.filter(
+    (attention) => attention.name !== name
+  );
+  await loadConversation();
 }
 
 async function loadReports() {

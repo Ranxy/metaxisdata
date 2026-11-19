@@ -7607,6 +7607,23 @@ export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgent
    * @generated from field: string resolved_by = 11;
    */
   resolvedBy: string;
+
+  /**
+   * The target this escalation is about. Empty for an agent-level event such as
+   * a report anomaly.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 12;
+   */
+  target?: QualityTarget;
+
+  /**
+   * Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
+   * attention. The owner sees what is waiting before replying, without needing
+   * the suggestion queue's own permission.
+   *
+   * @generated from field: repeated string pending_draft_titles = 13;
+   */
+  pendingDraftTitles: string[];
 };
 
 /**

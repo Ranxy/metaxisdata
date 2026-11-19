@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -49,18 +50,19 @@ func (s *DataQualityService) ListQualityAgentAttentions(ctx context.Context, req
 			sessionIDs = append(sessionIDs, *attention.SessionID)
 		}
 	}
-	sessionNames, err := s.store.ListQualityAgentSessionResourceIDs(ctx, workspaceID, sessionIDs)
+	sessions, err := s.store.ListQualityAgentSessionsByIDs(ctx, workspaceID, sessionIDs)
 	if err != nil {
 		return nil, err
 	}
 	response := &v1pb.ListQualityAgentAttentionsResponse{}
 	for _, attention := range attentions {
-		sessionResourceID := ""
+		var session *store.QualityAgentSessionMessage
 		if attention.SessionID != nil {
-			sessionResourceID = sessionNames[*attention.SessionID]
+			session = sessions[*attention.SessionID]
 		}
+		titles := s.qualityAgentAttentionDraftTitles(ctx, agent.ID, attention, session)
 		response.QualityAgentAttentions = append(response.QualityAgentAttentions,
-			convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, sessionResourceID, attention))
+			convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, session, titles, attention))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -74,14 +76,14 @@ func (s *DataQualityService) ReplyQualityAgentAttention(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	sessionResourceID := ""
+	var session *store.QualityAgentSessionMessage
 	if attention.SessionID != nil {
-		if session, err := s.store.GetQualityAgentSessionByID(ctx, *attention.SessionID); err == nil && session != nil {
-			sessionResourceID = session.ResourceID
+		if stored, err := s.store.GetQualityAgentSessionByID(ctx, *attention.SessionID); err == nil {
+			session = stored
 		}
 	}
 	if attention.Status != store.QualityAgentAttentionStatusOpen {
-		return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, sessionResourceID, attention)), nil
+		return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, session, nil, attention)), nil
 	}
 	content := strings.TrimSpace(req.Msg.GetMessageBody())
 	if content == "" {
@@ -103,7 +105,7 @@ func (s *DataQualityService) ReplyQualityAgentAttention(ctx context.Context, req
 	if !applied {
 		resolved = attention
 	}
-	return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, sessionResourceID, resolved)), nil
+	return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, session, nil, resolved)), nil
 }
 
 // DismissQualityAgentAttention closes an escalation without resuming its session.
@@ -112,21 +114,21 @@ func (s *DataQualityService) DismissQualityAgentAttention(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
-	sessionResourceID := ""
+	var session *store.QualityAgentSessionMessage
 	if attention.SessionID != nil {
-		if session, err := s.store.GetQualityAgentSessionByID(ctx, *attention.SessionID); err == nil && session != nil {
-			sessionResourceID = session.ResourceID
+		if stored, err := s.store.GetQualityAgentSessionByID(ctx, *attention.SessionID); err == nil {
+			session = stored
 		}
 	}
 	if attention.Status != store.QualityAgentAttentionStatusOpen {
-		return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, sessionResourceID, attention)), nil
+		return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, session, nil, attention)), nil
 	}
 	resolved, _, err := s.store.ResolveQualityAgentAttention(ctx, attention.ResourceID,
 		store.QualityAgentAttentionStatusDismissed, principalIDPointer(currentUserID(ctx)), time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, sessionResourceID, resolved)), nil
+	return connect.NewResponse(convertQualityAgentAttentionToV1(workspaceID, agent.ResourceID, session, nil, resolved)), nil
 }
 
 // qualityAgentAttentionForOwner loads the attention, its agent, and proves the caller
@@ -172,7 +174,36 @@ func (s *DataQualityService) qualityAgentAttentionResourceID(ctx context.Context
 	return workspace, tokens[1], nil
 }
 
-func convertQualityAgentAttentionToV1(workspaceID, agentResourceID, sessionResourceID string, attention *store.QualityAgentAttentionMessage) *v1pb.QualityAgentAttention {
+// qualityAgentAttentionDraftTitles reads the first five pending rule-draft titles
+// for a proposal-pending attention. The attention read is owner/admin-facing, so
+// it must not depend on the suggestion queue's own permission; a read failure
+// leaves the titles empty and never fails the escalation list.
+func (s *DataQualityService) qualityAgentAttentionDraftTitles(ctx context.Context, agentID int64, attention *store.QualityAgentAttentionMessage, session *store.QualityAgentSessionMessage) []string {
+	if attention == nil || attention.Kind != store.QualityAgentAttentionKindProposalPending || session == nil {
+		return nil
+	}
+	limit := 5
+	suggestions, err := s.store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		AgentID:    &agentID,
+		TargetGUID: &session.TargetGUID,
+		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT},
+		Limit:      &limit,
+	})
+	if err != nil {
+		return nil
+	}
+	titles := make([]string, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		title := suggestion.Payload.GetRule().GetTitle()
+		if title != "" {
+			titles = append(titles, title)
+		}
+	}
+	return titles
+}
+
+func convertQualityAgentAttentionToV1(workspaceID, agentResourceID string, session *store.QualityAgentSessionMessage, draftTitles []string, attention *store.QualityAgentAttentionMessage) *v1pb.QualityAgentAttention {
 	if attention == nil {
 		return nil
 	}
@@ -185,9 +216,11 @@ func convertQualityAgentAttentionToV1(workspaceID, agentResourceID, sessionResou
 		Question:   attention.Question,
 		CreateTime: timestamppb.New(attention.CreatedAt),
 	}
-	if sessionResourceID != "" {
-		view.Session = common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + sessionResourceID
+	if session != nil {
+		view.Session = common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + session.ResourceID
+		view.Target = convertQualityAgentSessionTargetToV1(session)
 	}
+	view.PendingDraftTitles = draftTitles
 	if attention.ResolvedAt != nil {
 		view.ResolveTime = timestamppb.New(*attention.ResolvedAt)
 	}

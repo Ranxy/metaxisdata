@@ -4,16 +4,14 @@
       :title="t('qualityAgent.sessionsTitle')"
       :description="t('qualityAgent.sessionsHint')"
     >
+      <template #breadcrumb>
+        <QualityAgentBreadcrumb
+          :agent-name="agentName"
+          :agent-label="agent?.displayName || agentId"
+          variant="sessions"
+        />
+      </template>
       <template #actions>
-        <Button
-          variant="outline"
-          size="sm"
-          as-child
-        >
-          <RouterLink :to="agentRoute">
-            {{ t("common.back") }}
-          </RouterLink>
-        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -28,6 +26,11 @@
         </Button>
       </template>
     </PageHeader>
+
+    <QualityAgentTabs
+      :agent-name="agentName"
+      active="sessions"
+    />
 
     <Alert
       v-if="agentError"
@@ -268,6 +271,8 @@ import {
   listQualityAgentSessionsPage,
 } from "@/api/data-quality";
 import PageState from "@/components/common/PageState.vue";
+import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -329,11 +334,6 @@ const initialized = ref(false);
 const stateFilter = ref(String(QualityAgentSessionState.UNSPECIFIED));
 const modeFilter = ref(String(QualityAgentSessionMode.UNSPECIFIED));
 const databaseFilter = ref("-");
-
-const agentRoute = computed(() => ({
-  name: "QualityAgent",
-  params: { workspace: workspace.value, agentId: agentId.value },
-}));
 
 const databaseOptions = computed(() => {
   const seen = new Set<string>();
