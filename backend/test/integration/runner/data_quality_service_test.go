@@ -3680,13 +3680,13 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DISABLED, readBack.Msg.GetState())
 
-	// The final client surface: the 17 agent RPCs survived, the 20 external-agent RPCs
+	// The final client surface: the 18 agent RPCs survived, the 19 external-agent RPCs
 	// did not. Reflection makes the deletion an assertion instead of a compile-only
 	// promise.
 	clientSurface := reflect.TypeOf((*v1connect.DataQualityServiceClient)(nil)).Elem()
 	for _, removed := range []string{
 		"RotateQualityAgentToken",
-		"GetQualityAgentReport", "GetQualityAgentSession",
+		"GetQualityAgentReport",
 		"GetQualityAgentRunnerStatus", "GetQualityAgentMetrics",
 		"ListQualityAgentEnrollments", "GetQualityAgentEnrollmentSummary",
 		"GetQualityActionPolicy", "StageQualityPlan",
