@@ -47,10 +47,7 @@ func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSe
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the session agent language")
 	}
-	language, err := e.sessionLanguage(ctx, agent)
-	if err != nil {
-		return "", err
-	}
+	language := e.sessionLanguage(ctx, agent)
 	rows, err := e.store.QualityAgentEnrollmentSummary(ctx, session.WorkspaceID, session.AgentID)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the agent scope summary")

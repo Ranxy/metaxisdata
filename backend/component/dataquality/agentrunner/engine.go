@@ -156,10 +156,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if err != nil {
 		return Outcome{}, errors.Wrap(err, "failed to read the session agent")
 	}
-	language, err := e.sessionLanguage(ctx, agent)
-	if err != nil {
-		return Outcome{}, err
-	}
+	language := e.sessionLanguage(ctx, agent)
 	system, err := e.ensureSystemMessage(ctx, session, language)
 	if err != nil {
 		return Outcome{}, err
@@ -685,16 +682,17 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 }
 
 // sessionLanguage is the single language decision for a session: the agent's
-// configured language, then its owner's profile language, then English.
-func (e *Engine) sessionLanguage(ctx context.Context, agent *store.QualityAgentMessage) (string, error) {
+// configured language, then its owner's profile language, then English. A missing
+// owner falls back to the language defaults, so it cannot fail.
+func (e *Engine) sessionLanguage(ctx context.Context, agent *store.QualityAgentMessage) string {
 	if agent == nil {
-		return agentlang.English, nil
+		return agentlang.English
 	}
 	var owner *store.UserMessage
 	if agent.OwnerPrincipalID != nil {
 		owner, _ = e.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	}
-	return agentlang.ForAgent(agent, owner), nil
+	return agentlang.ForAgent(agent, owner)
 }
 
 // repairInterruptedToolCalls closes the trailing assistant tool call a crash left
