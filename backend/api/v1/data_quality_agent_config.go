@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -61,6 +62,9 @@ func (s *DataQualityService) UpdateQualityAgent(ctx context.Context, req *connec
 		return nil, err
 	}
 	if err := s.validateQualityAgentOwner(ctx, next.OwnerPrincipalID); err != nil {
+		return nil, err
+	}
+	if err := s.validateQualityAgentProvider(ctx, next.ProviderProfile, next.ProviderModel); err != nil {
 		return nil, err
 	}
 	updated, err := s.store.UpdateQualityAgentConfig(ctx, next)
@@ -250,9 +254,15 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 	if !agentlang.Supported(language) {
 		return nil, nil, connectErrorInvalid("language must be empty, en-US or zh-CN")
 	}
+	providerProfile, providerModel, err := normalizeQualityAgentProvider(agent.GetProviderProfile(), agent.GetProviderModel())
+	if err != nil {
+		return nil, nil, err
+	}
 	config := &store.QualityAgentMessage{
 		OwnerPrincipalID:            principalIDPointer(owner),
 		Language:                    language,
+		ProviderProfile:             providerProfile,
+		ProviderModel:               providerModel,
 		Capabilities:                capabilities,
 		AdoptionMode:                store.QualityAgentAdoptionModePaused,
 		AdoptionConfidenceThreshold: 0.7,
@@ -368,6 +378,10 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 				merged.Capabilities = patch.GetCapabilities()
 			case "language":
 				merged.Language = patch.GetLanguage()
+			case "provider_profile":
+				merged.ProviderProfile = patch.GetProviderProfile()
+			case "provider_model":
+				merged.ProviderModel = patch.GetProviderModel()
 			case "report_schedule":
 				merged.ReportSchedule = patch.GetReportSchedule()
 			case "adoption":
@@ -424,10 +438,12 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 		return &v1pb.QualityAgent{}
 	}
 	return &v1pb.QualityAgent{
-		Owner:        formatQualityAgentOwner(agent.OwnerPrincipalID),
-		Language:     agent.Language,
-		Databases:    databases,
-		Capabilities: agent.Capabilities,
+		Owner:           formatQualityAgentOwner(agent.OwnerPrincipalID),
+		Language:        agent.Language,
+		ProviderProfile: agent.ProviderProfile,
+		ProviderModel:   agent.ProviderModel,
+		Databases:       databases,
+		Capabilities:    agent.Capabilities,
 		ReportSchedule: &v1pb.QualityAgentReportSchedule{
 			Frequency: qualityAgentReportFrequencyToV1(agent.ReportFrequency),
 			Time:      agent.ReportTime,
@@ -450,6 +466,38 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
 		},
 	}
+}
+
+// normalizeQualityAgentProvider validates the shape of the agent's model selection
+// and stores it in canonical form. The pair is required: the model is never
+// inferred from the profile, because one profile can enable several models at
+// different prices. Whether the profile currently enables the model is a
+// service-level check against the registry.
+func normalizeQualityAgentProvider(profile, model string) (string, string, error) {
+	profile = strings.TrimSpace(profile)
+	model = strings.TrimSpace(model)
+	if profile == "" && model == "" {
+		return "", "", connectErrorInvalid("an agent needs an LLM provider profile and a model")
+	}
+	if profile == "" || model == "" {
+		return "", "", connectErrorInvalid("provider_profile and provider_model must be set together")
+	}
+	normalized, err := llm.NormalizeProfileName(profile)
+	if err != nil {
+		return "", "", connectErrorInvalid("%v", err)
+	}
+	return normalized, model, nil
+}
+
+// validateQualityAgentProvider refuses a selection the registry cannot currently
+// run, so a typo or a disabled model does not leave a configured agent without a
+// model at its first wake.
+func (s *DataQualityService) validateQualityAgentProvider(ctx context.Context, profile, model string) error {
+	if s.suggester == nil {
+		return connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("no LLM provider registry is configured"))
+	}
+	return s.suggester.ValidateAgentProvider(ctx, profile, model)
 }
 
 func normalizeQualityAgentDatabases(values []string) ([]string, error) {
@@ -584,17 +632,19 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 		return nil
 	}
 	return &v1pb.QualityAgent{
-		Name:         common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
-		DisplayName:  agent.DisplayName,
-		Description:  agent.Description,
-		Language:     agent.Language,
-		CreatedBy:    formatQualityContractPublisher(agent.CreatedBy),
-		CreateTime:   timestamppb.New(agent.CreatedAt),
-		UpdateTime:   timestamppb.New(agent.UpdatedAt),
-		State:        qualityAgentStateToV1(agent.State),
-		Owner:        formatQualityAgentOwner(agent.OwnerPrincipalID),
-		Databases:    databases,
-		Capabilities: agent.Capabilities,
+		Name:            common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
+		DisplayName:     agent.DisplayName,
+		Description:     agent.Description,
+		Language:        agent.Language,
+		ProviderProfile: agent.ProviderProfile,
+		ProviderModel:   agent.ProviderModel,
+		CreatedBy:       formatQualityContractPublisher(agent.CreatedBy),
+		CreateTime:      timestamppb.New(agent.CreatedAt),
+		UpdateTime:      timestamppb.New(agent.UpdatedAt),
+		State:           qualityAgentStateToV1(agent.State),
+		Owner:           formatQualityAgentOwner(agent.OwnerPrincipalID),
+		Databases:       databases,
+		Capabilities:    agent.Capabilities,
 		ReportSchedule: &v1pb.QualityAgentReportSchedule{
 			Frequency: qualityAgentReportFrequencyToV1(agent.ReportFrequency),
 			Time:      agent.ReportTime,
