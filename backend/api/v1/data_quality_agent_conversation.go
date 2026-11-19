@@ -159,9 +159,9 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 	}
 	for _, message := range messages {
 		// The front office is product content only: SYSTEM prompts, ENGINE notes,
-		// tool results and compaction rows stay behind the audited admin diagnostics
-		// RPC. Strip tool calls as well; the model's raw tool arguments are not part
-		// of the owner's conversation.
+		// tool results and compaction rows stay on the work-session transcript.
+		// Strip tool calls as well; the model's raw tool arguments are not part of
+		// the owner's conversation.
 		if message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
 			message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT {
 			continue

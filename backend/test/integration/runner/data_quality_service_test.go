@@ -3735,8 +3735,8 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 // gets a deterministic reply with no model configured, adoption round-trips under the
 // owner/administrator split, the enrollment runner admits the covered fixture table as
 // a MONITOR session whose deterministic wake records an asset fact through the tool
-// pipeline, the administrator diagnostics read the transcript and recover a parked
-// session, a blocked escalation is answered by resuming its session, and the patrol
+// pipeline, the work-session reads expose the transcript and an administrator recovers
+// a parked session, a blocked escalation is answered by resuming its session, and the patrol
 // report runner generates a daily report over a failing period and escalates its
 // anomaly for the owner to dismiss. None of the deleted change-request, investigation,
 // memory-admin, token, action-policy or enrollment RPCs is called.
@@ -3980,7 +3980,7 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Equal(t, v1pb.QualityAgentReportFrequency_QUALITY_AGENT_REPORT_FREQUENCY_DAILY,
 		updated.Msg.GetReportSchedule().GetFrequency())
 
-	// Administrator diagnostics: a stuck session is recovered through the resume RPC.
+	// Administrator recovery: a stuck session is resumed through the audited RPC.
 	sessionResourceID := resourceIDFromName(session.GetName())
 	parkSession := func() *store.QualityAgentSessionMessage {
 		var parked *store.QualityAgentSessionMessage
@@ -4272,7 +4272,7 @@ func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, age
 }
 
 // waitForQualityAgentSessionMessage waits until one session transcript entry matches
-// match and returns it. The transcript is read through the administrator diagnostics RPC.
+// match and returns it. The transcript is read through the work-session transcript RPC.
 func waitForQualityAgentSessionMessage(t *testing.T, fixture *qualityFixture, sessionName string, match func(*v1pb.QualityAgentSessionMessage) bool) *v1pb.QualityAgentSessionMessage {
 	t.Helper()
 
