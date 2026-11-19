@@ -3834,9 +3834,9 @@ message QualityAgent {
   repeated string databases = 9;
   // Capability ids: "suggest", "adopt", "patrol"; extensible server-side.
   repeated string capabilities = 10;
-  // Removed: every agent uses the workspace LLM provider profile.
+  // Field 11 was the pre-release provider choice; the number stays reserved and
+  // is never reused.
   reserved 11;
-  reserved "provider_profile";
   QualityAgentReportSchedule report_schedule = 12;
   QualityAgentAdoptionSetting adoption = 13;
   QualityAgentBudget budget = 14;
@@ -3849,6 +3849,14 @@ message QualityAgent {
   string language = 17;
   // What auto-adoption has actually done recently; read-only.
   QualityAgentAdoptionStatus adoption_status = 18;
+  // The LLM provider profile this agent's model calls use, as a profile resource
+  // name ("llm-provider-profiles/{id}"). Required and set together with
+  // provider_model, which that profile must currently enable.
+  string provider_profile = 19;
+  // The model this agent runs on, as the provider profile records it. Required and
+  // set together with provider_profile; one profile can enable several models at
+  // different prices, so the model is never inferred.
+  string provider_model = 20;
 }
 
 message CreateQualityAgentRequest {
@@ -3870,6 +3878,12 @@ message CreateQualityAgentRequest {
   // BCP-47 language for owner-visible prose; empty defaults to the owner's
   // profile language, then en-US.
   string language = 11;
+  // The LLM provider profile the agent runs on ("llm-provider-profiles/{id}").
+  // Required and set together with provider_model; that profile must currently
+  // enable the model.
+  string provider_profile = 12;
+  // The model the agent runs on. Required and set together with provider_profile.
+  string provider_model = 13;
 }
 
 // GetQualityAgentRequest reads one agent with its configuration.
@@ -4096,7 +4110,8 @@ message AdoptQualityAgentPendingSuggestionsResponse {
 message UpdateQualityAgentRequest {
   QualityAgent quality_agent = 1 [(google.api.field_behavior) = REQUIRED];
   // Fields to replace: display_name, description, owner, language, databases,
-  // capabilities, report_schedule, adoption, budget.
+  // capabilities, provider_profile, provider_model, report_schedule, adoption,
+  // budget.
   google.protobuf.FieldMask update_mask = 2;
 }
 

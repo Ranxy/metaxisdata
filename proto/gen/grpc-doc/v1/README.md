@@ -4525,7 +4525,7 @@ QuietWindow is one recurring weekly quiet window.
 | openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
 | domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
 | enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
-| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles ExplainSQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. |
+| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles the model-backed features may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;): Explain SQL, the data quality analyses and the quality agents. Empty means every enabled profile is allowed. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
 | sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
 
@@ -5026,6 +5026,8 @@ they are returned, so a wide text column cannot bloat the response.
 | budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
 | start | [bool](#bool) |  | Whether to start the agent immediately; default false keeps it DRAFT. |
 | language | [string](#string) |  | BCP-47 language for owner-visible prose; empty defaults to the owner&#39;s profile language, then en-US. |
+| provider_profile | [string](#string) |  | The LLM provider profile the agent runs on (&#34;llm-provider-profiles/{id}&#34;). Required and set together with provider_model; that profile must currently enable the model. |
+| provider_model | [string](#string) |  | The model the agent runs on. Required and set together with provider_profile. |
 
 
 
@@ -6735,6 +6737,8 @@ an administrator edits. There is no token or external API surface.
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | language | [string](#string) |  | BCP-47 tag of the language the agent writes owner-visible prose in. Empty follows the owner&#39;s profile language; supported values are en-US and zh-CN. |
 | adoption_status | [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus) |  | What auto-adoption has actually done recently; read-only. |
+| provider_profile | [string](#string) |  | The LLM provider profile this agent&#39;s model calls use, as a profile resource name (&#34;llm-provider-profiles/{id}&#34;). Required and set together with provider_model, which that profile must currently enable. |
+| provider_model | [string](#string) |  | The model this agent runs on, as the provider profile records it. Required and set together with provider_profile; one profile can enable several models at different prices, so the model is never inferred. |
 
 
 
@@ -8721,7 +8725,7 @@ UpdateQualityAgentRequest replaces the masked configuration fields.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, language, databases, capabilities, report_schedule, adoption, budget. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, language, databases, capabilities, provider_profile, provider_model, report_schedule, adoption, budget. |
 
 
 

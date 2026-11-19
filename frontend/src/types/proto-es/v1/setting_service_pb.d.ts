@@ -62,8 +62,9 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
   enforceIdentityDomain: boolean;
 
   /**
-   * The LLM provider profiles ExplainSQL may use, as profile resource names
-   * ("llm-provider-profiles/{id}"). Empty means every enabled profile is
+   * The LLM provider profiles the model-backed features may use, as profile
+   * resource names ("llm-provider-profiles/{id}"): Explain SQL, the data quality
+   * analyses and the quality agents. Empty means every enabled profile is
    * allowed.
    *
    * @generated from field: repeated string allowed_llm_provider_profiles = 7;

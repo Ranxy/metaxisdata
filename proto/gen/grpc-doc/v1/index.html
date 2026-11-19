@@ -13557,8 +13557,9 @@ disables the restriction. </p></td>
                   <td>allowed_llm_provider_profiles</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The LLM provider profiles ExplainSQL may use, as profile resource names
-(&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is
+                  <td><p>The LLM provider profiles the model-backed features may use, as profile
+resource names (&#34;llm-provider-profiles/{id}&#34;): Explain SQL, the data quality
+analyses and the quality agents. Empty means every enabled profile is
 allowed. </p></td>
                 </tr>
               
@@ -14998,6 +14999,22 @@ replaced. The raw value is never returned. </p></td>
                   <td></td>
                   <td><p>BCP-47 language for owner-visible prose; empty defaults to the owner&#39;s
 profile language, then en-US. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_profile</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The LLM provider profile the agent runs on (&#34;llm-provider-profiles/{id}&#34;).
+Required and set together with provider_model; that profile must currently
+enable the model. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The model the agent runs on. Required and set together with provider_profile. </p></td>
                 </tr>
               
             </tbody>
@@ -19295,6 +19312,24 @@ follows the owner&#39;s profile language; supported values are en-US and zh-CN. 
                   <td><a href="#metaxisdata.v1.QualityAgentAdoptionStatus">QualityAgentAdoptionStatus</a></td>
                   <td></td>
                   <td><p>What auto-adoption has actually done recently; read-only. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_profile</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The LLM provider profile this agent&#39;s model calls use, as a profile resource
+name (&#34;llm-provider-profiles/{id}&#34;). Required and set together with
+provider_model, which that profile must currently enable. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider_model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The model this agent runs on, as the provider profile records it. Required and
+set together with provider_profile; one profile can enable several models at
+different prices, so the model is never inferred. </p></td>
                 </tr>
               
             </tbody>
@@ -25301,7 +25336,8 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
                   <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
                   <td></td>
                   <td><p>Fields to replace: display_name, description, owner, language, databases,
-capabilities, report_schedule, adoption, budget. </p></td>
+capabilities, provider_profile, provider_model, report_schedule, adoption,
+budget. </p></td>
                 </tr>
               
             </tbody>
