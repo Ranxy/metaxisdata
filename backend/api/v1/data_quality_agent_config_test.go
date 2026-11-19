@@ -68,6 +68,14 @@ func TestParseQualityAgentConfigValidation(t *testing.T) {
 		_, _, err := parseQualityAgentConfig(agent)
 		require.Error(t, err)
 	})
+	t.Run("adoption defaults off without the capability", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		config, _, err := parseQualityAgentConfig(agent)
+		require.NoError(t, err)
+		require.Equal(t, store.QualityAgentAdoptionModeOff, config.AdoptionMode,
+			"adoption is a write; an omitted setting must not arm it")
+	})
 	t.Run("provider is canonicalized", func(t *testing.T) {
 		t.Parallel()
 		agent := base()
@@ -211,6 +219,24 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 	require.Equal(t, "reasoner", view.GetProviderModel())
 	require.Equal(t, []string{"instances/i/databases/d"}, view.GetDatabases())
 	require.Equal(t, []string{"suggest"}, view.GetCapabilities())
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_OFF,
+		view.GetAdoption().GetMode(),
+		"guardrails without the adopt capability read as off")
+}
+
+func TestConvertQualityAgentKeepsAdoptionWithTheCapability(t *testing.T) {
+	t.Parallel()
+
+	agent := &store.QualityAgentMessage{
+		ResourceID:        "abc",
+		PrincipalID:       10,
+		Capabilities:      []string{"suggest", "adopt"},
+		AdoptionMode:      store.QualityAgentAdoptionModePaused,
+		AdoptionMaxPerDay: 10,
+	}
+	view := convertQualityAgentToV1("ws", agent, nil)
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_PAUSED,
+		view.GetAdoption().GetMode())
 }
 
 func int32Pointer(value int32) *int32 {

@@ -259,12 +259,14 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 		return nil, nil, err
 	}
 	config := &store.QualityAgentMessage{
-		OwnerPrincipalID:            principalIDPointer(owner),
-		Language:                    language,
-		ProviderProfile:             providerProfile,
-		ProviderModel:               providerModel,
-		Capabilities:                capabilities,
-		AdoptionMode:                store.QualityAgentAdoptionModePaused,
+		OwnerPrincipalID: principalIDPointer(owner),
+		Language:         language,
+		ProviderProfile:  providerProfile,
+		ProviderModel:    providerModel,
+		Capabilities:     capabilities,
+		// Adoption is a write, so an omitted setting means off; PAUSED is only
+		// meaningful for an agent that actually holds the adopt capability.
+		AdoptionMode:                store.QualityAgentAdoptionModeOff,
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
@@ -437,6 +439,13 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 	if agent == nil {
 		return &v1pb.QualityAgent{}
 	}
+	adoptionMode := agent.AdoptionMode
+	if !containsCapability(agent.Capabilities, agentcapability.Adopt) {
+		// An agent without the adopt capability cannot auto-adopt, so presenting a
+		// stored guardrail as an active mode is misleading and would make an unrelated
+		// masked update fail the adoption prerequisite.
+		adoptionMode = store.QualityAgentAdoptionModeOff
+	}
 	return &v1pb.QualityAgent{
 		Owner:           formatQualityAgentOwner(agent.OwnerPrincipalID),
 		Language:        agent.Language,
@@ -451,7 +460,7 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 			DayOfWeek: v1pb.DayOfWeek(agent.ReportWeekday),
 		},
 		Adoption: &v1pb.QualityAgentAdoptionSetting{
-			Mode:                qualityAgentAdoptionModeToV1(agent.AdoptionMode),
+			Mode:                qualityAgentAdoptionModeToV1(adoptionMode),
 			RuleTypes:           qualityAgentRuleTypesToV1(agent.AdoptionRuleTypes),
 			ConfidenceThreshold: agent.AdoptionConfidenceThreshold,
 			MaxPerDay:           agent.AdoptionMaxPerDay,
@@ -631,6 +640,12 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 	if agent == nil {
 		return nil
 	}
+	// An agent without the adopt capability cannot auto-adopt; reading a stored
+	// guardrail as an armed mode would misdescribe what it can do.
+	adoptionMode := agent.AdoptionMode
+	if !containsCapability(agent.Capabilities, agentcapability.Adopt) {
+		adoptionMode = store.QualityAgentAdoptionModeOff
+	}
 	return &v1pb.QualityAgent{
 		Name:            common.FormatWorkspace(workspaceID) + "/" + qualityAgentPrefix + agent.ResourceID,
 		DisplayName:     agent.DisplayName,
@@ -652,7 +667,7 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 			DayOfWeek: v1pb.DayOfWeek(agent.ReportWeekday),
 		},
 		Adoption: &v1pb.QualityAgentAdoptionSetting{
-			Mode:                qualityAgentAdoptionModeToV1(agent.AdoptionMode),
+			Mode:                qualityAgentAdoptionModeToV1(adoptionMode),
 			RuleTypes:           qualityAgentRuleTypesToV1(agent.AdoptionRuleTypes),
 			ConfidenceThreshold: agent.AdoptionConfidenceThreshold,
 			MaxPerDay:           agent.AdoptionMaxPerDay,
