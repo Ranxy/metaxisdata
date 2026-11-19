@@ -1,0 +1,80 @@
+package dataquality
+
+import (
+	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/store"
+)
+
+func providerTestConfigs() []llm.ResolvedConfig {
+	return []llm.ResolvedConfig{
+		{ProfileName: "llm-provider-profiles/main", ModelName: "fast"},
+		{ProfileName: "llm-provider-profiles/main", ModelName: "reasoner"},
+		{ProfileName: "llm-provider-profiles/other", ModelName: "reasoner"},
+	}
+}
+
+func providerTestAgent(profile, model string) *store.QualityAgentMessage {
+	return &store.QualityAgentMessage{ProviderProfile: profile, ProviderModel: model}
+}
+
+func TestDecideAgentConfig(t *testing.T) {
+	t.Parallel()
+
+	configs := providerTestConfigs()
+
+	t.Run("exact pair", func(t *testing.T) {
+		t.Parallel()
+		config, err := decideAgentConfig(configs, nil, providerTestAgent("llm-provider-profiles/main", "reasoner"), true)
+		require.NoError(t, err)
+		require.Equal(t, "reasoner", config.ModelName)
+		require.Equal(t, "llm-provider-profiles/main", config.ProfileName)
+	})
+
+	t.Run("the workspace analysis switch gates model use", func(t *testing.T) {
+		t.Parallel()
+		config, err := decideAgentConfig(configs, nil, providerTestAgent("llm-provider-profiles/main", "fast"), false)
+		require.Error(t, err)
+		require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+		require.Empty(t, config)
+	})
+
+	t.Run("no agent and no pair have no model", func(t *testing.T) {
+		t.Parallel()
+		_, err := decideAgentConfig(configs, nil, nil, true)
+		require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+		_, err = decideAgentConfig(configs, nil, providerTestAgent("", ""), true)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("a disabled or unknown model is not replaced", func(t *testing.T) {
+		t.Parallel()
+		// The profile exists and enables another model, but not this one.
+		_, err := decideAgentConfig(configs, nil, providerTestAgent("llm-provider-profiles/other", "fast"), true)
+		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+		// The profile is gone entirely.
+		_, err = decideAgentConfig(configs, nil, providerTestAgent("llm-provider-profiles/gone", "fast"), true)
+		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	})
+
+	t.Run("the workspace allowlist applies", func(t *testing.T) {
+		t.Parallel()
+		_, err := decideAgentConfig(configs, []string{"llm-provider-profiles/other"},
+			providerTestAgent("llm-provider-profiles/main", "fast"), true)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("an allowed profile with no enabled pair is not defaulted", func(t *testing.T) {
+		t.Parallel()
+		// Nothing is configured for the profile, so even a named model cannot resolve;
+		// there is no "first enabled model" fallback for an agent.
+		_, err := decideAgentConfig(nil, nil, providerTestAgent("llm-provider-profiles/main", "fast"), true)
+		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	})
+}

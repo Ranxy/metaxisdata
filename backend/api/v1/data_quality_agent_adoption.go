@@ -58,6 +58,12 @@ func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *c
 		return nil, connect.NewError(connect.CodePermissionDenied,
 			errors.New("only an administrator may enable automatic adoption"))
 	}
+	// An agent that does not hold the adopt capability cannot run the pass, so storing
+	// an armed mode would disagree with what every read reports.
+	if mode != store.QualityAgentAdoptionModeOff && mode != store.QualityAgentAdoptionModeUnspecified &&
+		!containsCapability(agent.Capabilities, agentcapability.Adopt) {
+		return nil, connectErrorInvalid("automatic adoption requires the %q capability", agentcapability.Adopt)
+	}
 	agent.AdoptionMode = mode
 	if mode == store.QualityAgentAdoptionModeOff || mode == store.QualityAgentAdoptionModeUnspecified {
 		agent.AdoptionMode = store.QualityAgentAdoptionModeOff

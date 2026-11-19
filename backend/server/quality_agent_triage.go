@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -155,6 +156,9 @@ func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string,
 	agent, err := d.store.GetQualityAgentByPrincipalID(ctx, int(createdBy))
 	if err != nil {
 		return nil, err
+	}
+	if agent == nil {
+		return nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
 	}
 	config, settings, err := d.suggester.ResolveAgentConfig(ctx, agent)
 	if err != nil {

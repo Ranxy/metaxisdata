@@ -55,7 +55,9 @@ func FindModelConfig(configs []ResolvedConfig, profile, model string) *ResolvedC
 		return nil
 	}
 	for i := range configs {
-		if ProfileID(configs[i].ProfileName) == wantedID && configs[i].ModelName == model {
+		// Both sides are trimmed because the agent's value is stored trimmed while a
+		// profile may hold whatever its provider returned.
+		if ProfileID(configs[i].ProfileName) == wantedID && strings.TrimSpace(configs[i].ModelName) == model {
 			return &configs[i]
 		}
 	}

@@ -143,23 +143,31 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 // allowlist or a model the profile no longer enables is an error, never a fallback
 // to another provider. The workspace analysis switch still gates model use.
 func (s *Suggester) ResolveAgentConfig(ctx context.Context, agent *store.QualityAgentMessage) (llm.ResolvedConfig, Settings, error) {
-	var empty llm.ResolvedConfig
 	settings, configs, allowed, err := s.providerContext(ctx)
 	if err != nil {
-		return empty, settings, err
+		return llm.ResolvedConfig{}, settings, err
 	}
-	if !settings.EnableLLMAnalysis {
-		return empty, settings, errAnalysisDisabled
+	config, err := decideAgentConfig(configs, allowed, agent, settings.EnableLLMAnalysis)
+	return config, settings, err
+}
+
+// decideAgentConfig is the agent selection rule without I/O: the workspace switch, the
+// required pair, the allowlist and the exact enabled model. Keeping it pure is what
+// lets a test pin "no fallback" without a database.
+func decideAgentConfig(configs []llm.ResolvedConfig, allowed []string, agent *store.QualityAgentMessage, analysisEnabled bool) (llm.ResolvedConfig, error) {
+	var empty llm.ResolvedConfig
+	if !analysisEnabled {
+		return empty, errAnalysisDisabled
 	}
 	if agent == nil {
-		return empty, settings, connect.NewError(connect.CodeFailedPrecondition,
+		return empty, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the agent has no LLM provider configured"))
 	}
 	config, err := llm.ResolveModelConfig(configs, allowed, agent.ProviderProfile, agent.ProviderModel)
 	if err != nil {
-		return empty, settings, err
+		return empty, err
 	}
-	return *config, settings, nil
+	return *config, nil
 }
 
 // ValidateAgentProvider reports whether an agent's stored selection could run now.

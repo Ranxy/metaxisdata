@@ -139,6 +139,11 @@ func TestFindModelConfig(t *testing.T) {
 	require.NotNil(t, found)
 	require.Equal(t, "fast", found.ModelName)
 
+	// Both sides are trimmed: a profile may hold the name with padding.
+	found = FindModelConfig([]ResolvedConfig{{ProfileName: "llm-provider-profiles/main", ModelName: " spaced "}}, " main ", " spaced ")
+	require.NotNil(t, found)
+	require.Equal(t, " spaced ", found.ModelName)
+
 	// The same model on another profile is a different config.
 	found = FindModelConfig(configs, "other", "reasoner")
 	require.NotNil(t, found)
