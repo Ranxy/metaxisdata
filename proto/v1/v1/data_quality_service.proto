@@ -3988,6 +3988,13 @@ message QualityAgentAttention {
   google.protobuf.Timestamp resolve_time = 10;
   // Format: users/{user}; empty while open.
   string resolved_by = 11;
+  // The target this escalation is about. Empty for an agent-level event such as
+  // a report anomaly.
+  QualityTarget target = 12;
+  // Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
+  // attention. The owner sees what is waiting before replying, without needing
+  // the suggestion queue's own permission.
+  repeated string pending_draft_titles = 13;
 }
 
 message ListQualityAgentAttentionsRequest {

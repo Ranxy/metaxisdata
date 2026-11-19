@@ -73,6 +73,10 @@ func TestEmptyEnrollmentBatchesAreNoOps(t *testing.T) {
 	names, err := stores.ListQualityAgentSessionResourceIDs(context.Background(), "ws", nil)
 	require.NoError(t, err)
 	require.Empty(t, names)
+
+	sessions, err := stores.ListQualityAgentSessionsByIDs(context.Background(), "ws", nil)
+	require.NoError(t, err)
+	require.Empty(t, sessions)
 }
 
 // The admission read must only consider pending rows and must interleave databases, or

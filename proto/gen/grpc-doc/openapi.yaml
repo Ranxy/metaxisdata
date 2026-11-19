@@ -13849,6 +13849,20 @@ components:
                 resolvedBy:
                     type: string
                     description: 'Format: users/{user}; empty while open.'
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: |-
+                        The target this escalation is about. Empty for an agent-level event such as
+                         a report anomaly.
+                pendingDraftTitles:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
+                         attention. The owner sees what is waiting before replying, without needing
+                         the suggestion queue's own permission.
             description: QualityAgentAttention is one owner escalation inside an agent.
         QualityAgentAttentionDetail:
             type: object

@@ -5,13 +5,12 @@
       :description="session ? agentSessionTargetPath(session) : ''"
     >
       <template #breadcrumb>
-        <RouterLink
-          :to="sessionsRoute"
-          class="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft class="h-3.5 w-3.5" />
-          {{ t("qualityAgent.sessionsTitle") }}
-        </RouterLink>
+        <QualityAgentBreadcrumb
+          :agent-name="agentName"
+          :agent-label="agentLabel"
+          variant="session"
+          :session-label="session ? agentSessionTargetName(session) : ''"
+        />
       </template>
       <template #title-extra>
         <template v-if="session">
@@ -74,6 +73,11 @@
         </Button>
       </template>
     </PageHeader>
+
+    <QualityAgentTabs
+      :agent-name="agentName"
+      active="sessions"
+    />
 
     <Alert
       v-if="error"
@@ -243,22 +247,19 @@
 </template>
 
 <script setup lang="ts">
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Loader2,
-  RefreshCcw,
-  Target,
-} from "lucide-vue-next";
+import { AlertTriangle, Loader2, RefreshCcw, Target } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
+  getQualityAgent,
   getQualityAgentSession,
   listQualityAgentSessionMessages,
   resumeQualityAgentSession,
 } from "@/api/data-quality";
 import PageState from "@/components/common/PageState.vue";
+import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import QualityAgentTranscript from "@/components/data-quality/QualityAgentTranscript.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -276,6 +277,7 @@ import { usePolling } from "@/composables/usePolling";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityAgent,
   QualityAgentMessageRole,
   type QualityAgentSession,
   type QualityAgentSessionMessage,
@@ -287,7 +289,6 @@ import { guidToRouteParams } from "@/utils/guid";
 import {
   qualityAgentName,
   qualityAgentSessionName,
-  qualityAgentSessionsRoute,
 } from "@/utils/qualityAgent";
 import {
   agentSessionHeartbeat,
@@ -313,6 +314,7 @@ const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
 const session = ref<QualityAgentSession>();
+const agent = ref<QualityAgent>();
 const messages = ref<QualityAgentSessionMessage[]>([]);
 const hasEarlier = ref(false);
 const isLoading = ref(false);
@@ -343,12 +345,10 @@ const heartbeat = computed(() =>
     : { running: false, stale: false }
 );
 
+const agentLabel = computed(() => agent.value?.displayName || agentId.value);
+
 const canManage = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.agents.manage")
-);
-
-const sessionsRoute = computed(() =>
-  qualityAgentSessionsRoute(agentName.value)
 );
 
 const pageTitle = computed(() =>
@@ -415,6 +415,16 @@ const currentTurn = computed((): number | undefined => {
   return undefined;
 });
 
+async function loadAgent() {
+  try {
+    agent.value = await getQualityAgent(agentName.value);
+  } catch {
+    // The breadcrumb falls back to the agent id; a failed metadata read must not
+    // block the session itself.
+    agent.value = undefined;
+  }
+}
+
 async function loadSession(signal?: AbortSignal) {
   const next = await getQualityAgentSession(sessionName.value, signal);
   if (!signal?.aborted) {
@@ -452,7 +462,7 @@ async function load() {
   loadError.value = "";
   error.value = "";
   try {
-    await Promise.all([loadSession(), loadMessages()]);
+    await Promise.all([loadAgent(), loadSession(), loadMessages()]);
   } catch (err) {
     loadError.value = formatError(err);
   } finally {

@@ -8,6 +8,7 @@ import { i18n } from "@/locales";
 import {
   QualityAgentMessageOrigin,
   QualityAgentMessageRole,
+  QualityAgentSchema,
   type QualityAgentSession,
   QualityAgentSessionMessageSchema,
   QualityAgentSessionSchema,
@@ -20,6 +21,7 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import QualityAgentSessionPage from "./QualityAgentSessionPage.vue";
 
 const mocks = vi.hoisted(() => ({
+  getQualityAgent: vi.fn(),
   getQualityAgentSession: vi.fn(),
   listQualityAgentSessionMessages: vi.fn(),
   resumeQualityAgentSession: vi.fn(),
@@ -27,6 +29,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
+  getQualityAgent: mocks.getQualityAgent,
   getQualityAgentSession: mocks.getQualityAgentSession,
   listQualityAgentSessionMessages: mocks.listQualityAgentSessionMessages,
   resumeQualityAgentSession: mocks.resumeQualityAgentSession,
@@ -103,6 +106,11 @@ async function mountPage() {
     history: createMemoryHistory(),
     routes: [
       {
+        path: "/data-quality/agents",
+        name: "QualityAgents",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/agents/:workspace/:agentId",
         name: "QualityAgent",
         component: Dummy,
@@ -145,8 +153,15 @@ describe("QualityAgentSessionPage", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     i18n.global.locale.value = "en-US";
+    mocks.getQualityAgent.mockReset();
     mocks.getQualityAgentSession.mockReset();
     mocks.listQualityAgentSessionMessages.mockReset();
+    mocks.getQualityAgent.mockResolvedValue(
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/agent-1",
+        displayName: "rece",
+      })
+    );
     mocks.getQualityAgentSession.mockResolvedValue(sessionFixture());
     mocks.listQualityAgentSessionMessages.mockResolvedValue({
       messages: messagesFixture(),
