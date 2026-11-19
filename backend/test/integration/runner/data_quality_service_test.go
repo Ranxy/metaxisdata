@@ -3901,10 +3901,9 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-"}))
 	require.Error(t, err, "an owner must name an agent")
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-	ownerMessages, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+	_, err = fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
 		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
 	require.NoError(t, err, "the owner reads the transcript")
-	require.NotEmpty(t, ownerMessages.Msg.GetQualityAgentSessionMessages())
 
 	_, err = fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
 		withToken(strangerToken, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
@@ -3934,6 +3933,10 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 			strings.Contains(message.GetContent(), "deterministic survey")
 	})
 	require.NotEmpty(t, survey.GetContent())
+	ownerMessages, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentSessionMessagesRequest{Parent: session.GetName()}))
+	require.NoError(t, err, "the owner reads the populated transcript")
+	require.NotEmpty(t, ownerMessages.Msg.GetQualityAgentSessionMessages())
 	var fact *store.QualityMemoryMessage
 	require.Eventually(t, func() bool {
 		facts, err := fixture.env.Store.ListQualityMemories(fixture.ctx,
