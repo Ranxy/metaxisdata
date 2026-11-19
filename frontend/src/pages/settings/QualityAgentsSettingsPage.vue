@@ -90,6 +90,9 @@
                   <div class="flex flex-col">
                     <span class="font-medium">{{ agent.displayName }}</span>
                     <span class="text-xs text-muted-foreground">{{ agent.description }}</span>
+                    <span class="text-xs text-muted-foreground">
+                      {{ agentProviderLabel(agent) }}
+                    </span>
                   </div>
                 </TableCell>
                 <TableCell>{{ ownerLabel(agent.owner) }}</TableCell>
@@ -233,6 +236,81 @@
               </p>
             </div>
           </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1">
+              <Label for="qa-provider">{{ t("qualityAgents.providerProfile") }}</Label>
+              <Select
+                :model-value="form.providerProfile"
+                :disabled="providerOptions.length === 0"
+                @update:model-value="setProviderProfile"
+              >
+                <SelectTrigger id="qa-provider">
+                  <SelectValue :placeholder="t('qualityAgents.providerProfilePlaceholder')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-if="providerUnavailable"
+                    :value="form.providerProfile"
+                  >
+                    {{ unavailableProviderLabel }}
+                  </SelectItem>
+                  <SelectItem
+                    v-for="option in providerOptions"
+                    :key="option.name"
+                    :value="option.name"
+                  >
+                    {{ option.title }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                {{ providerOptions.length === 0 ? t("qualityAgents.providerNoProfiles") : t("qualityAgents.providerProfileHint") }}
+              </p>
+            </div>
+            <div class="space-y-1">
+              <Label for="qa-model">{{ t("qualityAgents.providerModel") }}</Label>
+              <Select
+                :model-value="form.providerModel"
+                :disabled="!form.providerProfile || modelOptions.length === 0"
+                @update:model-value="form.providerModel = String($event)"
+              >
+                <SelectTrigger id="qa-model">
+                  <SelectValue :placeholder="t('qualityAgents.providerModelPlaceholder')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-if="modelUnavailable"
+                    :value="form.providerModel"
+                  >
+                    {{ form.providerModel }} ({{ t("qualityAgents.providerUnavailable") }})
+                  </SelectItem>
+                  <SelectItem
+                    v-for="model in modelOptions"
+                    :key="model"
+                    :value="model"
+                  >
+                    {{ model }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                {{ t("qualityAgents.providerModelHint") }}
+              </p>
+            </div>
+          </div>
+          <p
+            v-if="providerUnavailable || modelUnavailable"
+            class="text-xs text-warning"
+          >
+            {{ t("qualityAgents.providerUnavailableHint") }}
+          </p>
+          <p
+            v-if="dataQuality.enableLlmAnalysis === false"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("qualityAgents.providerAnalysisOff") }}
+          </p>
 
           <div class="space-y-2">
             <Label>{{ t("qualityAgents.capabilities") }}</Label>
@@ -501,6 +579,7 @@ import {
 } from "@/api/data-quality";
 import { listDatabases } from "@/api/database";
 import { listAll } from "@/api/list";
+import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
   updateDataQualitySetting,
@@ -557,10 +636,17 @@ import {
   QualityAgentState,
   QualityRuleType,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import type { LlmProviderProfile } from "@/types/proto-es/v1/llm_service_pb";
 import type { DataQualitySetting } from "@/types/proto-es/v1/setting_service_pb";
 import { DataQualitySettingSchema } from "@/types/proto-es/v1/setting_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { qualityRuleTypeKey } from "@/utils/dataQuality";
+import {
+  buildProviderOptions,
+  enabledModelsFor,
+  type ProviderOption,
+  providerLabel,
+} from "@/utils/llmProvider";
 import { qualityAgentRoute } from "@/utils/qualityAgent";
 
 const { t } = useI18n();
@@ -581,6 +667,10 @@ const switches = ref({ runnerEnabled: false });
 const dataQuality = ref<DataQualitySetting>(
   create(DataQualitySettingSchema, {})
 );
+// The raw profiles feed the model select; the options are the allowed profiles that
+// enable a model, so the dialog cannot offer a profile the agent could not run on.
+const providerProfiles = ref<LlmProviderProfile[]>([]);
+const providerOptions = ref<ProviderOption[]>([]);
 
 interface DatabaseGroup {
   instance: string;
@@ -638,6 +728,8 @@ const form = ref({
   description: "",
   owner: "",
   language: "en-US",
+  providerProfile: "",
+  providerModel: "",
   capabilities: [] as string[],
   databases: [] as string[],
   start: true,
@@ -658,10 +750,35 @@ const form = ref({
   budgetConversationMessagesPerHour: 60,
 });
 
+const modelOptions = computed(() =>
+  enabledModelsFor(providerProfiles.value, form.value.providerProfile)
+);
+
+// A stored pair that no longer resolves stays selectable and marked, so an edit cannot
+// silently move the agent to another model.
+const providerUnavailable = computed(
+  () =>
+    form.value.providerProfile !== "" &&
+    !providerOptions.value.some(
+      (option) => option.name === form.value.providerProfile
+    )
+);
+const unavailableProviderLabel = computed(
+  () =>
+    `${providerLabel(form.value.providerProfile, providerOptions.value)} (${t("qualityAgents.providerUnavailable")})`
+);
+const modelUnavailable = computed(
+  () =>
+    form.value.providerModel !== "" &&
+    !modelOptions.value.includes(form.value.providerModel)
+);
+
 const canCreate = computed(
   () =>
     form.value.displayName.trim() !== "" &&
     form.value.owner !== "" &&
+    form.value.providerProfile !== "" &&
+    form.value.providerModel !== "" &&
     form.value.capabilities.length > 0 &&
     form.value.databases.length > 0 &&
     (!hasOverlap.value || overlapAcknowledged.value)
@@ -724,6 +841,25 @@ function agentHomeRoute(name: string) {
   return qualityAgentRoute(name);
 }
 
+function agentProviderLabel(agent: QualityAgent): string {
+  if (!agent.providerProfile || !agent.providerModel) {
+    return t("qualityAgents.providerNotConfigured");
+  }
+  return `${providerLabel(agent.providerProfile, providerOptions.value)} · ${agent.providerModel}`;
+}
+
+function setProviderProfile(value: unknown) {
+  const next = String(value);
+  form.value.providerProfile = next;
+  const models = enabledModelsFor(providerProfiles.value, next);
+  if (models.includes(form.value.providerModel)) {
+    return;
+  }
+  // One model is unambiguous; several require the administrator to name one, because
+  // models inside a profile differ in price and quality.
+  form.value.providerModel = models.length === 1 ? models[0] : "";
+}
+
 function toggleAdoptionRuleType(ruleType: number, checked: boolean) {
   form.value.adoptionRuleTypes = checked
     ? [...form.value.adoptionRuleTypes, ruleType]
@@ -778,10 +914,23 @@ async function load() {
     switches.value = {
       runnerEnabled: dataQuality.value.agentRunnerEnabled,
     };
+    await loadProfiles(setting.allowedLlmProviderProfiles ?? []);
   } catch (err) {
     error.value = formatError(err);
   } finally {
     loading.value = false;
+  }
+}
+
+/** Loads the profiles the dialog may offer. A denied or failed read leaves none. */
+async function loadProfiles(allowed: string[]) {
+  try {
+    const response = await listProfiles({ pageSize: 100 });
+    providerProfiles.value = response.profiles;
+    providerOptions.value = buildProviderOptions(response.profiles, allowed);
+  } catch {
+    providerProfiles.value = [];
+    providerOptions.value = [];
   }
 }
 
@@ -846,6 +995,8 @@ function openCreate() {
     description: "",
     owner: users.value[0]?.name ?? "",
     language: "follow",
+    providerProfile: "",
+    providerModel: "",
     capabilities: ["suggest", "patrol"],
     databases: [],
     start: true,
@@ -877,6 +1028,8 @@ function openEdit(agent: QualityAgent) {
     description: agent.description,
     owner: agent.owner,
     language: agent.language || "follow",
+    providerProfile: agent.providerProfile,
+    providerModel: agent.providerModel,
     capabilities: [...agent.capabilities],
     databases: [...agent.databases],
     start: agent.state === QualityAgentState.ACTIVE,
@@ -941,6 +1094,8 @@ async function submitEdit() {
       description: form.value.description.trim(),
       owner: form.value.owner,
       language: form.value.language === "follow" ? "" : form.value.language,
+      providerProfile: form.value.providerProfile,
+      providerModel: form.value.providerModel,
       databases: [...form.value.databases],
       capabilities: [...form.value.capabilities],
     });
@@ -981,6 +1136,8 @@ async function submitEdit() {
       "description",
       "owner",
       "language",
+      "provider_profile",
+      "provider_model",
       "databases",
       "capabilities",
       "report_schedule",
@@ -1022,6 +1179,8 @@ async function submitCreate() {
       description: form.value.description.trim(),
       owner: form.value.owner,
       language: form.value.language === "follow" ? "" : form.value.language,
+      providerProfile: form.value.providerProfile,
+      providerModel: form.value.providerModel,
       databases: form.value.databases,
       capabilities: form.value.capabilities,
       reportSchedule: form.value.capabilities.includes("patrol")

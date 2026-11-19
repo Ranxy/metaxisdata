@@ -778,7 +778,7 @@ import {
   validateSettingsForm,
 } from "@/utils/dataQualitySettings";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
-import { isProviderAllowed } from "@/utils/llmProvider";
+import { buildProviderOptions } from "@/utils/llmProvider";
 import {
   joinCodeTableValues,
   mergeCodeTableValues,
@@ -926,13 +926,7 @@ async function load() {
 async function loadProfiles(allowed: string[]) {
   try {
     const response = await listProfiles({ pageSize: 100 });
-    profileOptions.value = response.profiles
-      .filter((profile) => profile.models.some((model) => model.enabled))
-      .filter((profile) => isProviderAllowed(profile.name, allowed))
-      .map((profile) => ({
-        name: profile.name,
-        title: profile.title || profile.name,
-      }));
+    profileOptions.value = buildProviderOptions(response.profiles, allowed);
     // A configured profile the workspace no longer allows would render as an
     // empty select; clear it so the effective choice stays visible and honest.
     if (
