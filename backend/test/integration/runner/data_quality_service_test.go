@@ -79,6 +79,36 @@ func setupQualityMySQLFixture(t *testing.T, withReadOnlyDataSource bool) *qualit
 	}
 }
 
+// createQualityAgentProvider creates one LLM provider profile with the named models
+// enabled and returns its resource name. The workspace allowlist is empty by default,
+// so the profile is usable immediately. The base URL is never dialed by these
+// scenarios: model analysis stays off, so the agent runs its deterministic paths.
+func (f *qualityFixture) createQualityAgentProvider(t *testing.T, models ...string) string {
+	t.Helper()
+
+	llmClient := v1connect.NewLLMServiceClient(&http.Client{Timeout: 30 * time.Second}, f.env.BaseURL)
+	enabled := make([]*v1pb.LlmProviderModel, 0, len(models))
+	for _, model := range models {
+		enabled = append(enabled, &v1pb.LlmProviderModel{Name: model, Enabled: true})
+	}
+	profile, err := llmClient.CreateLLMProviderProfile(f.ctx,
+		withToken(f.env.AdminToken(), &v1pb.CreateLLMProviderProfileRequest{
+			Profile: &v1pb.LlmProviderProfile{
+				Title:   "agent provider",
+				Type:    v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+				BaseUrl: "http://127.0.0.1:1/v1",
+				ApiKey:  "integration-key",
+				Models:  enabled,
+			},
+		}))
+	require.NoError(t, err, "create the agent's provider profile")
+	t.Cleanup(func() {
+		_, _ = llmClient.DeleteLLMProviderProfile(context.Background(),
+			withToken(f.env.AdminToken(), &v1pb.DeleteLLMProviderProfileRequest{Name: profile.Msg.GetName()}))
+	})
+	return profile.Msg.GetName()
+}
+
 // createRule creates one table-level rule through the public API.
 func (f *qualityFixture) createRule(t *testing.T, ruleType v1pb.QualityRuleType, dimension v1pb.QualityDimension, severity v1pb.QualitySeverity, guid string, config *v1pb.QualityRuleConfig) *v1pb.QualityRule {
 	t.Helper()
@@ -3532,19 +3562,24 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	_, strangerToken := createQualityAgentTestMember(t, fixture, "stranger")
 
 	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	providerProfile := fixture.createQualityAgentProvider(t, "fast", "reasoner")
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:       "workspaces/-",
-			DisplayName:  "quality agent",
-			Description:  "surveys the fixture database",
-			Owner:        ownerName,
-			Language:     "zh-CN",
-			Databases:    scope,
-			Capabilities: []string{"suggest", "patrol"},
+			Parent:          "workspaces/-",
+			DisplayName:     "quality agent",
+			Description:     "surveys the fixture database",
+			Owner:           ownerName,
+			Language:        "zh-CN",
+			ProviderProfile: providerProfile,
+			ProviderModel:   "fast",
+			Databases:       scope,
+			Capabilities:    []string{"suggest", "patrol"},
 		}))
 	require.NoError(t, err, "an administrator creates the built-in agent")
 	agent := created.Msg.GetAgent()
 	require.NotNil(t, agent)
+	require.Equal(t, providerProfile, agent.GetProviderProfile())
+	require.Equal(t, "fast", agent.GetProviderModel())
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_DRAFT, agent.GetState(),
 		"creation without start leaves a draft")
 	require.Equal(t, "quality agent", agent.GetDisplayName())
@@ -3554,6 +3589,53 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.Equal(t, scope, agent.GetDatabases())
 	require.ElementsMatch(t, []string{"suggest", "patrol"}, agent.GetCapabilities())
 	require.NotEmpty(t, agent.GetConversation(), "the agent's conversation is created with it")
+
+	// The model is part of the selection: two agents on one profile can pin different
+	// models, and a model the profile does not enable is refused before the row exists.
+	second, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:          "workspaces/-",
+			DisplayName:     "reasoning agent",
+			Owner:           ownerName,
+			ProviderProfile: providerProfile,
+			ProviderModel:   "reasoner",
+			Databases:       scope,
+			Capabilities:    []string{"suggest"},
+		}))
+	require.NoError(t, err)
+	require.Equal(t, providerProfile, second.Msg.GetAgent().GetProviderProfile())
+	require.Equal(t, "reasoner", second.Msg.GetAgent().GetProviderModel())
+	require.NotEqual(t, agent.GetName(), second.Msg.GetAgent().GetName())
+	require.Equal(t, "fast", agent.GetProviderModel(), "an independent agent does not move the first one")
+
+	_, err = fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:          "workspaces/-",
+			DisplayName:     "unrunnable agent",
+			Owner:           ownerName,
+			ProviderProfile: providerProfile,
+			ProviderModel:   "ghost",
+			Databases:       scope,
+			Capabilities:    []string{"suggest"},
+		}))
+	require.Error(t, err, "a model the profile does not enable is refused")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	// The response view reads the pair back, and a masked update that does not name it
+	// keeps it.
+	providerReadBack, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityAgentRequest{Name: second.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, "reasoner", providerReadBack.Msg.GetProviderModel())
+	updatedSecond, err := fixture.dataQuality.UpdateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateQualityAgentRequest{
+			QualityAgent: &v1pb.QualityAgent{Name: second.Msg.GetAgent().GetName(), Description: "renamed"},
+			UpdateMask:   &fieldmaskpb.FieldMask{Paths: []string{"description"}},
+		}))
+	require.NoError(t, err)
+	require.Equal(t, "reasoner", updatedSecond.Msg.GetProviderModel(),
+		"an update that does not name the model keeps it")
+
 	// CreateQualityAgentResponse carries no token field any more and
 	// RotateQualityAgentToken does not exist, so there is no credential to assert: the
 	// compile-time surface below is the assertion.
@@ -3772,13 +3854,18 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.NoError(t, err, "publish the fixture table's quality contract")
 
 	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	// The agent still pins a provider and a model, as the dialog requires; the
+	// workspace analysis switch stays off, so every wake below is the deterministic one.
+	providerProfile := fixture.createQualityAgentProvider(t, "deterministic")
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:       "workspaces/-",
-			DisplayName:  "writing agent",
-			Owner:        ownerName,
-			Databases:    scope,
-			Capabilities: []string{"suggest", "adopt", "patrol"},
+			Parent:          "workspaces/-",
+			DisplayName:     "writing agent",
+			Owner:           ownerName,
+			ProviderProfile: providerProfile,
+			ProviderModel:   "deterministic",
+			Databases:       scope,
+			Capabilities:    []string{"suggest", "adopt", "patrol"},
 			// Reporting starts off; the scenario turns it on once the queue row exists so
 			// the first report already covers an enrolled target.
 			ReportSchedule: &v1pb.QualityAgentReportSchedule{
@@ -4438,13 +4525,16 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	_, strangerToken := createQualityAgentTestMember(t, fixture, "adoption-stranger")
 
 	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	providerProfile := fixture.createQualityAgentProvider(t, "adoption")
 	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
 		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-			Parent:       "workspaces/-",
-			DisplayName:  "adopting agent",
-			Owner:        ownerName,
-			Databases:    scope,
-			Capabilities: []string{"suggest", "adopt"},
+			Parent:          "workspaces/-",
+			DisplayName:     "adopting agent",
+			Owner:           ownerName,
+			ProviderProfile: providerProfile,
+			ProviderModel:   "adoption",
+			Databases:       scope,
+			Capabilities:    []string{"suggest", "adopt"},
 			Adoption: &v1pb.QualityAgentAdoptionSetting{
 				Mode:                v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE,
 				RuleTypes:           []v1pb.QualityRuleType{v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, v1pb.QualityRuleType_QUALITY_RULE_TYPE_RANGE},
