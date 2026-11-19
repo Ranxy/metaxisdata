@@ -570,8 +570,12 @@ type FindQualityAgentTranscriptMessage struct {
 	// InputsOnly keeps only external inputs (a user message whose origin is an event or
 	// a person's question). It is how the wake watermark and the pending list are read.
 	InputsOnly bool
-	Limit      int
-	Offset     int
+	// FrontOfficeOnly keeps the owner conversation product rows: an owner question
+	// (user + ASK) or an assistant answer. It is applied in SQL so pagination and the
+	// after_seq watermark count only visible rows.
+	FrontOfficeOnly bool
+	Limit           int
+	Offset          int
 	// NewestFirst returns the most recent page first; the caller reverses it when it
 	// needs chronological order.
 	NewestFirst bool
@@ -605,6 +609,13 @@ func (s *Store) ListQualityAgentTranscriptMessages(ctx context.Context, find *Fi
 		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK))
 		where += ` AND role = $` + strconv.Itoa(len(args)-2) + ` AND origin IN ($` +
 			strconv.Itoa(len(args)-1) + `, $` + strconv.Itoa(len(args)) + `)`
+	}
+	if find.FrontOfficeOnly {
+		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER))
+		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK))
+		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT))
+		where += ` AND ((role = $` + strconv.Itoa(len(args)-2) + ` AND origin = $` +
+			strconv.Itoa(len(args)-1) + `) OR role = $` + strconv.Itoa(len(args)) + `)`
 	}
 	limit := find.Limit
 	if limit <= 0 {
@@ -758,6 +769,25 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 	}
 	message.ToolCalls = toolCallList
 	return &message, nil
+}
+
+// UpdateQualityAgentSystemMessage replaces the stored system prompt for one
+// session. The language contract is rendered at wake time, so an agent language
+// change updates the existing row instead of appending a second system message.
+func (s *Store) UpdateQualityAgentSystemMessage(ctx context.Context, sessionID int64, content string) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_message
+		SET content = $2
+		WHERE session_id = $1 AND role = $3`,
+		sessionID, content, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to update the session system message")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read the updated system message count")
+	}
+	return affected > 0, nil
 }
 
 // AdvanceQualityAgentSessionWake makes an enabled session due now without touching its

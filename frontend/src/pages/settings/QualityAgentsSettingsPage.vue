@@ -207,13 +207,31 @@
               </Select>
             </div>
           </div>
-          <div class="space-y-1">
-            <Label for="qa-description">{{ t("qualityAgents.descriptionLabel") }}</Label>
-            <Input
-              id="qa-description"
-              v-model="form.description"
-              maxlength="2000"
-            />
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1">
+              <Label for="qa-description">{{ t("qualityAgents.descriptionLabel") }}</Label>
+              <Input
+                id="qa-description"
+                v-model="form.description"
+                maxlength="2000"
+              />
+            </div>
+            <div class="space-y-1">
+              <Label for="qa-language">{{ t("qualityAgents.language") }}</Label>
+              <Select v-model="form.language">
+                <SelectTrigger id="qa-language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="follow">{{ t("qualityAgents.languageFollowOwner") }}</SelectItem>
+                  <SelectItem value="en-US">{{ t("qualityAgents.languageEnglish") }}</SelectItem>
+                  <SelectItem value="zh-CN">{{ t("qualityAgents.languageChinese") }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                {{ t("qualityAgents.languageHint") }}
+              </p>
+            </div>
           </div>
 
           <div class="space-y-2">
@@ -619,6 +637,7 @@ const form = ref({
   displayName: "",
   description: "",
   owner: "",
+  language: "en-US",
   capabilities: [] as string[],
   databases: [] as string[],
   start: true,
@@ -826,6 +845,7 @@ function openCreate() {
     displayName: "",
     description: "",
     owner: users.value[0]?.name ?? "",
+    language: "follow",
     capabilities: ["suggest", "patrol"],
     databases: [],
     start: true,
@@ -856,6 +876,7 @@ function openEdit(agent: QualityAgent) {
     displayName: agent.displayName,
     description: agent.description,
     owner: agent.owner,
+    language: agent.language || "follow",
     capabilities: [...agent.capabilities],
     databases: [...agent.databases],
     start: agent.state === QualityAgentState.ACTIVE,
@@ -919,6 +940,7 @@ async function submitEdit() {
       displayName: form.value.displayName.trim(),
       description: form.value.description.trim(),
       owner: form.value.owner,
+      language: form.value.language === "follow" ? "" : form.value.language,
       databases: [...form.value.databases],
       capabilities: [...form.value.capabilities],
     });
@@ -958,6 +980,7 @@ async function submitEdit() {
       "display_name",
       "description",
       "owner",
+      "language",
       "databases",
       "capabilities",
       "report_schedule",
@@ -998,6 +1021,7 @@ async function submitCreate() {
       displayName: form.value.displayName.trim(),
       description: form.value.description.trim(),
       owner: form.value.owner,
+      language: form.value.language === "follow" ? "" : form.value.language,
       databases: form.value.databases,
       capabilities: form.value.capabilities,
       reportSchedule: form.value.capabilities.includes("patrol")

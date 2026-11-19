@@ -4988,6 +4988,7 @@ they are returned, so a wide text column cannot bloat the response.
 | adoption | [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting) |  |  |
 | budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
 | start | [bool](#bool) |  | Whether to start the agent immediately; default false keeps it DRAFT. |
+| language | [string](#string) |  | BCP-47 language for owner-visible prose; empty defaults to the owner&#39;s profile language, then en-US. |
 
 
 
@@ -6695,6 +6696,7 @@ an administrator edits. There is no token or external API surface.
 | budget | [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget) |  |  |
 | conversation | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent&#39;s conversation session, created lazily. |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| language | [string](#string) |  | BCP-47 tag of the language the agent writes owner-visible prose in. Empty follows the owner&#39;s profile language; supported values are en-US and zh-CN. |
 
 
 
@@ -8661,7 +8663,7 @@ UpdateQualityAgentRequest replaces the masked configuration fields.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, databases, capabilities, report_schedule, adoption, budget. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Fields to replace: display_name, description, owner, language, databases, capabilities, report_schedule, adoption, budget. |
 
 
 

@@ -26,6 +26,7 @@ func TestParseQualityAgentConfigDefaults(t *testing.T) {
 	require.InDelta(t, 0.7, config.AdoptionConfidenceThreshold, 1e-9)
 	require.Equal(t, int32(10), config.AdoptionMaxPerDay)
 	require.Equal(t, int32(60), config.ConversationMessagesPerHour)
+	require.Empty(t, config.Language, "an omitted language follows the owner")
 }
 
 func TestParseQualityAgentConfigValidation(t *testing.T) {
@@ -39,6 +40,21 @@ func TestParseQualityAgentConfigValidation(t *testing.T) {
 		}
 	}
 
+	t.Run("unsupported language", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.Language = "fr-FR"
+		_, _, err := parseQualityAgentConfig(agent)
+		require.Error(t, err)
+	})
+	t.Run("supported language", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.Language = "zh-CN"
+		config, _, err := parseQualityAgentConfig(agent)
+		require.NoError(t, err)
+		require.Equal(t, "zh-CN", config.Language)
+	})
 	t.Run("unknown capability", func(t *testing.T) {
 		t.Parallel()
 		agent := base()
@@ -89,15 +105,23 @@ func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 		OwnerPrincipalID:            int32Pointer(7),
 		State:                       store.QualityAgentStatePaused,
 		Capabilities:                []string{"suggest"},
+		Language:                    "zh-CN",
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
 	}
 	next, databases, err := applyQualityAgentUpdate(&v1pb.QualityAgent{
 		Capabilities: []string{"suggest", "patrol"},
+		Language:     "en-US",
 	}, current, []string{"instances/i/databases/d"}, []string{"capabilities"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"instances/i/databases/d"}, databases)
+	require.Equal(t, "zh-CN", next.Language, "an unrelated update keeps the stored language")
+
+	languageNext, _, err := applyQualityAgentUpdate(&v1pb.QualityAgent{Language: "en-US"},
+		current, []string{"instances/i/databases/d"}, []string{"language"})
+	require.NoError(t, err)
+	require.Equal(t, "en-US", languageNext.Language)
 	require.Equal(t, int64(5), next.ID, "the update keeps the row it writes")
 	require.NotNil(t, next.OwnerPrincipalID)
 	require.Equal(t, []string{"suggest", "patrol"}, next.Capabilities)
@@ -111,6 +135,7 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 		ResourceID:                  "abc",
 		PrincipalID:                 10,
 		DisplayName:                 "Agent A",
+		Language:                    "zh-CN",
 		State:                       store.QualityAgentStateActive,
 		OwnerPrincipalID:            &owner,
 		Capabilities:                []string{"suggest"},
@@ -122,6 +147,7 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 	require.Equal(t, "workspaces/ws/qualityAgents/abc", view.GetName())
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, view.GetState())
 	require.Equal(t, "users/9", view.GetOwner())
+	require.Equal(t, "zh-CN", view.GetLanguage())
 	require.Equal(t, []string{"instances/i/databases/d"}, view.GetDatabases())
 	require.Equal(t, []string{"suggest"}, view.GetCapabilities())
 }

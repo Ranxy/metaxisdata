@@ -138,7 +138,7 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, agent *sto
 	if err != nil {
 		return err
 	}
-	language := r.ownerLanguage(ctx, agent)
+	language := r.agentLanguage(ctx, agent)
 	body := agentreport.Render(snapshot, schedule.periodStart, schedule.periodEnd, schedule.location, language)
 	report, created, err := r.store.CreateQualityAgentReport(ctx, &store.QualityAgentReportMessage{
 		WorkspaceID:          workspaceID,
@@ -191,17 +191,14 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, agent *sto
 	return nil
 }
 
-// ownerLanguage reads the owner's chosen server-prose language; an absent owner or
-// profile falls back to English.
-func (r *Runner) ownerLanguage(ctx context.Context, agent *store.QualityAgentMessage) string {
-	if agent == nil || agent.OwnerPrincipalID == nil {
-		return agentlang.English
+// agentLanguage is the agent's configured prose language, falling back to its
+// owner's profile language and then English.
+func (r *Runner) agentLanguage(ctx context.Context, agent *store.QualityAgentMessage) string {
+	var owner *store.UserMessage
+	if agent != nil && agent.OwnerPrincipalID != nil {
+		owner, _ = r.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	}
-	owner, err := r.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
-	if err != nil {
-		return agentlang.English
-	}
-	return agentlang.Of(owner)
+	return agentlang.ForAgent(agent, owner)
 }
 
 // escalateAnomaly opens one owner attention when a report has failures or new
@@ -216,7 +213,7 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent 
 	if agent == nil {
 		return
 	}
-	language := r.ownerLanguage(ctx, agent)
+	language := r.agentLanguage(ctx, agent)
 	attention, created, err := r.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
 		WorkspaceID: workspaceID,
 		AgentID:     agent.ID,

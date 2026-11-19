@@ -16,6 +16,30 @@ const (
 	Chinese = "zh-CN"
 )
 
+// Supported reports whether a stored agent language is one this product can render
+// both model prose and server prose in. Empty follows the owner and is accepted.
+func Supported(language string) bool {
+	language = strings.TrimSpace(language)
+	return language == "" || language == English || language == Chinese
+}
+
+// Normalize maps a tag to the product's two supported languages. An empty or
+// unknown tag reads as English, the same fallback the Explain SQL prompts use.
+func Normalize(language string) string {
+	if IsChinese(language) {
+		return Chinese
+	}
+	return English
+}
+
+// Name is the human-readable label injected into the model prompt.
+func Name(language string) string {
+	if IsChinese(language) {
+		return "Simplified Chinese (zh-CN)"
+	}
+	return "English (en-US)"
+}
+
 // Of reads the language a user chose for server-side prose. An empty profile or an
 // unknown tag reads as English, the same fallback the Explain SQL prompts use.
 func Of(user *store.UserMessage) string {
@@ -30,7 +54,17 @@ func Of(user *store.UserMessage) string {
 
 // IsChinese reports whether the tag is a Chinese locale.
 func IsChinese(lang string) bool {
-	return strings.HasPrefix(strings.ToLower(lang), "zh")
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh")
+}
+
+// ForAgent is the one language decision for an agent: its explicit setting wins,
+// then the owner's profile language, then English. Model prose and server prose
+// both use this so an agent never mixes the two.
+func ForAgent(agent *store.QualityAgentMessage, owner *store.UserMessage) string {
+	if agent != nil && strings.TrimSpace(agent.Language) != "" {
+		return Normalize(agent.Language)
+	}
+	return Of(owner)
 }
 
 // AttentionTitle is the localized headline of one owner escalation.

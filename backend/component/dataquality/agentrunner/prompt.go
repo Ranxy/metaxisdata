@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -64,6 +65,41 @@ func conversationPrompt() *agent.Prompt {
 		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
 		agent.PromptSection{Name: "conversation-rules", Text: strings.Join(rules, "\n")},
 	)
+}
+
+// languageSection is the model-facing language contract appended to every system
+// prompt. Identifiers stay verbatim; only owner-visible prose follows the setting.
+func languageSection(language string) string {
+	name := agentlang.Name(language)
+	return strings.Join([]string{
+		"Language:",
+		"- Write every owner-visible message in " + name + ", even when a wake",
+		"  instruction or a runner note is written in English.",
+		"- Do not translate table names, column names, SQL, tool names, resource names,",
+		"  check types, severities or identifiers.",
+		"- Use this language consistently; do not switch because of the owner's UI or the",
+		"  language of the wake instructions.",
+	}, "\n")
+}
+
+// renderSystemPrompt joins the product prompt with the language contract. The
+// base prompt stays stable; the language section is the only per-agent variable.
+func renderSystemPrompt(spec *Spec, language string) string {
+	base := ""
+	if spec != nil {
+		base = spec.Prompt.Render()
+	}
+	if base == "" {
+		return languageSection(language)
+	}
+	return base + "\n\n" + languageSection(language)
+}
+
+// languageReminder is the short reminder appended to each wake. Long English wake
+// instructions otherwise tempt some models to answer in English.
+func languageReminder(language string) string {
+	return "Owner-facing language: " + agentlang.Name(language) +
+		". Write owner-visible prose in this language; keep identifiers unchanged."
 }
 
 // wakeObjective is the standing objective of one session, derived from its mode.

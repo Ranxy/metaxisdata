@@ -7175,6 +7175,14 @@ export declare type QualityAgent = Message<"metaxisdata.v1.QualityAgent"> & {
    * @generated from field: google.protobuf.Timestamp update_time = 16;
    */
   updateTime?: Timestamp;
+
+  /**
+   * BCP-47 tag of the language the agent writes owner-visible prose in. Empty
+   * follows the owner's profile language; supported values are en-US and zh-CN.
+   *
+   * @generated from field: string language = 17;
+   */
+  language: string;
 };
 
 /**
@@ -7246,6 +7254,14 @@ export declare type CreateQualityAgentRequest = Message<"metaxisdata.v1.CreateQu
    * @generated from field: bool start = 10;
    */
   start: boolean;
+
+  /**
+   * BCP-47 language for owner-visible prose; empty defaults to the owner's
+   * profile language, then en-US.
+   *
+   * @generated from field: string language = 11;
+   */
+  language: string;
 };
 
 /**
@@ -7771,8 +7787,8 @@ export declare type UpdateQualityAgentRequest = Message<"metaxisdata.v1.UpdateQu
   qualityAgent?: QualityAgent;
 
   /**
-   * Fields to replace: display_name, description, owner, databases, capabilities,
-   * report_schedule, adoption, budget.
+   * Fields to replace: display_name, description, owner, language, databases,
+   * capabilities, report_schedule, adoption, budget.
    *
    * @generated from field: google.protobuf.FieldMask update_mask = 2;
    */

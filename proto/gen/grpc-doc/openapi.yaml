@@ -5483,8 +5483,8 @@ paths:
                 - name: updateMask
                   in: query
                   description: |-
-                    Fields to replace: display_name, description, owner, databases, capabilities,
-                     report_schedule, adoption, budget.
+                    Fields to replace: display_name, description, owner, language, databases,
+                     capabilities, report_schedule, adoption, budget.
                   schema:
                     type: string
                     format: field-mask
@@ -9828,6 +9828,11 @@ components:
                 start:
                     type: boolean
                     description: Whether to start the agent immediately; default false keeps it DRAFT.
+                language:
+                    type: string
+                    description: |-
+                        BCP-47 language for owner-visible prose; empty defaults to the owner's
+                         profile language, then en-US.
         CreateQualityAgentResponse:
             type: object
             properties:
@@ -13751,6 +13756,11 @@ components:
                 updateTime:
                     type: string
                     format: date-time
+                language:
+                    type: string
+                    description: |-
+                        BCP-47 tag of the language the agent writes owner-visible prose in. Empty
+                         follows the owner's profile language; supported values are en-US and zh-CN.
             description: |-
                 QualityAgent is one built-in quality agent: a service-account identity that exists
                  only as the in-process runner's IAM and audit actor, plus the runtime configuration

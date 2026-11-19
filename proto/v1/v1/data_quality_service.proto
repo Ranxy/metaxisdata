@@ -3820,6 +3820,9 @@ message QualityAgent {
   // conversation session, created lazily.
   string conversation = 15;
   google.protobuf.Timestamp update_time = 16;
+  // BCP-47 tag of the language the agent writes owner-visible prose in. Empty
+  // follows the owner's profile language; supported values are en-US and zh-CN.
+  string language = 17;
 }
 
 message CreateQualityAgentRequest {
@@ -3838,6 +3841,9 @@ message CreateQualityAgentRequest {
   QualityAgentBudget budget = 9;
   // Whether to start the agent immediately; default false keeps it DRAFT.
   bool start = 10;
+  // BCP-47 language for owner-visible prose; empty defaults to the owner's
+  // profile language, then en-US.
+  string language = 11;
 }
 
 // GetQualityAgentRequest reads one agent with its configuration.
@@ -4045,8 +4051,8 @@ message SetQualityAgentAdoptionRequest {
 // UpdateQualityAgentRequest replaces the masked configuration fields.
 message UpdateQualityAgentRequest {
   QualityAgent quality_agent = 1 [(google.api.field_behavior) = REQUIRED];
-  // Fields to replace: display_name, description, owner, databases, capabilities,
-  // report_schedule, adoption, budget.
+  // Fields to replace: display_name, description, owner, language, databases,
+  // capabilities, report_schedule, adoption, budget.
   google.protobuf.FieldMask update_mask = 2;
 }
 

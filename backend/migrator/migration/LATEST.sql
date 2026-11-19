@@ -1388,6 +1388,8 @@ CREATE TABLE IF NOT EXISTS quality_agent (
     principal_id INT4 NOT NULL UNIQUE REFERENCES principal(id) ON DELETE CASCADE,
     display_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
+    -- BCP-47 tag for owner-visible agent prose; empty follows the owner's profile.
+    language TEXT NOT NULL DEFAULT '',
     -- 1 DRAFT, 2 ACTIVE, 3 PAUSED, 4 DISABLED (QualityAgentState); DISABLED is terminal.
     state INT2 NOT NULL DEFAULT 1,
     -- The owner is the only human who may talk to the agent. A deleted owner leaves
@@ -1428,6 +1430,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_resource
 COMMENT ON TABLE quality_agent IS 'Built-in quality agents: the internal principal plus its runtime configuration';
 COMMENT ON COLUMN quality_agent.principal_id IS 'The internal principal the agent acts as (type SERVICE_ACCOUNT); never an API caller';
 COMMENT ON COLUMN quality_agent.state IS 'Stored as QualityAgentState (v1 QualityAgentState); the only lifecycle truth';
+COMMENT ON COLUMN quality_agent.language IS 'BCP-47 language for owner-visible agent prose; empty follows the owner profile';
 COMMENT ON COLUMN quality_agent.capabilities IS 'JSON array of capability ids; validated against the server capability catalog';
 COMMENT ON COLUMN quality_agent.adoption_rule_types IS 'JSON array of QualityRuleType numbers; empty means the default low-risk set';
 ALTER SEQUENCE quality_agent_id_seq RESTART WITH 101;
@@ -1579,7 +1582,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_message_session_activity
     ON quality_agent_message(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
     ON quality_agent_message(workspace_id, created_at DESC);
-COMMENT ON TABLE quality_agent_message IS 'Append-only transcript of one quality agent session';
+COMMENT ON TABLE quality_agent_message IS 'Transcript of one quality agent session; append-only except the SYSTEM prompt row, rewritten when its rendered content changes';
 COMMENT ON COLUMN quality_agent_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.reasoning IS 'Display-only model reasoning; never sent back to the provider';

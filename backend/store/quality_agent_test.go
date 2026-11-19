@@ -15,7 +15,7 @@ func TestScanQualityAgentDecodesConfig(t *testing.T) {
 	owner := int32(42)
 	createdBy := int32(9)
 	values := []any{
-		int64(7), "agent-res", 11, "Patrol", "Reviews the warehouse",
+		int64(7), "agent-res", 11, "Patrol", "Reviews the warehouse", "zh-CN",
 		int16(2), sql.NullInt32{Int32: owner, Valid: true},
 		[]byte(`["suggest","adopt","patrol"]`), int16(2), "09:00", "Asia/Shanghai",
 		int16(1), int16(2), []byte(`[3,4,12]`), float64(0.85), true,
@@ -26,6 +26,7 @@ func TestScanQualityAgentDecodesConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(7), agent.ID)
 	require.Equal(t, "agent-res", agent.ResourceID)
+	require.Equal(t, "zh-CN", agent.Language)
 	require.Equal(t, 11, agent.PrincipalID)
 	require.Equal(t, QualityAgentStateActive, agent.State)
 	require.NotNil(t, agent.OwnerPrincipalID)
@@ -56,7 +57,7 @@ func TestScanQualityAgentWithoutOwnerOrCreator(t *testing.T) {
 
 	now := time.Unix(1000, 0).UTC()
 	values := []any{
-		int64(8), "agent-res", 12, "Draft", "", int16(1), sql.NullInt32{},
+		int64(8), "agent-res", 12, "Draft", "", "", int16(1), sql.NullInt32{},
 		[]byte(`[]`), int16(0), "", "", int16(0), int16(2), []byte(`[]`),
 		float64(0.7), false, int32(10), int32(60), int64(0), int32(0), int32(0),
 		int32(0), int32(0), sql.NullInt32{}, now, now,

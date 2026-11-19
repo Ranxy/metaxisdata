@@ -43,7 +43,10 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 
 // scopeSummary renders the agent's queue health as bounded text.
 func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
-	language := e.ownerLanguage(ctx, session)
+	language, err := e.sessionLanguage(ctx, session)
+	if err != nil {
+		return "", err
+	}
 	rows, err := e.store.QualityAgentEnrollmentSummary(ctx, session.WorkspaceID, session.AgentID)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the agent scope summary")
@@ -58,19 +61,6 @@ func (e *Engine) scopeSummary(ctx context.Context, session *store.QualityAgentSe
 		gone += row.Gone
 	}
 	return agentlang.ScopeSummary(language, total, pending, active, dormant, outOfScope, gone), nil
-}
-
-// ownerLanguage reads the agent owner's server-prose language, defaulting to English.
-func (e *Engine) ownerLanguage(ctx context.Context, session *store.QualityAgentSessionMessage) string {
-	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
-	if err != nil || agent == nil || agent.OwnerPrincipalID == nil {
-		return agentlang.English
-	}
-	owner, err := e.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
-	if err != nil {
-		return agentlang.English
-	}
-	return agentlang.Of(owner)
 }
 
 // conversationToolResult executes one front-office tool. The result is small JSON or

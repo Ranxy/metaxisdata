@@ -3538,6 +3538,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 			DisplayName:  "quality agent",
 			Description:  "surveys the fixture database",
 			Owner:        ownerName,
+			Language:     "zh-CN",
 			Databases:    scope,
 			Capabilities: []string{"suggest", "patrol"},
 		}))
@@ -3549,6 +3550,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.Equal(t, "quality agent", agent.GetDisplayName())
 	require.Equal(t, "surveys the fixture database", agent.GetDescription())
 	require.Equal(t, ownerName, agent.GetOwner())
+	require.Equal(t, "zh-CN", agent.GetLanguage())
 	require.Equal(t, scope, agent.GetDatabases())
 	require.ElementsMatch(t, []string{"suggest", "patrol"}, agent.GetCapabilities())
 	require.NotEmpty(t, agent.GetConversation(), "the agent's conversation is created with it")
@@ -3593,6 +3595,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
 	require.NoError(t, err)
 	require.Equal(t, ownerName, ownerRead.Msg.GetOwner())
+	require.Equal(t, "zh-CN", ownerRead.Msg.GetLanguage())
 
 	adminList, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-", PageSize: 100}))
@@ -3835,6 +3838,18 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		"the deterministic conversation wake never answered: %s", fixture.env.ServerLogs())
 	require.Empty(t, reply.GetToolCalls(),
 		"the owner's conversation stays product content, not the model's raw tool calls")
+	conversation, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentConversationMessagesRequest{
+			Parent:   agent.GetName(),
+			PageSize: 100,
+		}))
+	require.NoError(t, err)
+	for _, message := range conversation.Msg.GetQualityAgentConversationMessages() {
+		if message.GetRole() == v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER {
+			require.Equal(t, v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK, message.GetOrigin(),
+				"the owner conversation hides internal wake/event inputs")
+		}
+	}
 	adminConversation, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityAgentConversationMessagesRequest{
 			Parent:   agent.GetName(),

@@ -36,6 +36,7 @@ func (s *DataQualityService) CreateQualityAgent(ctx context.Context, req *connec
 	}
 	config, databases, err := parseQualityAgentConfig(&v1pb.QualityAgent{
 		Owner:          req.Msg.GetOwner(),
+		Language:       req.Msg.GetLanguage(),
 		Databases:      req.Msg.GetDatabases(),
 		Capabilities:   req.Msg.GetCapabilities(),
 		ReportSchedule: req.Msg.GetReportSchedule(),
