@@ -213,6 +213,10 @@ describe("QualityAgentsSettingsPage", () => {
     expect(dialogText()).toContain(
       i18n.global.t("qualityAgents.providerProfile")
     );
+    // An empty pair explains why the primary action is disabled.
+    expect(dialogText()).toContain(
+      i18n.global.t("qualityAgents.providerRequiredHint")
+    );
   });
 
   it("follows the chosen profile's models and sends the pair on create", async () => {
