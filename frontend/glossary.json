@@ -773,7 +773,7 @@
     {
       "id": "llm-provider",
       "category": "Platform",
-      "definition": "A configured model endpoint that Explain SQL can call.",
+      "definition": "A configured model endpoint that the model-backed features can call: Explain SQL explanations, the data quality analyses and the quality agents.",
       "translations": {
         "en-US": "LLM provider",
         "zh-CN": "LLM 提供商"

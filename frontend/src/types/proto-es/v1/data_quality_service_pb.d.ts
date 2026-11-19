@@ -7231,6 +7231,24 @@ export declare type QualityAgent = Message<"metaxisdata.v1.QualityAgent"> & {
    * @generated from field: metaxisdata.v1.QualityAgentAdoptionStatus adoption_status = 18;
    */
   adoptionStatus?: QualityAgentAdoptionStatus;
+
+  /**
+   * The LLM provider profile this agent's model calls use, as a profile resource
+   * name ("llm-provider-profiles/{id}"). Required and set together with
+   * provider_model, which that profile must currently enable.
+   *
+   * @generated from field: string provider_profile = 19;
+   */
+  providerProfile: string;
+
+  /**
+   * The model this agent runs on, as the provider profile records it. Required and
+   * set together with provider_profile; one profile can enable several models at
+   * different prices, so the model is never inferred.
+   *
+   * @generated from field: string provider_model = 20;
+   */
+  providerModel: string;
 };
 
 /**
@@ -7310,6 +7328,22 @@ export declare type CreateQualityAgentRequest = Message<"metaxisdata.v1.CreateQu
    * @generated from field: string language = 11;
    */
   language: string;
+
+  /**
+   * The LLM provider profile the agent runs on ("llm-provider-profiles/{id}").
+   * Required and set together with provider_model; that profile must currently
+   * enable the model.
+   *
+   * @generated from field: string provider_profile = 12;
+   */
+  providerProfile: string;
+
+  /**
+   * The model the agent runs on. Required and set together with provider_profile.
+   *
+   * @generated from field: string provider_model = 13;
+   */
+  providerModel: string;
 };
 
 /**
@@ -7890,7 +7924,8 @@ export declare type UpdateQualityAgentRequest = Message<"metaxisdata.v1.UpdateQu
 
   /**
    * Fields to replace: display_name, description, owner, language, databases,
-   * capabilities, report_schedule, adoption, budget.
+   * capabilities, provider_profile, provider_model, report_schedule, adoption,
+   * budget.
    *
    * @generated from field: google.protobuf.FieldMask update_mask = 2;
    */

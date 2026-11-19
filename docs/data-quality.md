@@ -22,7 +22,8 @@ switches for storing failure samples and for sending raw sample values are indep
 sends raw sample rows today. Everything else works with model assistance off.
 4. *(Optional)* **Turn on quality agents.** An administrator creates an agent under Settings → Quality agents and turns off **Pause all
 agents**; see [Quality agents](#quality-agents). Agents are independent of the check engine: with the runtime off, checks keep
-running.
+running. An agent also needs an enabled, allowed provider profile with at least one model — the dialog cannot create one without it —
+and **LLM analysis** must be on for the agent to reason.
 
 ## Adding a check
 
@@ -505,6 +506,9 @@ Settings → Quality agents has one workspace-wide switch, **Pause all agents**.
 report is generated and no failure event is delivered. Each agent also has its own state, so one can be paused without stopping the
 others.
 
+Agents reason only while **LLM analysis** is on under Settings → Data Quality; that switch is independent of the provider and model you
+give an agent. With it off, an agent still surveys deterministic evidence and keeps its conversation open, but triage waits for a person.
+
 ### Creating an agent
 
 An administrator creates an agent with:
@@ -513,6 +517,15 @@ An administrator creates an agent with:
 home, work sessions, reports and attention list, but administrators cannot hold a conversation with it.
 - **Language** — English or Simplified Chinese, or *follow the owner*. The agent writes owner-visible answers, reports and escalations in
 this language; table names, column names and other identifiers stay unchanged. Raw work-session internals remain English.
+- **Model** — the LLM provider profile and the model the agent calls. Both are required, and the model is chosen explicitly: one profile
+can enable several models at different prices and quality, so the agent never inherits "whichever model comes first". The list offers
+only profiles the workspace allows that enable at least one model; a profile that enables several asks you to pick one. Every model
+call the agent makes — wakes, compaction, triage and the drafts it writes — uses this pair. If the profile or model is later deleted,
+all its models disabled, or the profile removed from the allowlist, the agent stops reasoning instead of silently switching: its
+conversation answers with the deterministic scope summary, a target that still needs triage is not admitted until a model is back
+(its enrollment row records `no-model`), and Settings → Quality agents marks the pair as unavailable until you choose another. Editing
+the agent's other fields still works while the pair is stale; only a changed pair is validated. Agents do not follow the workspace
+provider in Settings → Data Quality; that setting is the analyses' default.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
@@ -572,7 +585,8 @@ create, change or run anything. See [mcp.md](mcp.md).
 
 ## Settings
 
-Settings → Data Quality controls the model-analysis switch and provider, failure-sample storage and count (20 by default, at most 100),
+Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (profile-level: the analyses use
+that profile's first enabled model), failure-sample storage and count (20 by default, at most 100),
 the **check time zone** (IANA name, empty = UTC) used to resolve time variables in filters and custom SQL and a cron schedule saved
 without a zone, the default schedule a target starts with, the daily execution ceiling (only scheduled scans pause at it — **Run now**
 still works), the daily AI analysis ceiling (L1+L2, default 10,000), the concurrent LLM calls (default 8, range 1–64), whether raw
@@ -588,7 +602,8 @@ is the ceiling sent to the model for every data quality analysis using that prof
 model caps output lower, the request is rejected and the failed analysis reports a provider-status diagnostic.
 
 Settings → Quality agents (`/settings/quality-agents`) is the agent control panel: the **Pause all agents** switch, the agent list, and
-the create/edit dialog for each agent. The agent's home is where its owner talks to it, reads its reports and answers its attention.
+the create/edit dialog for each agent, including the provider profile and model each agent runs on. The agent's home is where its owner
+talks to it, reads its reports and answers its attention.
 
 ## Retention
 
@@ -630,7 +645,9 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | An agent is blocked with `token-budget` or `wake-budget` | It spent its hourly budget and recovers at the hour boundary; an administrator can raise the budget. |
 | An agent is blocked with `out-of-scope`, `agent-disabled` or `needs-human` | The scope changed, the agent was disabled, or the model reported the same blocker three times; fix the cause, then answer the attention item. |
 | The owner cannot talk to the agent | Only the owner may; administrators can read but not send. |
-| An agent's answer is a fixed scope summary | No LLM provider is configured; configure one under Settings → LLM providers. |
+| An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, all its models disabled, or outside the allowlist); turn the switch on, or restore it under Settings → LLM providers or the allowlist under Settings → General, then edit the agent. |
+| A target the agent never checked stays unchecked | Triage admission needs a model; with the analysis switch off or the agent's pair unavailable it is not admitted. Fix the provider and the target is admitted on the next scan. |
+| The agent dialog offers no provider | No allowed profile enables a model; create or enable one under Settings → LLM providers. |
 
 ## See also
 

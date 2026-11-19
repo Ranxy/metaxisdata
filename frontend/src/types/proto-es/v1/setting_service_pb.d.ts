@@ -62,8 +62,9 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
   enforceIdentityDomain: boolean;
 
   /**
-   * The LLM provider profiles ExplainSQL may use, as profile resource names
-   * ("llm-provider-profiles/{id}"). Empty means every enabled profile is
+   * The LLM provider profiles the model-backed features may use, as profile
+   * resource names ("llm-provider-profiles/{id}"): Explain SQL, the data quality
+   * analyses and the quality agents. Empty means every enabled profile is
    * allowed.
    *
    * @generated from field: repeated string allowed_llm_provider_profiles = 7;
@@ -117,8 +118,9 @@ export declare const WorkspaceProfileSettingSchema: GenMessage<WorkspaceProfileS
  */
 export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySetting"> & {
   /**
-   * Whether the LLM-assisted entries (rule draft, failure explanation, column
-   * labels) are enabled. Off by default: the rule engine is fully offline.
+   * Whether the model-backed paths are enabled: the rule drafts, failure
+   * explanations and column labels, and the quality agents' model wakes. Off by
+   * default: the rule engine and the agents' deterministic paths are fully offline.
    *
    * @generated from field: bool enable_llm_analysis = 1;
    */

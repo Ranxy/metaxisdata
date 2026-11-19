@@ -287,12 +287,20 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	if err := agentrunner.ValidateSpecs(); err != nil {
 		return nil, errors.Wrap(err, "invalid quality agent spec")
 	}
+	// agentModel is the one place that answers "can this agent call a model, and with
+	// which configuration": the session engine and triage admission both read it, so
+	// an agent's own provider and model cannot drift between them.
+	agentModel := func(ctx context.Context, agent *store.QualityAgentMessage) (llmcomp.ResolvedConfig, bool) {
+		config, _, resolveErr := suggester.ResolveAgentConfig(ctx, agent)
+		// A disabled switch, an unconfigured agent or a selection that no longer
+		// resolves is not an error for the runner: the deterministic survey keeps
+		// working.
+		return config, resolveErr == nil
+	}
 	sessionEngine := agentrunner.NewModelEngine(stores, agent.RunLoop,
-		func(ctx context.Context) (llmcomp.ResolvedConfig, bool, error) {
-			config, _, resolveErr := suggester.ResolveConfig(ctx)
-			// Disabled or unconfigured analysis is not an error for the runner: the
-			// deterministic survey keeps working.
-			return config, resolveErr == nil, nil
+		func(ctx context.Context, agent *store.QualityAgentMessage) (llmcomp.ResolvedConfig, bool, error) {
+			config, ok := agentModel(ctx, agent)
+			return config, ok, nil
 		}, s.metrics,
 		agentrunner.WithTableContext(&qualityTriageContext{
 			store: stores,
@@ -301,7 +309,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 				return dataquality.LoadSettings(ctx, stores)
 			},
 		}),
-		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks),
+		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester, store: stores}).DraftChecks),
 		agentrunner.WithPermissionChecker(agentIAM),
 		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
@@ -347,11 +355,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	})
 	s.agentReportRunner = qualityagentrunner.NewRunner(stores, s.notifier)
 	// The enrollment runner discovers the database scope into a queue and admits
-	// targets by priority; triage admission needs a model, so it reads the same
-	// resolver the session engine uses.
-	s.enrollmentRunner = qualityenrollmentrunner.NewRunner(stores, func(ctx context.Context) bool {
-		config, _, resolveErr := suggester.ResolveConfig(ctx)
-		return resolveErr == nil && (config.BaseURL != "" || config.ModelName != "")
+	// targets by priority; triage admission needs that agent's model, so it reads the
+	// same resolver the session engine uses.
+	s.enrollmentRunner = qualityenrollmentrunner.NewRunner(stores, func(ctx context.Context, agent *store.QualityAgentMessage) bool {
+		_, ok := agentModel(ctx, agent)
+		return ok
 	})
 
 	if err := s.initializeSetting(ctx); err != nil {

@@ -66,8 +66,9 @@ type Store interface {
 // engine with a scripted event stream.
 type Chat func(ctx context.Context, cfg agent.Config) <-chan agent.Event
 
-// ResolveModel reports the LLM configuration, or ok=false when analysis is disabled.
-type ResolveModel func(ctx context.Context) (llm.ResolvedConfig, bool, error)
+// ResolveModel reports the LLM configuration of one agent, or ok=false when that
+// agent has no usable model (no selection, a stale one, or disabled analysis).
+type ResolveModel func(ctx context.Context, agent *store.QualityAgentMessage) (llm.ResolvedConfig, bool, error)
 
 // Engine runs one wake of one session.
 type Engine struct {
@@ -151,10 +152,11 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if session == nil || session.ID == 0 {
 		return Outcome{}, common.Errorf(common.Invalid, "a session is required")
 	}
-	language, err := e.sessionLanguage(ctx, session)
+	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, errors.Wrap(err, "failed to read the session agent")
 	}
+	language := e.sessionLanguage(ctx, agent)
 	system, err := e.ensureSystemMessage(ctx, session, language)
 	if err != nil {
 		return Outcome{}, err
@@ -181,7 +183,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if err != nil {
 		return Outcome{}, err
 	}
-	outcome, err := e.runWake(ctx, session, wake, system, pending, wakeStartedAt, options)
+	outcome, err := e.runWake(ctx, session, agent, wake, system, pending, wakeStartedAt, options)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -193,9 +195,9 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 }
 
 // runWake selects the model wake or the deterministic survey.
-func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage, wakeStartedAt time.Time, options Options) (Outcome, error) {
+func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage, wakeStartedAt time.Time, options Options) (Outcome, error) {
 	if e.resolveModel != nil && e.chat != nil {
-		config, ok, err := e.resolveModel(ctx)
+		config, ok, err := e.resolveModel(ctx, agent)
 		if err == nil && ok {
 			outcome, wakeErr := e.modelWake(ctx, session, wake, system, pending, config, options)
 			if wakeErr == nil && session.Kind != 2 &&
@@ -680,20 +682,17 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 }
 
 // sessionLanguage is the single language decision for a session: the agent's
-// configured language, then its owner's profile language, then English.
-func (e *Engine) sessionLanguage(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
-	agent, err := e.store.GetQualityAgentByID(ctx, session.AgentID)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to read the session agent language")
-	}
+// configured language, then its owner's profile language, then English. A missing
+// owner falls back to the language defaults, so it cannot fail.
+func (e *Engine) sessionLanguage(ctx context.Context, agent *store.QualityAgentMessage) string {
 	if agent == nil {
-		return agentlang.English, nil
+		return agentlang.English
 	}
 	var owner *store.UserMessage
 	if agent.OwnerPrincipalID != nil {
 		owner, _ = e.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	}
-	return agentlang.ForAgent(agent, owner), nil
+	return agentlang.ForAgent(agent, owner)
 }
 
 // repairInterruptedToolCalls closes the trailing assistant tool call a crash left

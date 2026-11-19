@@ -1542,6 +1542,10 @@ export interface QualityAgentConfigInput {
   language?: string;
   databases: string[];
   capabilities: string[];
+  /** Profile resource name; the server requires it together with providerModel. */
+  providerProfile: string;
+  /** The model the profile must currently enable. */
+  providerModel: string;
   reportSchedule?: {
     frequency: QualityAgentReportFrequency;
     time?: string;
@@ -1580,6 +1584,8 @@ export async function createQualityAgent(options: {
     language: config.language ?? "",
     databases: config.databases,
     capabilities: config.capabilities,
+    providerProfile: config.providerProfile,
+    providerModel: config.providerModel,
     reportSchedule: config.reportSchedule,
     adoption: config.adoption,
     budget: config.budget,

@@ -13,13 +13,17 @@ func TestParseQualityAgentConfigDefaults(t *testing.T) {
 	t.Parallel()
 
 	config, databases, err := parseQualityAgentConfig(&v1pb.QualityAgent{
-		Owner:        "users/7",
-		Databases:    []string{"instances/i/databases/d"},
-		Capabilities: []string{"suggest", "adopt"},
-		Adoption:     &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE},
+		Owner:           "users/7",
+		Databases:       []string{"instances/i/databases/d"},
+		Capabilities:    []string{"suggest", "adopt"},
+		Adoption:        &v1pb.QualityAgentAdoptionSetting{Mode: v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_ACTIVE},
+		ProviderProfile: "llm-provider-profiles/main",
+		ProviderModel:   "reasoner",
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"instances/i/databases/d"}, databases)
+	require.Equal(t, "llm-provider-profiles/main", config.ProviderProfile)
+	require.Equal(t, "reasoner", config.ProviderModel)
 	require.NotNil(t, config.OwnerPrincipalID)
 	require.Equal(t, int32(7), *config.OwnerPrincipalID)
 	require.Equal(t, store.QualityAgentAdoptionModeActive, config.AdoptionMode)
@@ -34,12 +38,60 @@ func TestParseQualityAgentConfigValidation(t *testing.T) {
 
 	base := func() *v1pb.QualityAgent {
 		return &v1pb.QualityAgent{
-			Owner:        "users/7",
-			Databases:    []string{"instances/i/databases/d"},
-			Capabilities: []string{"suggest"},
+			Owner:           "users/7",
+			Databases:       []string{"instances/i/databases/d"},
+			Capabilities:    []string{"suggest"},
+			ProviderProfile: "llm-provider-profiles/main",
+			ProviderModel:   "reasoner",
 		}
 	}
 
+	t.Run("needs a provider and a model", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.ProviderProfile = ""
+		agent.ProviderModel = ""
+		_, _, err := parseQualityAgentConfig(agent)
+		require.Error(t, err)
+	})
+	t.Run("provider without a model", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.ProviderModel = ""
+		_, _, err := parseQualityAgentConfig(agent)
+		require.Error(t, err)
+	})
+	t.Run("model without a provider", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.ProviderProfile = ""
+		_, _, err := parseQualityAgentConfig(agent)
+		require.Error(t, err)
+	})
+	t.Run("adoption defaults off without the capability", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		config, _, err := parseQualityAgentConfig(agent)
+		require.NoError(t, err)
+		require.Equal(t, store.QualityAgentAdoptionModeOff, config.AdoptionMode,
+			"adoption is a write; an omitted setting must not arm it")
+	})
+	t.Run("provider is canonicalized", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.ProviderProfile = "main"
+		config, _, err := parseQualityAgentConfig(agent)
+		require.NoError(t, err)
+		require.Equal(t, "llm-provider-profiles/main", config.ProviderProfile)
+		require.Equal(t, "reasoner", config.ProviderModel)
+	})
+	t.Run("provider must be a profile resource name", func(t *testing.T) {
+		t.Parallel()
+		agent := base()
+		agent.ProviderProfile = "other/main"
+		_, _, err := parseQualityAgentConfig(agent)
+		require.Error(t, err)
+	})
 	t.Run("unsupported language", func(t *testing.T) {
 		t.Parallel()
 		agent := base()
@@ -106,6 +158,8 @@ func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 		State:                       store.QualityAgentStatePaused,
 		Capabilities:                []string{"suggest"},
 		Language:                    "zh-CN",
+		ProviderProfile:             "llm-provider-profiles/main",
+		ProviderModel:               "reasoner",
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,
@@ -117,6 +171,17 @@ func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"instances/i/databases/d"}, databases)
 	require.Equal(t, "zh-CN", next.Language, "an unrelated update keeps the stored language")
+	require.Equal(t, "llm-provider-profiles/main", next.ProviderProfile, "an unrelated update keeps the stored provider")
+	require.Equal(t, "reasoner", next.ProviderModel, "an unrelated update keeps the stored model")
+
+	providerNext, _, err := applyQualityAgentUpdate(&v1pb.QualityAgent{
+		ProviderProfile: "llm-provider-profiles/main",
+		ProviderModel:   "fast",
+	}, current, []string{"instances/i/databases/d"}, []string{"provider_model"})
+	require.NoError(t, err)
+	require.Equal(t, "fast", providerNext.ProviderModel)
+	require.Equal(t, "llm-provider-profiles/main", providerNext.ProviderProfile,
+		"a model-only update keeps the stored profile")
 
 	languageNext, _, err := applyQualityAgentUpdate(&v1pb.QualityAgent{Language: "en-US"},
 		current, []string{"instances/i/databases/d"}, []string{"language"})
@@ -136,6 +201,8 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 		PrincipalID:                 10,
 		DisplayName:                 "Agent A",
 		Language:                    "zh-CN",
+		ProviderProfile:             "llm-provider-profiles/main",
+		ProviderModel:               "reasoner",
 		State:                       store.QualityAgentStateActive,
 		OwnerPrincipalID:            &owner,
 		Capabilities:                []string{"suggest"},
@@ -148,8 +215,28 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 	require.Equal(t, v1pb.QualityAgentState_QUALITY_AGENT_STATE_ACTIVE, view.GetState())
 	require.Equal(t, "users/9", view.GetOwner())
 	require.Equal(t, "zh-CN", view.GetLanguage())
+	require.Equal(t, "llm-provider-profiles/main", view.GetProviderProfile())
+	require.Equal(t, "reasoner", view.GetProviderModel())
 	require.Equal(t, []string{"instances/i/databases/d"}, view.GetDatabases())
 	require.Equal(t, []string{"suggest"}, view.GetCapabilities())
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_OFF,
+		view.GetAdoption().GetMode(),
+		"guardrails without the adopt capability read as off")
+}
+
+func TestConvertQualityAgentKeepsAdoptionWithTheCapability(t *testing.T) {
+	t.Parallel()
+
+	agent := &store.QualityAgentMessage{
+		ResourceID:        "abc",
+		PrincipalID:       10,
+		Capabilities:      []string{"suggest", "adopt"},
+		AdoptionMode:      store.QualityAgentAdoptionModePaused,
+		AdoptionMaxPerDay: 10,
+	}
+	view := convertQualityAgentToV1("ws", agent, nil)
+	require.Equal(t, v1pb.QualityAgentAdoptionMode_QUALITY_AGENT_ADOPTION_MODE_PAUSED,
+		view.GetAdoption().GetMode())
 }
 
 func int32Pointer(value int32) *int32 {

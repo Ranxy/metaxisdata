@@ -87,41 +87,99 @@ func NewSuggester(st *store.Store, registry *llm.Registry, quota *LLMQuota, m *m
 	}
 }
 
-// ResolveConfig checks the workspace switch, the provider registry and the
-// workspace allowlist and returns the configuration one analysis runs with.
-func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Settings, error) {
-	var empty llm.ResolvedConfig
+// errAnalysisDisabled is the shared refusal of every model-backed path when the
+// workspace switch is off.
+var errAnalysisDisabled = connect.NewError(connect.CodeFailedPrecondition,
+	errors.New("data quality LLM analysis is disabled in the workspace settings"))
+
+// providerContext loads what every provider resolution needs: the workspace data
+// quality settings, the enabled provider configurations and the workspace allowlist.
+func (s *Suggester) providerContext(ctx context.Context) (Settings, []llm.ResolvedConfig, []string, error) {
 	settings, err := LoadSettings(ctx, s.store)
 	if err != nil {
 		if common.ErrorCode(err) != common.Internal {
-			return empty, settings, err
+			return settings, nil, nil, err
 		}
-		return empty, settings, connect.NewError(connect.CodeInternal,
+		return settings, nil, nil, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "failed to load the data quality settings"))
 	}
-	if !settings.EnableLLMAnalysis {
-		return empty, settings, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("data quality LLM analysis is disabled in the workspace settings"))
-	}
 	if s.registry == nil {
-		return empty, settings, connect.NewError(connect.CodeFailedPrecondition,
+		return settings, nil, nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("no LLM registry is configured"))
 	}
 	configs, err := s.registry.ListEnabled(ctx)
 	if err != nil {
-		return empty, settings, connect.NewError(connect.CodeFailedPrecondition,
+		return settings, nil, nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.Wrap(err, "failed to list the enabled LLM provider profiles"))
 	}
 	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
-		return empty, settings, connect.NewError(connect.CodeInternal,
+		return settings, nil, nil, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "failed to read the workspace LLM allowlist"))
 	}
-	config, err := llm.ResolveConfig(configs, setting.GetAllowedLlmProviderProfiles(), settings.LLMProviderProfile)
+	return settings, configs, setting.GetAllowedLlmProviderProfiles(), nil
+}
+
+// ResolveConfig checks the workspace switch, the provider registry and the
+// workspace allowlist and returns the configuration one analysis runs with.
+func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Settings, error) {
+	var empty llm.ResolvedConfig
+	settings, configs, allowed, err := s.providerContext(ctx)
+	if err != nil {
+		return empty, settings, err
+	}
+	if !settings.EnableLLMAnalysis {
+		return empty, settings, errAnalysisDisabled
+	}
+	config, err := llm.ResolveConfig(configs, allowed, settings.LLMProviderProfile)
 	if err != nil {
 		return empty, settings, err
 	}
 	return *config, settings, nil
+}
+
+// ResolveAgentConfig returns the provider and model one quality agent runs on. The
+// selection is exact and resolved per wake: an empty pair, a profile outside the
+// allowlist or a model the profile no longer enables is an error, never a fallback
+// to another provider. The workspace analysis switch still gates model use.
+func (s *Suggester) ResolveAgentConfig(ctx context.Context, agent *store.QualityAgentMessage) (llm.ResolvedConfig, Settings, error) {
+	settings, configs, allowed, err := s.providerContext(ctx)
+	if err != nil {
+		return llm.ResolvedConfig{}, settings, err
+	}
+	config, err := decideAgentConfig(configs, allowed, agent, settings.EnableLLMAnalysis)
+	return config, settings, err
+}
+
+// decideAgentConfig is the agent selection rule without I/O: the workspace switch, the
+// required pair, the allowlist and the exact enabled model. Keeping it pure is what
+// lets a test pin "no fallback" without a database.
+func decideAgentConfig(configs []llm.ResolvedConfig, allowed []string, agent *store.QualityAgentMessage, analysisEnabled bool) (llm.ResolvedConfig, error) {
+	var empty llm.ResolvedConfig
+	if !analysisEnabled {
+		return empty, errAnalysisDisabled
+	}
+	if agent == nil {
+		return empty, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the agent has no LLM provider configured"))
+	}
+	config, err := llm.ResolveModelConfig(configs, allowed, agent.ProviderProfile, agent.ProviderModel)
+	if err != nil {
+		return empty, err
+	}
+	return *config, nil
+}
+
+// ValidateAgentProvider reports whether an agent's stored selection could run now.
+// It deliberately ignores the workspace analysis switch: an administrator may
+// configure an agent before turning model assistance on.
+func (s *Suggester) ValidateAgentProvider(ctx context.Context, profile, model string) error {
+	_, configs, allowed, err := s.providerContext(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = llm.ResolveModelConfig(configs, allowed, profile, model)
+	return err
 }
 
 // Draft turns one natural-language intent into queued rule drafts for one target.

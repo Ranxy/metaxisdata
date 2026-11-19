@@ -7,3 +7,65 @@ export function isProviderAllowed(
 ): boolean {
   return allowedProfiles.length === 0 || allowedProfiles.includes(profileName);
 }
+
+/** One selectable provider profile: the workspace allows it and it enables a model. */
+export interface ProviderOption {
+  name: string;
+  title: string;
+}
+
+interface ProviderProfileLike {
+  name: string;
+  title: string;
+  models: ReadonlyArray<{ name: string; enabled: boolean }>;
+}
+
+/**
+ * The profiles the model-backed pages may offer: an enabled model and inside the
+ * workspace allowlist. Kept in one helper so the data quality settings and the agent
+ * dialog cannot disagree about which profiles are usable.
+ */
+export function buildProviderOptions(
+  profiles: readonly ProviderProfileLike[],
+  allowed: readonly string[]
+): ProviderOption[] {
+  return profiles
+    .filter((profile) => profile.models.some((model) => model.enabled))
+    .filter((profile) => isProviderAllowed(profile.name, allowed))
+    .map((profile) => ({
+      name: profile.name,
+      title: profile.title || profile.name,
+    }));
+}
+
+/**
+ * The models one profile currently enables, in registry order. An empty list means
+ * the profile cannot run, so the agent dialog never offers it as a valid choice.
+ */
+export function enabledModelsFor(
+  profiles: readonly ProviderProfileLike[],
+  providerProfile: string
+): string[] {
+  const profile = profiles.find(
+    (candidate) => candidate.name === providerProfile
+  );
+  if (!profile) {
+    return [];
+  }
+  return profile.models
+    .filter((model) => model.enabled)
+    .map((model) => model.name);
+}
+
+/**
+ * The display label of a stored profile reference, falling back to the reference. It
+ * reads the raw profile list on purpose: a stored profile that is no longer allowed or
+ * enabled still has a title worth showing next to its unavailable marker.
+ */
+export function profileTitle(
+  name: string,
+  profiles: readonly { name: string; title: string }[]
+): string {
+  const profile = profiles.find((candidate) => candidate.name === name);
+  return profile?.title || name;
+}

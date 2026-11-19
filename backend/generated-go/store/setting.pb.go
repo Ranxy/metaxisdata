@@ -297,8 +297,9 @@ type WorkspaceProfileSetting struct {
 	// openlineage_retention_days bounds how long persisted OpenLineage runs are
 	// kept. Zero (the default) keeps them forever: they are audit data.
 	OpenlineageRetentionDays int32 `protobuf:"varint,14,opt,name=openlineage_retention_days,json=openlineageRetentionDays,proto3" json:"openlineage_retention_days,omitempty"`
-	// The LLM provider profiles ExplainSQL may use, as profile resource names.
-	// Empty means every enabled profile is allowed.
+	// The LLM provider profiles the model-backed features may use, as profile
+	// resource names: Explain SQL, the data quality analyses and the quality
+	// agents. Empty means every enabled profile is allowed.
 	AllowedLlmProviderProfiles []string `protobuf:"bytes,15,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
 	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 	// Off by default: the surface is new, and enabling it requires a configured

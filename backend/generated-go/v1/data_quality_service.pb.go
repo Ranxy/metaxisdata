@@ -15707,8 +15707,16 @@ type QualityAgent struct {
 	Language string `protobuf:"bytes,17,opt,name=language,proto3" json:"language,omitempty"`
 	// What auto-adoption has actually done recently; read-only.
 	AdoptionStatus *QualityAgentAdoptionStatus `protobuf:"bytes,18,opt,name=adoption_status,json=adoptionStatus,proto3" json:"adoption_status,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The LLM provider profile this agent's model calls use, as a profile resource
+	// name ("llm-provider-profiles/{id}"). Required and set together with
+	// provider_model, which that profile must currently enable.
+	ProviderProfile string `protobuf:"bytes,19,opt,name=provider_profile,json=providerProfile,proto3" json:"provider_profile,omitempty"`
+	// The model this agent runs on, as the provider profile records it. Required and
+	// set together with provider_profile; one profile can enable several models at
+	// different prices, so the model is never inferred.
+	ProviderModel string `protobuf:"bytes,20,opt,name=provider_model,json=providerModel,proto3" json:"provider_model,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualityAgent) Reset() {
@@ -15853,6 +15861,20 @@ func (x *QualityAgent) GetAdoptionStatus() *QualityAgentAdoptionStatus {
 	return nil
 }
 
+func (x *QualityAgent) GetProviderProfile() string {
+	if x != nil {
+		return x.ProviderProfile
+	}
+	return ""
+}
+
+func (x *QualityAgent) GetProviderModel() string {
+	if x != nil {
+		return x.ProviderModel
+	}
+	return ""
+}
+
 type CreateQualityAgentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
@@ -15872,7 +15894,13 @@ type CreateQualityAgentRequest struct {
 	Start bool `protobuf:"varint,10,opt,name=start,proto3" json:"start,omitempty"`
 	// BCP-47 language for owner-visible prose; empty defaults to the owner's
 	// profile language, then en-US.
-	Language      string `protobuf:"bytes,11,opt,name=language,proto3" json:"language,omitempty"`
+	Language string `protobuf:"bytes,11,opt,name=language,proto3" json:"language,omitempty"`
+	// The LLM provider profile the agent runs on ("llm-provider-profiles/{id}").
+	// Required and set together with provider_model; that profile must currently
+	// enable the model.
+	ProviderProfile string `protobuf:"bytes,12,opt,name=provider_profile,json=providerProfile,proto3" json:"provider_profile,omitempty"`
+	// The model the agent runs on. Required and set together with provider_profile.
+	ProviderModel string `protobuf:"bytes,13,opt,name=provider_model,json=providerModel,proto3" json:"provider_model,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15980,6 +16008,20 @@ func (x *CreateQualityAgentRequest) GetStart() bool {
 func (x *CreateQualityAgentRequest) GetLanguage() string {
 	if x != nil {
 		return x.Language
+	}
+	return ""
+}
+
+func (x *CreateQualityAgentRequest) GetProviderProfile() string {
+	if x != nil {
+		return x.ProviderProfile
+	}
+	return ""
+}
+
+func (x *CreateQualityAgentRequest) GetProviderModel() string {
+	if x != nil {
+		return x.ProviderModel
 	}
 	return ""
 }
@@ -17086,7 +17128,8 @@ type UpdateQualityAgentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	QualityAgent *QualityAgent          `protobuf:"bytes,1,opt,name=quality_agent,json=qualityAgent,proto3" json:"quality_agent,omitempty"`
 	// Fields to replace: display_name, description, owner, language, databases,
-	// capabilities, report_schedule, adoption, budget.
+	// capabilities, provider_profile, provider_model, report_schedule, adoption,
+	// budget.
 	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -21958,7 +22001,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x17max_concurrent_sessions\x18\x03 \x01(\x05R\x15maxConcurrentSessions\x128\n" +
 	"\x19max_new_sessions_per_hour\x18\x04 \x01(\x05R\x15maxNewSessionsPerHour\x12.\n" +
 	"\x13max_active_sessions\x18\x05 \x01(\x05R\x11maxActiveSessions\x12C\n" +
-	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\"\xa7\x06\n" +
+	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\"\xe7\x06\n" +
 	"\fQualityAgent\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -21979,7 +22022,9 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vupdate_time\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12\x1a\n" +
 	"\blanguage\x18\x11 \x01(\tR\blanguage\x12S\n" +
-	"\x0fadoption_status\x18\x12 \x01(\v2*.metaxisdata.v1.QualityAgentAdoptionStatusR\x0eadoptionStatusJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabledR\x10provider_profile\"\xeb\x03\n" +
+	"\x0fadoption_status\x18\x12 \x01(\v2*.metaxisdata.v1.QualityAgentAdoptionStatusR\x0eadoptionStatus\x12)\n" +
+	"\x10provider_profile\x18\x13 \x01(\tR\x0fproviderProfile\x12%\n" +
+	"\x0eprovider_model\x18\x14 \x01(\tR\rproviderModelJ\x04\b\x04\x10\x05J\x04\b\v\x10\fR\aenabled\"\xc7\x04\n" +
 	"\x19CreateQualityAgentRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12 \n" +
@@ -21992,7 +22037,9 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x06budget\x18\t \x01(\v2\".metaxisdata.v1.QualityAgentBudgetR\x06budget\x12\x14\n" +
 	"\x05start\x18\n" +
 	" \x01(\bR\x05start\x12\x1a\n" +
-	"\blanguage\x18\v \x01(\tR\blanguage\"N\n" +
+	"\blanguage\x18\v \x01(\tR\blanguage\x12.\n" +
+	"\x10provider_profile\x18\f \x01(\tB\x03\xe0A\x02R\x0fproviderProfile\x12*\n" +
+	"\x0eprovider_model\x18\r \x01(\tB\x03\xe0A\x02R\rproviderModel\"N\n" +
 	"\x16GetQualityAgentRequest\x124\n" +
 	"\x04name\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +
 	"\x18metaxisdata/QualityAgentR\x04name\"\x9d\x01\n" +

@@ -35,18 +35,25 @@ func (s *DataQualityService) CreateQualityAgent(ctx context.Context, req *connec
 		return nil, connectErrorInvalid("an agent description is too long (max %d bytes)", maxQualityAgentDescBytes)
 	}
 	config, databases, err := parseQualityAgentConfig(&v1pb.QualityAgent{
-		Owner:          req.Msg.GetOwner(),
-		Language:       req.Msg.GetLanguage(),
-		Databases:      req.Msg.GetDatabases(),
-		Capabilities:   req.Msg.GetCapabilities(),
-		ReportSchedule: req.Msg.GetReportSchedule(),
-		Adoption:       req.Msg.GetAdoption(),
-		Budget:         req.Msg.GetBudget(),
+		Owner:           req.Msg.GetOwner(),
+		Language:        req.Msg.GetLanguage(),
+		Databases:       req.Msg.GetDatabases(),
+		Capabilities:    req.Msg.GetCapabilities(),
+		ReportSchedule:  req.Msg.GetReportSchedule(),
+		Adoption:        req.Msg.GetAdoption(),
+		Budget:          req.Msg.GetBudget(),
+		ProviderProfile: req.Msg.GetProviderProfile(),
+		ProviderModel:   req.Msg.GetProviderModel(),
 	})
 	if err != nil {
 		return nil, err
 	}
 	if err := s.validateQualityAgentOwner(ctx, config.OwnerPrincipalID); err != nil {
+		return nil, err
+	}
+	// The selection is checked before the identity is created, so a refused pair
+	// leaves no half-created agent behind.
+	if err := s.validateQualityAgentProvider(ctx, config.ProviderProfile, config.ProviderModel); err != nil {
 		return nil, err
 	}
 	resourceID, err := common.RandomString(12)

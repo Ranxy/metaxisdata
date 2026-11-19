@@ -5484,7 +5484,8 @@ paths:
                   in: query
                   description: |-
                     Fields to replace: display_name, description, owner, language, databases,
-                     capabilities, report_schedule, adoption, budget.
+                     capabilities, provider_profile, provider_model, report_schedule, adoption,
+                     budget.
                   schema:
                     type: string
                     format: field-mask
@@ -9866,6 +9867,8 @@ components:
                 - parent
                 - displayName
                 - owner
+                - providerProfile
+                - providerModel
             type: object
             properties:
                 parent:
@@ -9902,6 +9905,15 @@ components:
                     description: |-
                         BCP-47 language for owner-visible prose; empty defaults to the owner's
                          profile language, then en-US.
+                providerProfile:
+                    type: string
+                    description: |-
+                        The LLM provider profile the agent runs on ("llm-provider-profiles/{id}").
+                         Required and set together with provider_model; that profile must currently
+                         enable the model.
+                providerModel:
+                    type: string
+                    description: The model the agent runs on. Required and set together with provider_profile.
         CreateQualityAgentResponse:
             type: object
             properties:
@@ -13834,6 +13846,18 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/QualityAgentAdoptionStatus'
                     description: What auto-adoption has actually done recently; read-only.
+                providerProfile:
+                    type: string
+                    description: |-
+                        The LLM provider profile this agent's model calls use, as a profile resource
+                         name ("llm-provider-profiles/{id}"). Required and set together with
+                         provider_model, which that profile must currently enable.
+                providerModel:
+                    type: string
+                    description: |-
+                        The model this agent runs on, as the provider profile records it. Required and
+                         set together with provider_profile; one profile can enable several models at
+                         different prices, so the model is never inferred.
             description: |-
                 QualityAgent is one built-in quality agent: a service-account identity that exists
                  only as the in-process runner's IAM and audit actor, plus the runtime configuration
@@ -18494,8 +18518,9 @@ components:
                     items:
                         type: string
                     description: |-
-                        The LLM provider profiles ExplainSQL may use, as profile resource names.
-                         Empty means every enabled profile is allowed.
+                        The LLM provider profiles the model-backed features may use, as profile
+                         resource names: Explain SQL, the data quality analyses and the quality
+                         agents. Empty means every enabled profile is allowed.
                 mcpEnabled:
                     type: boolean
                     description: |-

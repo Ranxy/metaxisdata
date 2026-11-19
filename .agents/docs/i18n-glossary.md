@@ -167,7 +167,7 @@ agent than reading the JSON.
 | environment | 环境 | Platform | A catalogue label instances can be assigned to. | all keys | — |
 | time zone | 时区 | Platform | The IANA zone a stored clock time is interpreted in; empty means UTC. | dataQuality., dataQualitySettings., notificationSettings. | en-US: `/\btimezone\b/i` |
 | sync | 同步 | Platform | Pulling a source's schema into the registry. | all keys | — |
-| LLM provider | LLM 提供商 | Platform | A configured model endpoint that Explain SQL can call. | all keys | — |
+| LLM provider | LLM 提供商 | Platform | A configured model endpoint that the model-backed features can call: Explain SQL explanations, the data quality analyses and the quality agents. | all keys | — |
 | Explain SQL | 解释 SQL | Platform | The LLM-assisted SQL explanation feature. | all keys | — |
 | canceled | 已取消 | Conventions | American English spelling, one l: canceled. | error., common., environment. | en-US: `cancelled` |
 | email | 邮箱 | Conventions | One word, no hyphen. | all keys | en-US: `e-mail` |

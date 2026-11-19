@@ -97,7 +97,7 @@ type Store interface {
 type Runner struct {
 	store         Store
 	loadSettings  func(ctx context.Context) (dataquality.Settings, error)
-	llmConfigured func(ctx context.Context) bool
+	llmConfigured func(ctx context.Context, agent *store.QualityAgentMessage) bool
 	now           func() time.Time
 	tick          time.Duration
 	scanInterval  time.Duration
@@ -116,9 +116,9 @@ type activeAgent struct {
 	databases []string
 }
 
-// NewRunner creates the enrollment runner. llmConfigured reports whether a model is
-// available for triage; a nil function means triage admission is refused.
-func NewRunner(stores *store.Store, llmConfigured func(ctx context.Context) bool) *Runner {
+// NewRunner creates the enrollment runner. llmConfigured reports whether the agent
+// has a usable model for triage; a nil function means triage admission is refused.
+func NewRunner(stores *store.Store, llmConfigured func(ctx context.Context, agent *store.QualityAgentMessage) bool) *Runner {
 	return &Runner{
 		store: stores,
 		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
@@ -718,7 +718,7 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *acti
 		!slices.Contains(current.agent.Capabilities, "patrol") {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-patrol-disabled")
 	}
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx) {
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx, current.agent) {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "no-model")
 	}
 	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, enrollment.TargetGUID)
@@ -779,12 +779,12 @@ func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *acti
 	return err
 }
 
-// llmConfiguredFor reports whether triage can call a model.
-func (r *Runner) llmConfiguredFor(ctx context.Context) bool {
+// llmConfiguredFor reports whether triage can call a model for one agent.
+func (r *Runner) llmConfiguredFor(ctx context.Context, agent *store.QualityAgentMessage) bool {
 	if r.llmConfigured == nil {
 		return false
 	}
-	return r.llmConfigured(ctx)
+	return r.llmConfigured(ctx, agent)
 }
 
 func intPointer(value int) *int { return &value }

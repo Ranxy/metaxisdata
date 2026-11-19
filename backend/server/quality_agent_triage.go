@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -144,11 +145,22 @@ const (
 // the suggestion review queue exactly like a person's request would.
 type qualityDraftChecks struct {
 	suggester *dataquality.Suggester
+	store     *store.Store
 }
 
-// DraftChecks drafts checks for one target from a natural-language intent.
+// DraftChecks drafts checks for one target from a natural-language intent. The write
+// is attributed to the agent's principal, which is also how the agent's own provider
+// and model are resolved: a triage wake drafts on the model the agent was configured
+// with, not on a workspace default.
 func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, error) {
-	config, settings, err := d.suggester.ResolveConfig(ctx)
+	agent, err := d.store.GetQualityAgentByPrincipalID(ctx, int(createdBy))
+	if err != nil {
+		return nil, err
+	}
+	if agent == nil {
+		return nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
+	}
+	config, settings, err := d.suggester.ResolveAgentConfig(ctx, agent)
 	if err != nil {
 		return nil, err
 	}
