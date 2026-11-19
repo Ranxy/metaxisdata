@@ -845,7 +845,20 @@ function agentProviderLabel(agent: QualityAgent): string {
   if (!agent.providerProfile || !agent.providerModel) {
     return t("qualityAgents.providerNotConfigured");
   }
-  return `${providerLabel(agent.providerProfile, providerOptions.value)} · ${agent.providerModel}`;
+  const label = `${providerLabel(agent.providerProfile, providerOptions.value)} · ${agent.providerModel}`;
+  const models = enabledModelsFor(
+    providerProfiles.value,
+    agent.providerProfile
+  );
+  if (
+    !providerOptions.value.some(
+      (option) => option.name === agent.providerProfile
+    ) ||
+    !models.includes(agent.providerModel)
+  ) {
+    return `${label} (${t("qualityAgents.providerUnavailable")})`;
+  }
+  return label;
 }
 
 function setProviderProfile(value: unknown) {
