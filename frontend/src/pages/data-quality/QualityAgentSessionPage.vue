@@ -142,7 +142,7 @@
           </CollapsibleContent>
         </Collapsible>
 
-        <Card class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <Card class="flex min-h-[24rem] min-w-0 flex-1 flex-col overflow-hidden">
           <CardHeader class="shrink-0 border-b">
             <CardTitle class="text-base">{{ t("qualityAgent.transcriptTitle") }}</CardTitle>
             <CardDescription>{{ t("qualityAgent.transcriptHint") }}</CardDescription>
@@ -164,7 +164,7 @@
                   <Button
                     variant="outline"
                     size="sm"
-                    @click="loadMessages"
+                    @click="reloadMessages"
                   >
                     {{ t("common.refresh") }}
                   </Button>
@@ -259,7 +259,7 @@
           </CardContent>
         </Card>
 
-        <aside class="hidden w-80 shrink-0 self-start xl:block">
+        <aside class="hidden w-80 shrink-0 self-start xl:block xl:max-h-full xl:overflow-y-auto">
           <Card>
             <CardHeader class="border-b">
               <CardTitle class="text-base">{{ t("qualityAgent.runPanelTitle") }}</CardTitle>
@@ -572,15 +572,13 @@ async function load() {
   loadError.value = "";
   error.value = "";
   try {
-    // The Markdown renderer is a lazy chunk; waiting for it here means the first
-    // transcript paint has its final height and the landing below cannot fall
-    // short when the placeholder is replaced.
-    await Promise.all([
-      loadAgent(),
-      loadSession(),
-      loadMessages(),
-      preloadMarkdown(),
-    ]);
+    // Warm the Markdown chunk before the first page of messages is applied, so
+    // the transcript paints once at its final height. The renderer is still a
+    // lazy chunk and the async component resolves in a microtask after this, but
+    // no network wait is left for the first paint; the landing window absorbs
+    // whatever small growth remains. Only the first visit downloads it.
+    await Promise.all([loadAgent(), loadSession(), preloadMarkdown()]);
+    await loadMessages();
   } catch (err) {
     loadError.value = formatError(err);
   } finally {
@@ -589,6 +587,17 @@ async function load() {
   await landAtLatest();
 }
 
+/** Retry the transcript page, then land on the newest message it renders. */
+async function reloadMessages() {
+  await loadMessages();
+  await landAtLatest();
+}
+
+/**
+ * A full resync replaces the loaded page with the newest one, so it explicitly
+ * returns to the live end. Reading history through Refresh is not a supported
+ * gesture; scrolling back is (the poll keeps history in place).
+ */
 async function reload() {
   await load();
   syncPolling();
@@ -685,7 +694,9 @@ async function poll(signal: AbortSignal) {
   }
   if (appended && pinned.value) {
     await nextTick();
-    await scrollToLatest();
+    // A session opened before its first answer mounts the lazy renderer on this
+    // very append; a single jump can land short, so use the landing window.
+    await settleAtLatest();
   }
 }
 

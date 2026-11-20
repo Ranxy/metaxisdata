@@ -56,7 +56,7 @@
         v-else
         class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
       >
-        <Card class="flex min-h-[28rem] flex-col">
+        <Card class="flex h-[36rem] min-h-0 flex-col">
           <CardHeader class="border-b">
             <CardTitle class="text-base">{{ t("qualityAgent.conversationTitle") }}</CardTitle>
             <CardDescription>{{ t("qualityAgent.conversationHint") }}</CardDescription>

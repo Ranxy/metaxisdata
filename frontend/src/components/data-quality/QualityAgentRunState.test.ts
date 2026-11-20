@@ -1,7 +1,8 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { mount } from "@vue/test-utils";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 import { i18n } from "@/locales";
 import {
   type QualityAgentSession,
@@ -50,9 +51,27 @@ function mountRunState(
   });
 }
 
+/** Pretend the clamped paragraph hides (or does not hide) lines. */
+function mockTextMetrics(scrollHeight: number, clientHeight: number) {
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get: () => scrollHeight,
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get: () => clientHeight,
+  });
+}
+
 describe("QualityAgentRunState", () => {
   beforeEach(() => {
     i18n.global.locale.value = "en-US";
+  });
+
+  afterEach(() => {
+    delete (HTMLElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+    delete (HTMLElement.prototype as { clientHeight?: unknown }).clientHeight;
+    vi.restoreAllMocks();
   });
 
   it("shows the state, its counters and the blocked code", () => {
@@ -67,21 +86,40 @@ describe("QualityAgentRunState", () => {
     expect(wrapper.text()).toContain("23 hours ago");
   });
 
-  it("clamps a long blocked reason and expands it", async () => {
+  it("offers expansion only for a reason the clamp actually hides", async () => {
+    mockTextMetrics(320, 80);
     const wrapper = mountRunState({
       blockedReason: "A very long model reason about the blocker.",
     });
 
+    await nextTick();
     const showMore = wrapper
       .findAll("button")
       .find((button) => button.text() === "Show more");
     expect(showMore).toBeDefined();
+    expect(showMore?.attributes("aria-expanded")).toBe("false");
     expect(wrapper.html()).toContain("line-clamp-4");
 
     await showMore?.trigger("click");
 
     expect(wrapper.text()).toContain("Show less");
     expect(wrapper.html()).not.toContain("line-clamp-4");
+    const showLess = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Show less");
+    expect(showLess?.attributes("aria-expanded")).toBe("true");
+  });
+
+  it("does not offer expansion when the reason fits", () => {
+    mockTextMetrics(80, 80);
+    const wrapper = mountRunState({
+      blockedReason: "Short blocker.",
+    });
+
+    expect(wrapper.text()).toContain("Short blocker.");
+    expect(
+      wrapper.findAll("button").some((button) => button.text() === "Show more")
+    ).toBe(false);
   });
 
   it("shows the model turn while a wake is in flight and surfaces a poll failure", () => {

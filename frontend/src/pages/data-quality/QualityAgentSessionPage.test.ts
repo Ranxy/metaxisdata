@@ -162,12 +162,6 @@ async function mountPage() {
   const wrapper = mount(QualityAgentSessionPage, {
     global: {
       plugins: [router, i18n],
-      stubs: {
-        AsyncMarkdown: {
-          props: ["content"],
-          template: '<div class="markdown">{{ content }}</div>',
-        },
-      },
     },
   });
   await flushPromises();

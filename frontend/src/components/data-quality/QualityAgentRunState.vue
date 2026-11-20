@@ -59,15 +59,18 @@
       </p>
       <template v-if="session.blockedReason">
         <p
-          class="whitespace-pre-wrap text-warning"
+          ref="reasonRef"
+          class="whitespace-pre-wrap break-words text-warning"
           :class="{ 'line-clamp-4': !reasonExpanded }"
         >
           {{ session.blockedReason }}
         </p>
         <Button
+          v-if="reasonOverflows"
           variant="link"
           size="xs"
           class="h-auto p-0 text-xs"
+          :aria-expanded="reasonExpanded"
           @click="reasonExpanded = !reasonExpanded"
         >
           {{
@@ -82,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import type { QualityAgentSession } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -97,9 +100,10 @@ import type { AgentSessionHeartbeat } from "@/utils/qualityAgentSession";
  * disclosure above the transcript below `xl` — so the card chrome and the
  * placement stay with the page while the content lives here. The blocked reason
  * is model-written and can run to hundreds of characters; it is clamped so a long
- * reason cannot push the column past the height of the transcript pane.
+ * reason cannot push the column past the height of the transcript pane, and the
+ * expand control only appears when the clamp actually hides text.
  */
-defineProps<{
+const props = defineProps<{
   session: QualityAgentSession;
   heartbeat: AgentSessionHeartbeat;
   statusLabel: string;
@@ -111,4 +115,46 @@ defineProps<{
 
 const { t, locale } = useI18n();
 const reasonExpanded = ref(false);
+const reasonOverflows = ref(false);
+const reasonRef = ref<HTMLElement | null>(null);
+
+let resizeObserver: ResizeObserver | undefined;
+
+/** Whether the four-line clamp currently hides part of the reason. */
+function measureReason(): void {
+  // While expanded the clamp is gone; keep the control so the reader can collapse.
+  if (reasonExpanded.value) {
+    return;
+  }
+  const element = reasonRef.value;
+  reasonOverflows.value = element
+    ? element.scrollHeight > element.clientHeight + 1
+    : false;
+}
+
+watch(
+  () => props.session.blockedReason,
+  async () => {
+    reasonExpanded.value = false;
+    await nextTick();
+    measureReason();
+  }
+);
+
+onMounted(() => {
+  measureReason();
+  if (typeof ResizeObserver !== "undefined" && reasonRef.value !== null) {
+    resizeObserver = new ResizeObserver(() => {
+      // A sidebar width change re-wraps the text, so the clamp may start or stop
+      // hiding lines without the reason changing.
+      measureReason();
+    });
+    resizeObserver.observe(reasonRef.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
+});
 </script>

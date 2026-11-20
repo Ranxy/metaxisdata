@@ -375,6 +375,46 @@ describe("useChatScroll", () => {
     wrapper.unmount();
   });
 
+  it("leaves a newer landing window alone when a stale one wakes", async () => {
+    vi.useFakeTimers();
+    const observers: Array<{ disconnect: ReturnType<typeof vi.fn> }> = [];
+    class FakeResizeObserver {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+      constructor() {
+        observers.push(this);
+      }
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    const { wrapper, chat } = mountChat({
+      settleAttempts: 10,
+      settleIntervalMs: 10,
+    });
+    const metrics = track(pane(wrapper));
+    metrics.scrollHeight = 500;
+    metrics.clientHeight = 100;
+
+    const first = chat.settleAtLatest();
+    await vi.advanceTimersByTimeAsync(10);
+    const second = chat.settleAtLatest();
+    await vi.advanceTimersByTimeAsync(10);
+    await first;
+
+    // The stale landing must not tear down the newer landing's observer.
+    expect(observers.length).toBeGreaterThanOrEqual(2);
+    expect(observers[observers.length - 1]?.disconnect).not.toHaveBeenCalled();
+
+    for (let step = 0; step < 6; step += 1) {
+      await vi.advanceTimersByTimeAsync(10);
+    }
+    await second;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(chat.pinned.value).toBe(true);
+    wrapper.unmount();
+  });
+
   it("ignores a resize reported for a superseded landing", async () => {
     vi.useFakeTimers();
     let observerCallback: ResizeObserverCallback | undefined;

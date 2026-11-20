@@ -9,9 +9,10 @@
  *   - firstDataRowY / pct   how much of the viewport is spent before the first
  *                           row of real data
  *   - h1Count               exactly one page heading per route
- *   - nestedScrollers       ordinary pages must not nest their own scroll containers;
- *                           a full-height workbench route would be the named exception
- *                           (it is not registered here: it needs a live session id)
+ *   - nestedScrollers       ordinary pages must not nest their own scroll containers
+ *                           while they load. A full-height workbench owns its content
+ *                           panes by design; those routes are covered by page tests when
+ *                           they need live data (the agent transcript needs a session id).
  *   - documentOverflow      the window itself must never scroll: the shell is
  *                           one h-dvh scroller, so a taller document is a
  *                           second scrollbar over blank space at the bottom

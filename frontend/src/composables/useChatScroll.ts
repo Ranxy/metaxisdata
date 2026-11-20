@@ -220,8 +220,13 @@ export function useChatScroll(options: ChatScrollOptions = {}): ChatScroll {
       pinned.value = true;
       await sleep(settleIntervalMs);
       // A reader who scrolled away, or a newer jump, wins over this landing.
-      if (disposed || currentTicket !== ticket) {
+      if (disposed) {
         stopLandingFollow();
+        return;
+      }
+      // A newer landing owns the follow window now; leave its observer, timer and
+      // landing target alone instead of tearing them down with this loop.
+      if (currentTicket !== ticket) {
         return;
       }
       if (!pinned.value) {
