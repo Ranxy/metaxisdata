@@ -130,10 +130,25 @@ func columnTypeBaseName(columnType string) string {
 // ColumnInfo is one column of the target relation: what a rule names, what type
 // the engine reports, and whether NULL is allowed.
 type ColumnInfo struct {
-	Name     string
-	Type     string
-	Kind     ColumnKind
+	Name string
+	Type string
+	Kind ColumnKind
+	// Nullable reports whether the engine allows NULL in this column.
 	Nullable bool
+	// EnumValues are the labels the target declares when the column's type is an
+	// enum. It is empty when the registry cannot name them: a non-enum type, a
+	// domain or composite type, an engine without enum types, or a schema whose
+	// metadata was not synced. Validation then keeps its pre-existing behavior
+	// instead of guessing.
+	EnumValues []string
+	// EnumCaseInsensitive reports that the engine compares the column's enum
+	// labels case-insensitively: a MySQL-family collation that is not binary.
+	// PostgreSQL and binary collations compare labels exactly.
+	EnumCaseInsensitive bool
+	// EnumErrorMember reports that the engine can hold a MySQL-family ENUM's
+	// implicit empty-string member (written in non-strict mode), so "" is a value
+	// the type accepts even though it is not a declared label.
+	EnumErrorMember bool
 }
 
 // ResolvedTarget is a target as the registry currently describes it: enough to

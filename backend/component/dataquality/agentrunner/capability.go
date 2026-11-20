@@ -206,7 +206,7 @@ func patrolProfile() capabilityProfile {
 func getTableContextSpec() toolSpec {
 	return toolSpec{
 		name:        "get_table_context",
-		description: "Read the target's schema, column profiles, semantic labels and lineage consumers; no sample rows.",
+		description: "Read the target's schema (including each enum column's declared labels), column profiles, semantic labels and lineage consumers; no sample rows.",
 		parameters:  emptyParameters(),
 		meta:        readMeta(),
 	}
@@ -216,7 +216,7 @@ func getTableContextSpec() toolSpec {
 func draftChecksSpec() toolSpec {
 	return toolSpec{
 		name:        "draft_checks",
-		description: "Draft concrete checks for the target into the review queue; a person or the adoption policy decides them before they run.",
+		description: "Draft concrete checks for the target into the review queue; a person or the adoption policy decides them before they run. A draft the rule pipeline refuses is returned with its reason, so correct the intent and retry when a value or column was rejected.",
 		parameters: map[string]any{"type": "object", "properties": map[string]any{
 			"intent": map[string]any{"type": "string", "description": "what the checks should watch, in one sentence"},
 			"columns": map[string]any{

@@ -1855,6 +1855,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualitySuggestionRejection"><span class="badge">M</span>QualitySuggestionRejection</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityTarget"><span class="badge">M</span>QualityTarget</a>
                 </li>
               
@@ -23935,6 +23939,48 @@ them. A label pass lists columns it left out because they already had a label or
 a live proposal; a deterministic recommendation lists columns no check could be
 derived for. A column whose candidate lost the pass&#39;s per-type budget is not
 listed, because a proposal for it was derived. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rejected_drafts</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionRejection">QualitySuggestionRejection</a></td>
+                  <td>repeated</td>
+                  <td><p>Drafts the model proposed that the rule pipeline refused, with the reason.
+The model&#39;s answer can name a value the target cannot hold (an accepted value
+that is not one of an enum column&#39;s labels, for example); reporting the
+refusal lets the client explain the smaller queue instead of leaving it
+unexplained. It is empty when every draft was usable. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualitySuggestionRejection">QualitySuggestionRejection</h3>
+        <p>QualitySuggestionRejection is one model draft a generation pass refused before</p><p>queueing it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The draft&#39;s title. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The server&#39;s reason, in the server&#39;s wording. </p></td>
                 </tr>
               
             </tbody>

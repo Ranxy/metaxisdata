@@ -3,6 +3,7 @@ import { notify } from "@/lib/notify";
 import type { QualitySuggestionQueueSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   type SuggestionSummarySubject,
+  suggestionRejectionNotice,
   suggestionSummaryReason,
   suggestionSummaryView,
 } from "@/utils/dataQualitySuggestion";
@@ -63,7 +64,15 @@ export function useSuggestionSummary() {
       message = t(reason.key, { count: reason.count });
     }
     const skipped = skippedColumnsText(summary);
-    return skipped ? `${message} · ${skipped}` : message;
+    const rejection = suggestionRejectionNotice(summary);
+    const refused = rejection
+      ? t("dataQuality.suggestionSummary.rejected", {
+          count: rejection.count,
+          title: rejection.title,
+          reason: rejection.reason,
+        })
+      : "";
+    return [message, skipped, refused].filter(Boolean).join(" · ");
   }
 
   /** Success when the pass queued something, an explanation when it did not. */

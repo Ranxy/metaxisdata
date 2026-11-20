@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -58,6 +59,7 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
+	require.Contains(t, result, `"enumValues":["draft","published"]`)
 }
 
 func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
@@ -66,10 +68,10 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	var gotColumns []string
 	var gotIntent string
 	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, error) {
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 		gotColumns = columns
 		gotIntent = intent
-		return []string{"orders amount not null", "orders id unique"}, nil
+		return []string{"orders amount not null", "orders id unique"}, nil, nil, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
 	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", args, &wakeControl{})
@@ -78,6 +80,27 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	require.Equal(t, "watch order integrity", gotIntent)
 	require.Contains(t, result, `"queued":2`)
 	require.Contains(t, result, "orders id unique")
+	require.NotContains(t, result, `"rejected"`)
+}
+
+// A refused draft is reported with its reason so the model can correct the
+// intent instead of repeating a value the target cannot hold.
+func TestDraftChecksToolReportsRejectedDrafts(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine(newFakeStore())
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+		return nil, []dataquality.DraftRejection{{
+			Title:  "Status must be a declared enum label",
+			Reason: `value "discontinued" is not a declared label of column "status"; valid labels: "active", "draft"`,
+		}}, nil, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Contains(t, result, `"queued":0`)
+	require.Contains(t, result, `"rejected"`)
+	require.Contains(t, result, "Status must be a declared enum label")
+	require.Contains(t, result, "valid labels")
 }
 
 type fakeTableContextReader struct{}
@@ -91,7 +114,27 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		Columns: []TableContextColumn{
 			{Name: "id", Type: "int", Key: true},
 			{Name: "amount", Type: "decimal", Nullable: true},
+			{Name: "status", Type: "enum('draft','published')", EnumValues: []string{"draft", "published"}},
 		},
 		Downstream: 3,
 	}, nil
+}
+
+// A valid draft that was not queued for a non-refusal reason is explained too, so
+// the model does not repeat a correct intent.
+func TestDraftChecksToolReportsSkippedDrafts(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine(newFakeStore())
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+		return nil, nil, &storepb.QualitySuggestionQueueSummary{
+			SkippedExistingFact: 2,
+			SkippedDecided:      1,
+		}, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Contains(t, result, `"queued":0`)
+	require.Contains(t, result, `"existingFact":2`)
+	require.Contains(t, result, `"decided":1`)
 }

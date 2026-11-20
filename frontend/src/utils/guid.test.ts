@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   guidSegmentsToRouteParams,
   guidToRouteParams,
+  parentGuid,
   routeParamToGuid,
 } from "./guid";
 
@@ -103,5 +104,25 @@ describe("routeParamToGuid", () => {
     ]) {
       expect(routeParamToGuid(guidToRouteParams(guid))).toBe(guid);
     }
+  });
+});
+
+describe("parentGuid", () => {
+  it("returns the parent of a table and of a schema", () => {
+    expect(parentGuid("inst;db;public;orders")).toBe("inst;db;public");
+    expect(parentGuid("inst;db;public")).toBe("inst;db");
+  });
+
+  it("keeps the empty MySQL schema segment in place", () => {
+    expect(parentGuid("inst;db;;orders")).toBe("inst;db;");
+  });
+
+  it("returns an empty string for a top-level GUID", () => {
+    expect(parentGuid("inst")).toBe("");
+    expect(parentGuid("")).toBe("");
+  });
+
+  it("does not decode an escaped name", () => {
+    expect(parentGuid("inst;a%3Bb;public;orders")).toBe("inst;a%3Bb;public");
   });
 });

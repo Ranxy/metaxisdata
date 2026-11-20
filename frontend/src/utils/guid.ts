@@ -39,3 +39,22 @@ export function routeParamToGuid(
     parts.length === 1 && parts[0].includes("/") ? parts[0].split("/") : parts;
   return segments.map((segment) => (segment === "~" ? "" : segment)).join(";");
 }
+
+/**
+ * The GUID of an object's parent, or the empty string for a top-level GUID. The
+ * last `;` is the separator before the object's own segment (a segment cannot
+ * hold a literal `;`; it is percent-encoded), so this is the inverse of one step
+ * of `guidSegmentsToRouteParams` without re-escaping any name.
+ */
+export function parentGuid(guid: string): string {
+  const separator = guid.lastIndexOf(";");
+  return separator < 0 ? "" : guid.slice(0, separator);
+}
+
+/**
+ * Reverses `EscapeGUIDPart`: the separator first, then the escape character, so
+ * a name written as `a%3Bb` comes back as `a;b` and a literal `%3B` survives.
+ */
+export function unescapeGuidPart(part: string): string {
+  return part.split("%3B").join(";").split("%25").join("%");
+}

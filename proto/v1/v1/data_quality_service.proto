@@ -2083,6 +2083,21 @@ message QualitySuggestionQueueSummary {
   // derived for. A column whose candidate lost the pass's per-type budget is not
   // listed, because a proposal for it was derived.
   repeated string skipped_columns = 7;
+  // Drafts the model proposed that the rule pipeline refused, with the reason.
+  // The model's answer can name a value the target cannot hold (an accepted value
+  // that is not one of an enum column's labels, for example); reporting the
+  // refusal lets the client explain the smaller queue instead of leaving it
+  // unexplained. It is empty when every draft was usable.
+  repeated QualitySuggestionRejection rejected_drafts = 8;
+}
+
+// QualitySuggestionRejection is one model draft a generation pass refused before
+// queueing it.
+message QualitySuggestionRejection {
+  // The draft's title.
+  string title = 1;
+  // The server's reason, in the server's wording.
+  string reason = 2;
 }
 
 // ColumnProfile is the cached deterministic statistics of one column plus how

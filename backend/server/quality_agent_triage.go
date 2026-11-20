@@ -49,11 +49,14 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 		if len(context.Columns) >= maxTriageContextColumns {
 			break
 		}
+		enumValues, enumValuesTruncated := triageEnumValues(column.EnumValues)
 		context.Columns = append(context.Columns, agentrunner.TableContextColumn{
-			Name:     column.Name,
-			Type:     column.Type,
-			Nullable: column.Nullable,
-			Key:      keyColumns[column.Name],
+			Name:                column.Name,
+			Type:                column.Type,
+			Nullable:            column.Nullable,
+			Key:                 keyColumns[column.Name],
+			EnumValues:          enumValues,
+			EnumValuesTruncated: enumValuesTruncated,
 		})
 	}
 	profiles, err := c.store.ListColumnProfiles(ctx, &store.FindColumnProfileMessage{
@@ -139,7 +142,33 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 const (
 	maxTriageContextColumns  = 100
 	maxTriageContextProfiles = 100
+	// maxTriageContextEnumValues bounds one column's labels in the triage context,
+	// and maxTriageContextEnumLabelBytes one label; a large enum must not bloat the
+	// tool result the model reads.
+	maxTriageContextEnumValues     = 32
+	maxTriageContextEnumLabelBytes = 128
 )
+
+// triageEnumValues bounds the labels one column contributes to the triage
+// context and reports whether anything was left out.
+func triageEnumValues(values []string) ([]string, bool) {
+	if len(values) == 0 {
+		return nil, false
+	}
+	limit := min(len(values), maxTriageContextEnumValues)
+	trimmed := make([]string, 0, limit)
+	for _, value := range values[:limit] {
+		if len(value) > maxTriageContextEnumLabelBytes {
+			continue
+		}
+		trimmed = append(trimmed, value)
+	}
+	truncated := len(values) > limit || len(trimmed) < limit
+	if len(trimmed) == 0 {
+		return nil, truncated
+	}
+	return trimmed, truncated
+}
 
 // qualityDraftChecks drafts checks through the shared Suggester, so the drafts land in
 // the suggestion review queue exactly like a person's request would.
@@ -152,30 +181,30 @@ type qualityDraftChecks struct {
 // is attributed to the agent's principal, which is also how the agent's own provider
 // and model are resolved: a triage wake drafts on the model the agent was configured
 // with, not on a workspace default.
-func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, error) {
+func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 	agent, err := d.store.GetQualityAgentByPrincipalID(ctx, int(createdBy))
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if agent == nil {
-		return nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
+		return nil, nil, nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
 	}
 	config, settings, err := d.suggester.ResolveAgentConfig(ctx, agent)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	createdByPointer := createdBy
-	queued, _, diagnostic, err := d.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+	queued, summary, rejections, diagnostic, err := d.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
 		targetGUID, targetType, columns, intent, "", false, &createdByPointer)
 	if err != nil {
 		if diagnostic != nil && diagnostic.GetErrorCode() != "" {
-			return nil, fmt.Errorf("%w (%s)", err, diagnostic.GetErrorCode())
+			return nil, nil, nil, fmt.Errorf("%w (%s)", err, diagnostic.GetErrorCode())
 		}
-		return nil, err
+		return nil, nil, nil, err
 	}
 	titles := make([]string, 0, len(queued))
 	for _, suggestion := range queued {
 		titles = append(titles, suggestion.Payload.GetRule().GetTitle())
 	}
-	return titles, nil
+	return titles, rejections, summary, nil
 }

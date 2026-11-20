@@ -29,6 +29,28 @@ const maxTriageDraftColumns = 8
 const MaxTriageDraftColumns = maxTriageDraftColumns
 
 // AgentSession is the session identity the agent tools read and write.
+// suggestionSkipCounts renders the queue summary's non-zero skip counts for the
+// drafting tool's result, so an empty queue is explainable to the model.
+func suggestionSkipCounts(summary *storepb.QualitySuggestionQueueSummary) map[string]int32 {
+	if summary == nil {
+		return nil
+	}
+	counts := map[string]int32{}
+	if value := summary.GetSkippedExistingFact(); value > 0 {
+		counts["existingFact"] = value
+	}
+	if value := summary.GetSkippedPending(); value > 0 {
+		counts["pending"] = value
+	}
+	if value := summary.GetSkippedDecided(); value > 0 {
+		counts["decided"] = value
+	}
+	if value := summary.GetSuperseded(); value > 0 {
+		counts["superseded"] = value
+	}
+	return counts
+}
+
 type AgentSession struct {
 	// WorkspaceID names the workspace in the draft resource names the model passes
 	// back to the adoption tool.
@@ -64,6 +86,13 @@ type TableContextColumn struct {
 	Nullable bool   `json:"nullable"`
 	Comment  string `json:"comment,omitempty"`
 	Key      bool   `json:"key,omitempty"`
+	// EnumValues are the labels of an enum-typed column, when the registry names
+	// them. It lets the model write accepted values from the declared set instead
+	// of guessing one.
+	EnumValues []string `json:"enumValues,omitempty"`
+	// EnumValuesTruncated reports that the labels above are a bounded subset, so
+	// the model knows the set it sees is not the whole enum.
+	EnumValuesTruncated bool `json:"enumValuesTruncated,omitempty"`
 }
 
 // TableContextProfile is one column's stored profile summary. Only statistics are
@@ -104,9 +133,12 @@ type TableContextReader interface {
 }
 
 // DraftChecksFunc drafts checks for one target and returns the queued draft
-// titles. It reuses the same Suggester the suggestion center uses, so the drafts
-// land in the review queue; the model cannot create enabled checks.
-type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, error)
+// titles plus the drafts the pipeline refused. It reuses the same Suggester the
+// suggestion center uses, so the drafts land in the review queue; the model
+// cannot create enabled checks. The refusals let an agent correct a draft (an
+// accepted value that is not one of an enum column's labels, say) instead of
+// silently retrying the same intent.
+type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error)
 
 // AgentDeps is everything the agent tools need from their product.
 type AgentDeps struct {
@@ -398,11 +430,25 @@ func (t *AgentTools) DraftChecks(ctx context.Context, session AgentSession, argu
 			break
 		}
 	}
-	titles, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
+	titles, rejections, summary, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"queued": len(titles), "drafts": titles})
+	result := map[string]any{"queued": len(titles), "drafts": titles}
+	if skipped := suggestionSkipCounts(summary); len(skipped) > 0 {
+		// A draft that was valid but not queued (the fact exists, an equivalent
+		// proposal is pending, or it was already decided) is an honest zero: the
+		// model must see why instead of repeating a correct intent.
+		result["skipped"] = skipped
+	}
+	if len(rejections) > 0 {
+		rejected := make([]map[string]string, 0, len(rejections))
+		for _, rejection := range rejections {
+			rejected = append(rejected, map[string]string{"title": rejection.Title, "reason": rejection.Reason})
+		}
+		result["rejected"] = rejected
+	}
+	return marshalJSON(result)
 }
 
 // RuleShapes is the plan derivation's view of the live rules: enabled rules only,

@@ -621,7 +621,7 @@ import {
   updateQualityRule,
   updateQualityRuleTemplate,
 } from "@/api/data-quality";
-import { listAllMetadata } from "@/api/database";
+import { getMetadata, listAllMetadata } from "@/api/database";
 import UserSelect from "@/components/common/UserSelect.vue";
 import QualityThresholdSuggestion from "@/components/data-quality/QualityThresholdSuggestion.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
@@ -650,7 +650,7 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
-import type { Engine } from "@/types/proto-es/v1/common_pb";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   QualityDimension,
   QualityEmptyBehavior,
@@ -709,6 +709,12 @@ import {
   type RuleTemplate,
   templateForm,
 } from "@/utils/dataQualityTemplate";
+import {
+  enumValuesFromColumnType,
+  enumValuesFromSchemaType,
+  qualifiedTypeSchema,
+} from "@/utils/enumLabels";
+import { parentGuid, unescapeGuidPart } from "@/utils/guid";
 
 /**
  * The one authoring surface for a quality check: a dialog fixed to the target the
@@ -924,6 +930,12 @@ const instanceStore = useInstanceStore();
 /** The check-type catalogue pane, focused on the selected type when the dialog opens. */
 const catalogue = ref<HTMLElement | null>(null);
 const columns = ref<TargetColumnDetail[]>([]);
+/**
+ * The enum types one schema declares, cached per schema GUID for this dialog.
+ * The accepted-values editor names an enum column's declared labels, and a
+ * dialog reopened on the same target must not re-read the schema.
+ */
+const schemaEnumTypes = new Map<string, Record<string, string[]>>();
 /** Whether the page handed the columns down, so no metadata read is needed. */
 const hasProvidedColumns = computed(() => props.columnDetails.length > 0);
 const columnNames = computed(() => columns.value.map((column) => column.name));
@@ -1437,6 +1449,9 @@ function onDetailsToggle(event: Event) {
 async function loadColumns() {
   if (hasProvidedColumns.value) {
     columns.value = [...props.columnDetails];
+    if (target.value) {
+      void applyColumnEnumValues(target.value);
+    }
     return;
   }
   const guid = columnGuid.value;
@@ -1458,11 +1473,97 @@ async function loadColumns() {
         nullable: value?.nullable ?? true,
       };
     });
+    if (target.value && guid === columnGuid.value) {
+      void applyColumnEnumValues(target.value);
+    }
   } catch {
     if (props.open && guid === columnGuid.value) {
       columns.value = [];
     }
   }
+}
+
+/** The enum labels one schema's registry metadata declares, by type name. */
+async function loadSchemaEnumTypes(
+  schemaGuid: string
+): Promise<Record<string, string[]>> {
+  const cached = schemaEnumTypes.get(schemaGuid);
+  if (cached) {
+    return cached;
+  }
+  const declared: Record<string, string[]> = {};
+  try {
+    const response = await getMetadata({
+      guid: schemaGuid,
+      metaType: MetaType.SCHEMA,
+    });
+    const metadata = response.metadata;
+    if (metadata?.type.case === "schemaMetadata") {
+      for (const enumType of metadata.type.value.enumTypes) {
+        if (enumType.values.length > 0) {
+          declared[enumType.name] = enumType.values;
+        }
+      }
+    }
+  } catch {
+    // The hints are best effort: a failed read leaves the column without labels
+    // and the server still refuses a value the enum cannot hold.
+  }
+  schemaEnumTypes.set(schemaGuid, declared);
+  return declared;
+}
+
+/**
+ * Adds the declared enum labels to the current columns, best effort. The MySQL
+ * family spells them inline in the column type; PostgreSQL keeps them in the
+ * target schema's metadata, read once per schema.
+ */
+async function applyColumnEnumValues(
+  selection: TargetSelection
+): Promise<void> {
+  const current = columns.value;
+  if (!props.open || target.value?.guid !== selection.guid) {
+    return;
+  }
+  if (current.length === 0) {
+    return;
+  }
+  // The schema is the target's parent object, so its GUID is the target GUID
+  // without the last segment: no name has to be re-escaped to address it.
+  const schemaGuid = parentGuid(selection.guid);
+  const schema = unescapeGuidPart(
+    schemaGuid.slice(schemaGuid.lastIndexOf(";") + 1)
+  );
+  const mayHaveSchemaEnums =
+    engine.value === Engine.POSTGRES &&
+    schema !== "" &&
+    current.some((column) => qualifiedTypeSchema(column.type) !== "");
+  let enumTypes: Record<string, string[]> = {};
+  if (mayHaveSchemaEnums) {
+    try {
+      enumTypes = await loadSchemaEnumTypes(schemaGuid);
+    } catch {
+      // The hints are best effort: a failed read leaves the column without
+      // labels and the server still refuses a value the enum cannot hold.
+      return;
+    }
+    if (!props.open || target.value?.guid !== selection.guid) {
+      return;
+    }
+  }
+  // A newer load replaced the list while the schema metadata was in flight; it
+  // owns the list now, so this enrichment is stale.
+  if (columns.value !== current) {
+    return;
+  }
+  columns.value = current.map((column) => {
+    const inline = enumValuesFromColumnType(column.type);
+    const declared =
+      inline.length > 0
+        ? inline
+        : enumValuesFromSchemaType(column.type, enumTypes, schema);
+    return declared.length > 0 ? { ...column, enumValues: declared } : column;
+  });
 }
 
 /**
@@ -1487,6 +1588,9 @@ watch(
       return;
     }
     engine.value = instanceStore.byName(`instances/${instance}`)?.engine;
+    if (engine.value && target.value && props.open) {
+      void applyColumnEnumValues(target.value);
+    }
   },
   { immediate: true }
 );
@@ -1515,6 +1619,9 @@ watch(
   (next) => {
     if (next.length > 0) {
       columns.value = [...next];
+      if (target.value) {
+        void applyColumnEnumValues(target.value);
+      }
       return;
     }
     if (props.open) {

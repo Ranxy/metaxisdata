@@ -40,7 +40,51 @@ const (
 	DiagnosticCodeParse = "PARSE"
 	// draftExistingRules bounds the rule summaries a draft prompt lists.
 	draftExistingRules = 20
+	// maxDraftRejections bounds the refusals one drafting pass reports back, and
+	// maxDraftRejectionReasonChars bounds one reason. A model answer with many
+	// unusable drafts must not grow a tool result without limit.
+	maxDraftRejections           = 10
+	maxDraftRejectionReasonChars = 400
 )
+
+// DraftRejection is one model draft the drafting pipeline refused before
+// queueing. The caller reports the reason so a person, and an agent that can
+// correct its intent and retry, learns what to change instead of seeing a
+// silently smaller review queue.
+type DraftRejection struct {
+	// Title is the draft's own title, or a placeholder when the model left it out.
+	Title string
+	// Reason is the validation refusal, in the server's wording.
+	Reason string
+}
+
+// reportableDraftRejection reports whether a refused draft's error is the model's
+// answer being wrong (a value outside an enum's labels, a column that does not
+// support the rule) rather than an internal failure. An internal failure is
+// logged, never surfaced as a refusal the caller should act on.
+func reportableDraftRejection(err error) bool {
+	switch common.ErrorCode(err) {
+	case common.Invalid, common.NotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// appendDraftRejection collects one refusal within the pass's bounds.
+func appendDraftRejection(rejections []DraftRejection, title, reason string) []DraftRejection {
+	if len(rejections) >= maxDraftRejections {
+		return rejections
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "untitled draft"
+	}
+	if len(reason) > maxDraftRejectionReasonChars {
+		reason = common.TruncateUTF8Bytes(reason, maxDraftRejectionReasonChars)
+	}
+	return append(rejections, DraftRejection{Title: title, Reason: reason})
+}
 
 // Suggester is the one implementation of the L1 drafting pipeline: it resolves
 // the provider configuration, builds the prompt, runs one JSON completion,
@@ -217,15 +261,15 @@ func validateAgentModel(config llm.ResolvedConfig, model string) error {
 // reviewer already decided are left alone unless force is set, and a draft that is
 // already pending is refreshed in place rather than appended. The summary reports
 // what the pass did; the returned rows are the proposals it created or refreshed.
-func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, force bool, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, *storepb.QualityLLMDiagnostic, error) {
+func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits LLMLimits, targetGUID string, metaType storepb.MetaType, columns []string, intent, language string, force bool, createdBy *int32) ([]*store.QualitySuggestionMessage, *storepb.QualitySuggestionQueueSummary, []DraftRejection, *storepb.QualityLLMDiagnostic, error) {
 	summary := &storepb.QualitySuggestionQueueSummary{}
 	resolution, err := ResolveTarget(ctx, s.store, targetGUID, metaType)
 	if err != nil {
-		return nil, summary, nil, err
+		return nil, summary, nil, nil, err
 	}
 	for _, column := range columns {
 		if _, ok := resolution.Target.Column(column); !ok {
-			return nil, summary, nil, connect.NewError(connect.CodeInvalidArgument,
+			return nil, summary, nil, nil, connect.NewError(connect.CodeInvalidArgument,
 				errors.Errorf("column %q does not exist on the target", column))
 		}
 	}
@@ -234,7 +278,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	// target consumes neither.
 	release, err := s.quota.Begin(ctx, LLMAnalysisQuota, limits)
 	if err != nil {
-		return nil, summary, nil, err
+		return nil, summary, nil, nil, err
 	}
 	defer release()
 
@@ -243,7 +287,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	// proposal that already exists as a rule is never queued for review again.
 	rules, err := s.targetRules(ctx, targetGUID)
 	if err != nil {
-		return nil, summary, nil, err
+		return nil, summary, nil, nil, err
 	}
 	systemPrompt, userPrompt := BuildRuleDraftPrompt(
 		RuleDraftContext{
@@ -255,7 +299,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	text, usage, diagnostic, err := s.JSONCompletion(ctx, config, LLMFeatureRuleDraft,
 		RuleDraftPromptVersion, systemPrompt, userPrompt, OutputTokenBudget(config))
 	if err != nil {
-		return nil, summary, diagnostic, err
+		return nil, summary, nil, diagnostic, err
 	}
 	drafts, err := ParseRuleDrafts(text)
 	if err != nil {
@@ -267,7 +311,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			slog.String("code", diagnostic.GetErrorCode()),
 			slog.String("correlation_id", diagnostic.GetCorrelationId()),
 			slog.Any("error", err))
-		return nil, summary, diagnostic, connect.NewError(connect.CodeInternal,
+		return nil, summary, nil, diagnostic, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "the model returned a rule draft that is not valid JSON"))
 	}
 
@@ -282,8 +326,10 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	}
 	candidates := make([]candidateDraft, 0, len(drafts))
 	bySignature := make(map[string]int, len(drafts))
+	rejections := make([]DraftRejection, 0)
 	for _, draft := range drafts {
 		if !draftColumnsAllowed(draft.Columns, columns, resolution.Target) {
+			rejections = appendDraftRejection(rejections, draft.Title, "the draft names a column outside the requested scope")
 			slog.Warn("dropping a rule draft that names a column outside the request scope",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title))
@@ -291,6 +337,9 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		}
 		draftConfig, referencedColumns, err := draftConfig(draft, columns)
 		if err != nil {
+			if reportableDraftRejection(err) {
+				rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			}
 			slog.Warn("dropping a rule draft whose config could not be built",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title),
@@ -298,12 +347,16 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			continue
 		}
 		if !draftColumnsAllowed(referencedColumns, columns, resolution.Target) {
+			rejections = appendDraftRejection(rejections, draft.Title, "the draft refers to a column outside the requested scope")
 			slog.Warn("dropping a rule draft that refers to a column outside the request scope",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title))
 			continue
 		}
 		if _, err := ValidateRule(ctx, s.store, draft.Type, targetGUID, metaType, draftConfig, nil, nil, referenceTimeVariables()); err != nil {
+			if reportableDraftRejection(err) {
+				rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			}
 			slog.Warn("dropping a rule draft that failed validation",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title),
@@ -347,7 +400,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	}
 	states, err := s.store.QualitySuggestionSignatureStates(ctx, targetGUID, metaType, signatures, agentID)
 	if err != nil {
-		return nil, summary, nil, connect.NewError(connect.CodeInternal,
+		return nil, summary, nil, nil, connect.NewError(connect.CodeInternal,
 			errors.Wrap(err, "failed to read the target's suggestion history"))
 	}
 	ruleSignatures := RuleSignatures(rules)
@@ -363,7 +416,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, targetGUID, metaType,
 					[]string{candidate.signature}, "a saved rule with the same identity exists", agentID, now)
 				if err != nil {
-					return nil, summary, nil, connect.NewError(connect.CodeInternal,
+					return nil, summary, nil, nil, connect.NewError(connect.CodeInternal,
 						errors.Wrap(err, "failed to close a stale rule draft suggestion"))
 				}
 				summary.Superseded += int32(superseded)
@@ -378,7 +431,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		}
 		resourceID, err := common.RandomString(12)
 		if err != nil {
-			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
+			return nil, summary, nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate the suggestion id"))
 		}
 		suggestion, created, err := s.store.QueueQualitySuggestion(ctx, &store.QualitySuggestionMessage{
 			ResourceID: resourceID,
@@ -400,7 +453,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			Confidence:    candidate.confidence,
 		})
 		if err != nil {
-			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
+			return nil, summary, nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
 		}
 		if suggestion == nil {
 			// The live proposal for this identity belongs to another generation pass and
@@ -426,7 +479,7 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			slog.Int("already_decided", int(summary.GetSkippedDecided())))
 	}
 	LogLLMUsage("suggest_rule", targetGUID, usage)
-	return queued, summary, diagnostic, nil
+	return queued, summary, rejections, diagnostic, nil
 }
 
 // JSONCompletion runs one non-agent completion and returns its text. The prompt

@@ -58,7 +58,11 @@ top.
 read over the target's read-only source. The query is one `SELECT`/`WITH` statement (at most 8 KiB, time variables allowed) with the
 reach of that connection; on SQL Server it must be a plain `SELECT`, because the server embeds it as a derived table. The server drops
 NULLs from a dynamic set, *Allow NULL* controls the checked column only, and a query returning **no rows** fails every non-NULL value.
-**Preview** before saving proves it fits the column.
+A fixed list on an **enum column** may only use the labels the type declares; the editor lists them as one-click values (PostgreSQL
+reads them from the synced schema metadata, the MySQL family from the column's type), and save or preview refuses any other value with
+the label list. Labels are matched the way the database compares them: exactly on PostgreSQL, through the column collation (usually
+case-insensitive) on MySQL. If the enum gained a label since the instance was last synced, re-sync the instance. **Preview** before saving proves it
+fits the column.
 - **Segment check** groups rows by one to five columns and fails when a segment its recent runs saw is gone — the "a whole region
 quietly disappeared" case. The baseline is the last three **usable** completed runs against the current table (1–10; truncated
 observations do not count), and a segment is expected when at least two of them saw it. A missing segment is one failure; new segments
@@ -636,6 +640,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | `ERROR(NO_READ_ONLY_SOURCE)` | The instance has no read-only data source, or it was removed. |
 | `ERROR(UNSUPPORTED)` | The engine cannot express the check, a named column was dropped, or the saved configuration is no longer accepted after an upgrade. |
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and bound values; check that filters and bounds match the column's type. |
+| A value is rejected as "not a label of the enum type" | The column is an enum: use one of the labels the message lists. An enum changed recently may need the instance re-synced first. |
 | Checks never run | The check is paused or archived, the instance is gone, or the daily execution ceiling was reached (**Run now** still works). |
 | A cron expression is rejected | It must be five fields, two occurrences at least 15 minutes apart, fire within five years, and use a valid IANA zone. |
 | A cron target did not run at the expected time | The target's own time zone applies; DST gaps are skipped and downtime is not caught up. The header's next-run time is the authority. |
