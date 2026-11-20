@@ -157,7 +157,9 @@ describe("DataQualitySettingsPage", () => {
     mocks.listDatabases.mockResolvedValue({ databases: [] });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
-        allowedLlmProviderProfiles: ["llmProfiles/p1"],
+        // Deliberately excludes the profile the analyses use: the Explain SQL
+        // allowlist does not restrict the data quality pages.
+        allowedLlmProviderProfiles: ["llm-provider-profiles/elsewhere"],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           llmProviderProfile: "llmProfiles/p1",
@@ -243,7 +245,8 @@ describe("DataQualitySettingsPage", () => {
         )?.element as HTMLInputElement
       ).value
     ).toBe("12");
-    // The LLM profile select lists the allowed profile.
+    // The LLM profile select lists every enabled profile; the Explain SQL allowlist
+    // does not apply.
     expect(wrapper.text()).toContain("Primary");
   });
 

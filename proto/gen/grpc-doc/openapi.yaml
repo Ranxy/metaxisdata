@@ -18527,9 +18527,10 @@ components:
                     items:
                         type: string
                     description: |-
-                        The LLM provider profiles the model-backed features may use, as profile
-                         resource names: Explain SQL, the data quality analyses and the quality
-                         agents. Empty means every enabled profile is allowed.
+                        The LLM provider profiles Explain SQL may use, as profile resource names.
+                         Empty means every enabled profile is allowed. The data quality analyses and
+                         the quality agents choose their profile in their own settings, so this list
+                         does not restrict them.
                 mcpEnabled:
                     type: boolean
                     description: |-

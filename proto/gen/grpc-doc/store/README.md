@@ -4705,7 +4705,7 @@ QuietWindow is one recurring weekly quiet window.
 | enforce_identity_domain | [bool](#bool) |  | Only user and group from the domains can be created and login. |
 | disallow_password_signin | [bool](#bool) |  | Whether to disallow password signin. (Except workspace admins) |
 | openlineage_retention_days | [int32](#int32) |  | openlineage_retention_days bounds how long persisted OpenLineage runs are kept. Zero (the default) keeps them forever: they are audit data. |
-| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles the model-backed features may use, as profile resource names: Explain SQL, the data quality analyses and the quality agents. Empty means every enabled profile is allowed. |
+| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles Explain SQL may use, as profile resource names. Empty means every enabled profile is allowed. The data quality analyses and the quality agents choose their profile in their own settings, so this list does not restrict them. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default: the surface is new, and enabling it requires a configured external_url, which is where its issuer and resource identifiers come from. |
 | sso_email_identity_idps | [string](#string) | repeated | The identity providers whose email claim may stand in for a subject, by the resource id that idps/{idp} names. The settings page picks them from IdentityProviderService.ListIdentityProviders.
 

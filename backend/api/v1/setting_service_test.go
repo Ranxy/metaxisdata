@@ -142,26 +142,9 @@ func TestApplyWorkspaceProfileUpdateDataQuality(t *testing.T) {
 	require.True(t, setting.DataQuality.GetSendSampleValuesToLlm())
 }
 
-// The provider is checked against the allowed list after every masked field was
-// applied, so the result does not depend on the mask's order.
-func TestApplyWorkspaceProfileUpdateDataQualityProviderIsOrderIndependent(t *testing.T) {
-	t.Parallel()
-
-	update := &v1pb.WorkspaceProfileSetting{
-		AllowedLlmProviderProfiles: []string{"llm-provider-profiles/fast"},
-		DataQuality:                &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/fast"},
-	}
-	for _, paths := range [][]string{
-		{"data_quality", "allowed_llm_provider_profiles"},
-		{"allowed_llm_provider_profiles", "data_quality"},
-	} {
-		setting := &storepb.WorkspaceProfileSetting{}
-		require.NoError(t, applyWorkspaceProfileUpdate(setting, update, paths), "mask order %v", paths)
-		require.Equal(t, "llm-provider-profiles/fast", setting.DataQuality.GetLlmProviderProfile())
-	}
-}
-
-func TestApplyWorkspaceProfileUpdateDataQualityRejectsUnlistedProvider(t *testing.T) {
+// The data quality analyses name their own profile, so the Explain SQL allowlist
+// does not restrict it: saving a profile outside that list is accepted.
+func TestApplyWorkspaceProfileUpdateDataQualityProviderIgnoresExplainSQLAllowlist(t *testing.T) {
 	t.Parallel()
 
 	setting := &storepb.WorkspaceProfileSetting{
@@ -170,9 +153,26 @@ func TestApplyWorkspaceProfileUpdateDataQualityRejectsUnlistedProvider(t *testin
 	update := &v1pb.WorkspaceProfileSetting{
 		DataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/slow"},
 	}
-	err := applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"})
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-	require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
+	require.NoError(t, applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"}))
+	require.Equal(t, "llm-provider-profiles/slow", setting.DataQuality.GetLlmProviderProfile())
+}
+
+// Dropping the allowlist check leaves the resource-name shape as the only
+// write-time rule, and a rejected update is still not applied.
+func TestApplyWorkspaceProfileUpdateDataQualityRejectsMalformedProvider(t *testing.T) {
+	t.Parallel()
+
+	update := &v1pb.WorkspaceProfileSetting{
+		DataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "openai"},
+	}
+	for _, setting := range []*storepb.WorkspaceProfileSetting{
+		{},
+		{AllowedLlmProviderProfiles: []string{"llm-provider-profiles/openai"}},
+	} {
+		err := applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"})
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
+	}
 }
 
 // A masked but absent data_quality message clears the settings, which reads back
@@ -425,15 +425,10 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 func TestValidateDataQualityProviderProfile(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, validateDataQualityProviderProfile("", nil))
-	require.NoError(t, validateDataQualityProviderProfile("llm-provider-profiles/a", nil),
-		"an empty allowed list allows every profile")
-	require.NoError(t, validateDataQualityProviderProfile("llm-provider-profiles/a", []string{"llm-provider-profiles/a"}))
-
+	require.NoError(t, validateDataQualityProviderProfile(""))
+	require.NoError(t, validateDataQualityProviderProfile("llm-provider-profiles/a"))
 	require.Equal(t, connect.CodeInvalidArgument,
-		connect.CodeOf(validateDataQualityProviderProfile("llm-provider-profiles/b", []string{"llm-provider-profiles/a"})))
-	require.Equal(t, connect.CodeInvalidArgument,
-		connect.CodeOf(validateDataQualityProviderProfile("a", nil)))
+		connect.CodeOf(validateDataQualityProviderProfile("a")))
 }
 
 func TestConvertDataQualitySettingRoundTrip(t *testing.T) {

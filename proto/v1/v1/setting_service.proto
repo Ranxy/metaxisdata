@@ -129,10 +129,10 @@ message WorkspaceProfileSetting {
   // Whether to restrict signup and signin to the domains above.
   bool enforce_identity_domain = 6;
 
-  // The LLM provider profiles the model-backed features may use, as profile
-  // resource names ("llm-provider-profiles/{id}"): Explain SQL, the data quality
-  // analyses and the quality agents. Empty means every enabled profile is
-  // allowed.
+  // The LLM provider profiles Explain SQL may use, as profile resource names
+  // ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
+  // The data quality analyses and the quality agents choose their profile in
+  // their own settings, so this list does not restrict them.
   repeated string allowed_llm_provider_profiles = 7;
 
   // Whether the MCP endpoint and its OAuth 2.1 authorization server are served.

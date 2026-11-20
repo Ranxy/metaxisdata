@@ -912,7 +912,7 @@ async function load() {
     agentRunnerEnabled.value = profile.dataQuality?.agentRunnerEnabled ?? false;
     original.value = JSON.stringify(form.value);
     issues.value = [];
-    await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
+    await loadProfiles();
     void loadUsage();
     void loadCodeTables();
   } catch (e: unknown) {
@@ -922,12 +922,12 @@ async function load() {
   }
 }
 
-/** The profiles the workspace allows and that have an enabled model. */
-async function loadProfiles(allowed: string[]) {
+/** The profiles that currently enable a model; the ExplainSQL allowlist does not apply. */
+async function loadProfiles() {
   try {
     const response = await listProfiles({ pageSize: 100 });
-    profileOptions.value = buildProviderOptions(response.profiles, allowed);
-    // A configured profile the workspace no longer allows would render as an
+    profileOptions.value = buildProviderOptions(response.profiles);
+    // A configured profile that no longer enables a model would render as an
     // empty select; clear it so the effective choice stays visible and honest.
     if (
       form.value.llmProviderProfile &&

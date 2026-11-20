@@ -679,8 +679,9 @@ const switches = ref({ runnerEnabled: false });
 const dataQuality = ref<DataQualitySetting>(
   create(DataQualitySettingSchema, {})
 );
-// The raw profiles feed the model select; the options are the allowed profiles that
-// enable a model, so the dialog cannot offer a profile the agent could not run on.
+// The raw profiles feed the model select; the options are the profiles that enable a
+// model, so the dialog cannot offer a profile the agent could not run on. The
+// ExplainSQL allowlist does not apply here: every enabled profile is selectable.
 const providerProfiles = ref<LlmProviderProfile[]>([]);
 const providerOptions = ref<ProviderOption[]>([]);
 // "Loaded but empty" and "could not load" mean different things: the first lets the
@@ -955,7 +956,7 @@ async function load() {
     switches.value = {
       runnerEnabled: dataQuality.value.agentRunnerEnabled,
     };
-    await loadProfiles(setting.allowedLlmProviderProfiles ?? []);
+    await loadProfiles();
   } catch (err) {
     error.value = formatError(err);
   } finally {
@@ -967,7 +968,7 @@ async function load() {
  * Loads the profiles the dialog may offer. A denied or failed read is remembered, so the
  * page reports "could not load" instead of claiming every stored pair is unavailable.
  */
-async function loadProfiles(allowed: string[]) {
+async function loadProfiles() {
   try {
     const profiles = await listAll(async (pageToken) => {
       const response = await listProfiles({ pageSize: 100, pageToken });
@@ -977,7 +978,7 @@ async function loadProfiles(allowed: string[]) {
       };
     });
     providerProfiles.value = profiles;
-    providerOptions.value = buildProviderOptions(profiles, allowed);
+    providerOptions.value = buildProviderOptions(profiles);
     profilesLoaded.value = true;
     profilesError.value = false;
   } catch {

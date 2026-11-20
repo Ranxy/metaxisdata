@@ -92,10 +92,8 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 // them through unchanged.
 //
 // Checks that span several fields run after the loop, which makes the result
-// independent of the mask's field order: the data quality provider is validated
-// against the allowed list as it stands once every masked field was applied. (The
-// MCP check stays in the RPC, next to the other cross-setting invariant about
-// external_url.)
+// independent of the mask's field order. (The MCP check stays in the RPC, next to
+// the other cross-setting invariant about external_url.)
 func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, update *v1pb.WorkspaceProfileSetting, paths []string) error {
 	var (
 		dataQuality        *storepb.DataQualitySetting
@@ -158,8 +156,9 @@ func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, updat
 
 	if dataQualityUpdated {
 		// A cleared data_quality message (nil) resets the workspace to the
-		// defaults; a named provider still has to be allowed.
-		if err := validateDataQualityProviderProfile(dataQuality.GetLlmProviderProfile(), setting.AllowedLlmProviderProfiles); err != nil {
+		// defaults. The named profile is the analyses' own choice; the Explain SQL
+		// allowlist deliberately does not apply to it.
+		if err := validateDataQualityProviderProfile(dataQuality.GetLlmProviderProfile()); err != nil {
 			return err
 		}
 		setting.DataQuality = dataQuality
@@ -249,18 +248,17 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 }
 
 // validateDataQualityProviderProfile checks the provider a data quality update
-// names. Empty means "the first allowed profile"; otherwise it must be a profile
-// resource name and, when the workspace restricts its allowed list, a member of
-// it.
-func validateDataQualityProviderProfile(profile string, allowed []string) error {
+// names. Empty means "the first enabled profile"; otherwise it must be a profile
+// resource name. Whether the profile currently enables a model is a runtime
+// concern, not a settings-write one: the analyses resolve it per call, and
+// refusing the save would make unrelated settings uneditable while a profile is
+// disabled.
+func validateDataQualityProviderProfile(profile string) error {
 	if profile == "" {
 		return nil
 	}
 	if !validLLMProviderProfileName(profile) {
 		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
-	}
-	if len(allowed) > 0 && !slices.Contains(allowed, profile) {
-		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("LLM provider profile %q is not in allowed_llm_provider_profiles", profile))
 	}
 	return nil
 }

@@ -59,6 +59,41 @@ func TestResolveConfig(t *testing.T) {
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 }
 
+// A feature whose own settings name the profile resolves it without a second,
+// workspace-wide restriction: nothing here can reject a profile the registry
+// enables.
+func TestResolveEnabledConfig(t *testing.T) {
+	t.Parallel()
+
+	configs := configTestConfigs()
+
+	resolved, err := ResolveEnabledConfig(configs, "llm-provider-profiles/local")
+	require.NoError(t, err)
+	require.Equal(t, "llama", resolved.ModelName)
+
+	// A bare id from an older workspace setting resolves to the same profile.
+	resolved, err = ResolveEnabledConfig(configs, "local")
+	require.NoError(t, err)
+	require.Equal(t, "llama", resolved.ModelName)
+
+	// No request: the first enabled profile is the default.
+	resolved, err = ResolveEnabledConfig(configs, "")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4", resolved.ModelName)
+
+	// A named profile the registry does not enable has no fallback.
+	resolved, err = ResolveEnabledConfig(configs, "llm-provider-profiles/gone")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+
+	// No enabled profile at all.
+	resolved, err = ResolveEnabledConfig(nil, "")
+	require.Error(t, err)
+	require.Nil(t, resolved)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+}
+
 func TestFindConfig(t *testing.T) {
 	t.Parallel()
 
@@ -160,35 +195,29 @@ func TestResolveModelConfig(t *testing.T) {
 
 	configs := modelTestConfigs()
 
-	resolved, err := ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "reasoner")
+	resolved, err := ResolveModelConfig(configs, "llm-provider-profiles/main", "reasoner")
 	require.NoError(t, err)
 	require.Equal(t, "reasoner", resolved.ModelName)
 
 	// Both halves are required: there is no "first enabled model" default.
-	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "")
+	resolved, err = ResolveModelConfig(configs, "llm-provider-profiles/main", "")
 	require.Error(t, err)
 	require.Nil(t, resolved)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
-	resolved, err = ResolveModelConfig(configs, nil, "", "reasoner")
+	resolved, err = ResolveModelConfig(configs, "", "reasoner")
 	require.Error(t, err)
 	require.Nil(t, resolved)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	// The profile exists but does not enable that model.
-	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/other", "fast")
+	resolved, err = ResolveModelConfig(configs, "llm-provider-profiles/other", "fast")
 	require.Error(t, err)
 	require.Nil(t, resolved)
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 
-	// The pair exists but the workspace allowlist rejects the profile.
-	resolved, err = ResolveModelConfig(configs, []string{"llm-provider-profiles/other"}, "llm-provider-profiles/main", "fast")
-	require.Error(t, err)
-	require.Nil(t, resolved)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-
 	// A model name is exact, not a prefix.
-	resolved, err = ResolveModelConfig(configs, nil, "llm-provider-profiles/main", "fast-mini")
+	resolved, err = ResolveModelConfig(configs, "llm-provider-profiles/main", "fast-mini")
 	require.Error(t, err)
 	require.Nil(t, resolved)
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
