@@ -114,5 +114,5 @@ General:
 Project-specific, enforced by `.golangci.yaml`:
 
 - **forbidigo** rejects `ioutil.ReadDir` (use `os.ReadDir`), `protojson.Unmarshal` (use the `common.ProtojsonUnmarshaler` wrapper; `protojson.Marshal` is still allowed), and pre-1.21 `sort.*` helpers (`sort.Slice`, `sort.Strings`, `sort.Ints`, …) — use the `slices` package.
-- **exhaustive** runs with `explicit-exhaustive-switch: true`: enum switches must list every case explicitly, including a default when one is intended.
+- **exhaustive** runs with `explicit-exhaustive: true`: enum switches must list every case explicitly, including a default when one is intended.
 - **revive** runs with `enable-all-rules: true` minus a short disable list; conform to it rather than fighting it.

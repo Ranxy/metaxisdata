@@ -43,7 +43,7 @@ linters:
             - github.com/Ranxy/metaxisdata/cli
             - github.com/stretchr/testify
     exhaustive:
-      explicit-exhaustive-switch: true
+      explicit-exhaustive: true
     forbidigo:
       forbid:
         - pattern: ioutil\.ReadDir
@@ -117,6 +117,13 @@ linters:
         # depguard made this package-level rule start firing on it, so it is
         # turned off rather than worked around file by file.
         - name: package-naming
+          disabled: true
+        # Store queries are written as `if err := longCall(...); err != nil`
+        # because the call and its error check belong together; hoisting the
+        # call above the `if` only adds a variable to the surrounding scope.
+        # The rule fires on that established shape throughout the store and the
+        # schema-sync drivers, so it is off rather than restyled in bulk.
+        - name: multiline-if-init
           disabled: true
         - name: comment-spacings
           arguments:
