@@ -56,44 +56,64 @@
         v-else
         class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
       >
-        <Card class="flex min-h-[28rem] flex-col">
+        <Card class="flex h-[36rem] min-h-0 flex-col">
           <CardHeader class="border-b">
             <CardTitle class="text-base">{{ t("qualityAgent.conversationTitle") }}</CardTitle>
             <CardDescription>{{ t("qualityAgent.conversationHint") }}</CardDescription>
           </CardHeader>
           <CardContent class="flex min-h-0 flex-1 flex-col gap-3 pt-4">
-            <div
-              ref="timeline"
-              class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
-            >
-              <p
-                v-if="chatLoading && messages.length === 0"
-                class="text-sm text-muted-foreground"
-              >
-                {{ t("common.loading") }}
-              </p>
-              <p
-                v-else-if="visibleMessages.length === 0"
-                class="text-sm text-muted-foreground"
-              >
-                {{ t("qualityAgent.conversationEmpty") }}
-              </p>
+            <div class="relative flex min-h-0 flex-1 flex-col">
               <div
-                v-for="message in visibleMessages"
-                :key="message.name"
-                class="flex flex-col gap-1"
-                :class="message.role === QualityAgentMessageRole.USER ? 'items-end' : 'items-start'"
+                :ref="bindScroller"
+                class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+                tabindex="0"
+                role="region"
+                :aria-label="t('qualityAgent.conversationTitle')"
+                @scroll="onScroll"
               >
-                <span class="text-[11px] text-muted-foreground">
-                  {{ message.role === QualityAgentMessageRole.USER ? t("qualityAgent.you") : t("qualityAgent.agentReply") }}
-                </span>
-                <div
-                  class="max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm"
-                  :class="message.role === QualityAgentMessageRole.USER ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+                <p
+                  v-if="chatLoading && messages.length === 0"
+                  class="text-sm text-muted-foreground"
                 >
-                  {{ message.content }}
+                  {{ t("common.loading") }}
+                </p>
+                <p
+                  v-else-if="visibleMessages.length === 0"
+                  class="text-sm text-muted-foreground"
+                >
+                  {{ t("qualityAgent.conversationEmpty") }}
+                </p>
+                <div
+                  v-for="message in visibleMessages"
+                  :key="message.name"
+                  class="flex flex-col gap-1"
+                  :class="message.role === QualityAgentMessageRole.USER ? 'items-end' : 'items-start'"
+                >
+                  <span class="text-[11px] text-muted-foreground">
+                    {{ message.role === QualityAgentMessageRole.USER ? t("qualityAgent.you") : t("qualityAgent.agentReply") }}
+                  </span>
+                  <div
+                    class="max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm"
+                    :class="message.role === QualityAgentMessageRole.USER ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+                  >
+                    {{ message.content }}
+                  </div>
                 </div>
               </div>
+              <Button
+                v-if="!pinned && visibleMessages.length > 0"
+                variant="secondary"
+                size="sm"
+                class="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full shadow-e2"
+                @click="jumpToConversationLatest"
+              >
+                <ArrowDown class="mr-1 h-3.5 w-3.5" />
+                {{
+                  chatUnread > 0
+                    ? t("qualityAgent.newMessages", { count: chatUnread })
+                    : t("qualityAgent.jumpToLatest")
+                }}
+              </Button>
             </div>
 
             <p
@@ -403,8 +423,16 @@
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Loader2 } from "lucide-vue-next";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { AlertTriangle, ArrowDown, Loader2 } from "lucide-vue-next";
+import {
+  type ComponentPublicInstance,
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import {
@@ -441,6 +469,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useChatScroll } from "@/composables/useChatScroll";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -469,6 +498,8 @@ import {
   agentSessionStateVariant,
   agentSessionTargetName,
   agentSessionTargetPath,
+  countMessagesAfterSeq,
+  lastTranscriptSeq,
 } from "@/utils/qualityAgentSession";
 
 const { t, locale } = useI18n();
@@ -492,8 +523,32 @@ const chatLoading = ref(true);
 const chatError = ref("");
 const composer = ref("");
 const sending = ref(false);
-const timeline = ref<HTMLElement>();
+const { scrollerRef, pinned, onScroll, scrollToLatest, settleAtLatest } =
+  useChatScroll();
+
+/** Bind the pane through a function ref; the composable owns the ref itself. */
+function bindScroller(element: Element | ComponentPublicInstance | null) {
+  scrollerRef.value = element instanceof HTMLElement ? element : null;
+}
+
+/** The newest conversation seq the owner has seen while at the bottom. */
+const seenSeq = ref(0n);
+const lastConversationSeq = computed(() => lastTranscriptSeq(messages.value));
+const chatUnread = computed(() =>
+  pinned.value ? 0 : countMessagesAfterSeq(messages.value, seenSeq.value)
+);
 let pollTimer: number | undefined;
+
+// Following the newest reply means the owner has seen everything loaded.
+watch(
+  [pinned, lastConversationSeq],
+  ([following, newest]) => {
+    if (following) {
+      seenSeq.value = newest;
+    }
+  },
+  { immediate: true }
+);
 
 const canManage = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.agents.manage")
@@ -597,7 +652,7 @@ async function loadConversation() {
       { pageSize: 200 }
     );
     messages.value = response.qualityAgentConversationMessages;
-    await scrollToBottom();
+    await landAtLatest();
   } catch (err) {
     chatError.value = formatError(err);
   } finally {
@@ -652,12 +707,16 @@ function openReport(report: QualityAgentReport) {
   reportOpen.value = true;
 }
 
-async function scrollToBottom() {
+/** Show the newest reply, keeping up while lazily rendered content settles. */
+async function landAtLatest() {
   await nextTick();
-  const element = timeline.value;
-  if (element) {
-    element.scrollTop = element.scrollHeight;
-  }
+  seenSeq.value = lastConversationSeq.value;
+  await settleAtLatest();
+}
+
+async function jumpToConversationLatest() {
+  seenSeq.value = lastConversationSeq.value;
+  await scrollToLatest({ smooth: true });
 }
 
 async function send() {
@@ -676,7 +735,9 @@ async function send() {
       created,
     ];
     composer.value = "";
-    await scrollToBottom();
+    seenSeq.value = lastConversationSeq.value;
+    await nextTick();
+    await scrollToLatest();
     schedulePoll();
   } catch (err) {
     chatError.value = formatError(err);
@@ -712,7 +773,10 @@ function schedulePoll() {
         );
         if (fresh.length > 0) {
           messages.value = [...messages.value, ...fresh];
-          await scrollToBottom();
+          if (pinned.value) {
+            await nextTick();
+            await scrollToLatest();
+          }
         }
       }
     } catch {

@@ -273,6 +273,26 @@ export function lastTranscriptSeq(
   return last;
 }
 
+/**
+ * How many loaded messages are newer than a transcript watermark.
+ *
+ * A transcript pane that stopped following the newest message counts what
+ * arrived since the reader scrolled away; the count is what the jump control
+ * shows. A watermark of zero counts every loaded message.
+ */
+export function countMessagesAfterSeq(
+  messages: readonly QualityAgentSessionMessage[],
+  seq: bigint
+): number {
+  let count = 0;
+  for (const message of messages) {
+    if (message.seq > seq) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /** The tool result answering one tool call, when the transcript has it. */
 export function toolResultForCall(
   messages: readonly QualityAgentSessionMessage[],

@@ -495,7 +495,10 @@ tabs keep the agent and its two views visible; the attention list leads with eac
 reply dialog.
 - **Work sessions** (`/data-quality/agents/{workspace}/{id}/sessions`) lists one long-lived conversation per target the agent watches.
 Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
-its arguments and result, and the runner's notes. The owner and administrators can read it; only an administrator can resume a stuck
+its arguments and result, and the runner's notes. The transcript opens on the newest message and keeps up with a running session while you
+stay at the bottom; scroll back to read history and the previous page loads when you reach the top. A **Jump to latest** control appears
+when you have scrolled away, with the number of messages that arrived meanwhile, and **Show more** opens a blocked session's full reason.
+The owner and administrators can read it; only an administrator can resume a stuck
 session.
 - **Settings → Quality agents** (`/settings/quality-agents`) is where an administrator creates and edits agents and turns the runtime on
 or off.
