@@ -263,3 +263,18 @@ func drainStream[T any](stream <-chan T) {
 		_ = event
 	}
 }
+
+// A base URL written the way the settings form suggests (.../v1) must still
+// reach the chat completions path without duplicating /v1.
+func TestStreamAcceptsAnSDKStyleBaseURL(t *testing.T) {
+	t.Parallel()
+
+	capture := &capturedRequest{}
+	server := optionProvider(t, capture)
+
+	cfg := requestOptionsConfig(t, server.URL+"/v1")
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
+
+	_, path := capture.snapshot(t)
+	require.Equal(t, "/v1/chat/completions", path)
+}

@@ -563,10 +563,14 @@ async function fetchModels() {
   try {
     let modelIds: string[];
     if (editingProfile.value && !formData.apiKey.trim()) {
-      const resp = await fetchModelsByProfile(
-        editingProfile.value.name,
-        formData.baseUrl.trim()
-      );
+      // The stored key only authenticates the stored endpoint: fetching from a
+      // changed Base URL has to carry the caller's own key.
+      if (formData.baseUrl.trim() !== editingProfile.value.baseUrl.trim()) {
+        fetchedError.value = t("llmProvider.apiKeyRequiredForBaseUrl");
+        isFetchingModels.value = false;
+        return;
+      }
+      const resp = await fetchModelsByProfile(editingProfile.value.name);
       modelIds = resp.modelIds;
     } else {
       const apiKey = formData.apiKey.trim();
@@ -600,6 +604,7 @@ async function saveProfile() {
   if (!canSave.value || isSaving.value) return;
   isSaving.value = true;
 
+  const apiKey = formData.apiKey.trim();
   const models = availableModels.value.map((name) =>
     create(LlmProviderModelSchema, {
       name,
@@ -613,7 +618,7 @@ async function saveProfile() {
     title: formData.title.trim(),
     type: formData.providerType,
     baseUrl: formData.baseUrl.trim(),
-    apiKey: formData.apiKey,
+    apiKey,
     models,
     maskedApiKey: "",
     maxOutputTokens: parsedMaxOutputTokens() ?? 0,
@@ -626,7 +631,7 @@ async function saveProfile() {
       // Always name the output budget so clearing it (0) also clears the profile
       // value instead of leaving the previous cap in place.
       const fields = ["title", "base_url", "models", "max_output_tokens"];
-      if (formData.apiKey) fields.push("api_key");
+      if (apiKey) fields.push("api_key");
       await updateProfile(payload, fields);
       showSuccess("llmProvider.updated");
     } else {

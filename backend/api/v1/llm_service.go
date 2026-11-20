@@ -298,9 +298,9 @@ func (s *LLMService) resolveFetchModelsTarget(ctx context.Context, msg *v1pb.Fet
 			return "", "", connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", msg.GetName()))
 		}
 		storedBaseURL = prof.Metadata.BaseUrl
-		apiKey = msg.GetApiKey()
-		if apiKey == "" {
-			apiKey = prof.APIKey
+		apiKey, err = resolveFetchModelsAPIKey(msg.GetApiKey(), msg.GetBaseUrl(), prof.APIKey, storedBaseURL)
+		if err != nil {
+			return "", "", err
 		}
 	case msg.GetProviderType() != v1pb.LLMProviderType_LLM_PROVIDER_TYPE_UNSPECIFIED:
 		apiKey = msg.GetApiKey()
@@ -309,6 +309,23 @@ func (s *LLMService) resolveFetchModelsTarget(ctx context.Context, msg *v1pb.Fet
 	}
 
 	return resolveFetchModelsBaseURL(msg.GetBaseUrl(), storedBaseURL, msg.GetProviderType()), apiKey, nil
+}
+
+// resolveFetchModelsAPIKey picks the credential for a model listing. A request
+// key always wins; a named profile's stored key may only be used against the
+// endpoint that profile stores. Forwarding the stored secret to a URL the
+// caller supplied would let anyone allowed to list models read it, so changing
+// the endpoint requires the caller's own key. The update RPC enforces the same
+// rule for a persisted base_url change.
+func resolveFetchModelsAPIKey(requestAPIKey, requestBaseURL, storedAPIKey, storedBaseURL string) (string, error) {
+	if requestAPIKey != "" {
+		return requestAPIKey, nil
+	}
+	requestBaseURL = strings.TrimSpace(requestBaseURL)
+	if requestBaseURL != "" && requestBaseURL != strings.TrimSpace(storedBaseURL) {
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("api_key is required when changing base_url"))
+	}
+	return storedAPIKey, nil
 }
 
 // resolveFetchModelsBaseURL applies the base URL precedence for a model

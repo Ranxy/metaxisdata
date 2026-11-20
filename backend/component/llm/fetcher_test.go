@@ -153,3 +153,47 @@ func TestFetchModelsToleratesUnknownFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"m1"}, ids)
 }
+
+func TestNormalizeAPIBaseURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{"API root", "https://api.openai.com", "https://api.openai.com"},
+		{"SDK form", "https://api.openai.com/v1", "https://api.openai.com"},
+		{"SDK form with a trailing slash", "https://api.openai.com/v1/", "https://api.openai.com"},
+		{"trailing slash only", "https://api.openai.com/", "https://api.openai.com"},
+		{"path prefix is kept", "https://openrouter.ai/api", "https://openrouter.ai/api"},
+		{"path prefix before the SDK form", "https://openrouter.ai/api/v1", "https://openrouter.ai/api"},
+		{"a host named v1 is not a path", "https://v1", "https://v1"},
+		{"surrounding whitespace", "  https://api.openai.com/v1  ", "https://api.openai.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, normalizeAPIBaseURL(tt.baseURL))
+		})
+	}
+}
+
+// The settings form suggests the SDK form (.../v1), so listing models from it
+// must not request /v1/v1/models.
+func TestFetchModelsAcceptsAnSDKStyleBaseURL(t *testing.T) {
+	t.Parallel()
+
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
+	}))
+	defer server.Close()
+
+	ids, err := FetchModels(context.Background(), server.URL+"/v1", "key")
+	require.NoError(t, err)
+	require.Equal(t, []string{"m"}, ids)
+	require.Equal(t, "/v1/models", gotPath)
+}

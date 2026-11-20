@@ -56,7 +56,7 @@ export async function fetchModelsByKey(
   return await llmClient.fetchLLMModels(request);
 }
 
-export async function fetchModelsByProfile(name: string, baseUrl: string) {
-  const request = create(FetchLLMModelsRequestSchema, { name, baseUrl });
+export async function fetchModelsByProfile(name: string) {
+  const request = create(FetchLLMModelsRequestSchema, { name });
   return await llmClient.fetchLLMModels(request);
 }
