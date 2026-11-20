@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -53,7 +55,8 @@ func handlesTool(name string) bool {
 	case "get_target_summary", "list_recent_executions", "get_memory",
 		"record_asset_fact", "block_session", "schedule_wake",
 		"get_table_context", "draft_checks",
-		"get_scope_summary", "list_scope_targets", "list_pending_proposals":
+		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
+		"adopt_pending_drafts":
 		return true
 	default:
 		return false
@@ -66,6 +69,7 @@ func handlesTool(name string) bool {
 func (e *Engine) executeTool(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
+	agent *store.QualityAgentMessage,
 	name, arguments string,
 	control *wakeControl,
 ) (string, error) {
@@ -119,14 +123,70 @@ func (e *Engine) executeTool(
 		control.nextWake = ptrTime(e.now().Add(time.Duration(minutes) * time.Minute))
 		control.scheduleReason = truncateRunes(input.Reason, 200)
 		return marshalJSON(map[string]any{"scheduled": true, "after_minutes": minutes})
+	case "adopt_pending_drafts":
+		return e.executeAdoptPendingDrafts(ctx, session, agent, arguments, control)
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
 }
 
+// maxAdoptionDraftIDs bounds one owner-requested adoption call. The review queue
+// itself is bounded, and an oversized list is a malformed request, not a batch.
+const maxAdoptionDraftIDs = 20
+
+// executeAdoptPendingDrafts runs the one publish-class tool: an adoption the owner
+// explicitly asked for in this wake. It refuses without the owner question, even
+// though the tool is filtered out of the schema in that case.
+func (e *Engine) executeAdoptPendingDrafts(
+	ctx context.Context,
+	session *store.QualityAgentSessionMessage,
+	agent *store.QualityAgentMessage,
+	arguments string,
+	control *wakeControl,
+) (string, error) {
+	if !control.ownerAsked {
+		return "", errors.New("adopt_pending_drafts is available only for the owner's explicit request in the current wake")
+	}
+	if !dataquality.AgentAdoptionReady(agent) {
+		return "", errors.New("adoption is not enabled for this agent")
+	}
+	if e.ownerAdoption == nil {
+		return "", errors.New("owner-requested adoption is not configured in this process")
+	}
+	var input struct {
+		DraftIDs []string `json:"draft_ids"`
+		Target   string   `json:"target"`
+	}
+	if strings.TrimSpace(arguments) != "" {
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid adopt_pending_drafts arguments")
+		}
+	}
+	if len(input.DraftIDs) > maxAdoptionDraftIDs {
+		return "", errors.Errorf("at most %d drafts can be adopted in one call", maxAdoptionDraftIDs)
+	}
+	target := strings.TrimSpace(input.Target)
+	if session.Kind == 1 && target != "" && target != session.TargetGUID {
+		return "", errors.New("a target session can adopt only drafts of its own target")
+	}
+	report, err := e.ownerAdoption(ctx, dataquality.AgentAdoptionRequest{
+		Session:    session,
+		TargetGUID: target,
+		DraftIDs:   input.DraftIDs,
+		Wake:       control.wake,
+	})
+	if err != nil {
+		return "", err
+	}
+	control.adoptionUsed = true
+	return marshalJSON(report)
+}
+
 // agentSessionOf maps the stored session onto the shared tool package's view.
 func agentSessionOf(session *store.QualityAgentSessionMessage) quality.AgentSession {
 	return quality.AgentSession{
+		WorkspaceID:      session.WorkspaceID,
+		AgentID:          session.AgentID,
 		TargetGUID:       session.TargetGUID,
 		TargetType:       storepb.MetaType(session.TargetType),
 		ResourceID:       session.ResourceID,

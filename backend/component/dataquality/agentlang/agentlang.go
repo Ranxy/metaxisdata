@@ -126,6 +126,7 @@ func ProposalQuestion(lang string, counts ProposalCounts) string {
 		if failure != "" {
 			question += "最近一次失败：" + failure + "。"
 		}
+		question += "回复要采纳哪些草案（例如「采纳全部」），我会按你的决定创建检查；自动采纳仍遵守当前护栏，也可以到建议中心逐条决定。"
 		return question
 	}
 	question := fmt.Sprintf("%d draft(s) for this target still need a decision: %d auto-adopted, %d skipped by policy, %d failed to write this pass.",
@@ -133,6 +134,7 @@ func ProposalQuestion(lang string, counts ProposalCounts) string {
 	if failure != "" {
 		question += " Last failure: " + failure + "."
 	}
+	question += " Reply with the drafts to adopt (for example \"adopt them all\") and I will create them as your decision; automatic adoption still follows the configured guardrails, or decide them one by one in the review queue."
 	return question
 }
 

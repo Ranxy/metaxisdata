@@ -30,19 +30,23 @@ func TestTriageWakeWithoutAModelRetries(t *testing.T) {
 	require.Empty(t, stores.memoryInputs)
 }
 
-func TestModelToolDefsDependOnMode(t *testing.T) {
+func TestModelToolDefsDependOnModeAndCapabilities(t *testing.T) {
 	t.Parallel()
 
-	monitor := specNames(monitorSpec().Tools)
+	agent := capabilityTestAgent("suggest", "adopt", "patrol")
+	monitor := toolSpecNames(toolsFor(monitorSpec(), agent))
 	require.NotContains(t, monitor, "get_table_context")
 	require.NotContains(t, monitor, "draft_checks")
+	require.Contains(t, monitor, "record_asset_fact")
+	require.Contains(t, monitor, "adopt_pending_drafts")
+	require.NotContains(t, monitor, "record_investigation")
+	require.NotContains(t, monitor, "record_decision")
 
-	triage := specNames(triageSpec().Tools)
+	triage := toolSpecNames(toolsFor(triageSpec(), agent))
 	require.Contains(t, triage, "get_table_context")
 	require.Contains(t, triage, "draft_checks")
 	require.Contains(t, triage, "record_asset_fact")
-	require.NotContains(t, triage, "record_investigation")
-	require.NotContains(t, triage, "record_decision")
+	require.Contains(t, triage, "adopt_pending_drafts")
 }
 
 func TestGetTableContextToolReadsTheReader(t *testing.T) {
@@ -50,7 +54,7 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 
 	engine := NewEngine(newFakeStore())
 	engine.tableContext = fakeTableContextReader{}
-	result, err := engine.executeTool(context.Background(), testSession(), "get_table_context", "{}", nil)
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "get_table_context", "{}", &wakeControl{})
 	require.NoError(t, err)
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
@@ -68,7 +72,7 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 		return []string{"orders amount not null", "orders id unique"}, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
-	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil)
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", args, &wakeControl{})
 	require.NoError(t, err)
 	require.Len(t, gotColumns, quality.MaxTriageDraftColumns)
 	require.Equal(t, "watch order integrity", gotIntent)

@@ -7,6 +7,8 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityAgentAdoptionMode,
+  QualityAgentAdoptionSettingSchema,
   QualityAgentSchema,
   QualityAgentState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -105,6 +107,8 @@ interface PageVm {
     providerProfile: string;
     providerModel: string;
     databases: string[];
+    capabilities: string[];
+    adoptionMode: string;
   };
   providerOptions: Array<{ name: string; title: string }>;
   modelOptions: string[];
@@ -486,5 +490,50 @@ describe("QualityAgentsSettingsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("qualityAgents.providerNotConfigured")
     );
+  });
+
+  it("round-trips OFF instead of coercing it to PAUSED", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/g",
+        displayName: "Agent G",
+        owner: "users/1",
+        providerProfile: mainProfile,
+        providerModel: "fast",
+        capabilities: ["suggest", "adopt"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.ACTIVE,
+        adoption: create(QualityAgentAdoptionSettingSchema, {
+          mode: QualityAgentAdoptionMode.OFF,
+        }),
+      }),
+    ]);
+    const wrapper = await mountPage();
+    await openEdit(wrapper);
+
+    // The stored OFF is shown as OFF, not silently turned into PAUSED.
+    expect(vm(wrapper).form.adoptionMode).toBe("off");
+    dialogButton(i18n.global.t("qualityAgents.saveAction"))?.click();
+    await flushPromises();
+    const [edited] = mocks.updateQualityAgent.mock.calls[0] ?? [];
+    expect(edited.adoption.mode).toBe(QualityAgentAdoptionMode.OFF);
+  });
+
+  it("sends each adoption mode chosen on create, OFF included", async () => {
+    const wrapper = await mountPage();
+    await openCreate(wrapper);
+    const page = vm(wrapper);
+    page.form.displayName = "Agent H";
+    page.form.providerProfile = mainProfile;
+    page.form.providerModel = "fast";
+    page.form.databases = ["instances/i/databases/d"];
+    page.form.capabilities = ["suggest", "patrol", "adopt"];
+    page.form.adoptionMode = "off";
+    await nextTick();
+    dialogButton(i18n.global.t("qualityAgents.createAction"))?.click();
+    await flushPromises();
+    expect(
+      mocks.createQualityAgent.mock.calls[0]?.[0].config.adoption.mode
+    ).toBe(QualityAgentAdoptionMode.OFF);
   });
 });
