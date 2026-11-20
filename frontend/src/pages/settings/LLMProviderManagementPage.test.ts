@@ -51,7 +51,6 @@ const PROFILE = create(LlmProviderProfileSchema, {
     }),
   ],
   maskedApiKey: "sk-…1234",
-  maxOutputTokens: 0,
 });
 
 function listProfilesResponse(profiles = [PROFILE]) {
@@ -152,7 +151,6 @@ describe("LLMProviderManagementPage model capacities", () => {
     mocks.createProfile.mockResolvedValue(PROFILE);
     mocks.updateProfile.mockResolvedValue(PROFILE);
     mocks.fetchModelsByProfile.mockResolvedValue({
-      modelIds: ["gpt-4o"],
       models: [{ name: "gpt-4o", contextWindow: 0, maxOutputTokens: 0 }],
     });
   });
@@ -321,7 +319,6 @@ describe("LLMProviderManagementPage model capacities", () => {
 
   it("merges a fetched listing without losing saved capacities or rows", async () => {
     mocks.fetchModelsByProfile.mockResolvedValue({
-      modelIds: ["gpt-4o", "gpt-4o-mini"],
       models: [
         { name: "gpt-4o", contextWindow: 0, maxOutputTokens: 0 },
         {
@@ -359,7 +356,6 @@ const CUSTOM_PROFILE = create(LlmProviderProfileSchema, {
   baseUrl: "https://llm.example.com/v1",
   models: [create(LlmProviderModelSchema, { name: "m1", enabled: true })],
   maskedApiKey: "abc…789",
-  maxOutputTokens: 0,
 });
 
 function customProfileEntry(wrapper: ReturnType<typeof mount>) {
@@ -376,11 +372,9 @@ describe("LLMProviderManagementPage fetch models", () => {
       listProfilesResponse([CUSTOM_PROFILE])
     );
     mocks.fetchModelsByKey.mockResolvedValue({
-      modelIds: ["m1"],
       models: [{ name: "m1", contextWindow: 0, maxOutputTokens: 0 }],
     });
     mocks.fetchModelsByProfile.mockResolvedValue({
-      modelIds: ["m1"],
       models: [{ name: "m1", contextWindow: 0, maxOutputTokens: 0 }],
     });
   });

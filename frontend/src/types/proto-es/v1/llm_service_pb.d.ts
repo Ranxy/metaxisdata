@@ -129,22 +129,6 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
    * @generated from field: string masked_api_key = 9;
    */
   maskedApiKey: string;
-
-  /**
-   * The answer budget one model call requests from this profile, in output tokens.
-   * Zero means the server default (32768); an explicit value must be 256-131072.
-   * The provider or model may cap lower: the first request that exceeds it is
-   * retried once at 4096 tokens, and a still-rejected request is reported on the
-   * failed call as PROVIDER_STATUS. It applies to the data quality analyses and to
-   * the quality agents that pin this profile.
-   *
-   * An update with an empty field mask writes this field only when it is non-zero
-   * (proto3 cannot distinguish an omitted int32 from an explicit zero); send an
-   * explicit `max_output_tokens` mask to reset it to the server default.
-   *
-   * @generated from field: int32 max_output_tokens = 10;
-   */
-  maxOutputTokens: number;
 };
 
 /**
@@ -378,11 +362,6 @@ export declare const LlmDiscoveredModelSchema: GenMessage<LlmDiscoveredModel>;
  * @generated from message metaxisdata.v1.FetchLLMModelsResponse
  */
 export declare type FetchLLMModelsResponse = Message<"metaxisdata.v1.FetchLLMModelsResponse"> & {
-  /**
-   * @generated from field: repeated string model_ids = 1;
-   */
-  modelIds: string[];
-
   /**
    * @generated from field: repeated metaxisdata.v1.LlmDiscoveredModel models = 2;
    */

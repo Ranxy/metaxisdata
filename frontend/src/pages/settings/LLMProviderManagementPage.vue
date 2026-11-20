@@ -805,22 +805,14 @@ async function fetchModels() {
   }
 }
 
-/** Adapt the fetched response, tolerating the transitional model_ids field. */
+/** Drop the proto wrapper shape; the page only needs the plain capacities. */
 function discoveredModels(resp: {
   models: { name: string; contextWindow: number; maxOutputTokens: number }[];
-  modelIds: string[];
 }): DiscoveredModelCapacity[] {
-  if (resp.models.length > 0) {
-    return resp.models.map((model) => ({
-      name: model.name,
-      contextWindow: model.contextWindow,
-      maxOutputTokens: model.maxOutputTokens,
-    }));
-  }
-  return resp.modelIds.map((name) => ({
-    name,
-    contextWindow: 0,
-    maxOutputTokens: 0,
+  return resp.models.map((model) => ({
+    name: model.name,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutputTokens,
   }));
 }
 
@@ -855,7 +847,6 @@ async function saveProfile() {
     apiKey,
     models,
     maskedApiKey: "",
-    maxOutputTokens: 0,
     createTime: undefined,
     updateTime: undefined,
   };

@@ -161,10 +161,8 @@ type LlmProviderProfile struct {
 	Models           []*LlmProviderModel    `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
 	CreateTime       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	UpdateTime       *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	// The answer budget requested from this profile; 0 means the server default.
-	MaxOutputTokens int32 `protobuf:"varint,9,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *LlmProviderProfile) Reset() {
@@ -253,13 +251,6 @@ func (x *LlmProviderProfile) GetUpdateTime() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *LlmProviderProfile) GetMaxOutputTokens() int32 {
-	if x != nil {
-		return x.MaxOutputTokens
-	}
-	return 0
-}
-
 var File_store_llm_proto protoreflect.FileDescriptor
 
 const file_store_llm_proto_rawDesc = "" +
@@ -269,7 +260,7 @@ const file_store_llm_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12%\n" +
 	"\x0econtext_window\x18\x03 \x01(\x05R\rcontextWindow\x12*\n" +
-	"\x11max_output_tokens\x18\x04 \x01(\x05R\x0fmaxOutputTokens\"\xa2\x03\n" +
+	"\x11max_output_tokens\x18\x04 \x01(\x05R\x0fmaxOutputTokens\"\x8f\x03\n" +
 	"\x12LlmProviderProfile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x126\n" +
@@ -280,8 +271,8 @@ const file_store_llm_proto_rawDesc = "" +
 	"\vcreate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"updateTime\x12*\n" +
-	"\x11max_output_tokens\x18\t \x01(\x05R\x0fmaxOutputTokens*\xb2\x01\n" +
+	"updateTimeJ\x04\b\t\x10\n" +
+	"R\x11max_output_tokens*\xb2\x01\n" +
 	"\x0fLLMProviderType\x12!\n" +
 	"\x1dLLM_PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18LLM_PROVIDER_TYPE_OPENAI\x10\x01\x12\x1e\n" +

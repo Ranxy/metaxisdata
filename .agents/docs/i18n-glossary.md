@@ -244,4 +244,6 @@ agent than reading the JSON.
 | plan | 计划 | Data Quality | The declared coverage a target promises plus the enabled checks that implement it; a target with checks but no contract has no plan. | dataQuality. | — |
 | coverage declaration | 覆盖声明 | Data Quality | One property and scope a plan promises to monitor, whether from the criticality template or from an explicit intent statement. | dataQuality. | zh-CN: `覆盖要求` |
 | coverage gap | 覆盖缺口 | Data Quality | A declared requirement that no enabled check satisfies and that no valid exemption waives. It is not the same number as the coverage rate. | dataQuality. | — |
+| context window | 上下文窗口 | Platform | The largest combined request and response context one model accepts, in tokens. The quality agent uses it to decide when to compact a conversation. | llmProvider. | — |
+| max output tokens | 最大输出 token 数 | Platform | The output-token ceiling one model call requests from a model. | llmProvider. | — |
 <!-- END GENERATED GLOSSARY -->

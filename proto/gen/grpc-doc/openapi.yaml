@@ -11020,10 +11020,6 @@ components:
         FetchLLMModelsResponse:
             type: object
             properties:
-                modelIds:
-                    type: array
-                    items:
-                        type: string
                 models:
                     type: array
                     items:
@@ -12487,10 +12483,6 @@ components:
                 updateTime:
                     type: string
                     format: date-time
-                maxOutputTokens:
-                    type: integer
-                    description: The answer budget requested from this profile; 0 means the server default.
-                    format: int32
         LoginRequest:
             type: object
             properties:

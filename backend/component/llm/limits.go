@@ -60,6 +60,7 @@ func NormalizeModelLimits(contextWindow, maxOutputTokens int32) ModelLimits {
 		ctx = MinContextWindow
 	case ctx > MaxContextWindow:
 		ctx = MaxContextWindow
+	default:
 	}
 
 	out := int(maxOutputTokens)
@@ -70,6 +71,7 @@ func NormalizeModelLimits(contextWindow, maxOutputTokens int32) ModelLimits {
 		out = MinMaxOutputTokens
 	case out > MaxMaxOutputTokens:
 		out = MaxMaxOutputTokens
+	default:
 	}
 
 	if out >= ctx {

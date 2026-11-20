@@ -297,7 +297,6 @@ func (s *LLMService) FetchLLMModels(ctx context.Context, req *connect.Request[v1
 		Models: make([]*v1pb.LlmDiscoveredModel, 0, len(discovered)),
 	}
 	for _, model := range discovered {
-		response.ModelIds = append(response.ModelIds, model.Name)
 		response.Models = append(response.Models, &v1pb.LlmDiscoveredModel{
 			Name:            model.Name,
 			ContextWindow:   model.ContextWindow,

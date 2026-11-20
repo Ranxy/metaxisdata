@@ -3759,7 +3759,6 @@ Instance is the proto for instances.
 | models | [LlmProviderModel](#metaxisdata-store-LlmProviderModel) | repeated |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| max_output_tokens | [int32](#int32) |  | The answer budget requested from this profile; 0 means the server default. |
 
 
 

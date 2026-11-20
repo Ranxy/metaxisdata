@@ -1917,6 +1917,30 @@
       "scope": [
         "dataQuality."
       ]
+    },
+    {
+      "id": "context-window",
+      "category": "Platform",
+      "definition": "The largest combined request and response context one model accepts, in tokens. The quality agent uses it to decide when to compact a conversation.",
+      "translations": {
+        "en-US": "context window",
+        "zh-CN": "上下文窗口"
+      },
+      "scope": [
+        "llmProvider."
+      ]
+    },
+    {
+      "id": "max-output-tokens",
+      "category": "Platform",
+      "definition": "The output-token ceiling one model call requests from a model.",
+      "translations": {
+        "en-US": "max output tokens",
+        "zh-CN": "最大输出 token 数"
+      },
+      "scope": [
+        "llmProvider."
+      ]
     }
   ]
 }

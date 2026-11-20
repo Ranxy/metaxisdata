@@ -11080,7 +11080,6 @@ usually the SQL naming something the analyzer cannot see.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| model_ids | [string](#string) | repeated |  |
 | models | [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel) | repeated |  |
 
 
@@ -11214,9 +11213,6 @@ defaults and bounds for the per-model fields. It is output-only.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | masked_api_key | [string](#string) |  |  |
-| max_output_tokens | [int32](#int32) |  | The answer budget one model call requests from this profile, in output tokens. Zero means the server default (32768); an explicit value must be 256-131072. The provider or model may cap lower: the first request that exceeds it is retried once at 4096 tokens, and a still-rejected request is reported on the failed call as PROVIDER_STATUS. It applies to the data quality analyses and to the quality agents that pin this profile.
-
-An update with an empty field mask writes this field only when it is non-zero (proto3 cannot distinguish an omitted int32 from an explicit zero); send an explicit `max_output_tokens` mask to reset it to the server default. |
 
 
 
