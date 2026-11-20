@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,31 @@ func TestErrorUnwrapAndNilSafeMessage(t *testing.T) {
 	require.NotPanics(t, func() { _ = codeOnly.Error() })
 	require.Equal(t, NotFound, ErrorCode(codeOnly))
 	require.NoError(t, codeOnly.Unwrap())
+}
+
+func TestErrorFormatHandlesVerbs(t *testing.T) {
+	t.Parallel()
+
+	stacked := Errorf(NotFound, "missing")
+	plain := &Error{Code: Invalid, Err: errors.New("bad input")}
+	codeOnly := &Error{Code: Internal}
+
+	require.Equal(t, "missing", fmt.Sprintf("%v", stacked))
+	require.Equal(t, "missing", fmt.Sprintf("%s", stacked))
+	require.Equal(t, `"missing"`, fmt.Sprintf("%q", stacked))
+	// fmt only reaches the cause's Formatter through the outermost error, so
+	// %+v has to keep the location pkg/errors captured rather than flatten.
+	require.Contains(t, fmt.Sprintf("%+v", stacked), "error_test.go:")
+
+	// A cause without a stack still prints its message.
+	require.Equal(t, "bad input", fmt.Sprintf("%v", plain))
+	require.Equal(t, "bad input", fmt.Sprintf("%s", plain))
+
+	// A code-only error falls back to its message instead of panicking.
+	require.Equal(t, "common: error code 1", fmt.Sprintf("%v", codeOnly))
+
+	// fmt consults Formatter for every verb; an unhandled one must not print "".
+	require.NotEmpty(t, fmt.Sprintf("%#v", plain))
 }
 
 func TestErrorCodeDefaultsToInternal(t *testing.T) {

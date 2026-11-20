@@ -4,6 +4,7 @@ package common
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	pkgerrors "github.com/pkg/errors"
 )
@@ -54,6 +55,29 @@ func (e *Error) Error() string {
 // can inspect the cause behind an application code.
 func (e *Error) Unwrap() error {
 	return e.Err
+}
+
+// Format forwards formatting to the wrapped cause so %+v keeps the stack
+// pkg/errors captured. fmt only consults the cause's Formatter through the
+// outermost error, so without this an application error flattened to a message
+// and lost the location of the failure.
+func (e *Error) Format(s fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if formatter, ok := e.Err.(fmt.Formatter); ok {
+			formatter.Format(s, verb)
+			return
+		}
+		_, _ = io.WriteString(s, e.Error())
+	case 's':
+		_, _ = io.WriteString(s, e.Error())
+	case 'q':
+		_, _ = fmt.Fprintf(s, "%q", e.Error())
+	default:
+		// fmt consults Formatter for every verb; keep the message visible for
+		// the rare ones (%#v in a test failure, %x) instead of printing nothing.
+		_, _ = io.WriteString(s, e.Error())
+	}
 }
 
 // ErrorCode unwraps an application error and returns its code.

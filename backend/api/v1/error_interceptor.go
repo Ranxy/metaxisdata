@@ -50,8 +50,28 @@ func mapCommonError(err error) error {
 	}
 
 	var connectErr *connect.Error
-	if errors.As(err, &connectErr) && connectErr.Code() != connect.CodeInternal && connectErr.Code() != connect.CodeUnknown {
-		return err
+	if errors.As(err, &connectErr) {
+		if connectErr.Code() != connect.CodeInternal && connectErr.Code() != connect.CodeUnknown {
+			return err
+		}
+		mapped := connectCodeFor(common.ErrorCode(err))
+		// Re-wrapping an error whose code does not change nests another Connect
+		// error, which prepends the old code to the client-visible message
+		// ("internal: internal: ...") and hides the cause behind one more layer.
+		if mapped == connectErr.Code() {
+			return err
+		}
+		// Wrap the cause, not the Connect error: the latter's Error() carries the
+		// old code as a message prefix.
+		cause := connectErr.Unwrap()
+		if cause == nil {
+			return err
+		}
+		mappedErr := connect.NewError(mapped, cause)
+		for _, detail := range connectErr.Details() {
+			mappedErr.AddDetail(detail)
+		}
+		return mappedErr
 	}
 
 	return connect.NewError(connectCodeFor(common.ErrorCode(err)), err)
