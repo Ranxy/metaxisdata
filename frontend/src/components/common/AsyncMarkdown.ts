@@ -35,12 +35,32 @@ const MarkdownFailure = defineComponent({
  * (`monaco-editor/lazy-editor.ts`); the stylesheet travels with this chunk
  * instead of `main.ts` so a page that never renders markdown never pays for it.
  */
+async function loadMarkdownRenderer() {
+  await import("markstream-vue/index.css");
+  const { default: MarkdownRender } = await import("markstream-vue");
+  return MarkdownRender;
+}
+
+/**
+ * Downloads the renderer without rendering anything.
+ *
+ * A transcript opens scrolled to its newest message. That message is rendered by
+ * this lazy chunk, so a pane that lands before the chunk arrives has to jump
+ * again when the placeholder is replaced by real content — briefly showing the
+ * wrong scroll position. Warming the chunk while the first page of messages is
+ * still in flight shortens that window; the landing loop still covers a cold
+ * cache. Failure is swallowed: the component has its own error state, and a
+ * preload that could not run must not surface anywhere.
+ */
+export function preloadMarkdown(): Promise<void> {
+  return loadMarkdownRenderer().then(
+    () => undefined,
+    () => undefined
+  );
+}
+
 export const AsyncMarkdown = defineAsyncComponent({
-  loader: async () => {
-    await import("markstream-vue/index.css");
-    const { default: MarkdownRender } = await import("markstream-vue");
-    return MarkdownRender;
-  },
+  loader: loadMarkdownRenderer,
   delay: 200,
   timeout: 15_000,
   loadingComponent: MarkdownLoading,

@@ -1,8 +1,9 @@
 <template>
-  <div class="space-y-4">
+  <div class="flex h-full min-h-0 flex-col gap-3">
     <PageHeader
       :title="pageTitle"
       :description="session ? agentSessionTargetPath(session) : ''"
+      class="shrink-0"
     >
       <template #breadcrumb>
         <QualityAgentBreadcrumb
@@ -77,11 +78,13 @@
     <QualityAgentTabs
       :agent-name="agentName"
       active="sessions"
+      class="shrink-0 self-start"
     />
 
     <Alert
       v-if="error"
       variant="destructive"
+      class="shrink-0"
     >
       <AlertTriangle class="h-4 w-4" />
       <AlertDescription>{{ error }}</AlertDescription>
@@ -104,151 +107,198 @@
 
       <div
         v-if="session"
-        class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start"
+        class="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row"
       >
-        <Card class="min-w-0">
-          <CardHeader class="border-b">
+        <!-- Below xl the run state is a disclosure above the transcript: the
+             chat pane keeps the rest of the height instead of losing 300+px to
+             a sidebar. -->
+        <Collapsible class="shrink-0 rounded-lg border border-border/70 bg-card shadow-e1 xl:hidden">
+          <CollapsibleTrigger
+            class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-accent/40"
+          >
+            <span
+              class="h-2 w-2 shrink-0 rounded-full"
+              :class="heartbeat.running ? 'bg-info' : 'bg-muted-foreground/40'"
+            />
+            <span class="truncate font-medium">{{ statusLabel }}</span>
+            <span class="ml-auto flex shrink-0 items-center gap-3 text-xs tabular-nums text-muted-foreground">
+              <span>{{ t("qualityAgent.sessionWakes") }} {{ session.wakeCount }}</span>
+              <span class="hidden sm:inline">{{ lastActivityLabel }}</span>
+              <ChevronDown class="h-4 w-4" />
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div class="border-t px-4 py-3">
+              <QualityAgentRunState
+                :session="session"
+                :heartbeat="heartbeat"
+                :status-label="statusLabel"
+                :next-wake-label="nextWakeLabel"
+                :last-activity-label="lastActivityLabel"
+                :current-turn="currentTurn"
+                :poll-error="pollError"
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Card class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <CardHeader class="shrink-0 border-b">
             <CardTitle class="text-base">{{ t("qualityAgent.transcriptTitle") }}</CardTitle>
             <CardDescription>{{ t("qualityAgent.transcriptHint") }}</CardDescription>
           </CardHeader>
-          <CardContent class="space-y-4 pt-4">
-            <PageState
-              :loading="messagesLoading && messages.length === 0"
-              :error="messagesError"
-              :title="t('qualityAgent.messagesLoadFailed')"
+          <CardContent class="flex min-h-0 flex-1 flex-col p-0">
+            <div
+              :class="
+                transcriptLoading
+                  ? 'grid min-h-0 flex-1 place-items-center'
+                  : 'flex min-h-0 flex-1 flex-col'
+              "
             >
-              <template #error>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  @click="loadMessages"
-                >
-                  {{ t("common.refresh") }}
-                </Button>
-              </template>
-
-              <div
-                v-if="hasEarlier"
-                class="flex flex-col items-start gap-2"
+              <PageState
+                :loading="messagesLoading && messages.length === 0"
+                :error="messagesError"
+                :title="t('qualityAgent.messagesLoadFailed')"
               >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="loadingEarlier"
-                  @click="loadEarlier"
-                >
-                  <Loader2
-                    v-if="loadingEarlier"
-                    class="mr-2 h-4 w-4 animate-spin"
+                <template #error>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="loadMessages"
+                  >
+                    {{ t("common.refresh") }}
+                  </Button>
+                </template>
+
+                <div class="relative flex min-h-0 flex-1 flex-col">
+                  <!-- The transcript pane: the only scroll container besides the
+                       shell. It opens on the newest message and follows new ones
+                       until the reader scrolls back. -->
+                  <div
+                    ref="scrollerRef"
+                    class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-6 [scrollbar-gutter:stable]"
+                    tabindex="0"
+                    role="region"
+                    :aria-label="t('qualityAgent.transcriptTitle')"
+                    @scroll="onScroll"
+                  >
+                    <div class="mx-auto w-full max-w-[56rem]">
+                      <div
+                        ref="topSentinelRef"
+                        aria-hidden="true"
+                        class="h-px"
+                      />
+                      <!-- A fixed-height marker row: "load earlier" and the
+                           start-of-history note swap without moving the content
+                           below them. -->
+                      <div class="flex h-9 items-center justify-center">
+                        <Button
+                          v-if="hasEarlier"
+                          variant="outline"
+                          size="sm"
+                          :disabled="loadingEarlier"
+                          @click="loadEarlier"
+                        >
+                          <Loader2
+                            v-if="loadingEarlier"
+                            class="mr-2 h-4 w-4 animate-spin"
+                          />
+                          {{
+                            loadingEarlier
+                              ? t("qualityAgent.loadingEarlier")
+                              : t("qualityAgent.loadEarlier")
+                          }}
+                        </Button>
+                        <p
+                          v-else-if="messages.length > 0"
+                          class="text-xs text-muted-foreground"
+                        >
+                          {{ t("qualityAgent.historyStart") }}
+                        </p>
+                      </div>
+                      <p
+                        v-if="loadEarlierError"
+                        class="pb-2 text-center text-xs text-destructive"
+                      >
+                        {{ loadEarlierError }}
+                      </p>
+                      <div
+                        v-if="messages.length === 0"
+                        class="grid min-h-[16rem] place-items-center text-sm text-muted-foreground"
+                      >
+                        {{ t("qualityAgent.transcriptEmpty") }}
+                      </div>
+                      <QualityAgentTranscript
+                        v-else
+                        :groups="groups"
+                        :session-name="session.name"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    class="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent"
+                    aria-hidden="true"
                   />
-                  {{
-                    loadingEarlier
-                      ? t("qualityAgent.loadingEarlier")
-                      : t("qualityAgent.loadEarlier")
-                  }}
-                </Button>
-                <p
-                  v-if="loadEarlierError"
-                  class="text-xs text-destructive"
-                >
-                  {{ loadEarlierError }}
-                </p>
-              </div>
-
-              <p
-                v-if="messages.length === 0"
-                class="text-sm text-muted-foreground"
-              >
-                {{ t("qualityAgent.transcriptEmpty") }}
-              </p>
-              <QualityAgentTranscript
-                v-else
-                :groups="groups"
-                :session-name="session.name"
-              />
-            </PageState>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader class="border-b">
-            <CardTitle class="text-base">{{ t("qualityAgent.runPanelTitle") }}</CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-3 pt-4">
-            <div class="flex items-center gap-2 text-sm">
-              <span
-                class="h-2 w-2 shrink-0 rounded-full"
-                :class="heartbeat.running ? 'bg-info' : 'bg-muted-foreground/40'"
-              />
-              <span>{{ statusLabel }}</span>
-              <span
-                v-if="currentTurn !== undefined"
-                class="ml-auto text-xs tabular-nums text-muted-foreground"
-              >
-                {{ t("qualityAgent.turn", { turn: currentTurn }) }}
-              </span>
-            </div>
-
-            <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-              <dt class="text-muted-foreground">{{ t("qualityAgent.sessionWakes") }}</dt>
-              <dd class="text-right tabular-nums">{{ session.wakeCount }}</dd>
-              <dt class="text-muted-foreground">{{ t("qualityAgent.sessionNextWake") }}</dt>
-              <dd
-                class="text-right tabular-nums"
-                :title="formatDateTime(session.nextWakeTime, locale)"
-              >
-                {{ nextWakeLabel }}
-              </dd>
-              <dt class="text-muted-foreground">{{ t("qualityAgent.sessionLastActivity") }}</dt>
-              <dd
-                class="text-right tabular-nums"
-                :title="formatDateTime(session.lastActivityTime, locale)"
-              >
-                {{ lastActivityLabel }}
-              </dd>
-              <dt class="text-muted-foreground">{{ t("qualityAgent.sessionRestarts") }}</dt>
-              <dd class="text-right tabular-nums">{{ session.restartCount }}</dd>
-            </dl>
-
-            <p
-              v-if="pollError"
-              class="text-xs text-destructive"
-            >
-              {{ pollError }}
-            </p>
-
-            <div
-              v-if="heartbeat.stale"
-              class="rounded-md border border-warning/40 bg-warning-subtle/30 px-2.5 py-1.5 text-xs text-warning"
-            >
-              {{ t("qualityAgent.sessionStaleHint") }}
-            </div>
-
-            <div
-              v-if="session.blockedCode || session.blockedReason"
-              class="space-y-1 rounded-md border border-warning/40 bg-warning-subtle/30 px-2.5 py-1.5 text-xs"
-            >
-              <p class="font-medium text-warning">
-                {{ t("qualityAgent.sessionBlockedCode") }}:
-                <span class="font-mono">{{ session.blockedCode || "-" }}</span>
-              </p>
-              <p
-                v-if="session.blockedReason"
-                class="text-warning"
-              >
-                {{ session.blockedReason }}
-              </p>
+                  <Button
+                    v-if="!pinned"
+                    variant="secondary"
+                    size="sm"
+                    class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full shadow-e2"
+                    @click="jumpToLatest"
+                  >
+                    <ArrowDown class="mr-1 h-3.5 w-3.5" />
+                    {{
+                      unreadCount > 0
+                        ? t("qualityAgent.newMessages", { count: unreadCount })
+                        : t("qualityAgent.jumpToLatest")
+                    }}
+                  </Button>
+                </div>
+              </PageState>
             </div>
           </CardContent>
         </Card>
+
+        <aside class="hidden w-80 shrink-0 self-start xl:block">
+          <Card>
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">{{ t("qualityAgent.runPanelTitle") }}</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3 pt-4">
+              <QualityAgentRunState
+                :session="session"
+                :heartbeat="heartbeat"
+                :status-label="statusLabel"
+                :next-wake-label="nextWakeLabel"
+                :last-activity-label="lastActivityLabel"
+                :current-turn="currentTurn"
+                :poll-error="pollError"
+              />
+            </CardContent>
+          </Card>
+        </aside>
       </div>
     </PageState>
   </div>
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Loader2, RefreshCcw, Target } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ChevronDown,
+  Loader2,
+  RefreshCcw,
+  Target,
+} from "lucide-vue-next";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -257,8 +307,10 @@ import {
   listQualityAgentSessionMessages,
   resumeQualityAgentSession,
 } from "@/api/data-quality";
+import { preloadMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentRunState from "@/components/data-quality/QualityAgentRunState.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import QualityAgentTranscript from "@/components/data-quality/QualityAgentTranscript.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -272,6 +324,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { useChatScroll } from "@/composables/useChatScroll";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { usePolling } from "@/composables/usePolling";
 import { notify } from "@/lib/notify";
@@ -284,7 +342,7 @@ import {
   QualityAgentSessionState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 import {
   qualityAgentName,
@@ -298,6 +356,7 @@ import {
   agentSessionStateVariant,
   agentSessionTargetName,
   agentSessionTargetPath,
+  countMessagesAfterSeq,
   groupMessagesByWake,
   lastTranscriptSeq,
   mergeTranscriptMessages,
@@ -307,11 +366,21 @@ const RUNNING_POLL_INTERVAL_MS = 2000;
 const IDLE_POLL_INTERVAL_MS = 10_000;
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_PAGE_SIZE = 200;
+/** How close to the top of the pane the older-history request fires. */
+const EARLIER_ROOT_MARGIN_PX = 200;
 
 const { t, locale } = useI18n();
 const route = useRoute();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
+const {
+  scrollerRef,
+  pinned,
+  onScroll,
+  scrollToLatest,
+  settleAtLatest,
+  preserveAnchor,
+} = useChatScroll();
 
 const session = ref<QualityAgentSession>();
 const agent = ref<QualityAgent>();
@@ -326,6 +395,12 @@ const loadingEarlier = ref(false);
 const loadEarlierError = ref("");
 const error = ref("");
 const resuming = ref(false);
+const topSentinelRef = ref<HTMLElement | null>(null);
+/** The newest transcript seq the reader has seen while following the bottom. */
+const seenSeq = ref(0n);
+
+let disposed = false;
+let earlierObserver: IntersectionObserver | undefined;
 
 const workspace = computed(() => String(route.params.workspace));
 const agentId = computed(() => String(route.params.agentId));
@@ -415,6 +490,27 @@ const currentTurn = computed((): number | undefined => {
   return undefined;
 });
 
+/** The first-page spinner fills the pane instead of sitting at its top. */
+const transcriptLoading = computed(
+  () => messagesLoading.value && messages.value.length === 0
+);
+
+/** Messages that arrived after the reader scrolled away from the newest one. */
+const unreadCount = computed(() =>
+  pinned.value ? 0 : countMessagesAfterSeq(messages.value, seenSeq.value)
+);
+
+// Following the newest message means the reader has seen everything loaded.
+watch(
+  [pinned, lastSeq],
+  ([following, newest]) => {
+    if (following) {
+      seenSeq.value = newest;
+    }
+  },
+  { immediate: true }
+);
+
 async function loadAgent() {
   try {
     agent.value = await getQualityAgent(agentName.value);
@@ -454,6 +550,20 @@ async function loadMessages(signal?: AbortSignal) {
   }
 }
 
+/**
+ * Put the newest message in view and keep it there while lazily rendered content
+ * (the Markdown chunk) settles. Runs after every first-page load and session
+ * switch; a reader who scrolls away ends it early.
+ */
+async function landAtLatest() {
+  await nextTick();
+  if (disposed) {
+    return;
+  }
+  seenSeq.value = lastSeq.value;
+  await settleAtLatest();
+}
+
 async function load() {
   if (disposed) {
     return;
@@ -462,12 +572,21 @@ async function load() {
   loadError.value = "";
   error.value = "";
   try {
-    await Promise.all([loadAgent(), loadSession(), loadMessages()]);
+    // The Markdown renderer is a lazy chunk; waiting for it here means the first
+    // transcript paint has its final height and the landing below cannot fall
+    // short when the placeholder is replaced.
+    await Promise.all([
+      loadAgent(),
+      loadSession(),
+      loadMessages(),
+      preloadMarkdown(),
+    ]);
   } catch (err) {
     loadError.value = formatError(err);
   } finally {
     isLoading.value = false;
   }
+  await landAtLatest();
 }
 
 async function reload() {
@@ -495,8 +614,11 @@ async function loadEarlier() {
       hasEarlier.value = false;
       return;
     }
-    messages.value = mergeTranscriptMessages(older.messages, messages.value);
     hasEarlier.value = older.messages.length >= MESSAGE_PAGE_SIZE;
+    // Inserting above the viewport must not move what the reader is reading.
+    await preserveAnchor(() => {
+      messages.value = mergeTranscriptMessages(older.messages, messages.value);
+    });
   } catch (err) {
     loadEarlierError.value = formatError(err);
   } finally {
@@ -504,11 +626,47 @@ async function loadEarlier() {
   }
 }
 
+/**
+ * Ask for older history when the reader reaches the top of the pane. The
+ * explicit button above the transcript stays as the keyboard and fallback path.
+ */
+function setupEarlierObserver() {
+  earlierObserver?.disconnect();
+  earlierObserver = undefined;
+  const root = scrollerRef.value;
+  const sentinel = topSentinelRef.value;
+  if (
+    !root ||
+    !sentinel ||
+    messages.value.length === 0 ||
+    typeof IntersectionObserver === "undefined"
+  ) {
+    return;
+  }
+  earlierObserver = new IntersectionObserver(
+    (entries) => {
+      // A reader still following the newest message is not asking for history:
+      // this also keeps the first landing from reading as a scroll to the top.
+      if (pinned.value) {
+        return;
+      }
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void loadEarlier();
+      }
+    },
+    { root, rootMargin: `${EARLIER_ROOT_MARGIN_PX}px 0px 0px 0px` }
+  );
+  earlierObserver.observe(sentinel);
+}
+
+watch([scrollerRef, topSentinelRef], setupEarlierObserver, { flush: "post" });
+
 /** Append everything newer than the watermark, including a burst larger than one page. */
 async function poll(signal: AbortSignal) {
   pollError.value = "";
   await loadSession(signal);
   let after = lastSeq.value;
+  let appended = false;
   for (;;) {
     const page = await listQualityAgentSessionMessages(sessionName.value, {
       afterSeq: after,
@@ -516,13 +674,18 @@ async function poll(signal: AbortSignal) {
       signal,
     });
     if (signal.aborted || page.messages.length === 0) {
-      return;
+      break;
     }
     messages.value = mergeTranscriptMessages(messages.value, page.messages);
     after = lastTranscriptSeq(page.messages);
+    appended = true;
     if (page.messages.length < POLL_PAGE_SIZE) {
-      return;
+      break;
     }
+  }
+  if (appended && pinned.value) {
+    await nextTick();
+    await scrollToLatest();
   }
 }
 
@@ -545,8 +708,6 @@ const idlePolling = usePolling(poll, {
     pollError.value = formatError(err);
   },
 });
-
-let disposed = false;
 
 function syncPolling() {
   if (disposed || !session.value) {
@@ -590,6 +751,11 @@ async function resume() {
   }
 }
 
+async function jumpToLatest() {
+  seenSeq.value = lastSeq.value;
+  await scrollToLatest({ smooth: true });
+}
+
 watch(sessionName, async () => {
   fastPolling.stop();
   idlePolling.stop();
@@ -599,6 +765,9 @@ watch(sessionName, async () => {
   pollError.value = "";
   loadError.value = "";
   messagesError.value = "";
+  loadEarlierError.value = "";
+  seenSeq.value = 0n;
+  pinned.value = true;
   await load();
   syncPolling();
 });
@@ -612,5 +781,7 @@ onBeforeUnmount(() => {
   disposed = true;
   fastPolling.stop();
   idlePolling.stop();
+  earlierObserver?.disconnect();
+  earlierObserver = undefined;
 });
 </script>

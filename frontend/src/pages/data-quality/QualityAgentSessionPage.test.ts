@@ -35,6 +35,31 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   resumeQualityAgentSession: mocks.resumeQualityAgentSession,
 }));
 
+// Keep the lazy Markdown renderer (and its ~1MB chunk) out of the test process.
+vi.mock("@/components/common/AsyncMarkdown", () => ({
+  AsyncMarkdown: {
+    props: ["content"],
+    template: '<div class="markdown">{{ content }}</div>',
+  },
+  preloadMarkdown: () => Promise.resolve(),
+}));
+
+/** Captures the observer so a test can report the top sentinel coming into view. */
+let intersectionCallback: IntersectionObserverCallback | undefined;
+
+class FakeIntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds = [];
+  constructor(callback: IntersectionObserverCallback) {
+    intersectionCallback = callback;
+  }
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  takeRecords = () => [];
+}
+
 const Dummy = { template: "<div />" };
 const SESSION = "workspaces/ws/qualityAgentSessions/session-1";
 const START = new Date("2026-11-07T10:00:00Z");
@@ -153,6 +178,8 @@ describe("QualityAgentSessionPage", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     i18n.global.locale.value = "en-US";
+    intersectionCallback = undefined;
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
     mocks.getQualityAgent.mockReset();
     mocks.getQualityAgentSession.mockReset();
     mocks.listQualityAgentSessionMessages.mockReset();
@@ -207,6 +234,84 @@ describe("QualityAgentSessionPage", () => {
     expect(wrapper.text()).toContain("Thinking");
     expect(wrapper.text()).not.toContain("look at the latest execution");
     expect(wrapper.text()).not.toContain("Load earlier");
+    expect(wrapper.text()).toContain("Start of the transcript");
+    wrapper.unmount();
+  });
+
+  it("loads older history when the reader reaches the top of the pane", async () => {
+    const older = create(QualityAgentSessionMessageSchema, {
+      name: `${SESSION}/messages/0`,
+      seq: 0n,
+      wake: 0,
+      role: QualityAgentMessageRole.ASSISTANT,
+      origin: QualityAgentMessageOrigin.MODEL,
+      content: "an older answer",
+      createTime: timestampFromDate(START),
+    });
+    mocks.listQualityAgentSessionMessages
+      .mockResolvedValueOnce({
+        messages: messagesFixture(),
+        nextPageToken: "offset:1",
+      })
+      .mockResolvedValueOnce({ messages: [older], nextPageToken: "" });
+    const wrapper = await mountPage();
+    // Let the initial landing finish before scrolling away from it.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(intersectionCallback).toBeDefined();
+    // The reader has scrolled back from the newest message.
+    const pane = wrapper.get('[role="region"]').element as HTMLElement;
+    Object.defineProperty(pane, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(pane, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    pane.scrollTop = 100;
+    await wrapper.get('[role="region"]').trigger("scroll");
+
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    );
+    await flushPromises();
+
+    expect(mocks.listQualityAgentSessionMessages).toHaveBeenLastCalledWith(
+      SESSION,
+      expect.objectContaining({ beforeSeq: 1n })
+    );
+    expect(wrapper.text()).toContain("an older answer");
+    wrapper.unmount();
+  });
+
+  it("offers a jump back to the newest message after scrolling up", async () => {
+    const wrapper = await mountPage();
+    // Let the initial landing loop finish; it owns the scroll position until then.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const region = wrapper.get('[role="region"]');
+    const pane = region.element as HTMLElement;
+    Object.defineProperty(pane, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(pane, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    pane.scrollTop = 0;
+
+    await region.trigger("scroll");
+    expect(wrapper.text()).toContain("Jump to latest");
+
+    const jump = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Jump to latest"));
+    await jump?.trigger("click");
+    await flushPromises();
+
+    expect(pane.scrollTop).toBe(1000);
+    expect(wrapper.text()).not.toContain("Jump to latest");
     wrapper.unmount();
   });
 });

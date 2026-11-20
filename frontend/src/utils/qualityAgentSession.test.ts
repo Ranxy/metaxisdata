@@ -27,6 +27,7 @@ import {
   agentSessionStateVariant,
   agentSessionTargetName,
   agentSessionTargetPath,
+  countMessagesAfterSeq,
   groupMessagesByWake,
   lastTranscriptSeq,
   mergeTranscriptMessages,
@@ -268,6 +269,19 @@ describe("transcript merge", () => {
     expect(merged[1].content).toBe("replacement");
     expect(lastTranscriptSeq(merged)).toBe(2n);
     expect(lastTranscriptSeq([])).toBe(0n);
+  });
+
+  it("counts the messages newer than the watermark", () => {
+    const messages = [
+      messageFixture({ seq: 1n }),
+      messageFixture({ seq: 4n }),
+      messageFixture({ seq: 7n }),
+    ];
+    expect(countMessagesAfterSeq(messages, 1n)).toBe(2);
+    expect(countMessagesAfterSeq(messages, 7n)).toBe(0);
+    expect(countMessagesAfterSeq(messages, 6n)).toBe(1);
+    expect(countMessagesAfterSeq(messages, 0n)).toBe(3);
+    expect(countMessagesAfterSeq([], 0n)).toBe(0);
   });
 });
 

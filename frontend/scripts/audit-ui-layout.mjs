@@ -9,7 +9,9 @@
  *   - firstDataRowY / pct   how much of the viewport is spent before the first
  *                           row of real data
  *   - h1Count               exactly one page heading per route
- *   - nestedScrollers       pages must not nest their own scroll containers
+ *   - nestedScrollers       ordinary pages must not nest their own scroll containers;
+ *                           a full-height workbench route would be the named exception
+ *                           (it is not registered here: it needs a live session id)
  *   - documentOverflow      the window itself must never scroll: the shell is
  *                           one h-dvh scroller, so a taller document is a
  *                           second scrollbar over blank space at the bottom
