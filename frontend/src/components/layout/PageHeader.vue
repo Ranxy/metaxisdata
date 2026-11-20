@@ -2,7 +2,13 @@
   <header class="flex flex-col gap-3">
     <slot name="breadcrumb" />
 
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      :class="
+        variant === 'rail'
+          ? 'flex flex-col gap-2'
+          : 'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'
+      "
+    >
       <div class="min-w-0 flex-1 space-y-1.5">
         <p
           v-if="eyebrow"
@@ -29,7 +35,11 @@
 
       <div
         v-if="$slots.actions"
-        class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0"
+        :class="
+          variant === 'rail'
+            ? 'flex flex-wrap items-center gap-2'
+            : 'flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0'
+        "
       >
         <slot name="actions" />
       </div>
@@ -41,10 +51,18 @@
 // Every page renders its title through this component so the heading level,
 // type scale and action placement stay identical across the app. The page title
 // must outrank every card title on the page, hence the 24px step.
-defineProps<{
-  title: string;
-  description?: string;
-  /** A short overline naming the product area, e.g. "OpenLineage". */
-  eyebrow?: string;
-}>();
+//
+// `rail` is for a workbench whose identity sits in its side rail instead of a
+// page-level strip (the agent transcript): the same h1, description and actions,
+// stacked vertically so a narrow rail can hold them.
+withDefaults(
+  defineProps<{
+    title: string;
+    description?: string;
+    /** A short overline naming the product area, e.g. "OpenLineage". */
+    eyebrow?: string;
+    variant?: "page" | "rail";
+  }>(),
+  { variant: "page" }
+);
 </script>

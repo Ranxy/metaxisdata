@@ -3398,7 +3398,6 @@
     "toolTruncated": "为适应模型上下文已截断。",
     "toolTruncatedShort": "已截断",
     "transcriptEmpty": "还没有消息。runner 唤醒该会话后，转录会逐步填充。",
-    "transcriptHint": "展示唤醒原因、Agent 的回答、每次工具调用与结果，以及 runner 的备注。",
     "transcriptTitle": "转录",
     "turn": "第 {turn} 轮",
     "wake": "唤醒 {wake}",

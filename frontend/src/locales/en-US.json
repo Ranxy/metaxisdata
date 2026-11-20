@@ -3398,7 +3398,6 @@
     "toolTruncated": "Truncated to fit the model context.",
     "toolTruncatedShort": "Truncated",
     "transcriptEmpty": "No messages yet. The transcript fills as the runner wakes this session.",
-    "transcriptHint": "What woke the agent, what it answered, every tool call and result, and the runner's notes.",
     "transcriptTitle": "Transcript",
     "turn": "Turn {turn}",
     "wake": "Wake {wake}",

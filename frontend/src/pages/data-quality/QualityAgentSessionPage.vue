@@ -1,85 +1,19 @@
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3">
-    <PageHeader
-      :title="pageTitle"
-      :description="session ? agentSessionTargetPath(session) : ''"
-      class="shrink-0"
-    >
-      <template #breadcrumb>
-        <QualityAgentBreadcrumb
-          :agent-name="agentName"
-          :agent-label="agentLabel"
-          variant="session"
-          :session-label="session ? agentSessionTargetName(session) : ''"
-        />
-      </template>
-      <template #title-extra>
-        <template v-if="session">
-          <Badge :variant="agentSessionStateVariant(session.state)">
-            {{ t(agentSessionStateKey(session.state)) }}
-          </Badge>
-          <Badge :variant="agentSessionModeVariant(session.mode)">
-            {{ t(agentSessionModeKey(session.mode)) }}
-          </Badge>
-          <Badge
-            v-if="heartbeat.running"
-            variant="info"
-          >
-            {{ t("qualityAgent.sessionRunning") }}
-          </Badge>
-          <Badge
-            v-if="heartbeat.stale"
-            variant="warning"
-            :title="t('qualityAgent.sessionStaleHint')"
-          >
-            {{ t("qualityAgent.sessionStale") }}
-          </Badge>
-        </template>
-      </template>
-      <template #actions>
-        <Button
-          v-if="targetRoute"
-          variant="outline"
-          size="sm"
-          as-child
-        >
-          <RouterLink :to="targetRoute">
-            <Target class="mr-2 h-4 w-4" />
-            {{ t("qualityAgent.openTarget") }}
-          </RouterLink>
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          :disabled="isLoading"
-          @click="reload"
-        >
-          <RefreshCcw
-            class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': isLoading }"
-          />
-          {{ t("common.refresh") }}
-        </Button>
-        <Button
-          v-if="session && canManage && session.state === QualityAgentSessionState.BLOCKED"
-          size="sm"
-          :disabled="resuming"
-          @click="resume"
-        >
-          <Loader2
-            v-if="resuming"
-            class="mr-2 h-4 w-4 animate-spin"
-          />
-          {{ t("qualityAgent.resumeSession") }}
-        </Button>
-      </template>
-    </PageHeader>
-
-    <QualityAgentTabs
-      :agent-name="agentName"
-      active="sessions"
-      class="shrink-0 self-start"
-    />
+    <!-- Navigation strip only: the target identity lives in the rail, so the
+         transcript pane keeps the height it used to lose to a page header. -->
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-2">
+      <QualityAgentBreadcrumb
+        :agent-name="agentName"
+        :agent-label="agentLabel"
+        variant="session"
+        :session-label="session ? agentSessionTargetName(session) : ''"
+      />
+      <QualityAgentTabs
+        :agent-name="agentName"
+        active="sessions"
+      />
+    </div>
 
     <Alert
       v-if="error"
@@ -109,26 +43,112 @@
         v-if="session"
         class="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row"
       >
-        <!-- Below xl the run state is a disclosure above the transcript: the
-             chat pane keeps the rest of the height instead of losing 300+px to
-             a sidebar. -->
-        <Collapsible class="shrink-0 rounded-lg border border-border/70 bg-card shadow-e1 xl:hidden">
-          <CollapsibleTrigger
-            class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-accent/40"
+        <!-- The rail carries the page identity and the run state. It is first in
+             the DOM so the heading precedes the transcript; below xl it sits
+             above the pane, at xl it moves to its right. -->
+        <aside class="order-1 flex shrink-0 flex-col gap-3 xl:order-2 xl:w-80 xl:self-start xl:max-h-full xl:overflow-y-auto">
+          <PageHeader
+            :title="pageTitle"
+            :description="agentSessionTargetPath(session)"
+            variant="rail"
           >
-            <span
-              class="h-2 w-2 shrink-0 rounded-full"
-              :class="heartbeat.running ? 'bg-info' : 'bg-muted-foreground/40'"
-            />
-            <span class="truncate font-medium">{{ statusLabel }}</span>
-            <span class="ml-auto flex shrink-0 items-center gap-3 text-xs tabular-nums text-muted-foreground">
-              <span>{{ t("qualityAgent.sessionWakes") }} {{ session.wakeCount }}</span>
-              <span class="hidden sm:inline">{{ lastActivityLabel }}</span>
-              <ChevronDown class="h-4 w-4" />
-            </span>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div class="border-t px-4 py-3">
+            <template #title-extra>
+              <Badge :variant="agentSessionStateVariant(session.state)">
+                {{ t(agentSessionStateKey(session.state)) }}
+              </Badge>
+              <Badge :variant="agentSessionModeVariant(session.mode)">
+                {{ t(agentSessionModeKey(session.mode)) }}
+              </Badge>
+              <Badge
+                v-if="heartbeat.running"
+                variant="info"
+              >
+                {{ t("qualityAgent.sessionRunning") }}
+              </Badge>
+              <Badge
+                v-if="heartbeat.stale"
+                variant="warning"
+                :title="t('qualityAgent.sessionStaleHint')"
+              >
+                {{ t("qualityAgent.sessionStale") }}
+              </Badge>
+            </template>
+            <template #actions>
+              <Button
+                v-if="targetRoute"
+                variant="outline"
+                size="sm"
+                as-child
+              >
+                <RouterLink :to="targetRoute">
+                  <Target class="mr-2 h-4 w-4" />
+                  {{ t("qualityAgent.openTarget") }}
+                </RouterLink>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="isLoading"
+                @click="reload"
+              >
+                <RefreshCcw
+                  class="mr-2 h-4 w-4"
+                  :class="{ 'animate-spin': isLoading }"
+                />
+                {{ t("common.refresh") }}
+              </Button>
+              <Button
+                v-if="canManage && session.state === QualityAgentSessionState.BLOCKED"
+                size="sm"
+                :disabled="resuming"
+                @click="resume"
+              >
+                <Loader2
+                  v-if="resuming"
+                  class="mr-2 h-4 w-4 animate-spin"
+                />
+                {{ t("qualityAgent.resumeSession") }}
+              </Button>
+            </template>
+          </PageHeader>
+
+          <!-- Below xl the run state is a disclosure in the rail; at xl it is the
+               card under the identity. -->
+          <Collapsible class="rounded-lg border border-border/70 bg-card shadow-e1 xl:hidden">
+            <CollapsibleTrigger
+              class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-accent/40"
+            >
+              <span
+                class="h-2 w-2 shrink-0 rounded-full"
+                :class="heartbeat.running ? 'bg-info' : 'bg-muted-foreground/40'"
+              />
+              <span class="truncate font-medium">{{ statusLabel }}</span>
+              <span class="ml-auto flex shrink-0 items-center gap-3 text-xs tabular-nums text-muted-foreground">
+                <span>{{ t("qualityAgent.sessionWakes") }} {{ session.wakeCount }}</span>
+                <span class="hidden sm:inline">{{ lastActivityLabel }}</span>
+                <ChevronDown class="h-4 w-4" />
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div class="border-t px-4 py-3">
+                <QualityAgentRunState
+                  :session="session"
+                  :heartbeat="heartbeat"
+                  :status-label="statusLabel"
+                  :next-wake-label="nextWakeLabel"
+                  :last-activity-label="lastActivityLabel"
+                  :current-turn="currentTurn"
+                  :poll-error="pollError"
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <Card class="hidden xl:block">
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">{{ t("qualityAgent.runPanelTitle") }}</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3 pt-4">
               <QualityAgentRunState
                 :session="session"
                 :heartbeat="heartbeat"
@@ -138,15 +158,11 @@
                 :current-turn="currentTurn"
                 :poll-error="pollError"
               />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+            </CardContent>
+          </Card>
+        </aside>
 
-        <Card class="flex min-h-[24rem] min-w-0 flex-1 flex-col overflow-hidden">
-          <CardHeader class="shrink-0 border-b">
-            <CardTitle class="text-base">{{ t("qualityAgent.transcriptTitle") }}</CardTitle>
-            <CardDescription>{{ t("qualityAgent.transcriptHint") }}</CardDescription>
-          </CardHeader>
+        <Card class="order-2 flex min-h-[24rem] min-w-0 flex-1 flex-col overflow-hidden xl:order-1">
           <CardContent class="flex min-h-0 flex-1 flex-col p-0">
             <div
               :class="
@@ -258,25 +274,6 @@
             </div>
           </CardContent>
         </Card>
-
-        <aside class="hidden w-80 shrink-0 self-start xl:block xl:max-h-full xl:overflow-y-auto">
-          <Card>
-            <CardHeader class="border-b">
-              <CardTitle class="text-base">{{ t("qualityAgent.runPanelTitle") }}</CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-3 pt-4">
-              <QualityAgentRunState
-                :session="session"
-                :heartbeat="heartbeat"
-                :status-label="statusLabel"
-                :next-wake-label="nextWakeLabel"
-                :last-activity-label="lastActivityLabel"
-                :current-turn="currentTurn"
-                :poll-error="pollError"
-              />
-            </CardContent>
-          </Card>
-        </aside>
       </div>
     </PageState>
   </div>
@@ -317,13 +314,7 @@ import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
