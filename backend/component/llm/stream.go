@@ -43,9 +43,9 @@ const (
 	llmDebugBodyLimit = 1 << 20
 
 	// fallbackMaxOutputTokens is the output budget a provider is retried with when
-	// it rejects the configured/default budget as too large. Several models cap
-	// output lower than the 32K server default (gpt-4-turbo accepts 4K) and give
-	// only a 400/422 as the signal; one retry keeps those profiles usable.
+	// it rejects the configured/default model budget as too large. Several models
+	// cap output lower than the 32K server default (gpt-4-turbo accepts 4K) and
+	// give only a 400/422 as the signal; one retry keeps those models usable.
 	fallbackMaxOutputTokens = 4096
 )
 
@@ -57,7 +57,7 @@ type StreamRequest struct {
 	Messages []Message
 	// Tools is the tool declarations the model may call.
 	Tools []ToolDef
-	// MaxTokens bounds the generated answer; zero falls back to the profile budget.
+	// MaxTokens bounds the generated answer; zero falls back to the model budget.
 	MaxTokens int
 	// Temperature is the sampling temperature; nil leaves the provider's default.
 	Temperature *float64

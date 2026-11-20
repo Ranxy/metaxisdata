@@ -640,8 +640,8 @@ func protoFloat64Zero() *float64 {
 }
 
 // OutputTokenBudget resolves the output budget one analysis runs with: the
-// provider profile's resolved value, or the server default for a config built by
-// hand (tests, an older caller). Diagnostics report the actual value sent.
+// model's resolved value, or the server default for a config built by hand
+// (tests, an older caller). Diagnostics report the actual value sent.
 func OutputTokenBudget(config llm.ResolvedConfig) int {
 	if config.MaxOutputTokens > 0 {
 		return config.MaxOutputTokens

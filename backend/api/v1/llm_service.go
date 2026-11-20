@@ -49,6 +49,32 @@ func getDefaultBaseURL(providerID string) string {
 	return ""
 }
 
+// providerLimits is the server-owned capacity contract the settings page renders.
+func providerLimits() *v1pb.LlmProviderLimits {
+	return &v1pb.LlmProviderLimits{
+		DefaultMaxOutputTokens: llm.DefaultMaxOutputTokens,
+		MinMaxOutputTokens:     llm.MinMaxOutputTokens,
+		MaxMaxOutputTokens:     llm.MaxMaxOutputTokens,
+		DefaultContextWindow:   llm.DefaultContextWindow,
+		MinContextWindow:       llm.MinContextWindow,
+		MaxContextWindow:       llm.MaxContextWindow,
+	}
+}
+
+// validateProfileModels checks every model entry's name and capacities. The
+// error names the model so the settings page can point at the row.
+func validateProfileModels(models []*v1pb.LlmProviderModel) error {
+	if err := llm.ValidateModelNames(convertV1ModelsToStore(models)); err != nil {
+		return err
+	}
+	for _, model := range models {
+		if err := llm.ValidateModelLimits(model.GetContextWindow(), model.GetMaxOutputTokens()); err != nil {
+			return errors.Wrapf(err, "model %q", model.GetName())
+		}
+	}
+	return nil
+}
+
 // ---- RPC handlers ----
 
 func (s *LLMService) ListLLMProviderProfiles(ctx context.Context, req *connect.Request[v1pb.ListLLMProviderProfilesRequest]) (*connect.Response[v1pb.ListLLMProviderProfilesResponse], error) {
@@ -89,6 +115,7 @@ func (s *LLMService) ListLLMProviderProfiles(ctx context.Context, req *connect.R
 		Profiles:      pbProfiles,
 		Definitions:   builtinDefinitions(),
 		NextPageToken: nextPageToken,
+		Limits:        providerLimits(),
 	}), nil
 }
 
@@ -118,16 +145,15 @@ func (s *LLMService) CreateLLMProviderProfile(ctx context.Context, req *connect.
 	if title == "" {
 		title = autoGenerateTitle(pbProfile)
 	}
-	if err := llm.ValidateMaxOutputTokens(pbProfile.GetMaxOutputTokens()); err != nil {
+	if err := validateProfileModels(pbProfile.Models); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	meta := &storepb.LlmProviderProfile{
-		Title:           title,
-		Type:            convertV1LLMProviderType(pbProfile.Type),
-		BaseUrl:         baseURL,
-		Models:          convertV1ModelsToStore(pbProfile.Models),
-		MaxOutputTokens: pbProfile.GetMaxOutputTokens(),
+		Title:   title,
+		Type:    convertV1LLMProviderType(pbProfile.Type),
+		BaseUrl: baseURL,
+		Models:  convertV1ModelsToStore(pbProfile.Models),
 	}
 
 	msg, err := s.store.CreateLLMProfile(ctx, resourceID, meta, pbProfile.ApiKey)
@@ -200,17 +226,14 @@ func buildLLMProfileUpdate(pbProfile *v1pb.LlmProviderProfile, maskPaths []strin
 			update.BaseURL = &baseURL
 		}
 		if len(pbProfile.GetModels()) > 0 {
+			if err := validateProfileModels(pbProfile.GetModels()); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
 			update.Models = convertV1ModelsToStore(pbProfile.GetModels())
 		}
 		if pbProfile.GetApiKey() != "" {
 			apiKey := pbProfile.GetApiKey()
 			update.APIKey = &apiKey
-		}
-		if value := pbProfile.GetMaxOutputTokens(); value != 0 {
-			if err := llm.ValidateMaxOutputTokens(value); err != nil {
-				return nil, connect.NewError(connect.CodeInvalidArgument, err)
-			}
-			update.MaxOutputTokens = &value
 		}
 		return update, nil
 	}
@@ -227,18 +250,15 @@ func buildLLMProfileUpdate(pbProfile *v1pb.LlmProviderProfile, maskPaths []strin
 			}
 			update.BaseURL = &baseURL
 		case "models":
+			if err := validateProfileModels(pbProfile.GetModels()); err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, err)
+			}
 			update.Models = convertV1ModelsToStore(pbProfile.GetModels())
 		case "api_key":
 			if pbProfile.GetApiKey() != "" {
 				apiKey := pbProfile.GetApiKey()
 				update.APIKey = &apiKey
 			}
-		case "max_output_tokens":
-			value := pbProfile.GetMaxOutputTokens()
-			if err := llm.ValidateMaxOutputTokens(value); err != nil {
-				return nil, connect.NewError(connect.CodeInvalidArgument, err)
-			}
-			update.MaxOutputTokens = &value
 		default:
 		}
 	}
@@ -350,15 +370,14 @@ func convertProfileToV1(msg *store.LLMProfileMessage) *v1pb.LlmProviderProfile {
 	}
 	meta := msg.Metadata
 	return &v1pb.LlmProviderProfile{
-		Name:            meta.Name,
-		Title:           meta.Title,
-		Type:            convertLLMProviderType(meta.Type),
-		BaseUrl:         meta.BaseUrl,
-		Models:          convertStoreModelsToV1(meta.Models),
-		MaxOutputTokens: meta.GetMaxOutputTokens(),
-		CreateTime:      meta.CreateTime,
-		UpdateTime:      meta.UpdateTime,
-		MaskedApiKey:    maskAPIKey(msg.APIKey),
+		Name:         meta.Name,
+		Title:        meta.Title,
+		Type:         convertLLMProviderType(meta.Type),
+		BaseUrl:      meta.BaseUrl,
+		Models:       convertStoreModelsToV1(meta.Models),
+		CreateTime:   meta.CreateTime,
+		UpdateTime:   meta.UpdateTime,
+		MaskedApiKey: maskAPIKey(msg.APIKey),
 	}
 }
 
@@ -378,8 +397,10 @@ func convertV1ModelsToStore(pbModels []*v1pb.LlmProviderModel) []*storepb.LlmPro
 	models := make([]*storepb.LlmProviderModel, 0, len(pbModels))
 	for _, m := range pbModels {
 		models = append(models, &storepb.LlmProviderModel{
-			Name:    m.Name,
-			Enabled: m.Enabled,
+			Name:            m.Name,
+			Enabled:         m.Enabled,
+			ContextWindow:   m.ContextWindow,
+			MaxOutputTokens: m.MaxOutputTokens,
 		})
 	}
 	return models
@@ -389,8 +410,10 @@ func convertStoreModelsToV1(models []*storepb.LlmProviderModel) []*v1pb.LlmProvi
 	v1Models := make([]*v1pb.LlmProviderModel, 0, len(models))
 	for _, m := range models {
 		v1Models = append(v1Models, &v1pb.LlmProviderModel{
-			Name:    m.Name,
-			Enabled: m.Enabled,
+			Name:            m.Name,
+			Enabled:         m.Enabled,
+			ContextWindow:   m.ContextWindow,
+			MaxOutputTokens: m.MaxOutputTokens,
 		})
 	}
 	return v1Models

@@ -1971,53 +1971,68 @@ func TestDataQualityLLMLimitsRealServerIntegration(t *testing.T) {
 	require.Equal(t, 0, defaults.Msg.GetResetsAt().AsTime().UTC().Hour(), "the reset is 00:00 UTC")
 	require.True(t, defaults.Msg.GetResetsAt().AsTime().After(time.Now()))
 
-	// The provider profile owns the output budget; zero clears it back to the
-	// server default.
+	// Model capacities are per model; zero means the server default.
 	created, err := llmClient.CreateLLMProviderProfile(ctx, withToken(token, &v1pb.CreateLLMProviderProfileRequest{
 		Profile: &v1pb.LlmProviderProfile{
-			Title:           "integration limits provider",
-			Type:            v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
-			BaseUrl:         "http://127.0.0.1:1/v1",
-			ApiKey:          "integration-key",
-			MaxOutputTokens: 4096,
-			Models:          []*v1pb.LlmProviderModel{{Name: "integration-model", Enabled: true}},
+			Title:   "integration limits provider",
+			Type:    v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+			BaseUrl: "http://127.0.0.1:1/v1",
+			ApiKey:  "integration-key",
+			Models: []*v1pb.LlmProviderModel{
+				{Name: "integration-model", Enabled: true, ContextWindow: 131072, MaxOutputTokens: 4096},
+				{Name: "integration-small-model", Enabled: false, ContextWindow: 65536, MaxOutputTokens: 2048},
+			},
 		},
 	}))
 	require.NoError(t, err)
-	require.Equal(t, int32(4096), created.Msg.GetMaxOutputTokens())
+	require.Len(t, created.Msg.GetModels(), 2)
+	require.Equal(t, int32(131072), created.Msg.GetModels()[0].GetContextWindow())
+	require.Equal(t, int32(4096), created.Msg.GetModels()[0].GetMaxOutputTokens())
+	require.Equal(t, int32(65536), created.Msg.GetModels()[1].GetContextWindow())
+	require.Equal(t, int32(2048), created.Msg.GetModels()[1].GetMaxOutputTokens())
 	t.Cleanup(func() {
 		_, _ = llmClient.DeleteLLMProviderProfile(context.Background(), withToken(token, &v1pb.DeleteLLMProviderProfileRequest{Name: created.Msg.GetName()}))
 	})
 
 	updated, err := llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
 		Profile: &v1pb.LlmProviderProfile{
-			Name:            created.Msg.GetName(),
-			MaxOutputTokens: 8192,
+			Name: created.Msg.GetName(),
+			Models: []*v1pb.LlmProviderModel{
+				{Name: "integration-model", Enabled: true, ContextWindow: 131072, MaxOutputTokens: 8192},
+			},
 		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"models"}},
 	}))
 	require.NoError(t, err)
-	require.Equal(t, int32(8192), updated.Msg.GetMaxOutputTokens())
+	require.Len(t, updated.Msg.GetModels(), 1)
+	require.Equal(t, int32(8192), updated.Msg.GetModels()[0].GetMaxOutputTokens())
 
 	cleared, err := llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
 		Profile: &v1pb.LlmProviderProfile{
-			Name:            created.Msg.GetName(),
-			MaxOutputTokens: 0,
+			Name:   created.Msg.GetName(),
+			Models: []*v1pb.LlmProviderModel{{Name: "integration-model", Enabled: true}},
 		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"models"}},
 	}))
 	require.NoError(t, err)
-	require.Zero(t, cleared.Msg.GetMaxOutputTokens(), "an explicit zero clears the budget to the server default")
+	require.Zero(t, cleared.Msg.GetModels()[0].GetMaxOutputTokens(), "an explicit zero clears the budget to the server default")
+	require.Zero(t, cleared.Msg.GetModels()[0].GetContextWindow(), "an explicit zero clears the window to the server default")
 
-	_, err = llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
-		Profile: &v1pb.LlmProviderProfile{
-			Name:            created.Msg.GetName(),
-			MaxOutputTokens: 100,
-		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"max_output_tokens"}},
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	// A budget that consumes the whole window, or a duplicate model name, is refused.
+	for _, models := range [][]*v1pb.LlmProviderModel{
+		{{Name: "integration-model", ContextWindow: 16384}},
+		{{Name: "integration-model"}, {Name: "integration-model"}},
+	} {
+		_, err = llmClient.UpdateLLMProviderProfile(ctx, withToken(token, &v1pb.UpdateLLMProviderProfileRequest{
+			Profile: &v1pb.LlmProviderProfile{
+				Name:   created.Msg.GetName(),
+				Models: models,
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"models"}},
+		}))
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
 
 	// The daily and concurrency limits are writable and reported back resolved.
 	_, err = fixture.settings.UpdateWorkspaceProfileSetting(ctx, withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{

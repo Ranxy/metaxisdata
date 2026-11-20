@@ -23,35 +23,38 @@ func TestBuildLLMProfileUpdateWithAnEmptyMaskIsPartial(t *testing.T) {
 	require.Nil(t, update.APIKey)
 }
 
-// The output budget is a profile field: an explicit mask writes it (including zero,
-// which clears it back to the default) and the store patch carries it.
-func TestBuildLLMProfileUpdateCarriesTheOutputBudget(t *testing.T) {
+// The capacities live on each model entry: both the explicit-mask and the
+// partial-update path carry them and validate them.
+func TestBuildLLMProfileUpdateCarriesModelCapacities(t *testing.T) {
 	t.Parallel()
 
-	update, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 4096}, []string{"max_output_tokens"})
-	require.NoError(t, err)
-	require.NotNil(t, update.MaxOutputTokens)
-	require.Equal(t, int32(4096), *update.MaxOutputTokens)
+	models := []*v1pb.LlmProviderModel{
+		{Name: "m1", Enabled: true, ContextWindow: 131072, MaxOutputTokens: 8192},
+	}
+	for _, mask := range [][]string{{"models"}, nil} {
+		update, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{Models: models}, mask)
+		require.NoError(t, err)
+		require.Len(t, update.Models, 1)
+		require.Equal(t, int32(131072), update.Models[0].ContextWindow)
+		require.Equal(t, int32(8192), update.Models[0].MaxOutputTokens)
+	}
 
-	// Explicit zero clears the field; the mask must not be ignored.
-	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{}, []string{"max_output_tokens"})
-	require.NoError(t, err)
-	require.NotNil(t, update.MaxOutputTokens)
-	require.Zero(t, *update.MaxOutputTokens)
+	// An output budget that leaves no message room is refused for either path.
+	for _, mask := range [][]string{{"models"}, nil} {
+		_, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{Models: []*v1pb.LlmProviderModel{
+			{Name: "m1", ContextWindow: 16384},
+		}}, mask)
+		require.Error(t, err)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	}
 
-	// An empty mask writes a populated value and leaves an unset one alone.
-	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 8192}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, update.MaxOutputTokens)
-	require.Equal(t, int32(8192), *update.MaxOutputTokens)
-
-	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{Title: "renamed"}, nil)
-	require.NoError(t, err)
-	require.Nil(t, update.MaxOutputTokens)
-
-	// A value outside the supported range is refused for either path.
-	for _, mask := range [][]string{{"max_output_tokens"}, nil} {
-		_, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{MaxOutputTokens: 100}, mask)
+	// A duplicate or empty model name is refused too.
+	for _, models := range [][]*v1pb.LlmProviderModel{
+		{{Name: "  "}},
+		{{Name: "m1"}, {Name: " m1 "}},
+	} {
+		_, err := buildLLMProfileUpdate(&v1pb.LlmProviderProfile{Models: models}, []string{"models"})
+		require.Error(t, err)
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	}
 }
