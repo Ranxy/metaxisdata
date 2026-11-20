@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -38,6 +39,11 @@ func WithTableContext(reader TableContextReader) Option {
 // started, so a draft that a previous pass merely refreshed cannot be mistaken for
 // a new one. A nil hook leaves every draft in the review queue.
 type AdoptionFunc func(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time)
+
+// OwnerAdoptionFunc executes an adoption pass the owner explicitly requested in
+// the current wake. It is the in-process counterpart of the adopt tool; a process
+// that does not wire it keeps the tool's execution branch returning an error.
+type OwnerAdoptionFunc func(ctx context.Context, req dataquality.AgentAdoptionRequest) (dataquality.AgentAdoptionReport, error)
 
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.
 func WithDraftChecks(draft DraftChecksFunc) Option {

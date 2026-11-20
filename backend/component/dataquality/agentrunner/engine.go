@@ -84,6 +84,9 @@ type Engine struct {
 	draftChecks  DraftChecksFunc
 	// adoption applies the agent's auto-adoption guardrails after a triage wake.
 	adoption AdoptionFunc
+	// ownerAdoption executes an owner-requested adoption from the model tool. A
+	// process that does not wire it keeps the tool out of reach.
+	ownerAdoption OwnerAdoptionFunc
 	// checker enforces each tool's IAM permission against the session's agent
 	// principal. A process that does not wire it skips the check; production wires
 	// it, because an in-process tool call does not pass the RPC ACL interceptor.
@@ -99,6 +102,12 @@ type Engine struct {
 // this is a setter rather than an option.
 func (e *Engine) SetAdoption(adoption AdoptionFunc) {
 	e.adoption = adoption
+}
+
+// SetOwnerAdoption wires the owner-requested adoption path after the API service
+// exists, for the same reason SetAdoption is a setter.
+func (e *Engine) SetOwnerAdoption(ownerAdoption OwnerAdoptionFunc) {
+	e.ownerAdoption = ownerAdoption
 }
 
 // NewEngine creates the deterministic engine.
@@ -142,6 +151,9 @@ type Outcome struct {
 	// ProcessedSeq is the largest message seq this wake consumed. A newer message
 	// (an event that arrived mid-wake) triggers an immediate follow-up wake.
 	ProcessedSeq int64
+	// adoptionUsed reports that the model called the owner-requested adoption tool,
+	// so the wake must not also run the automatic adoption pass.
+	adoptionUsed bool
 	EngineState  *storepb.QualityAgentSessionEngineState
 	Summary      string
 }
@@ -158,7 +170,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 		return Outcome{}, errors.Wrap(err, "failed to read the session agent")
 	}
 	language := e.sessionLanguage(ctx, agent)
-	system, err := e.ensureSystemMessage(ctx, session, language)
+	system, systemChanged, err := e.ensureSystemMessage(ctx, session, agent, language)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -174,11 +186,18 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	}
 	wake := session.WakeCount + 1
 	wakeStartedAt := e.now()
+	instruction := wakePrompt(session, wake, pending, agent)
+	if systemChanged {
+		// The stored system prompt was rewritten on this wake. The notice is part of
+		// the wake message, so the transcript stays append-only and the model is told
+		// once that earlier statements about its abilities may be stale.
+		instruction = configurationChangeNotice(agent) + "\n\n" + instruction
+	}
 	_, err = e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 		Wake:           wake,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
-		Content:        wakePrompt(session, wake, pending) + "\n\n" + languageReminder(language),
+		Content:        instruction + "\n\n" + languageReminder(language),
 		IdempotencyKey: fmt.Sprintf("wake:%d", wake),
 	})
 	if err != nil {
@@ -200,8 +219,8 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 	if e.resolveModel != nil && e.chat != nil {
 		config, ok, err := e.resolveModel(ctx, agent)
 		if err == nil && ok {
-			outcome, wakeErr := e.modelWake(ctx, session, wake, system, pending, config, options)
-			if wakeErr == nil && session.Kind != 2 &&
+			outcome, wakeErr := e.modelWake(ctx, session, agent, wake, system, pending, config, options)
+			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 &&
 				session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
 				e.adoption != nil {
 				e.adoption(ctx, session, wakeStartedAt)
@@ -236,6 +255,7 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 func (e *Engine) modelWake(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
+	sessionAgent *store.QualityAgentMessage,
 	wake int32,
 	system *store.QualityAgentTranscriptMessage,
 	pending []*store.QualityAgentTranscriptMessage,
@@ -282,8 +302,8 @@ func (e *Engine) modelWake(
 		turnUsage      = map[int32]*llm.Usage{}
 	)
 	// The control tools write this state; the wake applies it once, after the loop.
-	control := &wakeControl{}
-	set, err := e.toolSet(session, control)
+	control := &wakeControl{wake: wake, ownerAsked: ownerAsked(pending)}
+	set, err := e.toolSet(session, sessionAgent, control)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -646,10 +666,12 @@ func (e *Engine) reviewFailedExecution(ctx context.Context, session *store.Quali
 	}, nil
 }
 
-// ensureSystemMessage returns the session's system message, creating it on the first
-// wake. The system message is never compacted away: the context builder always
-// prepends it.
-func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.QualityAgentSessionMessage, language string) (*store.QualityAgentTranscriptMessage, error) {
+// ensureSystemMessage returns the session's system message, creating it on the
+// first wake and rewriting it in place when the composed prompt changed. changed
+// reports a rewrite of an existing row: the wake uses it to append one
+// configuration-change notice instead of silently leaving the old wording in the
+// model's history.
+func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, language string) (*store.QualityAgentTranscriptMessage, bool, error) {
 	systemRole := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM
 	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
 		SessionID: session.ID,
@@ -657,29 +679,34 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 		Limit:     1,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the session's system message")
+		return nil, false, errors.Wrap(err, "failed to read the session's system message")
 	}
-	desired := renderSystemPrompt(specForSession(session), language)
+	desired := renderSystemPrompt(specForSession(session), agent, language)
 	if len(messages) > 0 {
 		if messages[0].Content != desired {
 			updated, err := e.store.UpdateQualityAgentSystemMessage(ctx, session.ID, desired)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to update the session system message")
+				return nil, false, errors.Wrap(err, "failed to update the session system message")
 			}
 			if !updated {
-				return nil, errors.New("the session system message disappeared while updating it")
+				return nil, false, errors.New("the session system message disappeared while updating it")
 			}
 			messages[0].Content = desired
+			return messages[0], true, nil
 		}
-		return messages[0], nil
+		return messages[0], false, nil
 	}
-	return e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
+	created, err := e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 		Wake:           0,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
 		Content:        desired,
 		IdempotencyKey: "system:v1",
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return created, false, nil
 }
 
 // sessionLanguage is the single language decision for a session: the agent's
@@ -759,6 +786,18 @@ func (e *Engine) pendingMessages(ctx context.Context, session *store.QualityAgen
 		return nil, errors.Wrap(err, "failed to read the pending session inputs")
 	}
 	return messages, nil
+}
+
+// ownerAsked reports whether this wake is answering a person's question. The
+// adoption tool is reachable only then; a scheduled or event wake has no owner
+// instruction behind it.
+func ownerAsked(pending []*store.QualityAgentTranscriptMessage) bool {
+	for _, message := range pending {
+		if message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK {
+			return true
+		}
+	}
+	return false
 }
 
 // loadTranscript reads the messages after the compaction checkpoint.
