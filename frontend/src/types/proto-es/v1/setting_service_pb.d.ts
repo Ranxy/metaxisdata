@@ -62,10 +62,10 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
   enforceIdentityDomain: boolean;
 
   /**
-   * The LLM provider profiles the model-backed features may use, as profile
-   * resource names ("llm-provider-profiles/{id}"): Explain SQL, the data quality
-   * analyses and the quality agents. Empty means every enabled profile is
-   * allowed.
+   * The LLM provider profiles Explain SQL may use, as profile resource names
+   * ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
+   * The data quality analyses and the quality agents choose their profile in
+   * their own settings, so this list does not restrict them.
    *
    * @generated from field: repeated string allowed_llm_provider_profiles = 7;
    */
@@ -128,7 +128,7 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
 
   /**
    * The LLM provider profile the quality analyses use, as a profile resource
-   * name. Empty means the first allowed profile.
+   * name. Empty means the first enabled profile.
    *
    * @generated from field: string llm_provider_profile = 2;
    */

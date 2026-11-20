@@ -12904,7 +12904,7 @@ default: the rule engine and the agents&#39; deterministic paths are fully offli
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The LLM provider profile the quality analyses use, as a profile resource
-name. Empty means the first allowed profile. </p></td>
+name. Empty means the first enabled profile. </p></td>
                 </tr>
               
                 <tr>
@@ -13558,10 +13558,10 @@ disables the restriction. </p></td>
                   <td>allowed_llm_provider_profiles</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The LLM provider profiles the model-backed features may use, as profile
-resource names (&#34;llm-provider-profiles/{id}&#34;): Explain SQL, the data quality
-analyses and the quality agents. Empty means every enabled profile is
-allowed. </p></td>
+                  <td><p>The LLM provider profiles Explain SQL may use, as profile resource names
+(&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed.
+The data quality analyses and the quality agents choose their profile in
+their own settings, so this list does not restrict them. </p></td>
                 </tr>
               
                 <tr>

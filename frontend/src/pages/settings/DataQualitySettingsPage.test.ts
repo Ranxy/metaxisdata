@@ -108,6 +108,14 @@ function dialogButton(text: string): HTMLElement | undefined {
   ].find((button) => button.textContent?.trim() === text);
 }
 
+interface PageVm {
+  form: { llmProviderProfile: string };
+}
+
+function vm(wrapper: ReturnType<typeof mount>): PageVm {
+  return wrapper.vm as unknown as PageVm;
+}
+
 async function mountPage(permissions = PERMISSIONS) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -157,7 +165,9 @@ describe("DataQualitySettingsPage", () => {
     mocks.listDatabases.mockResolvedValue({ databases: [] });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
-        allowedLlmProviderProfiles: ["llmProfiles/p1"],
+        // Deliberately excludes the profile the analyses use: the Explain SQL
+        // allowlist does not restrict the data quality pages.
+        allowedLlmProviderProfiles: ["llm-provider-profiles/elsewhere"],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           llmProviderProfile: "llmProfiles/p1",
@@ -243,8 +253,10 @@ describe("DataQualitySettingsPage", () => {
         )?.element as HTMLInputElement
       ).value
     ).toBe("12");
-    // The LLM profile select lists the allowed profile.
+    // The LLM profile select lists every enabled profile and the stored profile is
+    // kept even though the Explain SQL allowlist excludes it.
     expect(wrapper.text()).toContain("Primary");
+    expect(vm(wrapper).form.llmProviderProfile).toBe("llmProfiles/p1");
   });
 
   it("saves the whole section with the expected setting", async () => {
@@ -772,5 +784,58 @@ describe("DataQualitySettingsPage", () => {
     expect(
       mocks.updateDataQualitySetting.mock.calls[0]?.[0]?.agentRunnerEnabled
     ).toBe(true);
+  });
+
+  it("clears a stored profile that no longer enables a model", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/idle",
+        }),
+      })
+    );
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        {
+          name: "llmProfiles/idle",
+          title: "Idle",
+          models: [{ enabled: false }],
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+
+    // Nothing makes that profile usable, so the form falls back to the automatic
+    // choice instead of offering a selection the analyses could not run.
+    expect(vm(wrapper).form.llmProviderProfile).toBe("");
+  });
+
+  it("explains why nothing is selectable when no profile enables a model", async () => {
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        { name: "llmProfiles/off", title: "Off", models: [{ enabled: false }] },
+      ],
+    });
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.llmProfileNoProfiles")
+    );
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.llmProfileHint")
+    );
+  });
+
+  it("does not claim there are no profiles when the list cannot be read", async () => {
+    mocks.listProfiles.mockRejectedValue(new Error("permission denied"));
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.llmProfileNoProfiles")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.llmProfileHint")
+    );
   });
 });

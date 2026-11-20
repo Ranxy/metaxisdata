@@ -221,10 +221,10 @@ type WorkspaceProfileSetting struct {
 	Domains []string `protobuf:"bytes,5,rep,name=domains,proto3" json:"domains,omitempty"`
 	// Whether to restrict signup and signin to the domains above.
 	EnforceIdentityDomain bool `protobuf:"varint,6,opt,name=enforce_identity_domain,json=enforceIdentityDomain,proto3" json:"enforce_identity_domain,omitempty"`
-	// The LLM provider profiles the model-backed features may use, as profile
-	// resource names ("llm-provider-profiles/{id}"): Explain SQL, the data quality
-	// analyses and the quality agents. Empty means every enabled profile is
-	// allowed.
+	// The LLM provider profiles Explain SQL may use, as profile resource names
+	// ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
+	// The data quality analyses and the quality agents choose their profile in
+	// their own settings, so this list does not restrict them.
 	AllowedLlmProviderProfiles []string `protobuf:"bytes,7,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
 	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 	// Off by default, and only usable once external_url is configured.
@@ -356,7 +356,7 @@ type DataQualitySetting struct {
 	// default: the rule engine and the agents' deterministic paths are fully offline.
 	EnableLlmAnalysis bool `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
 	// The LLM provider profile the quality analyses use, as a profile resource
-	// name. Empty means the first allowed profile.
+	// name. Empty means the first enabled profile.
 	LlmProviderProfile string `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
 	// Whether failed checks keep the sampled rows as evidence. Off means a result
 	// records its counts but no values.

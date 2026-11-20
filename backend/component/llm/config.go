@@ -9,9 +9,10 @@ import (
 
 // This file owns the provider-selection rules a feature uses to turn the
 // registry's enabled profiles into the one provider + model it runs on. It is a
-// component-level rule, not a handler's: Explain SQL and the data quality
-// analysis resolve their provider the same way, so the allowlist and the default
-// cannot drift between them.
+// component-level rule, not a handler's. Only Explain SQL consults the workspace
+// allowlist: the data quality analyses resolve the profile their own settings
+// name and a quality agent pins an exact pair, so neither applies the allowlist a
+// second time.
 //
 // The failures are Connect errors because every consumer is an RPC handler that
 // returns them unchanged. A non-RPC caller can still read the status with
@@ -111,7 +112,7 @@ func ProfileAllowed(profile string, allowed []string) bool {
 	return false
 }
 
-// ResolveConfig picks the provider and model a feature runs on. An explicitly
+// ResolveConfig picks the provider and model Explain SQL runs on. An explicitly
 // requested profile must be allowed by the workspace setting; otherwise the first
 // allowed one is the default. Each rejection carries its own status:
 //
@@ -124,11 +125,7 @@ func ResolveConfig(configs []ResolvedConfig, allowed []string, requested string)
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				errors.Errorf("LLM profile %q is not allowed by the workspace settings", requested))
 		}
-		config := FindConfig(configs, requested)
-		if config == nil {
-			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", requested))
-		}
-		return config, nil
+		return ResolveEnabledConfig(configs, requested)
 	}
 	allowedConfigs := AllowedConfigs(configs, allowed)
 	if len(allowedConfigs) == 0 {
@@ -137,18 +134,32 @@ func ResolveConfig(configs []ResolvedConfig, allowed []string, requested string)
 	return &allowedConfigs[0], nil
 }
 
-// ResolveModelConfig picks one exact profile and model pair. Unlike ResolveConfig
-// there is no default: a missing half is InvalidArgument, a profile outside the
-// allowlist is InvalidArgument, and a profile that does not currently enable the
-// model is NotFound. The caller decides what "no model" means.
-func ResolveModelConfig(configs []ResolvedConfig, allowed []string, profile, model string) (*ResolvedConfig, error) {
+// ResolveEnabledConfig picks the provider and model a feature whose profile is
+// chosen in that feature's own settings runs on: the requested profile when one is
+// named, otherwise the first enabled profile. There is no workspace allowlist, so
+// the data quality analyses are not restricted twice.
+func ResolveEnabledConfig(configs []ResolvedConfig, requested string) (*ResolvedConfig, error) {
+	if requested != "" {
+		config := FindConfig(configs, requested)
+		if config == nil {
+			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", requested))
+		}
+		return config, nil
+	}
+	if len(configs) == 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no enabled LLM provider profile"))
+	}
+	return &configs[0], nil
+}
+
+// ResolveModelConfig picks one exact profile and model pair for a quality agent.
+// There is no default: a missing half is InvalidArgument, and a profile that does
+// not currently enable the model is NotFound. The caller decides what "no model"
+// means.
+func ResolveModelConfig(configs []ResolvedConfig, profile, model string) (*ResolvedConfig, error) {
 	if strings.TrimSpace(profile) == "" || strings.TrimSpace(model) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("an LLM provider profile and a model are required"))
-	}
-	if !ProfileAllowed(profile, allowed) {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			errors.Errorf("LLM profile %q is not allowed by the workspace settings", profile))
 	}
 	config := FindModelConfig(configs, profile, model)
 	if config == nil {

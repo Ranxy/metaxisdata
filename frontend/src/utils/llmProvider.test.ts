@@ -44,37 +44,26 @@ describe("buildProviderOptions", () => {
     },
   ];
 
-  it("keeps profiles that enable a model and are allowed", () => {
-    expect(buildProviderOptions(profiles, [])).toEqual([
+  it("keeps the profiles that enable a model", () => {
+    expect(buildProviderOptions(profiles)).toEqual([
       { name: "llm-provider-profiles/main", title: "Main" },
       { name: "llm-provider-profiles/other", title: "Other" },
     ]);
   });
 
   it("drops a profile without an enabled model", () => {
-    const names = buildProviderOptions(profiles, []).map(
-      (option) => option.name
-    );
+    const names = buildProviderOptions(profiles).map((option) => option.name);
     expect(names).not.toContain("llm-provider-profiles/disabled");
   });
 
-  it("applies the workspace allowlist", () => {
-    expect(
-      buildProviderOptions(profiles, ["llm-provider-profiles/other"])
-    ).toEqual([{ name: "llm-provider-profiles/other", title: "Other" }]);
-  });
-
   it("falls back to the resource name when the profile has no title", () => {
-    const options = buildProviderOptions(
-      [
-        {
-          name: "llm-provider-profiles/untitled",
-          title: "",
-          models: [{ name: "m", enabled: true }],
-        },
-      ],
-      []
-    );
+    const options = buildProviderOptions([
+      {
+        name: "llm-provider-profiles/untitled",
+        title: "",
+        models: [{ name: "m", enabled: true }],
+      },
+    ]);
     expect(options[0].title).toBe("llm-provider-profiles/untitled");
   });
 });

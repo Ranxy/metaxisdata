@@ -220,14 +220,18 @@ describe("QualityAgentsSettingsPage", () => {
     );
   });
 
-  it("offers only the allowed profiles that enable a model", async () => {
+  it("offers every profile that enables a model, ignoring the ExplainSQL allowlist", async () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
 
+    // The fixture's allowed_llm_provider_profiles lists only three profiles, and
+    // `excluded` is outside it; it is still offered because that allowlist
+    // restricts Explain SQL only and an agent may pin any enabled profile.
     expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
       mainProfile,
       secondaryProfile,
       singleProfile,
+      "llm-provider-profiles/excluded",
     ]);
     // The dialog renders the selected value; the list is filtered by the helper.
     expect(dialogText()).toContain(
@@ -407,6 +411,64 @@ describe("QualityAgentsSettingsPage", () => {
     expect(dialogText()).toContain(
       i18n.global.t("qualityAgents.providerProfilesError")
     );
+  });
+
+  it("treats a profile outside the ExplainSQL allowlist as available", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/e",
+        displayName: "Agent E",
+        owner: "users/1",
+        // Enabled, but deliberately absent from the workspace allowlist.
+        providerProfile: "llm-provider-profiles/excluded",
+        providerModel: "x",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.PAUSED,
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain("Excluded · x");
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("qualityAgents.providerUnavailable")
+    );
+
+    await openEdit(wrapper);
+    expect(vm(wrapper).providerUnavailable).toBe(false);
+    expect(vm(wrapper).modelUnavailable).toBe(false);
+    expect(vm(wrapper).modelOptions).toEqual(["x"]);
+  });
+
+  it("marks a stored pair whose profile enables no model as unavailable", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/f",
+        displayName: "Agent F",
+        owner: "users/1",
+        providerProfile: "llm-provider-profiles/disabled",
+        providerModel: "idle",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.PAUSED,
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      `Disabled · idle (${i18n.global.t("qualityAgents.providerUnavailable")})`
+    );
+
+    await openEdit(wrapper);
+    expect(vm(wrapper).providerUnavailable).toBe(true);
+    expect(vm(wrapper).modelUnavailable).toBe(true);
+    // The stale pair is kept and an unrelated edit can still be saved.
+    expect(vm(wrapper).form.providerProfile).toBe(
+      "llm-provider-profiles/disabled"
+    );
+    expect(
+      dialogButton(i18n.global.t("qualityAgents.saveAction"))?.disabled
+    ).toBe(false);
   });
 
   it("shows not-configured for an agent without a pair", async () => {

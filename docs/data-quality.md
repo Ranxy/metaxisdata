@@ -22,7 +22,7 @@ switches for storing failure samples and for sending raw sample values are indep
 sends raw sample rows today. Everything else works with model assistance off.
 4. *(Optional)* **Turn on quality agents.** An administrator creates an agent under Settings → Quality agents and turns off **Pause all
 agents**; see [Quality agents](#quality-agents). Agents are independent of the check engine: with the runtime off, checks keep
-running. An agent also needs an enabled, allowed provider profile with at least one model — the dialog cannot create one without it —
+running. An agent also needs an enabled provider profile with at least one model — the dialog cannot create one without it —
 and **LLM analysis** must be on for the agent to reason.
 
 ## Adding a check
@@ -519,13 +519,13 @@ home, work sessions, reports and attention list, but administrators cannot hold 
 this language; table names, column names and other identifiers stay unchanged. Raw work-session internals remain English.
 - **Model** — the LLM provider profile and the model the agent calls. Both are required, and the model is chosen explicitly: one profile
 can enable several models at different prices and quality, so the agent never inherits "whichever model comes first". The list offers
-only profiles the workspace allows that enable at least one model; a profile that enables several asks you to pick one. Every model
-call the agent makes — wakes, compaction, triage and the drafts it writes — uses this pair. If the profile or model is later deleted,
-all its models disabled, or the profile removed from the allowlist, the agent stops reasoning instead of silently switching: its
-conversation answers with the deterministic scope summary, a target that still needs triage is not admitted until a model is back
-(its enrollment row records `no-model`), and Settings → Quality agents marks the pair as unavailable until you choose another. Editing
-the agent's other fields still works while the pair is stale; only a changed pair is validated. Agents do not follow the workspace
-provider in Settings → Data Quality; that setting is the analyses' default.
+every profile that enables at least one model; a profile that enables several asks you to pick one. Every model call the agent makes —
+wakes, compaction, triage and the drafts it writes — uses this pair. If the profile or model is later deleted, or all its models are
+disabled, the agent stops reasoning instead of silently switching: its conversation answers with the deterministic scope summary, a
+target that still needs triage is not admitted until a model is back (its enrollment row records `no-model`), and Settings → Quality
+agents marks the pair as unavailable until you choose another. Editing the agent's other fields still works while the pair is stale;
+only a changed pair is validated. Agents do not follow the workspace provider in Settings → Data Quality; that setting is the
+analyses' default.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
@@ -585,8 +585,9 @@ create, change or run anything. See [mcp.md](mcp.md).
 
 ## Settings
 
-Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (profile-level: the analyses use
-that profile's first enabled model), failure-sample storage and count (20 by default, at most 100),
+Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (empty means the first enabled
+profile; profile-level, the analyses use that profile's first enabled model), failure-sample storage and count (20 by default, at most
+100),
 the **check time zone** (IANA name, empty = UTC) used to resolve time variables in filters and custom SQL and a cron schedule saved
 without a zone, the default schedule a target starts with, the daily execution ceiling (only scheduled scans pause at it — **Run now**
 still works), the daily AI analysis ceiling (L1+L2, default 10,000), the concurrent LLM calls (default 8, range 1–64), whether raw
@@ -624,7 +625,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | A cron target did not run at the expected time | The target's own time zone applies; DST gaps are skipped and downtime is not caught up. The header's next-run time is the authority. |
 | An execution stays pending or ends abandoned | The connection budget was busy or the server restarted. Scheduled checks retry later in the cycle (three attempts); manual runs do not. |
 | No notification for a failure | The issue was already open, the check is muted, or more than ten checks failed and one summary replaced them. |
-| Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `.suggest` / `.explain`. |
+| A model action is unavailable | Model analysis is off, or the caller lacks `.suggest` / `.explain`. With the switch on but no provider profile enabling a model, the action is still offered and the call fails with `FailedPrecondition`. |
 | An AI analysis is rejected as over quota | Today's AI usage shows the limit; raise the daily AI ceiling or concurrent LLM calls. The change applies without a restart. |
 | A model rejects the output budget | The profile's **Max output tokens** exceeds the model's cap; after one retry at 4,096, lower the budget or use another model. |
 | A label suggestion cannot be accepted | Profile the columns first; suggestions need profiles fresher than seven days. |
@@ -645,9 +646,9 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | An agent is blocked with `token-budget` or `wake-budget` | It spent its hourly budget and recovers at the hour boundary; an administrator can raise the budget. |
 | An agent is blocked with `out-of-scope`, `agent-disabled` or `needs-human` | The scope changed, the agent was disabled, or the model reported the same blocker three times; fix the cause, then answer the attention item. |
 | The owner cannot talk to the agent | Only the owner may; administrators can read but not send. |
-| An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, all its models disabled, or outside the allowlist); turn the switch on, or restore it under Settings → LLM providers or the allowlist under Settings → General, then edit the agent. |
+| An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, or all its models disabled); turn the switch on, or restore it under Settings → LLM providers, then edit the agent. |
 | A target the agent never checked stays unchecked | Triage admission needs a model; with the analysis switch off or the agent's pair unavailable it is not admitted. Fix the provider and the target is admitted on the next scan. |
-| The agent dialog offers no provider | No allowed profile enables a model; create or enable one under Settings → LLM providers. |
+| The agent dialog offers no provider | No provider profile enables a model; create one or enable a model under Settings → LLM providers. |
 
 ## See also
 

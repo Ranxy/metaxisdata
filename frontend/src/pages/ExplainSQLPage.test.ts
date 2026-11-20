@@ -10,6 +10,8 @@ import ExplainSQLPage from "./ExplainSQLPage.vue";
 
 const mocks = vi.hoisted(() => ({
   explainSQL: vi.fn(),
+  listProfiles: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
 }));
 
 vi.mock("@/api/explain", () => ({ explainSQL: mocks.explainSQL }));
@@ -18,13 +20,9 @@ vi.mock("@/api/database", () => ({
   listMetadata: vi.fn(async () => ({})),
   getSchemaString: vi.fn(async () => ({ schema: "" })),
 }));
-vi.mock("@/api/llm", () => ({
-  listProfiles: vi.fn(async () => ({ profiles: [] })),
-}));
+vi.mock("@/api/llm", () => ({ listProfiles: mocks.listProfiles }));
 vi.mock("@/api/setting", () => ({
-  getWorkspaceProfileSetting: vi.fn(async () => ({
-    allowedLlmProviderProfiles: [],
-  })),
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 vi.mock("@/store/modules/instance", () => ({
   useInstanceStore: () => ({
@@ -95,7 +93,23 @@ beforeEach(() => {
   setActivePinia(createPinia());
   localStorage.clear();
   vi.clearAllMocks();
+  mocks.listProfiles.mockResolvedValue({ profiles: [] });
+  mocks.getWorkspaceProfileSetting.mockResolvedValue({
+    allowedLlmProviderProfiles: [],
+  });
 });
+
+interface PageVm {
+  providerOptions: Array<{ name: string; title: string }>;
+}
+
+function vm(wrapper: ReturnType<typeof mount>): PageVm {
+  return wrapper.vm as unknown as PageVm;
+}
+
+function enabledProfile(name: string, title: string) {
+  return { name, title, models: [{ name: "model", enabled: true }] };
+}
 
 describe("ExplainSQLPage", () => {
   it("streams the answer and aborts the stream when the page goes away", async () => {
@@ -153,5 +167,39 @@ describe("ExplainSQLPage", () => {
 
     await typeCustomSQL(wrapper);
     expect(explainButton(wrapper)?.attributes("disabled")).toBeUndefined();
+  });
+
+  it("offers only the provider profiles the workspace allowlist permits", async () => {
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        enabledProfile("llm-provider-profiles/allowed", "Allowed"),
+        enabledProfile("llm-provider-profiles/blocked", "Blocked"),
+      ],
+      nextPageToken: "",
+    });
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      allowedLlmProviderProfiles: ["llm-provider-profiles/allowed"],
+    });
+    const wrapper = await mountPage();
+
+    expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
+      "llm-provider-profiles/allowed",
+    ]);
+  });
+
+  it("offers every enabled profile when the allowlist is empty", async () => {
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        enabledProfile("llm-provider-profiles/a", "A"),
+        enabledProfile("llm-provider-profiles/b", "B"),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+
+    expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
+      "llm-provider-profiles/a",
+      "llm-provider-profiles/b",
+    ]);
   });
 });

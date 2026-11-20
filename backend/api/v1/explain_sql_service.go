@@ -456,8 +456,10 @@ func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, e
 	return setting.GetAllowedLlmProviderProfiles(), nil
 }
 
-// The provider-selection rules live in component/llm so Explain SQL and the data
-// quality analysis cannot drift apart. These helpers keep the RPC's names and
+// The provider-selection rules live in component/llm, which keeps the allowlist
+// and the default in one place. Explain SQL is the only feature that applies the
+// workspace allowlist: the data quality analyses and quality agents pick their
+// profile in their own settings. These helpers keep the RPC's names and
 // signatures — the handler and this package's tests call them — and delegate the
 // rule itself to the shared implementation.
 

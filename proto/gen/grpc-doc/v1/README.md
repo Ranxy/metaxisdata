@@ -4227,7 +4227,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | enable_llm_analysis | [bool](#bool) |  | Whether the model-backed paths are enabled: the rule drafts, failure explanations and column labels, and the quality agents&#39; model wakes. Off by default: the rule engine and the agents&#39; deterministic paths are fully offline. |
-| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
+| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first enabled profile. |
 | store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
 | failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
 | default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |
@@ -4525,7 +4525,7 @@ QuietWindow is one recurring weekly quiet window.
 | openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
 | domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
 | enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
-| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles the model-backed features may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;): Explain SQL, the data quality analyses and the quality agents. Empty means every enabled profile is allowed. |
+| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles Explain SQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. The data quality analyses and the quality agents choose their profile in their own settings, so this list does not restrict them. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
 | sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
 
