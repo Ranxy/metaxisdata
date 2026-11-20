@@ -60,8 +60,9 @@ const (
 	// SideEffectPropose writes a proposal or evidence without changing a verdict
 	// or publishing anything.
 	SideEffectPropose
-	// SideEffectPublish changes a verdict, publishes, or administers. No agent
-	// product may expose one in this build.
+	// SideEffectPublish changes a verdict, publishes, or administers. The built-in
+	// quality agent's owner-requested adoption tool is the only such tool a product
+	// exposes; MCP never does.
 	SideEffectPublish
 )
 

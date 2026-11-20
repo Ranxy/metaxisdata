@@ -3,10 +3,12 @@ package agentrunner
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -150,4 +152,39 @@ func TestAdoptionUnavailableKeepsTheAuthorityOutOfThePrompt(t *testing.T) {
 	set, err := engine.toolSet(testSession(), agent, &wakeControl{ownerAsked: true})
 	require.NoError(t, err)
 	require.NotContains(t, set.Names(), "adopt_pending_drafts")
+}
+
+// A triage wake that already adopted through the owner-requested tool must not run
+// the automatic adoption pass again for the same wake.
+func TestWakeSkipsTheAutomaticPassWhenTheToolRan(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.agent = capabilityTestAgent("suggest", "adopt")
+	stores.messages = append(stores.messages, &store.QualityAgentTranscriptMessage{
+		SessionID: 1,
+		Seq:       1,
+		Role:      storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:    storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:   "adopt the pending drafts",
+	})
+	stores.nextSeq = 1
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "adopting", toolCalls: []llm.ToolCall{toolCall("call_1", "adopt_pending_drafts", `{"draft_ids":["draft-1"]}`)}},
+		{content: "done"},
+	}), resolveToModel, nil)
+	engine.ownerAdoption = func(context.Context, dataquality.AgentAdoptionRequest) (dataquality.AgentAdoptionReport, error) {
+		return dataquality.AgentAdoptionReport{Adopted: 1}, nil
+	}
+	autoCalled := false
+	engine.SetAdoption(func(context.Context, *store.QualityAgentSessionMessage, time.Time) {
+		autoCalled = true
+	})
+	session := testSession()
+	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
+
+	outcome, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.True(t, outcome.adoptionUsed, "the tool reports that it adopted")
+	require.False(t, autoCalled, "the automatic pass is suppressed for this wake")
 }

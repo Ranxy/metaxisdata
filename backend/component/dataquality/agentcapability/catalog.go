@@ -2,8 +2,9 @@
 //
 // Capabilities are data, not a proto enum: an administrator selects a set when
 // creating or editing an agent, and the server validates the ids against this
-// registry. Adding a capability is a registry entry plus the runner/product code
-// that honors it; no schema migration is needed.
+// registry. Adding a capability is a catalog entry here plus a product capability
+// profile in agentrunner and the startup validation that rejects a missing profile
+// as a boot error; no schema migration is needed.
 package agentcapability
 
 import (
@@ -53,7 +54,7 @@ var catalog = []Capability{
 	{
 		ID:            Adopt,
 		Title:         "Adopt",
-		Description:   "Automatically accept this agent's own low-risk rule drafts under the configured guardrails; a person still publishes contracts and changes responsibility.",
+		Description:   "Automatically accept this agent's own low-risk rule drafts under the configured guardrails, or adopt the pending drafts the owner explicitly asks for in conversation; a person still publishes contracts and changes responsibility.",
 		Requires:      []string{Suggest},
 		RequiresModel: true,
 	},

@@ -446,6 +446,7 @@ func (e *Engine) modelWake(
 		TriageComplete: session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
 		ProcessedSeq:   consumed,
 		EngineState:    state,
+		adoptionUsed:   control.adoptionUsed,
 		Summary:        summary,
 	}, nil
 }
