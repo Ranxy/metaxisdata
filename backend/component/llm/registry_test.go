@@ -28,15 +28,10 @@ func (f *fakeProfileStore) ListLLMProfiles(_ context.Context, find *store.FindLL
 }
 
 func profileWithModel(name, model string, enabled bool) *store.LLMProfileMessage {
-	return profileWithModelAndBudget(name, model, enabled, 0)
-}
-
-func profileWithModelAndBudget(name, model string, enabled bool, maxOutputTokens int32) *store.LLMProfileMessage {
 	return &store.LLMProfileMessage{
 		Metadata: &storepb.LlmProviderProfile{
-			Name:            name,
-			Title:           name,
-			MaxOutputTokens: maxOutputTokens,
+			Name:  name,
+			Title: name,
 			Models: []*storepb.LlmProviderModel{
 				{Name: model, Enabled: enabled},
 			},
@@ -44,15 +39,24 @@ func profileWithModelAndBudget(name, model string, enabled bool, maxOutputTokens
 	}
 }
 
-// The resolved config carries the profile's output budget: zero resolves to the
-// server default and an explicit value is kept.
-func TestRegistryResolvesTheProfileOutputBudget(t *testing.T) {
+// The resolved config carries each model's own capacities: zero resolves to the
+// server defaults and an explicit pair is kept.
+func TestRegistryResolvesPerModelCapacities(t *testing.T) {
 	t.Parallel()
 
 	fake := &fakeProfileStore{pages: map[int][]*store.LLMProfileMessage{
 		0: {
-			profileWithModelAndBudget("default-budget", "m1", true, 0),
-			profileWithModelAndBudget("explicit-budget", "m2", true, 4096),
+			{
+				Metadata: &storepb.LlmProviderProfile{
+					Name:  "multi",
+					Title: "multi",
+					Models: []*storepb.LlmProviderModel{
+						{Name: "m1", Enabled: true},
+						{Name: "m2", Enabled: true, ContextWindow: 131072, MaxOutputTokens: 8192},
+						{Name: "m3", Enabled: false, ContextWindow: 65536, MaxOutputTokens: 4096},
+					},
+				},
+			},
 		},
 	}}
 	registry := &Registry{store: fake}
@@ -60,8 +64,12 @@ func TestRegistryResolvesTheProfileOutputBudget(t *testing.T) {
 	configs, err := registry.ListEnabled(context.Background())
 	require.NoError(t, err)
 	require.Len(t, configs, 2)
+	require.Equal(t, "m1", configs[0].ModelName)
+	require.Equal(t, DefaultContextWindow, configs[0].ContextWindow)
 	require.Equal(t, DefaultMaxOutputTokens, configs[0].MaxOutputTokens)
-	require.Equal(t, 4096, configs[1].MaxOutputTokens)
+	require.Equal(t, "m2", configs[1].ModelName)
+	require.Equal(t, 131072, configs[1].ContextWindow)
+	require.Equal(t, 8192, configs[1].MaxOutputTokens)
 }
 
 func TestRegistryListEnabledCachesUntilInvalidated(t *testing.T) {

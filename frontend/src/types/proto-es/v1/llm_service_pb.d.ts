@@ -55,6 +55,24 @@ export declare type LlmProviderModel = Message<"metaxisdata.v1.LlmProviderModel"
    * @generated from field: bool enabled = 2;
    */
   enabled: boolean;
+
+  /**
+   * The largest combined request and response context this model accepts, in
+   * tokens. Zero means the server default; an explicit value must be a positive
+   * integer. The quality agent derives its compaction trigger from this value.
+   *
+   * @generated from field: int32 context_window = 3;
+   */
+  contextWindow: number;
+
+  /**
+   * The answer budget one model call requests from this model, in output tokens.
+   * Zero means the server default; an explicit value must be between 256 and
+   * 131072 and leave a positive message budget inside the context window.
+   *
+   * @generated from field: int32 max_output_tokens = 4;
+   */
+  maxOutputTokens: number;
 };
 
 /**
@@ -111,22 +129,6 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
    * @generated from field: string masked_api_key = 9;
    */
   maskedApiKey: string;
-
-  /**
-   * The answer budget one model call requests from this profile, in output tokens.
-   * Zero means the server default (32768); an explicit value must be 256-131072.
-   * The provider or model may cap lower: the first request that exceeds it is
-   * retried once at 4096 tokens, and a still-rejected request is reported on the
-   * failed call as PROVIDER_STATUS. It applies to the data quality analyses and to
-   * the quality agents that pin this profile.
-   *
-   * An update with an empty field mask writes this field only when it is non-zero
-   * (proto3 cannot distinguish an omitted int32 from an explicit zero); send an
-   * explicit `max_output_tokens` mask to reset it to the server default.
-   *
-   * @generated from field: int32 max_output_tokens = 10;
-   */
-  maxOutputTokens: number;
 };
 
 /**
@@ -134,6 +136,54 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
  * Use `create(LlmProviderProfileSchema)` to create a new message.
  */
 export declare const LlmProviderProfileSchema: GenMessage<LlmProviderProfile>;
+
+/**
+ * The server-owned capacity contract the provider settings page renders:
+ * defaults and bounds for the per-model fields. It is output-only.
+ *
+ * @generated from message metaxisdata.v1.LlmProviderLimits
+ */
+export declare type LlmProviderLimits = Message<"metaxisdata.v1.LlmProviderLimits"> & {
+  /**
+   * @generated from field: int32 default_max_output_tokens = 1;
+   */
+  defaultMaxOutputTokens: number;
+
+  /**
+   * @generated from field: int32 min_max_output_tokens = 2;
+   */
+  minMaxOutputTokens: number;
+
+  /**
+   * @generated from field: int32 max_max_output_tokens = 3;
+   */
+  maxMaxOutputTokens: number;
+
+  /**
+   * @generated from field: int32 default_context_window = 4;
+   */
+  defaultContextWindow: number;
+
+  /**
+   * Positive-integer floor; the server imposes no larger product minimum.
+   *
+   * @generated from field: int32 min_context_window = 5;
+   */
+  minContextWindow: number;
+
+  /**
+   * Sanity ceiling for the int32 config and the UI; not a model claim.
+   *
+   * @generated from field: int32 max_context_window = 6;
+   */
+  maxContextWindow: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.LlmProviderLimits.
+ * Use `create(LlmProviderLimitsSchema)` to create a new message.
+ */
+export declare const LlmProviderLimitsSchema: GenMessage<LlmProviderLimits>;
 
 /**
  * @generated from message metaxisdata.v1.ListLLMProviderProfilesRequest
@@ -174,6 +224,11 @@ export declare type ListLLMProviderProfilesResponse = Message<"metaxisdata.v1.Li
    * @generated from field: string next_page_token = 3;
    */
   nextPageToken: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.LlmProviderLimits limits = 4;
+   */
+  limits?: LlmProviderLimits;
 };
 
 /**
@@ -275,13 +330,42 @@ export declare type FetchLLMModelsRequest = Message<"metaxisdata.v1.FetchLLMMode
 export declare const FetchLLMModelsRequestSchema: GenMessage<FetchLLMModelsRequest>;
 
 /**
+ * One model an endpoint disclosed. The capacity fields are advisory: an
+ * endpoint that lists no capacities leaves them zero.
+ *
+ * @generated from message metaxisdata.v1.LlmDiscoveredModel
+ */
+export declare type LlmDiscoveredModel = Message<"metaxisdata.v1.LlmDiscoveredModel"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 context_window = 2;
+   */
+  contextWindow: number;
+
+  /**
+   * @generated from field: int32 max_output_tokens = 3;
+   */
+  maxOutputTokens: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.LlmDiscoveredModel.
+ * Use `create(LlmDiscoveredModelSchema)` to create a new message.
+ */
+export declare const LlmDiscoveredModelSchema: GenMessage<LlmDiscoveredModel>;
+
+/**
  * @generated from message metaxisdata.v1.FetchLLMModelsResponse
  */
 export declare type FetchLLMModelsResponse = Message<"metaxisdata.v1.FetchLLMModelsResponse"> & {
   /**
-   * @generated from field: repeated string model_ids = 1;
+   * @generated from field: repeated metaxisdata.v1.LlmDiscoveredModel models = 2;
    */
-  modelIds: string[];
+  models: LlmDiscoveredModel[];
 };
 
 /**

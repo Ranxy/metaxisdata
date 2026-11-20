@@ -11020,10 +11020,10 @@ components:
         FetchLLMModelsResponse:
             type: object
             properties:
-                modelIds:
+                models:
                     type: array
                     items:
-                        type: string
+                        $ref: '#/components/schemas/LlmDiscoveredModel'
         FieldMapping:
             type: object
             properties:
@@ -12061,6 +12061,8 @@ components:
                         $ref: '#/components/schemas/LlmProviderDefinition'
                 nextPageToken:
                     type: string
+                limits:
+                    $ref: '#/components/schemas/LlmProviderLimits'
         ListManualSQLsResponse:
             type: object
             properties:
@@ -12375,6 +12377,20 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        LlmDiscoveredModel:
+            type: object
+            properties:
+                name:
+                    type: string
+                contextWindow:
+                    type: integer
+                    format: int32
+                maxOutputTokens:
+                    type: integer
+                    format: int32
+            description: |-
+                One model an endpoint disclosed. The capacity fields are advisory: an
+                 endpoint that lists no capacities leaves them zero.
         LlmProviderDefinition:
             type: object
             properties:
@@ -12386,6 +12402,32 @@ components:
                     type: string
                 defaultBaseUrl:
                     type: string
+        LlmProviderLimits:
+            type: object
+            properties:
+                defaultMaxOutputTokens:
+                    type: integer
+                    format: int32
+                minMaxOutputTokens:
+                    type: integer
+                    format: int32
+                maxMaxOutputTokens:
+                    type: integer
+                    format: int32
+                defaultContextWindow:
+                    type: integer
+                    format: int32
+                minContextWindow:
+                    type: integer
+                    description: Positive-integer floor; the server imposes no larger product minimum.
+                    format: int32
+                maxContextWindow:
+                    type: integer
+                    description: Sanity ceiling for the int32 config and the UI; not a model claim.
+                    format: int32
+            description: |-
+                The server-owned capacity contract the provider settings page renders:
+                 defaults and bounds for the per-model fields. It is output-only.
         LlmProviderModel:
             type: object
             properties:
@@ -12393,6 +12435,20 @@ components:
                     type: string
                 enabled:
                     type: boolean
+                contextWindow:
+                    type: integer
+                    description: |-
+                        The largest combined request and response context this model accepts, in
+                         tokens. Zero means the server default; an explicit value must be a positive
+                         integer. The quality agent derives its compaction trigger from this value.
+                    format: int32
+                maxOutputTokens:
+                    type: integer
+                    description: |-
+                        The answer budget one model call requests from this model, in output tokens.
+                         Zero means the server default; an explicit value must be between 256 and
+                         131072 and leave a positive message budget inside the context window.
+                    format: int32
         LlmProviderProfile:
             type: object
             properties:
@@ -12427,10 +12483,6 @@ components:
                 updateTime:
                     type: string
                     format: date-time
-                maxOutputTokens:
-                    type: integer
-                    description: The answer budget requested from this profile; 0 means the server default.
-                    format: int32
         LoginRequest:
             type: object
             properties:

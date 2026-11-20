@@ -300,3 +300,70 @@ func startPostgres(t *testing.T) (host, port string) {
 func testDSN(host, port, database string) string {
 	return fmt.Sprintf("postgres://postgres:postgres@%s:%s/%s?sslmode=disable", host, port, database)
 }
+
+// migrationFSBefore0068 is the embedded tree a database at the previous version
+// would have applied: LATEST plus every incremental except 0068. A fresh install
+// against it records that version, so the follow-up run applies only 0068.
+func migrationFSBefore0068(t *testing.T) fstest.MapFS {
+	t.Helper()
+
+	latest, err := fs.ReadFile(migrationFS, latestSchemaFileName)
+	require.NoError(t, err)
+	files, err := getSortedVersionedFiles(migrationFS)
+	require.NoError(t, err)
+
+	// The cutoff keeps the FS at the version just before this migration, so a
+	// later incremental cannot change which version a fresh install records.
+	cutoff := semver.MustParse("0.1.67")
+	out := fstest.MapFS{latestSchemaFileName: &fstest.MapFile{Data: latest}}
+	for _, file := range files {
+		if file.version.GT(cutoff) {
+			continue
+		}
+		buf, err := fs.ReadFile(migrationFS, file.path)
+		require.NoError(t, err)
+		out[file.path] = &fstest.MapFile{Data: buf}
+	}
+	return out
+}
+
+// 0068 moves the retired profile-level output budget onto every model entry and
+// drops the profile key. A malformed models value (null here) must not fail the
+// startup migration.
+func TestMigrateSchemaMovesTheProfileOutputBudgetOntoModels(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDatabase(t)
+
+	require.NoError(t, migrateSchemaFS(ctx, db, migrationFSBefore0068(t)))
+
+	rows := map[string]string{
+		"budget-models":    `{"maxOutputTokens":4096,"models":[{"name":"a","enabled":true},{"name":"b"}]}`,
+		"no-budget":        `{"models":[{"name":"c","enabled":true}]}`,
+		"model-own-budget": `{"maxOutputTokens":8192,"models":[{"name":"d","maxOutputTokens":2048},{"name":"e"}]}`,
+		"null-models":      `{"maxOutputTokens":1000,"models":null}`,
+		"no-models":        `{"maxOutputTokens":1000}`,
+		"bad-element":      `{"maxOutputTokens":1000,"models":[5]}`,
+	}
+	for id, metadata := range rows {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO llm_provider_profile (resource_id, metadata) VALUES ($1, $2::jsonb)`, id, metadata)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, MigrateSchema(ctx, db))
+
+	expected := map[string]string{
+		"budget-models":    `{"models":[{"name":"a","enabled":true,"maxOutputTokens":4096},{"name":"b","maxOutputTokens":4096}]}`,
+		"no-budget":        `{"models":[{"name":"c","enabled":true}]}`,
+		"model-own-budget": `{"models":[{"name":"d","maxOutputTokens":2048},{"name":"e","maxOutputTokens":8192}]}`,
+		"null-models":      `{"models":null}`,
+		"no-models":        `{}`,
+		"bad-element":      `{"models":[5]}`,
+	}
+	for id, want := range expected {
+		var got string
+		require.NoError(t, db.QueryRowContext(ctx,
+			`SELECT metadata::text FROM llm_provider_profile WHERE resource_id = $1`, id).Scan(&got))
+		require.JSONEq(t, want, got, "row %s", id)
+	}
+}

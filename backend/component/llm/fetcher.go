@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,8 +24,61 @@ type modelListResponse struct {
 	Data   []modelObject `json:"data"`
 }
 
+// modelObject is one /v1/models entry. The capacity spellings vary across
+// OpenAI-compatible gateways, so every candidate is optional JSON; a field the
+// endpoint does not disclose stays nil.
 type modelObject struct {
-	ID string `json:"id"`
+	ID                   string                   `json:"id"`
+	ContextWindow        any                      `json:"context_window"`
+	ContextWindowCamel   any                      `json:"contextWindow"`
+	ContextLength        any                      `json:"context_length"`
+	MaxInputTokens       any                      `json:"max_input_tokens"`
+	MaxCompletionTokens  any                      `json:"max_completion_tokens"`
+	MaxOutputTokens      any                      `json:"max_output_tokens"`
+	MaxOutputTokensCamel any                      `json:"maxOutputTokens"`
+	MaxTokens            any                      `json:"max_tokens"`
+	MaxTokensCamel       any                      `json:"maxTokens"`
+	Limit                *modelListingLimit       `json:"limit"`
+	TopProvider          *modelListingTopProvider `json:"top_provider"`
+}
+
+type modelListingLimit struct {
+	Context any `json:"context"`
+	Output  any `json:"output"`
+}
+
+type modelListingTopProvider struct {
+	MaxCompletionTokens any `json:"max_completion_tokens"`
+}
+
+// DiscoveredModel is one model an endpoint disclosed. The capacities are
+// advisory: zero means the endpoint disclosed none.
+type DiscoveredModel struct {
+	Name            string
+	ContextWindow   int32
+	MaxOutputTokens int32
+}
+
+// positiveInt32 reads one JSON capacity candidate. Only a positive integral
+// number that fits int32 is usable; anything else means "not disclosed".
+func positiveInt32(value any) (int32, bool) {
+	number, ok := value.(float64)
+	if !ok || number <= 0 || number != math.Trunc(number) || number > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(number), true
+}
+
+// firstCapacity returns the first usable candidate, or 0 when none is. A
+// max_input_tokens field is only an approximation of the combined window, so a
+// gateway that discloses it may make compaction trigger earlier than needed.
+func firstCapacity(candidates ...any) int32 {
+	for _, candidate := range candidates {
+		if value, ok := positiveInt32(candidate); ok {
+			return value
+		}
+	}
+	return 0
 }
 
 // ValidateBaseURL checks that a provider base URL is an absolute http(s) URL
@@ -64,9 +118,10 @@ func normalizeAPIBaseURL(baseURL string) string {
 	return strings.TrimRight(parsed.String(), "/")
 }
 
-// FetchModels calls the provider's /v1/models endpoint and returns the list of model IDs.
-// apiKey may be empty for providers that don't require authentication for model listing.
-func FetchModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+// FetchModels calls the provider's /v1/models endpoint and returns the models it
+// discloses, with capacities when the endpoint reports them. apiKey may be empty
+// for providers that don't require authentication for model listing.
+func FetchModels(ctx context.Context, baseURL, apiKey string) ([]DiscoveredModel, error) {
 	if err := ValidateBaseURL(baseURL); err != nil {
 		return nil, err
 	}
@@ -99,16 +154,30 @@ func FetchModels(ctx context.Context, baseURL, apiKey string) ([]string, error) 
 		return nil, errors.Wrap(err, "failed to decode models response")
 	}
 
-	ids := make([]string, 0, len(result.Data))
+	models := make([]DiscoveredModel, 0, len(result.Data))
 	for _, m := range result.Data {
-		if m.ID != "" {
-			ids = append(ids, m.ID)
+		if m.ID == "" {
+			continue
 		}
+		contextCandidates := []any{m.ContextWindow, m.ContextWindowCamel, m.ContextLength, m.MaxInputTokens}
+		outputCandidates := []any{m.MaxCompletionTokens, m.MaxOutputTokens, m.MaxOutputTokensCamel, m.MaxTokens, m.MaxTokensCamel}
+		if m.TopProvider != nil {
+			outputCandidates = append([]any{m.TopProvider.MaxCompletionTokens}, outputCandidates...)
+		}
+		if m.Limit != nil {
+			contextCandidates = append(contextCandidates, m.Limit.Context)
+			outputCandidates = append(outputCandidates, m.Limit.Output)
+		}
+		models = append(models, DiscoveredModel{
+			Name:            m.ID,
+			ContextWindow:   firstCapacity(contextCandidates...),
+			MaxOutputTokens: firstCapacity(outputCandidates...),
+		})
 	}
 
-	if len(ids) == 0 {
+	if len(models) == 0 {
 		return nil, fmt.Errorf("no models returned from %s", endpoint)
 	}
 
-	return ids, nil
+	return models, nil
 }

@@ -262,9 +262,7 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 
 	wakeCtx, cancel := context.WithTimeout(ctx, wakeDeadline)
 	defer cancel()
-	outcome, err := r.engine.Wake(wakeCtx, session, agentrunner.Options{
-		CompactionTriggerTokens: dataquality.DefaultAgentRunnerCompactionTriggerTokens,
-	})
+	outcome, err := r.engine.Wake(wakeCtx, session, agentrunner.Options{})
 	if err != nil {
 		slog.Error("quality agent session wake failed",
 			slog.String("session", session.ResourceID), log.WithError(err))

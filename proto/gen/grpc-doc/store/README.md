@@ -3735,6 +3735,8 @@ Instance is the proto for instances.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  |  |
 | enabled | [bool](#bool) |  |  |
+| context_window | [int32](#int32) |  | The largest combined request and response context the model accepts; 0 means the server default. |
+| max_output_tokens | [int32](#int32) |  | The answer budget requested from this model; 0 means the server default. |
 
 
 
@@ -3757,7 +3759,6 @@ Instance is the proto for instances.
 | models | [LlmProviderModel](#metaxisdata-store-LlmProviderModel) | repeated |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| max_output_tokens | [int32](#int32) |  | The answer budget requested from this profile; 0 means the server default. |
 
 
 

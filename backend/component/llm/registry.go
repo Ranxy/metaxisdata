@@ -28,8 +28,11 @@ type ResolvedConfig struct {
 	BaseURL      string
 	APIKey       string // decrypted
 	ModelName    string
-	// MaxOutputTokens is the profile's output budget, resolved through
-	// NormalizeMaxOutputTokens so it is always a usable ceiling.
+	// ContextWindow is the model's combined request and response capacity,
+	// resolved through NormalizeModelLimits so it is always usable.
+	ContextWindow int
+	// MaxOutputTokens is the model's output budget, resolved through
+	// NormalizeModelLimits so it is always a usable ceiling.
 	MaxOutputTokens int
 }
 
@@ -109,6 +112,7 @@ func (r *Registry) loadEnabled(ctx context.Context) ([]ResolvedConfig, error) {
 				if title == "" {
 					title = p.Metadata.Name
 				}
+				limits := NormalizeModelLimits(m.GetContextWindow(), m.GetMaxOutputTokens())
 				configs = append(configs, ResolvedConfig{
 					ProfileName:     p.Metadata.Name,
 					ProfileTitle:    title,
@@ -116,7 +120,8 @@ func (r *Registry) loadEnabled(ctx context.Context) ([]ResolvedConfig, error) {
 					BaseURL:         p.Metadata.BaseUrl,
 					APIKey:          p.APIKey,
 					ModelName:       m.Name,
-					MaxOutputTokens: NormalizeMaxOutputTokens(p.Metadata.GetMaxOutputTokens()),
+					ContextWindow:   limits.ContextWindow,
+					MaxOutputTokens: limits.MaxOutputTokens,
 				})
 			}
 		}

@@ -83,10 +83,10 @@ const (
 	MaxAgentRunnerTokensPerHour int64 = 1_000_000_000_000
 	// MaxAgentRunnerWakesPerHour is the hard ceiling of the hourly wake budget.
 	MaxAgentRunnerWakesPerHour = 1000
-	// DefaultAgentRunnerCompactionTriggerTokens is the context size that triggers
-	// compaction of a session's older messages. It is a package constant, not a
-	// workspace setting.
-	DefaultAgentRunnerCompactionTriggerTokens = 262_144
+	// MinAgentModelOutputTokens is the smallest output budget a quality agent may
+	// run with: below it a compaction summary cannot carry the checkpoint, so an
+	// agent's provider/model pair is rejected at write time.
+	MinAgentModelOutputTokens = 2048
 	// DefaultAgentRunnerIdleWakeSeconds is how long a session sleeps between wakes
 	// when no event or person wakes it sooner.
 	DefaultAgentRunnerIdleWakeSeconds = 86_400

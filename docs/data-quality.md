@@ -601,12 +601,16 @@ The **Code tables** card lists the workspace code tables used by standard-code c
 values) and delete them; the editor accepts a pasted list or a CSV upload parsed in the browser (a header row is imported as a value, so
 remove it). Deleting a table that a check or rule template still references is refused.
 
-Settings → LLM providers configures each provider profile, including **Max output tokens** (0 = server default 32,768; 256–131,072). It
-is the ceiling sent to the model for every data quality analysis using that profile; unused tokens are not charged. If the provider or
-model caps output lower, the request is rejected and the failed analysis reports a provider-status diagnostic.
+Settings → LLM providers configures each provider profile and each model it enables. **Context window** (0 = server default
+262,144; a positive integer up to 10,000,000) is the model's combined request and response capacity; a quality agent uses it to decide when to compact
+a long conversation. **Max output tokens** (0 = server default 32,768; 256–131,072) is the ceiling sent to the model for every call
+using that model, and it must stay below the context window. Unused tokens are not charged. If the provider caps output lower, the
+request is rejected and the failed analysis reports a provider-status diagnostic.
 
 Settings → Quality agents (`/settings/quality-agents`) is the agent control panel: the **Pause all agents** switch, the agent list, and
-the create/edit dialog for each agent, including the provider profile and model each agent runs on. The agent's home is where its owner
+the create/edit dialog for each agent, including the provider profile and model each agent runs on. A model can be pinned only when its
+output budget is at least 2,048 tokens and its capacities leave room for compaction; a model too small for an agent is reported as
+unavailable rather than silently swapped. The agent's home is where its owner
 talks to it, reads its reports and answers its attention.
 
 ## Retention
@@ -630,7 +634,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | No notification for a failure | The issue was already open, the check is muted, or more than ten checks failed and one summary replaced them. |
 | A model action is unavailable | Model analysis is off, or the caller lacks `.suggest` / `.explain`. With the switch on but no provider profile enabling a model, the action is still offered and the call fails with `FailedPrecondition`. |
 | An AI analysis is rejected as over quota | Today's AI usage shows the limit; raise the daily AI ceiling or concurrent LLM calls. The change applies without a restart. |
-| A model rejects the output budget | The profile's **Max output tokens** exceeds the model's cap; after one retry at 4,096, lower the budget or use another model. |
+| A model rejects the output budget | The model's **Max output tokens** exceeds the provider cap; after one retry at 4,096, lower the budget or use another model. |
 | A label suggestion cannot be accepted | Profile the columns first; suggestions need profiles fresher than seven days. |
 | *Recommend checks* proposes nothing | No fresh profile, every supported check is already saved, or proposals were already decided; unsupported columns are reported as skipped. |
 | A recommended threshold looks wrong | The bound is the observation plus a fixed tolerance, a starting point to edit before saving; a range check legitimately fails past today's extremes. |

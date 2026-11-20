@@ -170,14 +170,37 @@ func decideAgentConfig(configs []llm.ResolvedConfig, agent *store.QualityAgentMe
 
 // ValidateAgentProvider reports whether an agent's stored selection could run now.
 // It deliberately ignores the workspace analysis switch: an administrator may
-// configure an agent before turning model assistance on.
+// configure an agent before turning model assistance on. Unlike a one-shot
+// analysis, an agent needs enough room to compact a long conversation, so a model
+// whose capacities leave no pressure budget is refused here instead of blocking
+// every wake at runtime.
 func (s *Suggester) ValidateAgentProvider(ctx context.Context, profile, model string) error {
 	_, configs, err := s.providerContext(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = llm.ResolveModelConfig(configs, profile, model)
-	return err
+	config, err := llm.ResolveModelConfig(configs, profile, model)
+	if err != nil {
+		return err
+	}
+	return validateAgentModel(*config, model)
+}
+
+// validateAgentModel rejects a resolved model whose capacities cannot run a
+// quality agent. It is pure so the rule is testable without a store.
+func validateAgentModel(config llm.ResolvedConfig, model string) error {
+	resolved := llm.NormalizeModelLimits(int32(config.ContextWindow), int32(config.MaxOutputTokens))
+	if resolved.MaxOutputTokens < MinAgentModelOutputTokens {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+			"model %q has an output budget of %d tokens; a quality agent needs at least %d",
+			model, resolved.MaxOutputTokens, MinAgentModelOutputTokens))
+	}
+	if trigger := llm.CompactionTrigger(resolved.ContextWindow, resolved.MaxOutputTokens); trigger <= 0 {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+			"model %q leaves no room to compact a conversation (context window %d, output budget %d); raise the context window or lower the output budget",
+			model, resolved.ContextWindow, resolved.MaxOutputTokens))
+	}
+	return nil
 }
 
 // Draft turns one natural-language intent into queued rule drafts for one target.
@@ -640,8 +663,8 @@ func protoFloat64Zero() *float64 {
 }
 
 // OutputTokenBudget resolves the output budget one analysis runs with: the
-// provider profile's resolved value, or the server default for a config built by
-// hand (tests, an older caller). Diagnostics report the actual value sent.
+// model's resolved value, or the server default for a config built by hand
+// (tests, an older caller). Diagnostics report the actual value sent.
 func OutputTokenBudget(config llm.ResolvedConfig) int {
 	if config.MaxOutputTokens > 0 {
 		return config.MaxOutputTokens

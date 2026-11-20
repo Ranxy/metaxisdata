@@ -114,7 +114,10 @@ func ProfileAllowed(profile string, allowed []string) bool {
 
 // ResolveConfig picks the provider and model Explain SQL runs on. An explicitly
 // requested profile must be allowed by the workspace setting; otherwise the first
-// allowed one is the default. Each rejection carries its own status:
+// allowed config is the default. The registry builds one config per enabled model
+// in profile order (profiles by updated_at desc, models in stored order), so the
+// returned config is that profile's first enabled model and its capacities shape
+// the call budget. Each rejection carries its own status:
 //
 //   - InvalidArgument: the requested profile is outside the workspace allowlist.
 //   - NotFound: the requested profile is allowed but no enabled profile matches.
@@ -135,9 +138,9 @@ func ResolveConfig(configs []ResolvedConfig, allowed []string, requested string)
 }
 
 // ResolveEnabledConfig picks the provider and model a feature whose profile is
-// chosen in that feature's own settings runs on: the requested profile when one is
-// named, otherwise the first enabled profile. There is no workspace allowlist, so
-// the data quality analyses are not restricted twice.
+// chosen in that feature's own settings runs on: the requested profile's first
+// enabled model when one is named, otherwise the first enabled config. There is
+// no workspace allowlist, so the data quality analyses are not restricted twice.
 func ResolveEnabledConfig(configs []ResolvedConfig, requested string) (*ResolvedConfig, error) {
 	if requested != "" {
 		config := FindConfig(configs, requested)
