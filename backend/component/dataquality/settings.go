@@ -138,6 +138,7 @@ type DigestSchedule struct {
 type Settings struct {
 	EnableLLMAnalysis        bool
 	LLMProviderProfile       string
+	LLMProviderModel         string
 	StoreFailureSamples      bool
 	FailureSampleLimit       int
 	DefaultScheduleInterval  time.Duration
@@ -162,6 +163,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		EnableLLMAnalysis:        false,
 		LLMProviderProfile:       "",
+		LLMProviderModel:         "",
 		StoreFailureSamples:      true,
 		FailureSampleLimit:       DefaultFailureSampleLimit,
 		DefaultScheduleInterval:  DefaultScheduleInterval,
@@ -194,6 +196,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings := DefaultSettings()
 	settings.EnableLLMAnalysis = dataQuality.GetEnableLlmAnalysis()
 	settings.LLMProviderProfile = strings.TrimSpace(dataQuality.GetLlmProviderProfile())
+	settings.LLMProviderModel = strings.TrimSpace(dataQuality.GetLlmProviderModel())
 	settings.StoreFailureSamples = dataQuality.GetStoreFailureSamples()
 	settings.SendSampleValuesToLLM = dataQuality.GetSendSampleValuesToLlm()
 	settings.FailureSampleLimit = normalizeFailureSampleLimit(dataQuality.GetFailureSampleLimit())

@@ -125,6 +125,33 @@
               </p>
             </div>
 
+            <div class="space-y-1.5">
+              <Label for="dq-setting-llm-model">
+                {{ t("dataQualitySettings.llmModel") }}
+              </Label>
+              <Select
+                :model-value="form.llmProviderModel"
+                :disabled="!canUpdate || llmDisabled(form) || !form.llmProviderProfile || modelOptions.length === 0"
+                @update:model-value="setLlmModel"
+              >
+                <SelectTrigger id="dq-setting-llm-model">
+                  <SelectValue :placeholder="t('dataQualitySettings.llmModelPlaceholder')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="model in modelOptions"
+                    :key="model"
+                    :value="model"
+                  >
+                    {{ model }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-sm text-muted-foreground">
+                {{ llmModelHint }}
+              </p>
+            </div>
+
             <div class="flex items-start gap-3">
               <Checkbox
                 id="dq-setting-sample-values"
@@ -779,7 +806,11 @@ import {
   validateSettingsForm,
 } from "@/utils/dataQualitySettings";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
-import { buildProviderOptions } from "@/utils/llmProvider";
+import {
+  buildProviderOptions,
+  enabledModelsFor,
+  type ProviderProfileLike,
+} from "@/utils/llmProvider";
 import {
   joinCodeTableValues,
   mergeCodeTableValues,
@@ -805,6 +836,9 @@ const form = ref<DataQualitySettingsForm>(settingsToForm(undefined));
  */
 const agentRunnerEnabled = ref(false);
 const profileOptions = ref<Array<{ name: string; title: string }>>([]);
+// The raw profile list behind `profileOptions`: the model picker needs the models
+// `buildProviderOptions` drops from the display options.
+const profileSource = ref<ProviderProfileLike[]>([]);
 // "Nothing to offer" and "the list could not be read" mean different things: the
 // first explains why the picker is empty, the second must not claim the workspace
 // has no usable profile.
@@ -818,6 +852,31 @@ const llmProfileHint = computed(() => {
     return t("dataQualitySettings.llmProfileNoProfiles");
   }
   return t("dataQualitySettings.llmProfileHint");
+});
+/** The enabled models of the chosen profile; empty for Auto and disabled profiles. */
+const modelOptions = computed(() =>
+  enabledModelsFor(profileSource.value, form.value.llmProviderProfile)
+);
+/**
+ * The hint under the model picker: Auto says which model the server would take, a
+ * chosen profile without a model says one is required.
+ */
+const llmModelHint = computed(() => {
+  if (llmDisabled(form.value)) {
+    return t("dataQualitySettings.llmModelHint");
+  }
+  if (form.value.llmProviderProfile === "") {
+    return t("dataQualitySettings.llmProfileAuto");
+  }
+  // The list is unreadable, so the picker cannot offer the profile's models and
+  // must not claim the administrator has to choose one right now.
+  if (!profilesLoaded.value) {
+    return t("dataQualitySettings.llmModelHint");
+  }
+  if (form.value.llmProviderModel === "") {
+    return t("dataQualitySettings.llmModelPlaceholder");
+  }
+  return t("dataQualitySettings.llmModelHint");
 });
 const issues = ref<ReturnType<typeof validateSettingsForm>>([]);
 const isLoading = ref(true);
@@ -877,8 +936,24 @@ const isDirty = computed(() => JSON.stringify(form.value) !== original.value);
 const AUTO_PROFILE = "-";
 
 function setLlmProfile(value: unknown) {
-  form.value.llmProviderProfile =
-    String(value) === AUTO_PROFILE ? "" : String(value);
+  const next = String(value) === AUTO_PROFILE ? "" : String(value);
+  // The select emits the same value when the selected item is clicked again;
+  // re-running the model adjustment would replace a pinned model.
+  if (next === form.value.llmProviderProfile) {
+    return;
+  }
+  form.value.llmProviderProfile = next;
+  const models = modelOptions.value;
+  if (models.includes(form.value.llmProviderModel)) {
+    return;
+  }
+  // One model is unambiguous; several require the administrator to name one,
+  // because models inside a profile differ in price and quality.
+  form.value.llmProviderModel = models.length === 1 ? models[0] : "";
+}
+
+function setLlmModel(value: unknown) {
+  form.value.llmProviderModel = String(value);
 }
 
 function setScheduleUnit(value: unknown) {
@@ -947,17 +1022,19 @@ async function loadProfiles() {
         nextPageToken: response.nextPageToken,
       };
     });
+    profileSource.value = profiles;
     profileOptions.value = buildProviderOptions(profiles);
     profilesLoaded.value = true;
-    // A configured profile that no longer enables a model would render as an
-    // empty select; clear it so the effective choice stays visible and honest.
+    // A configured profile that no longer enables a model, or a model it no longer
+    // enables, would render as an empty select; clear the pair so the effective
+    // choice stays visible and honest (Auto).
+    const models = enabledModelsFor(profiles, form.value.llmProviderProfile);
     if (
       form.value.llmProviderProfile &&
-      !profileOptions.value.some(
-        (profile) => profile.name === form.value.llmProviderProfile
-      )
+      (models.length === 0 || !models.includes(form.value.llmProviderModel))
     ) {
       form.value.llmProviderProfile = "";
+      form.value.llmProviderModel = "";
     }
   } catch {
     profileOptions.value = [];

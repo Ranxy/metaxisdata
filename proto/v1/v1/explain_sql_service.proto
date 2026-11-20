@@ -21,8 +21,14 @@ message ExplainSQLRequest {
   string meta_guid = 1;
   string sql_text = 3;
   bool force_regenerate = 4;
+  // The provider profile to explain with, as a profile resource name
+  // ("llm-provider-profiles/{id}"). Set together with model; both empty means
+  // the server's default, the first model the workspace allowlist admits.
   string provider_name = 5;
   string scope_prefix = 6;
+  // The model to explain with, as the provider profile records it. Set
+  // together with provider_name.
+  string model = 7;
 
   reserved 2;
   reserved "meta_type";

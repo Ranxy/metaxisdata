@@ -186,8 +186,8 @@
             <SelectContent>
               <SelectItem
                 v-for="option in providerOptions"
-                :key="option.name"
-                :value="option.name"
+                :key="option.key"
+                :value="option.key"
               >
                 {{ option.title }}
               </SelectItem>
@@ -304,6 +304,7 @@ import { useI18n } from "vue-i18n";
 import { type RouteLocationRaw, useRoute } from "vue-router";
 import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
+import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
@@ -333,7 +334,7 @@ import type {
 } from "@/types/proto-es/v1/explain_sql_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
-import { isProviderAllowed } from "@/utils/llmProvider";
+import { enabledModelRefs, isModelAllowed } from "@/utils/llmProvider";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
@@ -517,14 +518,24 @@ const explainError = ref<string | null>(null);
 /** Set when the page goes away; an awaited persistence write must not start a stream after it. */
 let disposed = false;
 
-// ExplainSQL may be restricted to an admin-configured set of provider profiles;
-// the picker lists the allowed profiles that have an enabled model.
+// ExplainSQL may be restricted to an admin-configured set of (profile, model)
+// pairs; the picker lists the allowed pairs that are currently enabled. The model
+// is never inferred from the profile, and a name may contain `/`, so an option's
+// select value is its position in this array rather than a joined key.
 interface ProviderOption {
-  name: string;
+  key: string;
+  profile: string;
+  model: string;
   title: string;
 }
 const providerOptions = ref<ProviderOption[]>([]);
 const selectedProvider = ref("");
+const selectedProviderPair = computed(() => {
+  const option = providerOptions.value.find(
+    (candidate) => candidate.key === selectedProvider.value
+  );
+  return option ?? { profile: "", model: "" };
+});
 const explainMeta = ref<{
   provider: string;
   model: string;
@@ -578,26 +589,33 @@ onUnmounted(() => {
 // ---- methods ----
 async function loadProviders() {
   try {
-    const [setting, resp] = await Promise.all([
+    const [setting, profiles] = await Promise.all([
       getWorkspaceProfileSetting(),
-      listProfiles({ pageSize: 100 }),
+      listAll(async (pageToken) => {
+        const response = await listProfiles({ pageSize: 100, pageToken });
+        return {
+          items: response.profiles,
+          nextPageToken: response.nextPageToken,
+        };
+      }),
     ]);
-    const allowed = setting.allowedLlmProviderProfiles;
-    providerOptions.value = resp.profiles
-      .filter((profile) => profile.models.some((model) => model.enabled))
-      .filter((profile) => isProviderAllowed(profile.name, allowed))
-      .map((profile) => ({
-        name: profile.name,
-        title: profile.title || profile.name,
+    const allowed = setting.allowedLlmProviderModels;
+    providerOptions.value = enabledModelRefs(profiles)
+      .filter((ref) => isModelAllowed(ref.providerProfile, ref.model, allowed))
+      .map((ref, index) => ({
+        key: String(index),
+        profile: ref.providerProfile,
+        model: ref.model,
+        title: `${ref.profileTitle} · ${ref.model}`,
       }));
     if (
       providerOptions.value.length > 0 &&
-      !providerOptions.value.some((o) => o.name === selectedProvider.value)
+      !providerOptions.value.some((o) => o.key === selectedProvider.value)
     ) {
-      selectedProvider.value = providerOptions.value[0].name;
+      selectedProvider.value = providerOptions.value[0].key;
     }
   } catch {
-    // A failed lookup leaves the server-side default provider in place.
+    // A failed lookup leaves the server-side default model in place.
     providerOptions.value = [];
   }
 }
@@ -741,13 +759,15 @@ const explain = useStreaming<ExplainSQLResponse, [boolean]>({
         ? {
             metaGuid: selectedMeta.value.guid,
             forceRegenerate: forceRegen,
-            providerName: selectedProvider.value,
+            providerName: selectedProviderPair.value.profile,
+            model: selectedProviderPair.value.model,
           }
         : {
             sqlText: customSQL.value.trim(),
             forceRegenerate: forceRegen,
             scopePrefix: scopePrefix.value,
-            providerName: selectedProvider.value,
+            providerName: selectedProviderPair.value.profile,
+            model: selectedProviderPair.value.model,
           };
     return explainSQL(input, { signal });
   },

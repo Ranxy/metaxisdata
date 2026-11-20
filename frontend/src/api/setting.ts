@@ -1,5 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
+import type { LlmProviderModelRef } from "@/types/proto-es/v1/llm_service_pb";
 import {
   type DataQualitySetting,
   DataQualitySettingSchema,
@@ -34,7 +35,7 @@ export async function updateWorkspaceProfileSetting(
     openlineageRetentionDays?: number;
     domains?: string[];
     enforceIdentityDomain?: boolean;
-    allowedLlmProviderProfiles?: string[];
+    allowedLlmProviderModels?: LlmProviderModelRef[];
     mcpEnabled?: boolean;
     ssoEmailIdentityIdps?: string[];
   },
@@ -48,7 +49,7 @@ export async function updateWorkspaceProfileSetting(
       openlineageRetentionDays: setting.openlineageRetentionDays ?? 0,
       domains: setting.domains ?? [],
       enforceIdentityDomain: setting.enforceIdentityDomain ?? false,
-      allowedLlmProviderProfiles: setting.allowedLlmProviderProfiles ?? [],
+      allowedLlmProviderModels: setting.allowedLlmProviderModels ?? [],
       mcpEnabled: setting.mcpEnabled ?? false,
       ssoEmailIdentityIdps: setting.ssoEmailIdentityIdps ?? [],
     }),

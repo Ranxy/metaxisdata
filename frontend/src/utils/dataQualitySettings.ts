@@ -70,8 +70,14 @@ export const DIGEST_WEEKDAYS: readonly DayOfWeek[] = [
 
 export interface DataQualitySettingsForm {
   enableLlmAnalysis: boolean;
-  /** Format: a profile resource name; empty means the first enabled profile. */
+  /** Format: a profile resource name; empty means the first enabled model. */
   llmProviderProfile: string;
+  /**
+   * The model the quality analyses call, as the provider profile records it.
+   * Paired with `llmProviderProfile`: both empty means Auto (the server takes the
+   * first enabled model), and setting only half is invalid.
+   */
+  llmProviderModel: string;
   storeFailureSamples: boolean;
   /** Blank means the server default (20). */
   failureSampleLimit: string;
@@ -103,6 +109,7 @@ export function settingsToForm(
   return {
     enableLlmAnalysis: setting?.enableLlmAnalysis ?? false,
     llmProviderProfile: setting?.llmProviderProfile ?? "",
+    llmProviderModel: setting?.llmProviderModel ?? "",
     storeFailureSamples: setting?.storeFailureSamples ?? false,
     failureSampleLimit: numberToInput(setting?.failureSampleLimit),
     defaultSchedule: setting?.defaultScheduleInterval
@@ -134,6 +141,7 @@ export function formToSetting(
   return create(DataQualitySettingSchema, {
     enableLlmAnalysis: form.enableLlmAnalysis,
     llmProviderProfile: form.llmProviderProfile.trim(),
+    llmProviderModel: form.llmProviderModel.trim(),
     storeFailureSamples: form.storeFailureSamples,
     failureSampleLimit: inputToInt(form.failureSampleLimit) ?? 0,
     // A blank schedule cannot happen after validation; fall back to one hour so
@@ -251,6 +259,14 @@ export function validateSettingsForm(
     issue("maxColumnsPerAnalysisInvalid", {
       max: MAX_COLUMNS_PER_ANALYSIS_MAX,
     });
+  }
+  // The stored pair is always written with both halves: both blank means Auto,
+  // and a profile without a model is rejected by the server even while LLM
+  // analysis is off, so the form refuses it too.
+  const providerProfile = form.llmProviderProfile.trim();
+  const providerModel = form.llmProviderModel.trim();
+  if (providerProfile !== "" && providerModel === "") {
+    issue("llmProviderModelRequired");
   }
   validateDigest(form.weeklyDigest, issue);
   const checkTimeZone = form.checkTimeZone.trim();

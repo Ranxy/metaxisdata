@@ -7,6 +7,7 @@ export interface ExplainSQLInput {
   metaGuid?: string;
   forceRegenerate?: boolean;
   providerName?: string;
+  model?: string;
   scopePrefix?: string;
 }
 
@@ -19,6 +20,7 @@ export function explainSQL(
     metaGuid: input.metaGuid ?? "",
     forceRegenerate: input.forceRegenerate ?? false,
     providerName: input.providerName ?? "",
+    model: input.model ?? "",
     scopePrefix: input.scopePrefix ?? "",
   });
   return explainSQLClient.explainSQL(request, { signal: options.signal });

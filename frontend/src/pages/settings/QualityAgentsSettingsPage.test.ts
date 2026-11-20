@@ -202,10 +202,10 @@ describe("QualityAgentsSettingsPage", () => {
     mocks.listProfiles.mockResolvedValue({ profiles: providerProfiles() });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
-        allowedLlmProviderProfiles: [
-          mainProfile,
-          secondaryProfile,
-          singleProfile,
+        allowedLlmProviderModels: [
+          { providerProfile: mainProfile, model: "fast" },
+          { providerProfile: secondaryProfile, model: "fast" },
+          { providerProfile: singleProfile, model: "only" },
         ],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
@@ -224,9 +224,9 @@ describe("QualityAgentsSettingsPage", () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
 
-    // The fixture's allowed_llm_provider_profiles lists only three profiles, and
+    // The fixture's allowed_llm_provider_models admits only three profiles, and
     // `excluded` is outside it; it is still offered because that allowlist
-    // restricts Explain SQL only and an agent may pin any enabled profile.
+    // restricts Explain SQL only and an agent may pin any enabled model.
     expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
       mainProfile,
       secondaryProfile,

@@ -4,6 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { LlmProviderModelRef } from "./llm_service_pb";
 import type { Duration, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
@@ -62,14 +63,14 @@ export declare type WorkspaceProfileSetting = Message<"metaxisdata.v1.WorkspaceP
   enforceIdentityDomain: boolean;
 
   /**
-   * The LLM provider profiles Explain SQL may use, as profile resource names
-   * ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
-   * The data quality analyses and the quality agents choose their profile in
-   * their own settings, so this list does not restrict them.
+   * The LLM provider models Explain SQL may use, as exact profile + model
+   * pairs. Empty means every enabled model is allowed. The data quality
+   * analyses and the quality agents choose their model in their own settings,
+   * so this list does not restrict them.
    *
-   * @generated from field: repeated string allowed_llm_provider_profiles = 7;
+   * @generated from field: repeated metaxisdata.v1.LlmProviderModelRef allowed_llm_provider_models = 12;
    */
-  allowedLlmProviderProfiles: string[];
+  allowedLlmProviderModels: LlmProviderModelRef[];
 
   /**
    * Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
@@ -128,11 +129,22 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
 
   /**
    * The LLM provider profile the quality analyses use, as a profile resource
-   * name. Empty means the first enabled profile.
+   * name. Set together with llm_provider_model; both empty means the first
+   * enabled model of the first enabled profile.
    *
    * @generated from field: string llm_provider_profile = 2;
    */
   llmProviderProfile: string;
+
+  /**
+   * The model the quality analyses use, as the provider profile records it.
+   * Set together with llm_provider_profile; the model is never inferred from
+   * the profile because one profile can enable several models at different
+   * prices and capacities.
+   *
+   * @generated from field: string llm_provider_model = 30;
+   */
+  llmProviderModel: string;
 
   /**
    * Whether failed checks keep the sampled rows as evidence. Off means a result

@@ -93,22 +93,32 @@ beforeEach(() => {
   setActivePinia(createPinia());
   localStorage.clear();
   vi.clearAllMocks();
-  mocks.listProfiles.mockResolvedValue({ profiles: [] });
+  mocks.listProfiles.mockResolvedValue({ profiles: [], nextPageToken: "" });
   mocks.getWorkspaceProfileSetting.mockResolvedValue({
-    allowedLlmProviderProfiles: [],
+    allowedLlmProviderModels: [],
   });
 });
 
 interface PageVm {
-  providerOptions: Array<{ name: string; title: string }>;
+  providerOptions: Array<{
+    key: string;
+    profile: string;
+    model: string;
+    title: string;
+  }>;
+  selectedProvider: string;
 }
 
 function vm(wrapper: ReturnType<typeof mount>): PageVm {
   return wrapper.vm as unknown as PageVm;
 }
 
-function enabledProfile(name: string, title: string) {
-  return { name, title, models: [{ name: "model", enabled: true }] };
+function enabledProfile(
+  name: string,
+  title: string,
+  models: Array<{ name: string; enabled: boolean }>
+) {
+  return { name, title, models };
 }
 
 describe("ExplainSQLPage", () => {
@@ -169,37 +179,88 @@ describe("ExplainSQLPage", () => {
     expect(explainButton(wrapper)?.attributes("disabled")).toBeUndefined();
   });
 
-  it("offers only the provider profiles the workspace allowlist permits", async () => {
+  it("offers only the (profile, model) pairs the workspace allowlist permits", async () => {
     mocks.listProfiles.mockResolvedValue({
       profiles: [
-        enabledProfile("llm-provider-profiles/allowed", "Allowed"),
-        enabledProfile("llm-provider-profiles/blocked", "Blocked"),
+        enabledProfile("llm-provider-profiles/allowed", "Allowed", [
+          { name: "fast", enabled: true },
+          { name: "slow", enabled: true },
+        ]),
+        enabledProfile("llm-provider-profiles/blocked", "Blocked", [
+          { name: "fast", enabled: true },
+        ]),
       ],
       nextPageToken: "",
     });
     mocks.getWorkspaceProfileSetting.mockResolvedValue({
-      allowedLlmProviderProfiles: ["llm-provider-profiles/allowed"],
+      allowedLlmProviderModels: [
+        { providerProfile: "llm-provider-profiles/allowed", model: "fast" },
+      ],
     });
     const wrapper = await mountPage();
 
-    expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
-      "llm-provider-profiles/allowed",
-    ]);
+    expect(
+      vm(wrapper).providerOptions.map((option) => [
+        option.profile,
+        option.model,
+      ])
+    ).toEqual([["llm-provider-profiles/allowed", "fast"]]);
+    // The label names both halves of the pair, since the model is never inferred.
+    expect(vm(wrapper).providerOptions[0].title).toContain("Allowed");
+    expect(vm(wrapper).providerOptions[0].title).toContain("fast");
   });
 
-  it("offers every enabled profile when the allowlist is empty", async () => {
+  it("offers every enabled model when the allowlist is empty", async () => {
     mocks.listProfiles.mockResolvedValue({
       profiles: [
-        enabledProfile("llm-provider-profiles/a", "A"),
-        enabledProfile("llm-provider-profiles/b", "B"),
+        enabledProfile("llm-provider-profiles/a", "A", [
+          { name: "fast", enabled: true },
+          { name: "retired", enabled: false },
+        ]),
+        enabledProfile("llm-provider-profiles/b", "B", [
+          { name: "reasoner", enabled: true },
+        ]),
       ],
       nextPageToken: "",
     });
     const wrapper = await mountPage();
 
-    expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
-      "llm-provider-profiles/a",
-      "llm-provider-profiles/b",
+    expect(
+      vm(wrapper).providerOptions.map((option) => [
+        option.profile,
+        option.model,
+      ])
+    ).toEqual([
+      ["llm-provider-profiles/a", "fast"],
+      ["llm-provider-profiles/b", "reasoner"],
     ]);
+  });
+
+  it("sends the selected pair on both explain paths", async () => {
+    mocks.explainSQL.mockReturnValue(hanging([content("Done")]));
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        enabledProfile("llm-provider-profiles/main", "Main", [
+          { name: "fast", enabled: true },
+          { name: "reasoner", enabled: true },
+        ]),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    // The first option is selected by default.
+    expect(vm(wrapper).selectedProvider).toBe("0");
+
+    await typeCustomSQL(wrapper);
+    await explainButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.explainSQL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerName: "llm-provider-profiles/main",
+        model: "fast",
+      }),
+      expect.anything()
+    );
   });
 });

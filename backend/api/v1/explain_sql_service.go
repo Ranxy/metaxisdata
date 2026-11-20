@@ -70,11 +70,11 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM config"))
 	}
-	allowedProfiles, err := s.allowedLLMProfiles(ctx)
+	allowedModels, err := s.allowedLLMModels(ctx)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the allowed LLM providers"))
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the allowed LLM provider models"))
 	}
-	resolvedConfig, err := resolveLLMConfig(configs, allowedProfiles, req.Msg.ProviderName)
+	resolvedConfig, err := llm.ResolveAllowedModelConfig(configs, allowedModels, req.Msg.ProviderName, req.Msg.Model)
 	if err != nil {
 		return err
 	}
@@ -446,46 +446,31 @@ func isTableLikeType(mt storepb.MetaType) bool {
 	}
 }
 
-// allowedLLMProfiles returns the workspace's LLM provider allowlist. An empty
-// list means every enabled profile is allowed.
-func (s *ExplainSQLService) allowedLLMProfiles(ctx context.Context) ([]string, error) {
+// allowedLLMModels returns the workspace's LLM provider allowlist. An empty list
+// means every enabled model is allowed.
+func (s *ExplainSQLService) allowedLLMModels(ctx context.Context) ([]llm.ModelRef, error) {
 	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return setting.GetAllowedLlmProviderProfiles(), nil
+	return providerModelRefs(setting.GetAllowedLlmProviderModels()), nil
 }
 
-// The provider-selection rules live in component/llm, which keeps the allowlist
-// and the default in one place. Explain SQL is the only feature that applies the
-// workspace allowlist: the data quality analyses and quality agents pick their
-// profile in their own settings. These helpers keep the RPC's names and
-// signatures — the handler and this package's tests call them — and delegate the
-// rule itself to the shared implementation.
-
-// findLLMConfig returns the enabled config the profile reference names, or nil.
-func findLLMConfig(configs []llm.ResolvedConfig, profile string) *llm.ResolvedConfig {
-	return llm.FindConfig(configs, profile)
-}
-
-// filterAllowedLLMConfigs keeps the configs whose profile is in the allowlist. An
-// empty allowlist means no restriction.
-func filterAllowedLLMConfigs(configs []llm.ResolvedConfig, allowed []string) []llm.ResolvedConfig {
-	return llm.AllowedConfigs(configs, allowed)
-}
-
-// resolveLLMConfig picks the provider and model the explanation runs on. An
-// explicitly requested profile must be allowed by the workspace setting; otherwise
-// the first allowed one is the default. The errors are the RPC's, so the handler
-// returns them unchanged.
-func resolveLLMConfig(configs []llm.ResolvedConfig, allowed []string, providerName string) (*llm.ResolvedConfig, error) {
-	return llm.ResolveConfig(configs, allowed, providerName)
-}
-
-// isLLMProfileAllowed reports whether a requested profile is inside the allowlist;
-// an empty allowlist allows everything.
-func isLLMProfileAllowed(profile string, allowed []string) bool {
-	return llm.ProfileAllowed(profile, allowed)
+// providerModelRefs converts the stored allowlist into the component's model
+// reference. Model names may contain slashes, so the pair is never joined into a
+// resource name.
+func providerModelRefs(models []*storepb.LlmProviderModelRef) []llm.ModelRef {
+	result := make([]llm.ModelRef, 0, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		result = append(result, llm.ModelRef{
+			Profile: strings.TrimSpace(model.GetProviderProfile()),
+			Model:   strings.TrimSpace(model.GetModel()),
+		})
+	}
+	return result
 }
 
 // resolveSource returns the SQL to explain, the object it belongs to, the

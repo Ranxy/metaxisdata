@@ -938,6 +938,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.LlmProviderModelRef"><span class="badge">M</span>LlmProviderModelRef</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.LlmProviderProfile"><span class="badge">M</span>LlmProviderProfile</a>
                 </li>
               
@@ -10938,6 +10942,37 @@ means the server default. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.LlmProviderModelRef">LlmProviderModelRef</h3>
+        <p>LlmProviderModelRef names one exact model of one provider profile, the pair a</p><p>setting stores when the model is the unit of choice.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>provider_profile</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.LlmProviderProfile">LlmProviderProfile</h3>
         <p></p>
 
@@ -12830,6 +12865,14 @@ A binding binds one or more members or groups to a single role. </p></td>
                 </tr>
               
                 <tr>
+                  <td>llm_provider_model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The model the quality analyses use, stored with llm_provider_profile. Both
+empty means the first enabled model of the first enabled profile. </p></td>
+                </tr>
+              
+                <tr>
                   <td>store_failure_samples</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
@@ -13402,13 +13445,13 @@ kept. Zero (the default) keeps them forever: they are audit data. </p></td>
                 </tr>
               
                 <tr>
-                  <td>allowed_llm_provider_profiles</td>
-                  <td><a href="#string">string</a></td>
+                  <td>allowed_llm_provider_models</td>
+                  <td><a href="#metaxisdata.store.LlmProviderModelRef">LlmProviderModelRef</a></td>
                   <td>repeated</td>
-                  <td><p>The LLM provider profiles Explain SQL may use, as profile resource names.
-Empty means every enabled profile is allowed. The data quality analyses and
-the quality agents choose their profile in their own settings, so this list
-does not restrict them. </p></td>
+                  <td><p>The LLM provider models Explain SQL may use, as exact profile &#43; model
+pairs. Empty means every enabled model is allowed. The data quality
+analyses and the quality agents choose their model in their own settings,
+so this list does not restrict them. </p></td>
                 </tr>
               
                 <tr>

@@ -138,6 +138,36 @@ export declare type LlmProviderProfile = Message<"metaxisdata.v1.LlmProviderProf
 export declare const LlmProviderProfileSchema: GenMessage<LlmProviderProfile>;
 
 /**
+ * LlmProviderModelRef names one exact model of one provider profile. The model
+ * is never inferred from the profile: one profile can enable several models at
+ * different prices and capacities, so a feature that runs on a model names both.
+ *
+ * @generated from message metaxisdata.v1.LlmProviderModelRef
+ */
+export declare type LlmProviderModelRef = Message<"metaxisdata.v1.LlmProviderModelRef"> & {
+  /**
+   * The provider profile, as a profile resource name
+   * ("llm-provider-profiles/{id}").
+   *
+   * @generated from field: string provider_profile = 1;
+   */
+  providerProfile: string;
+
+  /**
+   * The model name as the provider profile records it.
+   *
+   * @generated from field: string model = 2;
+   */
+  model: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.LlmProviderModelRef.
+ * Use `create(LlmProviderModelRefSchema)` to create a new message.
+ */
+export declare const LlmProviderModelRefSchema: GenMessage<LlmProviderModelRef>;
+
+/**
  * The server-owned capacity contract the provider settings page renders:
  * defaults and bounds for the per-model fields. It is output-only.
  *

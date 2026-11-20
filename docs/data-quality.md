@@ -17,12 +17,12 @@ account with `SELECT`-only grants. Schema drift is the exception: it reads metad
 2. **Check the permissions.** Reading checks, executions, issues and contracts is part of the member baseline. Creating, editing,
 running, acknowledging and resolving need `metaxisdata.dataQuality.rules.*` / `.issues.update`; publishing a contract needs
 `metaxisdata.dataQuality.contracts.publish`. Model-assisted paths also need `.suggest` or `.explain`.
-3. *(Optional)* **Turn on model assistance.** Under Settings → Data Quality, enable *LLM analysis* and pick a provider profile. The
+3. *(Optional)* **Turn on model assistance.** Under Settings → Data Quality, enable *LLM analysis* and pick the provider profile and model the analyses use. The
 switches for storing failure samples and for sending raw sample values are independent; the second is reserved and no model path
 sends raw sample rows today. Everything else works with model assistance off.
 4. *(Optional)* **Turn on quality agents.** An administrator creates an agent under Settings → Quality agents and turns off **Pause all
 agents**; see [Quality agents](#quality-agents). Agents are independent of the check engine: with the runtime off, checks keep
-running. An agent also needs an enabled provider profile with at least one model — the dialog cannot create one without it —
+running. An agent also needs a provider profile and a model it can call — the dialog cannot create one without them —
 and **LLM analysis** must be on for the agent to reason.
 
 ## Adding a check
@@ -527,8 +527,8 @@ wakes, compaction, triage and the drafts it writes — uses this pair. If the pr
 disabled, the agent stops reasoning instead of silently switching: its conversation answers with the deterministic scope summary, a
 target that still needs triage is not admitted until a model is back (its enrollment row records `no-model`), and Settings → Quality
 agents marks the pair as unavailable until you choose another. Editing the agent's other fields still works while the pair is stale;
-only a changed pair is validated. Agents do not follow the workspace provider in Settings → Data Quality; that setting is the
-analyses' default.
+only a changed pair is validated. Agents do not follow the workspace pair in Settings → Data Quality; that setting is the
+analyses' provider and model.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
 - **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
@@ -588,9 +588,9 @@ create, change or run anything. See [mcp.md](mcp.md).
 
 ## Settings
 
-Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (empty means the first enabled
-profile; profile-level, the analyses use that profile's first enabled model), failure-sample storage and count (20 by default, at most
-100),
+Settings → Data Quality controls the model-analysis switch and the provider profile and model the analyses use (both empty means the
+first enabled model of the first enabled profile; one without the other is not accepted), failure-sample storage and count (20 by
+default, at most 100),
 the **check time zone** (IANA name, empty = UTC) used to resolve time variables in filters and custom SQL and a cron schedule saved
 without a zone, the default schedule a target starts with, the daily execution ceiling (only scheduled scans pause at it — **Run now**
 still works), the daily AI analysis ceiling (L1+L2, default 10,000), the concurrent LLM calls (default 8, range 1–64), whether raw
@@ -632,7 +632,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | A cron target did not run at the expected time | The target's own time zone applies; DST gaps are skipped and downtime is not caught up. The header's next-run time is the authority. |
 | An execution stays pending or ends abandoned | The connection budget was busy or the server restarted. Scheduled checks retry later in the cycle (three attempts); manual runs do not. |
 | No notification for a failure | The issue was already open, the check is muted, or more than ten checks failed and one summary replaced them. |
-| A model action is unavailable | Model analysis is off, or the caller lacks `.suggest` / `.explain`. With the switch on but no provider profile enabling a model, the action is still offered and the call fails with `FailedPrecondition`. |
+| A model action is unavailable | Model analysis is off, or the caller lacks `.suggest` / `.explain`. With the switch on but no enabled model, the action is still offered and the call fails with `FailedPrecondition`. |
 | An AI analysis is rejected as over quota | Today's AI usage shows the limit; raise the daily AI ceiling or concurrent LLM calls. The change applies without a restart. |
 | A model rejects the output budget | The model's **Max output tokens** exceeds the provider cap; after one retry at 4,096, lower the budget or use another model. |
 | A label suggestion cannot be accepted | Profile the columns first; suggestions need profiles fresher than seven days. |

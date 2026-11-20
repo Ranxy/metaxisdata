@@ -297,11 +297,11 @@ type WorkspaceProfileSetting struct {
 	// openlineage_retention_days bounds how long persisted OpenLineage runs are
 	// kept. Zero (the default) keeps them forever: they are audit data.
 	OpenlineageRetentionDays int32 `protobuf:"varint,14,opt,name=openlineage_retention_days,json=openlineageRetentionDays,proto3" json:"openlineage_retention_days,omitempty"`
-	// The LLM provider profiles Explain SQL may use, as profile resource names.
-	// Empty means every enabled profile is allowed. The data quality analyses and
-	// the quality agents choose their profile in their own settings, so this list
-	// does not restrict them.
-	AllowedLlmProviderProfiles []string `protobuf:"bytes,15,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
+	// The LLM provider models Explain SQL may use, as exact profile + model
+	// pairs. Empty means every enabled model is allowed. The data quality
+	// analyses and the quality agents choose their model in their own settings,
+	// so this list does not restrict them.
+	AllowedLlmProviderModels []*LlmProviderModelRef `protobuf:"bytes,20,rep,name=allowed_llm_provider_models,json=allowedLlmProviderModels,proto3" json:"allowed_llm_provider_models,omitempty"`
 	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 	// Off by default: the surface is new, and enabling it requires a configured
 	// external_url, which is where its issuer and resource identifiers come from.
@@ -403,9 +403,9 @@ func (x *WorkspaceProfileSetting) GetOpenlineageRetentionDays() int32 {
 	return 0
 }
 
-func (x *WorkspaceProfileSetting) GetAllowedLlmProviderProfiles() []string {
+func (x *WorkspaceProfileSetting) GetAllowedLlmProviderModels() []*LlmProviderModelRef {
 	if x != nil {
-		return x.AllowedLlmProviderProfiles
+		return x.AllowedLlmProviderModels
 	}
 	return nil
 }
@@ -577,19 +577,22 @@ func (x *EnvironmentSetting) GetEnvironments() []*EnvironmentSetting_Environment
 // DataQualitySetting is the stored form of the data quality settings; it mirrors
 // metaxisdata.v1.DataQualitySetting.
 type DataQualitySetting struct {
-	state                    protoimpl.MessageState `protogen:"open.v1"`
-	EnableLlmAnalysis        bool                   `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
-	LlmProviderProfile       string                 `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
-	StoreFailureSamples      bool                   `protobuf:"varint,3,opt,name=store_failure_samples,json=storeFailureSamples,proto3" json:"store_failure_samples,omitempty"`
-	FailureSampleLimit       int32                  `protobuf:"varint,4,opt,name=failure_sample_limit,json=failureSampleLimit,proto3" json:"failure_sample_limit,omitempty"`
-	DefaultScheduleInterval  *durationpb.Duration   `protobuf:"bytes,5,opt,name=default_schedule_interval,json=defaultScheduleInterval,proto3" json:"default_schedule_interval,omitempty"`
-	DailyExecutionLimit      int32                  `protobuf:"varint,6,opt,name=daily_execution_limit,json=dailyExecutionLimit,proto3" json:"daily_execution_limit,omitempty"`
-	DailyColumnAnalysisLimit int32                  `protobuf:"varint,7,opt,name=daily_column_analysis_limit,json=dailyColumnAnalysisLimit,proto3" json:"daily_column_analysis_limit,omitempty"`
-	MaxColumnsPerAnalysis    int32                  `protobuf:"varint,8,opt,name=max_columns_per_analysis,json=maxColumnsPerAnalysis,proto3" json:"max_columns_per_analysis,omitempty"`
-	SendSampleValuesToLlm    bool                   `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
-	DailyLlmAnalysisLimit    int32                  `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
-	LlmConcurrencyLimit      int32                  `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
-	WeeklyDigest             *QualityDigestSetting  `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	EnableLlmAnalysis  bool                   `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
+	LlmProviderProfile string                 `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
+	// The model the quality analyses use, stored with llm_provider_profile. Both
+	// empty means the first enabled model of the first enabled profile.
+	LlmProviderModel         string                `protobuf:"bytes,30,opt,name=llm_provider_model,json=llmProviderModel,proto3" json:"llm_provider_model,omitempty"`
+	StoreFailureSamples      bool                  `protobuf:"varint,3,opt,name=store_failure_samples,json=storeFailureSamples,proto3" json:"store_failure_samples,omitempty"`
+	FailureSampleLimit       int32                 `protobuf:"varint,4,opt,name=failure_sample_limit,json=failureSampleLimit,proto3" json:"failure_sample_limit,omitempty"`
+	DefaultScheduleInterval  *durationpb.Duration  `protobuf:"bytes,5,opt,name=default_schedule_interval,json=defaultScheduleInterval,proto3" json:"default_schedule_interval,omitempty"`
+	DailyExecutionLimit      int32                 `protobuf:"varint,6,opt,name=daily_execution_limit,json=dailyExecutionLimit,proto3" json:"daily_execution_limit,omitempty"`
+	DailyColumnAnalysisLimit int32                 `protobuf:"varint,7,opt,name=daily_column_analysis_limit,json=dailyColumnAnalysisLimit,proto3" json:"daily_column_analysis_limit,omitempty"`
+	MaxColumnsPerAnalysis    int32                 `protobuf:"varint,8,opt,name=max_columns_per_analysis,json=maxColumnsPerAnalysis,proto3" json:"max_columns_per_analysis,omitempty"`
+	SendSampleValuesToLlm    bool                  `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
+	DailyLlmAnalysisLimit    int32                 `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
+	LlmConcurrencyLimit      int32                 `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
+	WeeklyDigest             *QualityDigestSetting `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
 	// IANA time zone the time variables of check filters and custom SQL are
 	// resolved in, for example "Asia/Shanghai". Empty means UTC.
 	TimeZone string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
@@ -641,6 +644,13 @@ func (x *DataQualitySetting) GetEnableLlmAnalysis() bool {
 func (x *DataQualitySetting) GetLlmProviderProfile() string {
 	if x != nil {
 		return x.LlmProviderProfile
+	}
+	return ""
+}
+
+func (x *DataQualitySetting) GetLlmProviderModel() string {
+	if x != nil {
+		return x.LlmProviderModel
 	}
 	return ""
 }
@@ -1220,7 +1230,7 @@ var File_store_setting_proto protoreflect.FileDescriptor
 
 const file_store_setting_proto_rawDesc = "" +
 	"\n" +
-	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcc\x05\n" +
+	"\x13store/setting.proto\x12\x11metaxisdata.store\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fstore/llm.proto\"\x95\x06\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x12\x18\n" +
@@ -1228,12 +1238,12 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x17enforce_identity_domain\x18\n" +
 	" \x01(\bR\x15enforceIdentityDomain\x128\n" +
 	"\x18disallow_password_signin\x18\f \x01(\bR\x16disallowPasswordSignin\x12<\n" +
-	"\x1aopenlineage_retention_days\x18\x0e \x01(\x05R\x18openlineageRetentionDays\x12A\n" +
-	"\x1dallowed_llm_provider_profiles\x18\x0f \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
+	"\x1aopenlineage_retention_days\x18\x0e \x01(\x05R\x18openlineageRetentionDays\x12e\n" +
+	"\x1ballowed_llm_provider_models\x18\x14 \x03(\v2&.metaxisdata.store.LlmProviderModelRefR\x18allowedLlmProviderModels\x12\x1f\n" +
 	"\vmcp_enabled\x18\x10 \x01(\bR\n" +
 	"mcpEnabled\x125\n" +
 	"\x17sso_email_identity_idps\x18\x12 \x03(\tR\x14ssoEmailIdentityIdps\x12H\n" +
-	"\fdata_quality\x18\x13 \x01(\v2%.metaxisdata.store.DataQualitySettingR\vdataQualityJ\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12R\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collectionR\x18allow_sso_email_identity\"\x9a\x03\n" +
+	"\fdata_quality\x18\x13 \x01(\v2%.metaxisdata.store.DataQualitySettingR\vdataQualityJ\x04\b\x0f\x10\x10J\x04\b\x03\x10\x04J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\v\x10\fJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12R\x1dallowed_llm_provider_profilesR\vrequire_2faR\x0etoken_durationR\fannouncementR\x17maximum_role_expirationR\x14database_change_modeR\x18enable_metric_collectionR\x18allow_sso_email_identity\"\x9a\x03\n" +
 	"\x1aPasswordRestrictionSetting\x12\x1d\n" +
 	"\n" +
 	"min_length\x18\x01 \x01(\x05R\tminLength\x12%\n" +
@@ -1252,11 +1262,11 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe7\n" +
-	"\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x95\v\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
-	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
+	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x12,\n" +
+	"\x12llm_provider_model\x18\x1e \x01(\tR\x10llmProviderModel\x122\n" +
 	"\x15store_failure_samples\x18\x03 \x01(\bR\x13storeFailureSamples\x120\n" +
 	"\x14failure_sample_limit\x18\x04 \x01(\x05R\x12failureSampleLimit\x12U\n" +
 	"\x19default_schedule_interval\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x17defaultScheduleInterval\x122\n" +
@@ -1363,30 +1373,32 @@ var file_store_setting_proto_goTypes = []any{
 	(*MaintenanceWindow)(nil),              // 13: metaxisdata.store.MaintenanceWindow
 	(*EnvironmentSetting_Environment)(nil), // 14: metaxisdata.store.EnvironmentSetting.Environment
 	nil,                                    // 15: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	(*durationpb.Duration)(nil),            // 16: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 17: google.protobuf.Timestamp
+	(*LlmProviderModelRef)(nil),            // 16: metaxisdata.store.LlmProviderModelRef
+	(*durationpb.Duration)(nil),            // 17: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 18: google.protobuf.Timestamp
 }
 var file_store_setting_proto_depIdxs = []int32{
-	7,  // 0: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
-	16, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
-	14, // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
-	16, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	8,  // 4: metaxisdata.store.DataQualitySetting.weekly_digest:type_name -> metaxisdata.store.QualityDigestSetting
-	3,  // 5: metaxisdata.store.QualityDigestSetting.day_of_week:type_name -> metaxisdata.store.DayOfWeek
-	10, // 6: metaxisdata.store.EmailSetting.smtp:type_name -> metaxisdata.store.EmailSMTPConfig
-	1,  // 7: metaxisdata.store.EmailSMTPConfig.encryption:type_name -> metaxisdata.store.EmailSMTPEncryption
-	2,  // 8: metaxisdata.store.EmailSMTPConfig.authentication:type_name -> metaxisdata.store.EmailSMTPAuthentication
-	12, // 9: metaxisdata.store.QuietHoursSetting.windows:type_name -> metaxisdata.store.QuietWindow
-	13, // 10: metaxisdata.store.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.store.MaintenanceWindow
-	3,  // 11: metaxisdata.store.QuietWindow.days:type_name -> metaxisdata.store.DayOfWeek
-	17, // 12: metaxisdata.store.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
-	17, // 13: metaxisdata.store.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
-	15, // 14: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	16, // 0: metaxisdata.store.WorkspaceProfileSetting.allowed_llm_provider_models:type_name -> metaxisdata.store.LlmProviderModelRef
+	7,  // 1: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
+	17, // 2: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
+	14, // 3: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
+	17, // 4: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	8,  // 5: metaxisdata.store.DataQualitySetting.weekly_digest:type_name -> metaxisdata.store.QualityDigestSetting
+	3,  // 6: metaxisdata.store.QualityDigestSetting.day_of_week:type_name -> metaxisdata.store.DayOfWeek
+	10, // 7: metaxisdata.store.EmailSetting.smtp:type_name -> metaxisdata.store.EmailSMTPConfig
+	1,  // 8: metaxisdata.store.EmailSMTPConfig.encryption:type_name -> metaxisdata.store.EmailSMTPEncryption
+	2,  // 9: metaxisdata.store.EmailSMTPConfig.authentication:type_name -> metaxisdata.store.EmailSMTPAuthentication
+	12, // 10: metaxisdata.store.QuietHoursSetting.windows:type_name -> metaxisdata.store.QuietWindow
+	13, // 11: metaxisdata.store.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.store.MaintenanceWindow
+	3,  // 12: metaxisdata.store.QuietWindow.days:type_name -> metaxisdata.store.DayOfWeek
+	18, // 13: metaxisdata.store.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
+	18, // 14: metaxisdata.store.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
+	15, // 15: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_store_setting_proto_init() }
@@ -1394,6 +1406,7 @@ func file_store_setting_proto_init() {
 	if File_store_setting_proto != nil {
 		return
 	}
+	file_store_llm_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

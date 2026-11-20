@@ -27,10 +27,16 @@ type ExplainSQLRequest struct {
 	MetaGuid        string                 `protobuf:"bytes,1,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
 	SqlText         string                 `protobuf:"bytes,3,opt,name=sql_text,json=sqlText,proto3" json:"sql_text,omitempty"`
 	ForceRegenerate bool                   `protobuf:"varint,4,opt,name=force_regenerate,json=forceRegenerate,proto3" json:"force_regenerate,omitempty"`
-	ProviderName    string                 `protobuf:"bytes,5,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
-	ScopePrefix     string                 `protobuf:"bytes,6,opt,name=scope_prefix,json=scopePrefix,proto3" json:"scope_prefix,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The provider profile to explain with, as a profile resource name
+	// ("llm-provider-profiles/{id}"). Set together with model; both empty means
+	// the server's default, the first model the workspace allowlist admits.
+	ProviderName string `protobuf:"bytes,5,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	ScopePrefix  string `protobuf:"bytes,6,opt,name=scope_prefix,json=scopePrefix,proto3" json:"scope_prefix,omitempty"`
+	// The model to explain with, as the provider profile records it. Set
+	// together with provider_name.
+	Model         string `protobuf:"bytes,7,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExplainSQLRequest) Reset() {
@@ -94,6 +100,13 @@ func (x *ExplainSQLRequest) GetProviderName() string {
 func (x *ExplainSQLRequest) GetScopePrefix() string {
 	if x != nil {
 		return x.ScopePrefix
+	}
+	return ""
+}
+
+func (x *ExplainSQLRequest) GetModel() string {
+	if x != nil {
+		return x.Model
 	}
 	return ""
 }
@@ -368,13 +381,14 @@ var File_v1_explain_sql_service_proto protoreflect.FileDescriptor
 
 const file_v1_explain_sql_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x13v1/annotation.proto\"\xcf\x01\n" +
+	"\x1cv1/explain_sql_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x13v1/annotation.proto\"\xe5\x01\n" +
 	"\x11ExplainSQLRequest\x12\x1b\n" +
 	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x12\x19\n" +
 	"\bsql_text\x18\x03 \x01(\tR\asqlText\x12)\n" +
 	"\x10force_regenerate\x18\x04 \x01(\bR\x0fforceRegenerate\x12#\n" +
 	"\rprovider_name\x18\x05 \x01(\tR\fproviderName\x12!\n" +
-	"\fscope_prefix\x18\x06 \x01(\tR\vscopePrefixJ\x04\b\x02\x10\x03R\tmeta_type\"\xcc\x01\n" +
+	"\fscope_prefix\x18\x06 \x01(\tR\vscopePrefix\x12\x14\n" +
+	"\x05model\x18\a \x01(\tR\x05modelJ\x04\b\x02\x10\x03R\tmeta_type\"\xcc\x01\n" +
 	"\x12ExplainSQLResponse\x12\x1a\n" +
 	"\acontent\x18\x01 \x01(\tH\x00R\acontent\x12@\n" +
 	"\bmetadata\x18\x02 \x01(\v2\".metaxisdata.v1.ExplainSQLMetadataH\x00R\bmetadata\x12@\n" +

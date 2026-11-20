@@ -167,7 +167,7 @@
               t("generalSettings.explainProvidersSectionDescription")
             }}</CardDescription>
           </CardHeader>
-          <CardContent class="space-y-3">
+          <CardContent class="space-y-4">
             <p class="text-sm text-muted-foreground">
               {{ t("generalSettings.explainProvidersHint") }}
             </p>
@@ -178,27 +178,34 @@
               {{ profilesError }}
             </p>
             <p
-              v-else-if="llmProfiles.length === 0"
+              v-else-if="modelGroups.length === 0"
               class="text-sm text-muted-foreground"
             >
               {{ t("generalSettings.explainProvidersEmpty") }}
             </p>
             <div
-              v-for="profile in llmProfiles"
-              :key="profile.name"
-              class="flex items-center gap-3"
+              v-for="group in modelGroups"
+              :key="group.profile"
+              class="space-y-2"
             >
-              <Checkbox
-                :id="`allowed-provider-${profile.name}`"
-                :checked="allowedProfiles.includes(profile.name)"
-                :disabled="!canUpdate"
-                @update:checked="
-                  toggleAllowedProfile(profile.name, $event === true)
-                "
-              />
-              <Label :for="`allowed-provider-${profile.name}`">
-                {{ profile.title || profile.name }}
-              </Label>
+              <p class="text-sm font-medium">{{ group.title }}</p>
+              <div
+                v-for="model in group.models"
+                :key="model"
+                class="flex items-center gap-3"
+              >
+                <Checkbox
+                  :id="`allowed-model-${group.profile}-${model}`"
+                  :checked="isModelChecked(group.profile, model)"
+                  :disabled="!canUpdate"
+                  @update:checked="
+                    toggleAllowedModel(group.profile, model, $event === true)
+                  "
+                />
+                <Label :for="`allowed-model-${group.profile}-${model}`">
+                  {{ model }}
+                </Label>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -274,8 +281,10 @@
 </template>
 
 <script setup lang="ts">
+import { create } from "@bufbuild/protobuf";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import {
   getDebugConfig,
@@ -299,6 +308,12 @@ import { Label } from "@/components/ui/label";
 import { useBuildInfo } from "@/composables/useBuildInfo";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
+import {
+  type LlmProviderModelRef,
+  LlmProviderModelRefSchema,
+  type LlmProviderProfile,
+} from "@/types/proto-es/v1/llm_service_pb";
+import { modelRefKey } from "@/utils/llmProvider";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -324,11 +339,11 @@ const domainsInput = ref("");
 // for a named provider.
 const ssoEmailIdentityIdpsInput = ref("");
 
-// Explain SQL may only use the provider profiles selected here; the data quality
-// analyses and the quality agents choose their profile in their own settings. An
-// empty list means "every enabled profile is allowed".
-const llmProfiles = ref<{ name: string; title: string }[]>([]);
-const allowedProfiles = ref<string[]>([]);
+// Explain SQL may only use the (profile, model) pairs selected here; the data
+// quality analyses and the quality agents choose their pair in their own
+// settings. An empty list means "every enabled model is allowed".
+const llmProfiles = ref<LlmProviderProfile[]>([]);
+const allowedModels = ref<LlmProviderModelRef[]>([]);
 // Listing profiles needs its own permission, so a failure here degrades to a
 // message inside the card instead of taking the whole page down.
 const profilesError = ref<string | null>(null);
@@ -372,7 +387,11 @@ function snapshot(): string {
     externalUrl: externalUrl.value.trim(),
     retentionDays: Number(retentionDaysInput.value),
     mcpEnabled: mcpEnabled.value,
-    allowedProfiles: [...allowedProfiles.value].sort(),
+    // Sorted, stable pair keys: the stored order carries no meaning, and a stale
+    // pair the page cannot render must not read as a change.
+    allowedModels: allowedModels.value
+      .map((ref) => modelRefKey(ref.providerProfile, ref.model))
+      .sort(),
   });
 }
 
@@ -385,22 +404,48 @@ async function fetchSetting() {
   enforceIdentityDomain.value = setting.enforceIdentityDomain;
   domainsInput.value = setting.domains.join(", ");
   ssoEmailIdentityIdpsInput.value = setting.ssoEmailIdentityIdps.join(", ");
-  allowedProfiles.value = [...setting.allowedLlmProviderProfiles];
+  // Kept as returned: a pair whose profile or model is gone stays in the list and
+  // travels back on save, so this page never silently drops an authorization.
+  allowedModels.value = [...setting.allowedLlmProviderModels];
   externalUrl.value = setting.externalUrl;
   retentionDaysInput.value = String(setting.openlineageRetentionDays);
   mcpEnabled.value = setting.mcpEnabled;
 }
 
-// Only profiles with at least one enabled model can be used by ExplainSQL, so
-// the picker lists exactly those.
+/** One profile's enabled models, as the Explain SQL card renders them. */
+interface ModelGroup {
+  profile: string;
+  title: string;
+  models: string[];
+}
+
+// A group only exists when its profile shows at least one enabled model; a pair
+// the list no longer returns is left out of the rendering but kept in
+// `allowedModels`, which is what the save writes back.
+const modelGroups = computed<ModelGroup[]>(() => {
+  const groups: ModelGroup[] = [];
+  for (const profile of llmProfiles.value) {
+    const models = profile.models
+      .filter((model) => model.enabled)
+      .map((model) => model.name);
+    if (models.length > 0) {
+      groups.push({
+        profile: profile.name,
+        title: profile.title || profile.name,
+        models,
+      });
+    }
+  }
+  return groups;
+});
+
+// Walk every page: a first-page-only read would silently hide models on a
+// workspace with more profiles than one page holds.
 async function fetchProfiles() {
-  const resp = await listProfiles({ pageSize: 100 });
-  llmProfiles.value = resp.profiles
-    .filter((profile) => profile.models.some((model) => model.enabled))
-    .map((profile) => ({
-      name: profile.name,
-      title: profile.title || profile.name,
-    }));
+  llmProfiles.value = await listAll(async (pageToken) => {
+    const response = await listProfiles({ pageSize: 100, pageToken });
+    return { items: response.profiles, nextPageToken: response.nextPageToken };
+  });
 }
 
 async function fetchDebugConfig() {
@@ -425,14 +470,31 @@ function parseDomains(input: string): string[] {
     .filter((domain) => domain !== "");
 }
 
-function toggleAllowedProfile(name: string, checked: boolean) {
+function isModelChecked(profile: string, model: string): boolean {
+  const key = modelRefKey(profile, model);
+  return allowedModels.value.some(
+    (ref) => modelRefKey(ref.providerProfile, ref.model) === key
+  );
+}
+
+function toggleAllowedModel(profile: string, model: string, checked: boolean) {
+  const key = modelRefKey(profile, model);
   if (checked) {
-    if (!allowedProfiles.value.includes(name)) {
-      allowedProfiles.value = [...allowedProfiles.value, name];
+    if (isModelChecked(profile, model)) {
+      return;
     }
+    allowedModels.value = [
+      ...allowedModels.value,
+      create(LlmProviderModelRefSchema, {
+        providerProfile: profile,
+        model,
+      }),
+    ];
     return;
   }
-  allowedProfiles.value = allowedProfiles.value.filter((p) => p !== name);
+  allowedModels.value = allowedModels.value.filter(
+    (ref) => modelRefKey(ref.providerProfile, ref.model) !== key
+  );
 }
 
 async function load() {
@@ -488,7 +550,7 @@ async function handleSave() {
         ssoEmailIdentityIdps: parseIdpNames(ssoEmailIdentityIdpsInput.value),
         externalUrl: externalUrl.value.trim(),
         openlineageRetentionDays: Number(retentionDaysInput.value),
-        allowedLlmProviderProfiles: allowedProfiles.value,
+        allowedLlmProviderModels: allowedModels.value,
         mcpEnabled: mcpEnabled.value,
       },
       [
@@ -499,7 +561,7 @@ async function handleSave() {
         "sso_email_identity_idps",
         "external_url",
         "openlineage_retention_days",
-        "allowed_llm_provider_profiles",
+        "allowed_llm_provider_models",
         "mcp_enabled",
       ]
     );

@@ -219,6 +219,25 @@
   
     - [ExplainSQLService](#metaxisdata-v1-ExplainSQLService)
   
+- [v1/llm_service.proto](#v1_llm_service-proto)
+    - [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest)
+    - [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest)
+    - [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest)
+    - [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse)
+    - [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest)
+    - [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse)
+    - [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel)
+    - [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition)
+    - [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits)
+    - [LlmProviderModel](#metaxisdata-v1-LlmProviderModel)
+    - [LlmProviderModelRef](#metaxisdata-v1-LlmProviderModelRef)
+    - [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile)
+    - [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest)
+  
+    - [LLMProviderType](#metaxisdata-v1-LLMProviderType)
+  
+    - [LLMService](#metaxisdata-v1-LLMService)
+  
 - [v1/setting_service.proto](#v1_setting_service-proto)
     - [DataQualitySetting](#metaxisdata-v1-DataQualitySetting)
     - [EmailSetting](#metaxisdata-v1-EmailSetting)
@@ -598,24 +617,6 @@
     - [RelationType](#metaxisdata-v1-RelationType)
   
     - [LineageService](#metaxisdata-v1-LineageService)
-  
-- [v1/llm_service.proto](#v1_llm_service-proto)
-    - [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest)
-    - [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest)
-    - [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest)
-    - [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse)
-    - [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest)
-    - [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse)
-    - [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel)
-    - [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition)
-    - [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits)
-    - [LlmProviderModel](#metaxisdata-v1-LlmProviderModel)
-    - [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile)
-    - [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest)
-  
-    - [LLMProviderType](#metaxisdata-v1-LLMProviderType)
-  
-    - [LLMService](#metaxisdata-v1-LLMService)
   
 - [v1/notification_service.proto](#v1_notification_service-proto)
     - [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest)
@@ -4169,8 +4170,9 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 | meta_guid | [string](#string) |  |  |
 | sql_text | [string](#string) |  |  |
 | force_regenerate | [bool](#bool) |  |  |
-| provider_name | [string](#string) |  |  |
+| provider_name | [string](#string) |  | The provider profile to explain with, as a profile resource name (&#34;llm-provider-profiles/{id}&#34;). Set together with model; both empty means the server&#39;s default, the first model the workspace allowlist admits. |
 | scope_prefix | [string](#string) |  |  |
+| model | [string](#string) |  | The model to explain with, as the provider profile records it. Set together with provider_name. |
 
 
 
@@ -4213,6 +4215,280 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
 
 
+<a name="v1_llm_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/llm_service.proto
+
+
+
+<a name="metaxisdata-v1-CreateLLMProviderProfileRequest"></a>
+
+### CreateLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteLLMProviderProfileRequest"></a>
+
+### DeleteLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FetchLLMModelsRequest"></a>
+
+### FetchLLMModelsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | An existing profile whose stored base URL and API key are used when the request does not carry its own. |
+| api_key | [string](#string) |  | Overrides the API key stored on the named profile. |
+| provider_type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
+| base_url | [string](#string) |  | Overrides the profile&#39;s stored base URL. A custom provider has no default, so the request must carry one when no profile is named. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FetchLLMModelsResponse"></a>
+
+### FetchLLMModelsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| models | [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListLLMProviderProfilesRequest"></a>
+
+### ListLLMProviderProfilesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListLLMProviderProfilesResponse"></a>
+
+### ListLLMProviderProfilesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profiles | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) | repeated |  |
+| definitions | [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+| limits | [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmDiscoveredModel"></a>
+
+### LlmDiscoveredModel
+One model an endpoint disclosed. The capacity fields are advisory: an
+endpoint that lists no capacities leaves them zero.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| context_window | [int32](#int32) |  |  |
+| max_output_tokens | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderDefinition"></a>
+
+### LlmProviderDefinition
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| label | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| default_base_url | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderLimits"></a>
+
+### LlmProviderLimits
+The server-owned capacity contract the provider settings page renders:
+defaults and bounds for the per-model fields. It is output-only.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| default_max_output_tokens | [int32](#int32) |  |  |
+| min_max_output_tokens | [int32](#int32) |  |  |
+| max_max_output_tokens | [int32](#int32) |  |  |
+| default_context_window | [int32](#int32) |  |  |
+| min_context_window | [int32](#int32) |  | Positive-integer floor; the server imposes no larger product minimum. |
+| max_context_window | [int32](#int32) |  | Sanity ceiling for the int32 config and the UI; not a model claim. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderModel"></a>
+
+### LlmProviderModel
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+| context_window | [int32](#int32) |  | The largest combined request and response context this model accepts, in tokens. Zero means the server default; an explicit value must be a positive integer. The quality agent derives its compaction trigger from this value. |
+| max_output_tokens | [int32](#int32) |  | The answer budget one model call requests from this model, in output tokens. Zero means the server default; an explicit value must be between 256 and 131072 and leave a positive message budget inside the context window. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderModelRef"></a>
+
+### LlmProviderModelRef
+LlmProviderModelRef names one exact model of one provider profile. The model
+is never inferred from the profile: one profile can enable several models at
+different prices and capacities, so a feature that runs on a model names both.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_profile | [string](#string) |  | The provider profile, as a profile resource name (&#34;llm-provider-profiles/{id}&#34;). |
+| model | [string](#string) |  | The model name as the provider profile records it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmProviderProfile"></a>
+
+### LlmProviderProfile
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| title | [string](#string) |  |  |
+| type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
+| base_url | [string](#string) |  |  |
+| api_key | [string](#string) |  |  |
+| models | [LlmProviderModel](#metaxisdata-v1-LlmProviderModel) | repeated |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| masked_api_key | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateLLMProviderProfileRequest"></a>
+
+### UpdateLLMProviderProfileRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="metaxisdata-v1-LLMProviderType"></a>
+
+### LLMProviderType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| LLM_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
+| LLM_PROVIDER_TYPE_OPENAI | 1 |  |
+| LLM_PROVIDER_TYPE_DEEPSEEK | 2 |  |
+| LLM_PROVIDER_TYPE_OPENROUTER | 3 |  |
+| LLM_PROVIDER_TYPE_CUSTOM | 4 |  |
+
+
+ 
+
+ 
+
+
+<a name="metaxisdata-v1-LLMService"></a>
+
+### LLMService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListLLMProviderProfiles | [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest) | [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse) |  |
+| CreateLLMProviderProfile | [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
+| UpdateLLMProviderProfile | [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
+| DeleteLLMProviderProfile | [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
+| FetchLLMModels | [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest) | [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse) |  |
+
+ 
+
+
+
 <a name="v1_setting_service-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -4229,7 +4505,8 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | enable_llm_analysis | [bool](#bool) |  | Whether the model-backed paths are enabled: the rule drafts, failure explanations and column labels, and the quality agents&#39; model wakes. Off by default: the rule engine and the agents&#39; deterministic paths are fully offline. |
-| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first enabled profile. |
+| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Set together with llm_provider_model; both empty means the first enabled model of the first enabled profile. |
+| llm_provider_model | [string](#string) |  | The model the quality analyses use, as the provider profile records it. Set together with llm_provider_profile; the model is never inferred from the profile because one profile can enable several models at different prices and capacities. |
 | store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
 | failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
 | default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |
@@ -4527,7 +4804,7 @@ QuietWindow is one recurring weekly quiet window.
 | openlineage_retention_days | [int32](#int32) |  | The number of days persisted OpenLineage runs are kept. Zero (the default) keeps them forever. |
 | domains | [string](#string) | repeated | The email domains (for example &#34;example.com&#34;) whose users may sign up and sign in. Only enforced when enforce_identity_domain is on; an empty list disables the restriction. |
 | enforce_identity_domain | [bool](#bool) |  | Whether to restrict signup and signin to the domains above. |
-| allowed_llm_provider_profiles | [string](#string) | repeated | The LLM provider profiles Explain SQL may use, as profile resource names (&#34;llm-provider-profiles/{id}&#34;). Empty means every enabled profile is allowed. The data quality analyses and the quality agents choose their profile in their own settings, so this list does not restrict them. |
+| allowed_llm_provider_models | [LlmProviderModelRef](#metaxisdata-v1-LlmProviderModelRef) | repeated | The LLM provider models Explain SQL may use, as exact profile &#43; model pairs. Empty means every enabled model is allowed. The data quality analyses and the quality agents choose their model in their own settings, so this list does not restrict them. |
 | mcp_enabled | [bool](#bool) |  | Whether the MCP endpoint and its OAuth 2.1 authorization server are served. Off by default, and only usable once external_url is configured. |
 | sso_email_identity_idps | [string](#string) | repeated | The identity providers, as idps/{idp} resource names, whose email claim may stand in for a stable subject. For a listed provider, field_mapping.subject becomes optional and a login whose address claim matches an existing account makes that account reachable through the provider — adopting it (its password is replaced with a random one) when it had no provider binding at all.
 
@@ -11012,262 +11289,6 @@ usually the SQL naming something the analyzer cannot see.
 | GetLineageForContext | [GetLineageForContextRequest](#metaxisdata-v1-GetLineageForContextRequest) | [GetLineageForContextResponse](#metaxisdata-v1-GetLineageForContextResponse) | GetLineageForContext retrieves the field-level lineage graph derived from a specific SQL context (e.g., view, stored procedure). |
 | AnalyzeSQL | [AnalyzeSQLRequest](#metaxisdata-v1-AnalyzeSQLRequest) | [AnalyzeSQLResponse](#metaxisdata-v1-AnalyzeSQLResponse) | AnalyzeSQL parses an arbitrary SQL statement and returns its column-level relations, resolved against one or more analysis scopes. The analysis is stateless: nothing is persisted and no lineage runner is triggered, so the result describes this statement only and is not part of the stored graph. |
 | GetLineageGraph | [GetLineageGraphRequest](#metaxisdata-v1-GetLineageGraphRequest) | [GetLineageGraphResponse](#metaxisdata-v1-GetLineageGraphResponse) | GetLineageGraph returns the multi-level lineage graph around one metadata object in a single call, instead of expanding it one hop at a time with GetLineage. |
-
- 
-
-
-
-<a name="v1_llm_service-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## v1/llm_service.proto
-
-
-
-<a name="metaxisdata-v1-CreateLLMProviderProfileRequest"></a>
-
-### CreateLLMProviderProfileRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-DeleteLLMProviderProfileRequest"></a>
-
-### DeleteLLMProviderProfileRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-FetchLLMModelsRequest"></a>
-
-### FetchLLMModelsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | An existing profile whose stored base URL and API key are used when the request does not carry its own. |
-| api_key | [string](#string) |  | Overrides the API key stored on the named profile. |
-| provider_type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
-| base_url | [string](#string) |  | Overrides the profile&#39;s stored base URL. A custom provider has no default, so the request must carry one when no profile is named. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-FetchLLMModelsResponse"></a>
-
-### FetchLLMModelsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| models | [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel) | repeated |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListLLMProviderProfilesRequest"></a>
-
-### ListLLMProviderProfilesRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListLLMProviderProfilesResponse"></a>
-
-### ListLLMProviderProfilesResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| profiles | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) | repeated |  |
-| definitions | [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-| limits | [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LlmDiscoveredModel"></a>
-
-### LlmDiscoveredModel
-One model an endpoint disclosed. The capacity fields are advisory: an
-endpoint that lists no capacities leaves them zero.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| context_window | [int32](#int32) |  |  |
-| max_output_tokens | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LlmProviderDefinition"></a>
-
-### LlmProviderDefinition
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [string](#string) |  |  |
-| label | [string](#string) |  |  |
-| description | [string](#string) |  |  |
-| default_base_url | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LlmProviderLimits"></a>
-
-### LlmProviderLimits
-The server-owned capacity contract the provider settings page renders:
-defaults and bounds for the per-model fields. It is output-only.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| default_max_output_tokens | [int32](#int32) |  |  |
-| min_max_output_tokens | [int32](#int32) |  |  |
-| max_max_output_tokens | [int32](#int32) |  |  |
-| default_context_window | [int32](#int32) |  |  |
-| min_context_window | [int32](#int32) |  | Positive-integer floor; the server imposes no larger product minimum. |
-| max_context_window | [int32](#int32) |  | Sanity ceiling for the int32 config and the UI; not a model claim. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LlmProviderModel"></a>
-
-### LlmProviderModel
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| enabled | [bool](#bool) |  |  |
-| context_window | [int32](#int32) |  | The largest combined request and response context this model accepts, in tokens. Zero means the server default; an explicit value must be a positive integer. The quality agent derives its compaction trigger from this value. |
-| max_output_tokens | [int32](#int32) |  | The answer budget one model call requests from this model, in output tokens. Zero means the server default; an explicit value must be between 256 and 131072 and leave a positive message budget inside the context window. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-LlmProviderProfile"></a>
-
-### LlmProviderProfile
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| title | [string](#string) |  |  |
-| type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
-| base_url | [string](#string) |  |  |
-| api_key | [string](#string) |  |  |
-| models | [LlmProviderModel](#metaxisdata-v1-LlmProviderModel) | repeated |  |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| masked_api_key | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-UpdateLLMProviderProfileRequest"></a>
-
-### UpdateLLMProviderProfileRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| profile | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |  |
-| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
-
-
-
-
-
- 
-
-
-<a name="metaxisdata-v1-LLMProviderType"></a>
-
-### LLMProviderType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| LLM_PROVIDER_TYPE_UNSPECIFIED | 0 |  |
-| LLM_PROVIDER_TYPE_OPENAI | 1 |  |
-| LLM_PROVIDER_TYPE_DEEPSEEK | 2 |  |
-| LLM_PROVIDER_TYPE_OPENROUTER | 3 |  |
-| LLM_PROVIDER_TYPE_CUSTOM | 4 |  |
-
-
- 
-
- 
-
-
-<a name="metaxisdata-v1-LLMService"></a>
-
-### LLMService
-
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| ListLLMProviderProfiles | [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest) | [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse) |  |
-| CreateLLMProviderProfile | [CreateLLMProviderProfileRequest](#metaxisdata-v1-CreateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
-| UpdateLLMProviderProfile | [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest) | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) |  |
-| DeleteLLMProviderProfile | [DeleteLLMProviderProfileRequest](#metaxisdata-v1-DeleteLLMProviderProfileRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
-| FetchLLMModels | [FetchLLMModelsRequest](#metaxisdata-v1-FetchLLMModelsRequest) | [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse) |  |
 
  
 

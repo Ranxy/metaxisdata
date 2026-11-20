@@ -487,7 +487,7 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 // inferred from the profile, because one profile can enable several models at
 // different prices. Whether the profile currently enables the model is a
 // service-level check against the registry. A bare profile id is accepted for the
-// same reason `llm.ResolveConfig` accepts one (older references may hold it); the
+// same reason `llm.FindModelConfig` accepts one (older references may hold it); the
 // stored value is always the resource name.
 func normalizeQualityAgentProvider(profile, model string) (string, string, error) {
 	profile = strings.TrimSpace(profile)

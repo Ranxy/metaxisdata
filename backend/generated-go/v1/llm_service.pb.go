@@ -330,6 +330,64 @@ func (x *LlmProviderProfile) GetMaskedApiKey() string {
 	return ""
 }
 
+// LlmProviderModelRef names one exact model of one provider profile. The model
+// is never inferred from the profile: one profile can enable several models at
+// different prices and capacities, so a feature that runs on a model names both.
+type LlmProviderModelRef struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The provider profile, as a profile resource name
+	// ("llm-provider-profiles/{id}").
+	ProviderProfile string `protobuf:"bytes,1,opt,name=provider_profile,json=providerProfile,proto3" json:"provider_profile,omitempty"`
+	// The model name as the provider profile records it.
+	Model         string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LlmProviderModelRef) Reset() {
+	*x = LlmProviderModelRef{}
+	mi := &file_v1_llm_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LlmProviderModelRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LlmProviderModelRef) ProtoMessage() {}
+
+func (x *LlmProviderModelRef) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_llm_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LlmProviderModelRef.ProtoReflect.Descriptor instead.
+func (*LlmProviderModelRef) Descriptor() ([]byte, []int) {
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *LlmProviderModelRef) GetProviderProfile() string {
+	if x != nil {
+		return x.ProviderProfile
+	}
+	return ""
+}
+
+func (x *LlmProviderModelRef) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
 // The server-owned capacity contract the provider settings page renders:
 // defaults and bounds for the per-model fields. It is output-only.
 type LlmProviderLimits struct {
@@ -348,7 +406,7 @@ type LlmProviderLimits struct {
 
 func (x *LlmProviderLimits) Reset() {
 	*x = LlmProviderLimits{}
-	mi := &file_v1_llm_service_proto_msgTypes[3]
+	mi := &file_v1_llm_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -360,7 +418,7 @@ func (x *LlmProviderLimits) String() string {
 func (*LlmProviderLimits) ProtoMessage() {}
 
 func (x *LlmProviderLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[3]
+	mi := &file_v1_llm_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -373,7 +431,7 @@ func (x *LlmProviderLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LlmProviderLimits.ProtoReflect.Descriptor instead.
 func (*LlmProviderLimits) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *LlmProviderLimits) GetDefaultMaxOutputTokens() int32 {
@@ -428,7 +486,7 @@ type ListLLMProviderProfilesRequest struct {
 
 func (x *ListLLMProviderProfilesRequest) Reset() {
 	*x = ListLLMProviderProfilesRequest{}
-	mi := &file_v1_llm_service_proto_msgTypes[4]
+	mi := &file_v1_llm_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -440,7 +498,7 @@ func (x *ListLLMProviderProfilesRequest) String() string {
 func (*ListLLMProviderProfilesRequest) ProtoMessage() {}
 
 func (x *ListLLMProviderProfilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[4]
+	mi := &file_v1_llm_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -453,7 +511,7 @@ func (x *ListLLMProviderProfilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLLMProviderProfilesRequest.ProtoReflect.Descriptor instead.
 func (*ListLLMProviderProfilesRequest) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListLLMProviderProfilesRequest) GetPageSize() int32 {
@@ -482,7 +540,7 @@ type ListLLMProviderProfilesResponse struct {
 
 func (x *ListLLMProviderProfilesResponse) Reset() {
 	*x = ListLLMProviderProfilesResponse{}
-	mi := &file_v1_llm_service_proto_msgTypes[5]
+	mi := &file_v1_llm_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -494,7 +552,7 @@ func (x *ListLLMProviderProfilesResponse) String() string {
 func (*ListLLMProviderProfilesResponse) ProtoMessage() {}
 
 func (x *ListLLMProviderProfilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[5]
+	mi := &file_v1_llm_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,7 +565,7 @@ func (x *ListLLMProviderProfilesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLLMProviderProfilesResponse.ProtoReflect.Descriptor instead.
 func (*ListLLMProviderProfilesResponse) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{5}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListLLMProviderProfilesResponse) GetProfiles() []*LlmProviderProfile {
@@ -547,7 +605,7 @@ type CreateLLMProviderProfileRequest struct {
 
 func (x *CreateLLMProviderProfileRequest) Reset() {
 	*x = CreateLLMProviderProfileRequest{}
-	mi := &file_v1_llm_service_proto_msgTypes[6]
+	mi := &file_v1_llm_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +617,7 @@ func (x *CreateLLMProviderProfileRequest) String() string {
 func (*CreateLLMProviderProfileRequest) ProtoMessage() {}
 
 func (x *CreateLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[6]
+	mi := &file_v1_llm_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +630,7 @@ func (x *CreateLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateLLMProviderProfileRequest.ProtoReflect.Descriptor instead.
 func (*CreateLLMProviderProfileRequest) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{6}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateLLMProviderProfileRequest) GetProfile() *LlmProviderProfile {
@@ -592,7 +650,7 @@ type UpdateLLMProviderProfileRequest struct {
 
 func (x *UpdateLLMProviderProfileRequest) Reset() {
 	*x = UpdateLLMProviderProfileRequest{}
-	mi := &file_v1_llm_service_proto_msgTypes[7]
+	mi := &file_v1_llm_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +662,7 @@ func (x *UpdateLLMProviderProfileRequest) String() string {
 func (*UpdateLLMProviderProfileRequest) ProtoMessage() {}
 
 func (x *UpdateLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[7]
+	mi := &file_v1_llm_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +675,7 @@ func (x *UpdateLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLLMProviderProfileRequest.ProtoReflect.Descriptor instead.
 func (*UpdateLLMProviderProfileRequest) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{7}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateLLMProviderProfileRequest) GetProfile() *LlmProviderProfile {
@@ -643,7 +701,7 @@ type DeleteLLMProviderProfileRequest struct {
 
 func (x *DeleteLLMProviderProfileRequest) Reset() {
 	*x = DeleteLLMProviderProfileRequest{}
-	mi := &file_v1_llm_service_proto_msgTypes[8]
+	mi := &file_v1_llm_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -655,7 +713,7 @@ func (x *DeleteLLMProviderProfileRequest) String() string {
 func (*DeleteLLMProviderProfileRequest) ProtoMessage() {}
 
 func (x *DeleteLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[8]
+	mi := &file_v1_llm_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -668,7 +726,7 @@ func (x *DeleteLLMProviderProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteLLMProviderProfileRequest.ProtoReflect.Descriptor instead.
 func (*DeleteLLMProviderProfileRequest) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{8}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteLLMProviderProfileRequest) GetName() string {
@@ -695,7 +753,7 @@ type FetchLLMModelsRequest struct {
 
 func (x *FetchLLMModelsRequest) Reset() {
 	*x = FetchLLMModelsRequest{}
-	mi := &file_v1_llm_service_proto_msgTypes[9]
+	mi := &file_v1_llm_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -707,7 +765,7 @@ func (x *FetchLLMModelsRequest) String() string {
 func (*FetchLLMModelsRequest) ProtoMessage() {}
 
 func (x *FetchLLMModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[9]
+	mi := &file_v1_llm_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +778,7 @@ func (x *FetchLLMModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchLLMModelsRequest.ProtoReflect.Descriptor instead.
 func (*FetchLLMModelsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{9}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FetchLLMModelsRequest) GetName() string {
@@ -764,7 +822,7 @@ type LlmDiscoveredModel struct {
 
 func (x *LlmDiscoveredModel) Reset() {
 	*x = LlmDiscoveredModel{}
-	mi := &file_v1_llm_service_proto_msgTypes[10]
+	mi := &file_v1_llm_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +834,7 @@ func (x *LlmDiscoveredModel) String() string {
 func (*LlmDiscoveredModel) ProtoMessage() {}
 
 func (x *LlmDiscoveredModel) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[10]
+	mi := &file_v1_llm_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +847,7 @@ func (x *LlmDiscoveredModel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LlmDiscoveredModel.ProtoReflect.Descriptor instead.
 func (*LlmDiscoveredModel) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{10}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *LlmDiscoveredModel) GetName() string {
@@ -822,7 +880,7 @@ type FetchLLMModelsResponse struct {
 
 func (x *FetchLLMModelsResponse) Reset() {
 	*x = FetchLLMModelsResponse{}
-	mi := &file_v1_llm_service_proto_msgTypes[11]
+	mi := &file_v1_llm_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -834,7 +892,7 @@ func (x *FetchLLMModelsResponse) String() string {
 func (*FetchLLMModelsResponse) ProtoMessage() {}
 
 func (x *FetchLLMModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_llm_service_proto_msgTypes[11]
+	mi := &file_v1_llm_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -847,7 +905,7 @@ func (x *FetchLLMModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchLLMModelsResponse.ProtoReflect.Descriptor instead.
 func (*FetchLLMModelsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_llm_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_llm_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FetchLLMModelsResponse) GetModels() []*LlmDiscoveredModel {
@@ -884,7 +942,10 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"\vupdate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
 	"updateTime\x12)\n" +
 	"\x0emasked_api_key\x18\t \x01(\tB\x03\xe0A\x03R\fmaskedApiKeyJ\x04\b\n" +
-	"\x10\vR\x11max_output_tokens\"\xc6\x02\n" +
+	"\x10\vR\x11max_output_tokens\"V\n" +
+	"\x13LlmProviderModelRef\x12)\n" +
+	"\x10provider_profile\x18\x01 \x01(\tR\x0fproviderProfile\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\"\xc6\x02\n" +
 	"\x11LlmProviderLimits\x129\n" +
 	"\x19default_max_output_tokens\x18\x01 \x01(\x05R\x16defaultMaxOutputTokens\x121\n" +
 	"\x15min_max_output_tokens\x18\x02 \x01(\x05R\x12minMaxOutputTokens\x121\n" +
@@ -947,48 +1008,49 @@ func file_v1_llm_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_llm_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_v1_llm_service_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_v1_llm_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_v1_llm_service_proto_goTypes = []any{
 	(LLMProviderType)(0),                    // 0: metaxisdata.v1.LLMProviderType
 	(*LlmProviderDefinition)(nil),           // 1: metaxisdata.v1.LlmProviderDefinition
 	(*LlmProviderModel)(nil),                // 2: metaxisdata.v1.LlmProviderModel
 	(*LlmProviderProfile)(nil),              // 3: metaxisdata.v1.LlmProviderProfile
-	(*LlmProviderLimits)(nil),               // 4: metaxisdata.v1.LlmProviderLimits
-	(*ListLLMProviderProfilesRequest)(nil),  // 5: metaxisdata.v1.ListLLMProviderProfilesRequest
-	(*ListLLMProviderProfilesResponse)(nil), // 6: metaxisdata.v1.ListLLMProviderProfilesResponse
-	(*CreateLLMProviderProfileRequest)(nil), // 7: metaxisdata.v1.CreateLLMProviderProfileRequest
-	(*UpdateLLMProviderProfileRequest)(nil), // 8: metaxisdata.v1.UpdateLLMProviderProfileRequest
-	(*DeleteLLMProviderProfileRequest)(nil), // 9: metaxisdata.v1.DeleteLLMProviderProfileRequest
-	(*FetchLLMModelsRequest)(nil),           // 10: metaxisdata.v1.FetchLLMModelsRequest
-	(*LlmDiscoveredModel)(nil),              // 11: metaxisdata.v1.LlmDiscoveredModel
-	(*FetchLLMModelsResponse)(nil),          // 12: metaxisdata.v1.FetchLLMModelsResponse
-	(*timestamppb.Timestamp)(nil),           // 13: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),           // 14: google.protobuf.FieldMask
-	(*emptypb.Empty)(nil),                   // 15: google.protobuf.Empty
+	(*LlmProviderModelRef)(nil),             // 4: metaxisdata.v1.LlmProviderModelRef
+	(*LlmProviderLimits)(nil),               // 5: metaxisdata.v1.LlmProviderLimits
+	(*ListLLMProviderProfilesRequest)(nil),  // 6: metaxisdata.v1.ListLLMProviderProfilesRequest
+	(*ListLLMProviderProfilesResponse)(nil), // 7: metaxisdata.v1.ListLLMProviderProfilesResponse
+	(*CreateLLMProviderProfileRequest)(nil), // 8: metaxisdata.v1.CreateLLMProviderProfileRequest
+	(*UpdateLLMProviderProfileRequest)(nil), // 9: metaxisdata.v1.UpdateLLMProviderProfileRequest
+	(*DeleteLLMProviderProfileRequest)(nil), // 10: metaxisdata.v1.DeleteLLMProviderProfileRequest
+	(*FetchLLMModelsRequest)(nil),           // 11: metaxisdata.v1.FetchLLMModelsRequest
+	(*LlmDiscoveredModel)(nil),              // 12: metaxisdata.v1.LlmDiscoveredModel
+	(*FetchLLMModelsResponse)(nil),          // 13: metaxisdata.v1.FetchLLMModelsResponse
+	(*timestamppb.Timestamp)(nil),           // 14: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),           // 15: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                   // 16: google.protobuf.Empty
 }
 var file_v1_llm_service_proto_depIdxs = []int32{
 	0,  // 0: metaxisdata.v1.LlmProviderProfile.type:type_name -> metaxisdata.v1.LLMProviderType
 	2,  // 1: metaxisdata.v1.LlmProviderProfile.models:type_name -> metaxisdata.v1.LlmProviderModel
-	13, // 2: metaxisdata.v1.LlmProviderProfile.create_time:type_name -> google.protobuf.Timestamp
-	13, // 3: metaxisdata.v1.LlmProviderProfile.update_time:type_name -> google.protobuf.Timestamp
+	14, // 2: metaxisdata.v1.LlmProviderProfile.create_time:type_name -> google.protobuf.Timestamp
+	14, // 3: metaxisdata.v1.LlmProviderProfile.update_time:type_name -> google.protobuf.Timestamp
 	3,  // 4: metaxisdata.v1.ListLLMProviderProfilesResponse.profiles:type_name -> metaxisdata.v1.LlmProviderProfile
 	1,  // 5: metaxisdata.v1.ListLLMProviderProfilesResponse.definitions:type_name -> metaxisdata.v1.LlmProviderDefinition
-	4,  // 6: metaxisdata.v1.ListLLMProviderProfilesResponse.limits:type_name -> metaxisdata.v1.LlmProviderLimits
+	5,  // 6: metaxisdata.v1.ListLLMProviderProfilesResponse.limits:type_name -> metaxisdata.v1.LlmProviderLimits
 	3,  // 7: metaxisdata.v1.CreateLLMProviderProfileRequest.profile:type_name -> metaxisdata.v1.LlmProviderProfile
 	3,  // 8: metaxisdata.v1.UpdateLLMProviderProfileRequest.profile:type_name -> metaxisdata.v1.LlmProviderProfile
-	14, // 9: metaxisdata.v1.UpdateLLMProviderProfileRequest.update_mask:type_name -> google.protobuf.FieldMask
+	15, // 9: metaxisdata.v1.UpdateLLMProviderProfileRequest.update_mask:type_name -> google.protobuf.FieldMask
 	0,  // 10: metaxisdata.v1.FetchLLMModelsRequest.provider_type:type_name -> metaxisdata.v1.LLMProviderType
-	11, // 11: metaxisdata.v1.FetchLLMModelsResponse.models:type_name -> metaxisdata.v1.LlmDiscoveredModel
-	5,  // 12: metaxisdata.v1.LLMService.ListLLMProviderProfiles:input_type -> metaxisdata.v1.ListLLMProviderProfilesRequest
-	7,  // 13: metaxisdata.v1.LLMService.CreateLLMProviderProfile:input_type -> metaxisdata.v1.CreateLLMProviderProfileRequest
-	8,  // 14: metaxisdata.v1.LLMService.UpdateLLMProviderProfile:input_type -> metaxisdata.v1.UpdateLLMProviderProfileRequest
-	9,  // 15: metaxisdata.v1.LLMService.DeleteLLMProviderProfile:input_type -> metaxisdata.v1.DeleteLLMProviderProfileRequest
-	10, // 16: metaxisdata.v1.LLMService.FetchLLMModels:input_type -> metaxisdata.v1.FetchLLMModelsRequest
-	6,  // 17: metaxisdata.v1.LLMService.ListLLMProviderProfiles:output_type -> metaxisdata.v1.ListLLMProviderProfilesResponse
+	12, // 11: metaxisdata.v1.FetchLLMModelsResponse.models:type_name -> metaxisdata.v1.LlmDiscoveredModel
+	6,  // 12: metaxisdata.v1.LLMService.ListLLMProviderProfiles:input_type -> metaxisdata.v1.ListLLMProviderProfilesRequest
+	8,  // 13: metaxisdata.v1.LLMService.CreateLLMProviderProfile:input_type -> metaxisdata.v1.CreateLLMProviderProfileRequest
+	9,  // 14: metaxisdata.v1.LLMService.UpdateLLMProviderProfile:input_type -> metaxisdata.v1.UpdateLLMProviderProfileRequest
+	10, // 15: metaxisdata.v1.LLMService.DeleteLLMProviderProfile:input_type -> metaxisdata.v1.DeleteLLMProviderProfileRequest
+	11, // 16: metaxisdata.v1.LLMService.FetchLLMModels:input_type -> metaxisdata.v1.FetchLLMModelsRequest
+	7,  // 17: metaxisdata.v1.LLMService.ListLLMProviderProfiles:output_type -> metaxisdata.v1.ListLLMProviderProfilesResponse
 	3,  // 18: metaxisdata.v1.LLMService.CreateLLMProviderProfile:output_type -> metaxisdata.v1.LlmProviderProfile
 	3,  // 19: metaxisdata.v1.LLMService.UpdateLLMProviderProfile:output_type -> metaxisdata.v1.LlmProviderProfile
-	15, // 20: metaxisdata.v1.LLMService.DeleteLLMProviderProfile:output_type -> google.protobuf.Empty
-	12, // 21: metaxisdata.v1.LLMService.FetchLLMModels:output_type -> metaxisdata.v1.FetchLLMModelsResponse
+	16, // 20: metaxisdata.v1.LLMService.DeleteLLMProviderProfile:output_type -> google.protobuf.Empty
+	13, // 21: metaxisdata.v1.LLMService.FetchLLMModels:output_type -> metaxisdata.v1.FetchLLMModelsResponse
 	17, // [17:22] is the sub-list for method output_type
 	12, // [12:17] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
@@ -1008,7 +1070,7 @@ func file_v1_llm_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_llm_service_proto_rawDesc), len(file_v1_llm_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

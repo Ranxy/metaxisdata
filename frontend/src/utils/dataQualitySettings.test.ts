@@ -28,6 +28,7 @@ function baseForm(
   return {
     enableLlmAnalysis: false,
     llmProviderProfile: "",
+    llmProviderModel: "",
     storeFailureSamples: false,
     failureSampleLimit: "",
     defaultSchedule: { value: "1", unit: "hours" },
@@ -58,6 +59,7 @@ describe("settingsToForm", () => {
       create(DataQualitySettingSchema, {
         enableLlmAnalysis: true,
         llmProviderProfile: "llmProfiles/p1",
+        llmProviderModel: "fast",
         storeFailureSamples: true,
         failureSampleLimit: 20,
         defaultScheduleInterval: create(DurationSchema, {
@@ -76,6 +78,7 @@ describe("settingsToForm", () => {
     expect(form).toEqual({
       enableLlmAnalysis: true,
       llmProviderProfile: "llmProfiles/p1",
+      llmProviderModel: "fast",
       storeFailureSamples: true,
       failureSampleLimit: "20",
       defaultSchedule: { value: "15", unit: "minutes" },
@@ -135,6 +138,7 @@ describe("formToSetting", () => {
     const setting = create(DataQualitySettingSchema, {
       enableLlmAnalysis: true,
       llmProviderProfile: "llmProfiles/p1",
+      llmProviderModel: "fast",
       storeFailureSamples: true,
       failureSampleLimit: 20,
       defaultScheduleInterval: create(DurationSchema, {
@@ -196,10 +200,11 @@ describe("formToSetting", () => {
     expect(formToSetting(baseForm()).timeZone).toBe("");
   });
 
-  it("treats blank numbers as the server default and trims the profile", () => {
+  it("treats blank numbers as the server default and trims the pair", () => {
     const setting = formToSetting(
       baseForm({
         llmProviderProfile: "  llmProfiles/p2  ",
+        llmProviderModel: "  fast  ",
         failureSampleLimit: "",
         dailyExecutionLimit: "",
         dailyColumnAnalysisLimit: "",
@@ -209,6 +214,7 @@ describe("formToSetting", () => {
       })
     );
     expect(setting.llmProviderProfile).toBe("llmProfiles/p2");
+    expect(setting.llmProviderModel).toBe("fast");
     expect(setting.failureSampleLimit).toBe(0);
     expect(setting.dailyExecutionLimit).toBe(0);
     expect(setting.dailyColumnAnalysisLimit).toBe(0);
@@ -441,6 +447,32 @@ describe("validateSettingsForm", () => {
         })
       )
     ).toEqual([]);
+  });
+
+  it("accepts Auto and rejects half a provider pair", () => {
+    expect(validateSettingsForm(baseForm())).toEqual([]);
+    expect(
+      validateSettingsForm(
+        baseForm({
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llm-provider-profiles/main",
+          llmProviderModel: "fast",
+        })
+      )
+    ).toEqual([]);
+
+    // The server stores both halves or neither, even while model assistance is
+    // off, so a profile without a model is refused here too.
+    for (const enableLlmAnalysis of [true, false]) {
+      expect(
+        validateSettingsForm(
+          baseForm({
+            enableLlmAnalysis,
+            llmProviderProfile: "llm-provider-profiles/main",
+          })
+        ).map((issue) => issue.key)
+      ).toContain(`${SETTINGS_VALIDATION_PREFIX}llmProviderModelRequired`);
+    }
   });
 });
 

@@ -117,12 +117,12 @@ func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, updat
 			setting.Domains = domains
 		case "enforce_identity_domain":
 			setting.EnforceIdentityDomain = update.GetEnforceIdentityDomain()
-		case "allowed_llm_provider_profiles":
-			profiles, err := normalizeAllowedLLMProfiles(update.GetAllowedLlmProviderProfiles())
+		case "allowed_llm_provider_models":
+			models, err := normalizeAllowedLLMModels(update.GetAllowedLlmProviderModels())
 			if err != nil {
 				return err
 			}
-			setting.AllowedLlmProviderProfiles = profiles
+			setting.AllowedLlmProviderModels = models
 		case "mcp_enabled":
 			setting.McpEnabled = update.GetMcpEnabled()
 		case "sso_email_identity_idps":
@@ -200,8 +200,12 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	provider := strings.TrimSpace(dataQuality.GetLlmProviderProfile())
+	model := strings.TrimSpace(dataQuality.GetLlmProviderModel())
+	if (provider == "") != (model == "") {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("llm_provider_profile and llm_provider_model must be set together"))
+	}
 	if provider != "" && !validLLMProviderProfileName(provider) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", provider))
 	}
 	var digest *storepb.QualityDigestSetting
 	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
@@ -221,6 +225,7 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	result := &storepb.DataQualitySetting{
 		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
 		LlmProviderProfile:       provider,
+		LlmProviderModel:         model,
 		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
 		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
 		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
@@ -264,6 +269,7 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 	return &v1pb.DataQualitySetting{
 		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
 		LlmProviderProfile:       dataQuality.GetLlmProviderProfile(),
+		LlmProviderModel:         dataQuality.GetLlmProviderModel(),
 		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
 		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
 		DefaultScheduleInterval:  dataQuality.GetDefaultScheduleInterval(),
@@ -290,6 +296,7 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 	return &storepb.DataQualitySetting{
 		EnableLlmAnalysis:        resolved.EnableLLMAnalysis,
 		LlmProviderProfile:       resolved.LLMProviderProfile,
+		LlmProviderModel:         resolved.LLMProviderModel,
 		StoreFailureSamples:      resolved.StoreFailureSamples,
 		FailureSampleLimit:       int32(resolved.FailureSampleLimit),
 		DefaultScheduleInterval:  durationpb.New(resolved.DefaultScheduleInterval),
@@ -312,16 +319,16 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 
 func convertToWorkspaceProfileSetting(setting *storepb.WorkspaceProfileSetting) *v1pb.WorkspaceProfileSetting {
 	return &v1pb.WorkspaceProfileSetting{
-		ExternalUrl:                setting.GetExternalUrl(),
-		DisallowSignup:             setting.GetDisallowSignup(),
-		DisallowPasswordSignin:     setting.GetDisallowPasswordSignin(),
-		OpenlineageRetentionDays:   setting.GetOpenlineageRetentionDays(),
-		Domains:                    setting.GetDomains(),
-		EnforceIdentityDomain:      setting.GetEnforceIdentityDomain(),
-		AllowedLlmProviderProfiles: setting.GetAllowedLlmProviderProfiles(),
-		McpEnabled:                 setting.GetMcpEnabled(),
-		SsoEmailIdentityIdps:       formatIdentityProviderNames(setting.GetSsoEmailIdentityIdps()),
-		DataQuality:                convertDataQualitySetting(resolveDataQualitySetting(setting)),
+		ExternalUrl:              setting.GetExternalUrl(),
+		DisallowSignup:           setting.GetDisallowSignup(),
+		DisallowPasswordSignin:   setting.GetDisallowPasswordSignin(),
+		OpenlineageRetentionDays: setting.GetOpenlineageRetentionDays(),
+		Domains:                  setting.GetDomains(),
+		EnforceIdentityDomain:    setting.GetEnforceIdentityDomain(),
+		AllowedLlmProviderModels: convertAllowedLLMModels(setting.GetAllowedLlmProviderModels()),
+		McpEnabled:               setting.GetMcpEnabled(),
+		SsoEmailIdentityIdps:     formatIdentityProviderNames(setting.GetSsoEmailIdentityIdps()),
+		DataQuality:              convertDataQualitySetting(resolveDataQualitySetting(setting)),
 	}
 }
 
@@ -378,26 +385,57 @@ func normalizeIdentityDomains(domains []string) ([]string, error) {
 	return result, nil
 }
 
-// normalizeAllowedLLMProfiles trims and de-duplicates the profile resource
-// names, and rejects anything that is not one.
-func normalizeAllowedLLMProfiles(profiles []string) ([]string, error) {
-	result := make([]string, 0, len(profiles))
-	seen := make(map[string]struct{}, len(profiles))
-	for _, profile := range profiles {
-		trimmed := strings.TrimSpace(profile)
-		if trimmed == "" {
+// allowedLLMModelKey de-duplicates an allowlist entry by its normalized pair.
+// Model names may contain a slash, so the two halves stay separate fields rather
+// than being joined into a resource name.
+type allowedLLMModelKey struct {
+	profile string
+	model   string
+}
+
+// normalizeAllowedLLMModels trims and de-duplicates the exact profile + model
+// pairs, and rejects an entry that is missing either half.
+func normalizeAllowedLLMModels(models []*v1pb.LlmProviderModelRef) ([]*storepb.LlmProviderModelRef, error) {
+	result := make([]*storepb.LlmProviderModelRef, 0, len(models))
+	seen := make(map[allowedLLMModelKey]struct{}, len(models))
+	for _, ref := range models {
+		if ref == nil {
 			continue
 		}
-		if !validLLMProviderProfileName(trimmed) {
+		profile := strings.TrimSpace(ref.GetProviderProfile())
+		model := strings.TrimSpace(ref.GetModel())
+		if profile == "" || model == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an allowed LLM provider model needs a provider profile and a model"))
+		}
+		if !validLLMProviderProfileName(profile) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
 		}
-		if _, ok := seen[trimmed]; ok {
+		key := allowedLLMModelKey{profile: profile, model: model}
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
+		seen[key] = struct{}{}
+		result = append(result, &storepb.LlmProviderModelRef{
+			ProviderProfile: profile,
+			Model:           model,
+		})
 	}
 	return result, nil
+}
+
+// convertAllowedLLMModels copies the stored allowlist into the API form.
+func convertAllowedLLMModels(models []*storepb.LlmProviderModelRef) []*v1pb.LlmProviderModelRef {
+	result := make([]*v1pb.LlmProviderModelRef, 0, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		result = append(result, &v1pb.LlmProviderModelRef{
+			ProviderProfile: model.GetProviderProfile(),
+			Model:           model.GetModel(),
+		})
+	}
+	return result
 }
 
 // GetDebugConfig gets the runtime debug config.

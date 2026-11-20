@@ -94,21 +94,36 @@ func TestNormalizeIdentityDomains(t *testing.T) {
 	}
 }
 
-func TestNormalizeAllowedLLMProfiles(t *testing.T) {
+func TestNormalizeAllowedLLMModels(t *testing.T) {
 	t.Parallel()
 
-	profiles, err := normalizeAllowedLLMProfiles([]string{" llm-provider-profiles/a ", "llm-provider-profiles/a", ""})
+	models, err := normalizeAllowedLLMModels([]*v1pb.LlmProviderModelRef{
+		{ProviderProfile: " llm-provider-profiles/a ", Model: " fast "},
+		{ProviderProfile: "llm-provider-profiles/a", Model: "fast"},
+		nil,
+		{ProviderProfile: "llm-provider-profiles/b", Model: "anthropic/claude-sonnet"},
+	})
 	if err != nil {
-		t.Fatalf("normalizeAllowedLLMProfiles returned error: %v", err)
+		t.Fatalf("normalizeAllowedLLMModels returned error: %v", err)
 	}
-	if len(profiles) != 1 || profiles[0] != "llm-provider-profiles/a" {
-		t.Fatalf("normalizeAllowedLLMProfiles = %v, want [llm-provider-profiles/a]", profiles)
-	}
+	require.Equal(t, []*storepb.LlmProviderModelRef{
+		{ProviderProfile: "llm-provider-profiles/a", Model: "fast"},
+		{ProviderProfile: "llm-provider-profiles/b", Model: "anthropic/claude-sonnet"},
+	}, models, "the pair is trimmed and de-duplicated; a model name may contain a slash")
 
-	if _, err := normalizeAllowedLLMProfiles([]string{"openai"}); err == nil {
-		t.Fatal("a bare id must be rejected: the setting stores resource names")
+	if _, err := normalizeAllowedLLMModels([]*v1pb.LlmProviderModelRef{{ProviderProfile: "openai", Model: "gpt-4"}}); err == nil {
+		t.Fatal("a bare profile id must be rejected: the setting stores resource names")
 	} else if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("error code = %v, want InvalidArgument", connect.CodeOf(err))
+	}
+
+	// Half a pair is not a model the workspace can allow.
+	for _, ref := range []*v1pb.LlmProviderModelRef{
+		{ProviderProfile: "llm-provider-profiles/a"},
+		{Model: "fast"},
+	} {
+		_, err := normalizeAllowedLLMModels([]*v1pb.LlmProviderModelRef{ref})
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	}
 }
 
@@ -120,6 +135,7 @@ func TestApplyWorkspaceProfileUpdateDataQuality(t *testing.T) {
 		DataQuality: &v1pb.DataQualitySetting{
 			EnableLlmAnalysis:        true,
 			LlmProviderProfile:       " llm-provider-profiles/fast ",
+			LlmProviderModel:         " fast-model ",
 			StoreFailureSamples:      true,
 			FailureSampleLimit:       25,
 			DefaultScheduleInterval:  durationpb.New(2 * time.Hour),
@@ -134,6 +150,7 @@ func TestApplyWorkspaceProfileUpdateDataQuality(t *testing.T) {
 	require.NotNil(t, setting.DataQuality)
 	require.True(t, setting.DataQuality.GetEnableLlmAnalysis())
 	require.Equal(t, "llm-provider-profiles/fast", setting.DataQuality.GetLlmProviderProfile(), "the stored provider is trimmed")
+	require.Equal(t, "fast-model", setting.DataQuality.GetLlmProviderModel(), "the stored model is trimmed")
 	require.Equal(t, int32(25), setting.DataQuality.GetFailureSampleLimit())
 	require.Equal(t, int32(100), setting.DataQuality.GetDailyExecutionLimit())
 	require.Equal(t, int32(10), setting.DataQuality.GetDailyColumnAnalysisLimit())
@@ -142,38 +159,48 @@ func TestApplyWorkspaceProfileUpdateDataQuality(t *testing.T) {
 	require.True(t, setting.DataQuality.GetSendSampleValuesToLlm())
 }
 
-// The data quality analyses name their own profile, so the Explain SQL allowlist
-// does not restrict it: saving a profile outside that list is accepted.
+// The data quality analyses name their own pair, so the Explain SQL allowlist
+// does not restrict it: saving a pair outside that list is accepted.
 func TestApplyWorkspaceProfileUpdateDataQualityProviderIgnoresExplainSQLAllowlist(t *testing.T) {
 	t.Parallel()
 
 	setting := &storepb.WorkspaceProfileSetting{
-		AllowedLlmProviderProfiles: []string{"llm-provider-profiles/fast"},
+		AllowedLlmProviderModels: []*storepb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/fast", Model: "fast-model"}},
 	}
 	update := &v1pb.WorkspaceProfileSetting{
-		DataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/slow"},
+		DataQuality: &v1pb.DataQualitySetting{
+			LlmProviderProfile: "llm-provider-profiles/slow",
+			LlmProviderModel:   "slow-model",
+		},
 	}
 	require.NoError(t, applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"}))
 	require.Equal(t, "llm-provider-profiles/slow", setting.DataQuality.GetLlmProviderProfile())
+	require.Equal(t, "slow-model", setting.DataQuality.GetLlmProviderModel())
 }
 
-// A request may name the allowlist and the analyses' profile together; the order
-// of the mask does not matter because the two are no longer cross-checked.
+// A request may name the allowlist and the analyses' pair together; the order of
+// the mask does not matter because the two are no longer cross-checked.
 func TestApplyWorkspaceProfileUpdateDataQualityAndAllowlistTogether(t *testing.T) {
 	t.Parallel()
 
 	update := &v1pb.WorkspaceProfileSetting{
-		AllowedLlmProviderProfiles: []string{"llm-provider-profiles/fast"},
-		DataQuality:                &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/slow"},
+		AllowedLlmProviderModels: []*v1pb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/fast", Model: "fast-model"}},
+		DataQuality: &v1pb.DataQualitySetting{
+			LlmProviderProfile: "llm-provider-profiles/slow",
+			LlmProviderModel:   "slow-model",
+		},
 	}
 	for _, paths := range [][]string{
-		{"data_quality", "allowed_llm_provider_profiles"},
-		{"allowed_llm_provider_profiles", "data_quality"},
+		{"data_quality", "allowed_llm_provider_models"},
+		{"allowed_llm_provider_models", "data_quality"},
 	} {
 		setting := &storepb.WorkspaceProfileSetting{}
 		require.NoError(t, applyWorkspaceProfileUpdate(setting, update, paths), "mask order %v", paths)
-		require.Equal(t, []string{"llm-provider-profiles/fast"}, setting.GetAllowedLlmProviderProfiles())
+		require.Equal(t, []*storepb.LlmProviderModelRef{
+			{ProviderProfile: "llm-provider-profiles/fast", Model: "fast-model"},
+		}, setting.GetAllowedLlmProviderModels())
 		require.Equal(t, "llm-provider-profiles/slow", setting.DataQuality.GetLlmProviderProfile())
+		require.Equal(t, "slow-model", setting.DataQuality.GetLlmProviderModel())
 	}
 }
 
@@ -183,13 +210,31 @@ func TestApplyWorkspaceProfileUpdateDataQualityRejectsMalformedProvider(t *testi
 	t.Parallel()
 
 	update := &v1pb.WorkspaceProfileSetting{
-		DataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "openai"},
+		DataQuality: &v1pb.DataQualitySetting{
+			LlmProviderProfile: "openai",
+			LlmProviderModel:   "fast",
+		},
 	}
 	for _, setting := range []*storepb.WorkspaceProfileSetting{
 		{},
-		{AllowedLlmProviderProfiles: []string{"llm-provider-profiles/openai"}},
+		{AllowedLlmProviderModels: []*storepb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/openai", Model: "fast"}}},
 	} {
 		err := applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"})
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
+	}
+}
+
+// The model is never inferred, so half a pair is refused on write too.
+func TestApplyWorkspaceProfileUpdateDataQualityRequiresBothHalves(t *testing.T) {
+	t.Parallel()
+
+	for _, dataQuality := range []*v1pb.DataQualitySetting{
+		{LlmProviderProfile: "llm-provider-profiles/fast"},
+		{LlmProviderModel: "fast"},
+	} {
+		setting := &storepb.WorkspaceProfileSetting{}
+		err := applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{DataQuality: dataQuality}, []string{"data_quality"})
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 		require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
 	}
@@ -248,6 +293,7 @@ func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 	normalized, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{
 		EnableLlmAnalysis:        true,
 		LlmProviderProfile:       "llm-provider-profiles/fast",
+		LlmProviderModel:         "fast-model",
 		StoreFailureSamples:      true,
 		FailureSampleLimit:       dataquality.MaxFailureSampleLimit,
 		DefaultScheduleInterval:  durationpb.New(dataquality.MinScheduleInterval),
@@ -287,6 +333,7 @@ func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, zero.GetDefaultScheduleInterval())
 	require.Empty(t, zero.GetLlmProviderProfile())
+	require.Empty(t, zero.GetLlmProviderModel())
 }
 
 func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
@@ -369,13 +416,23 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 		},
 		{
 			name:    "bare provider id",
-			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "openai"},
+			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "openai", LlmProviderModel: "fast"},
 			want:    "LLM provider profile",
 		},
 		{
 			name:    "provider name without an id",
-			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/"},
+			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/", LlmProviderModel: "fast"},
 			want:    "LLM provider profile",
+		},
+		{
+			name:    "provider without a model",
+			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/fast"},
+			want:    "must be set together",
+		},
+		{
+			name:    "model without a provider",
+			setting: &v1pb.DataQualitySetting{LlmProviderModel: "fast"},
+			want:    "must be set together",
 		},
 		{
 			name: "weekly digest enabled without a weekday",
@@ -450,6 +507,7 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	stored := &storepb.DataQualitySetting{
 		EnableLlmAnalysis:        true,
 		LlmProviderProfile:       "llm-provider-profiles/fast",
+		LlmProviderModel:         "fast-model",
 		StoreFailureSamples:      true,
 		FailureSampleLimit:       30,
 		DefaultScheduleInterval:  durationpb.New(30 * time.Minute),
@@ -471,6 +529,7 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.NotNil(t, apiValue)
 	require.Equal(t, stored.GetEnableLlmAnalysis(), apiValue.GetEnableLlmAnalysis())
 	require.Equal(t, stored.GetLlmProviderProfile(), apiValue.GetLlmProviderProfile())
+	require.Equal(t, stored.GetLlmProviderModel(), apiValue.GetLlmProviderModel())
 	require.Equal(t, stored.GetStoreFailureSamples(), apiValue.GetStoreFailureSamples())
 	require.Equal(t, stored.GetFailureSampleLimit(), apiValue.GetFailureSampleLimit())
 	require.Equal(t, 30*time.Minute, apiValue.GetDefaultScheduleInterval().AsDuration())
@@ -488,6 +547,7 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	converted := convertToWorkspaceProfileSetting(&storepb.WorkspaceProfileSetting{DataQuality: stored})
 	require.Equal(t, stored.GetFailureSampleLimit(), converted.GetDataQuality().GetFailureSampleLimit())
 	require.Equal(t, "llm-provider-profiles/fast", converted.GetDataQuality().GetLlmProviderProfile())
+	require.Equal(t, "fast-model", converted.GetDataQuality().GetLlmProviderModel())
 
 	// And the API form converts back to the same stored shape.
 	back, err := normalizeDataQualitySetting(apiValue)
@@ -532,6 +592,7 @@ func TestConvertToWorkspaceProfileSettingResolvesDataQualityDefaults(t *testing.
 		require.NotNil(t, dataQuality)
 		require.False(t, dataQuality.GetEnableLlmAnalysis())
 		require.Empty(t, dataQuality.GetLlmProviderProfile())
+		require.Empty(t, dataQuality.GetLlmProviderModel())
 		require.True(t, dataQuality.GetStoreFailureSamples())
 		require.Equal(t, int32(dataquality.DefaultFailureSampleLimit), dataQuality.GetFailureSampleLimit())
 		require.Equal(t, dataquality.DefaultScheduleInterval, dataQuality.GetDefaultScheduleInterval().AsDuration())
@@ -560,6 +621,7 @@ func TestConvertToWorkspaceProfileSettingKeepsExplicitDisabledSamples(t *testing
 		DataQuality: &storepb.DataQualitySetting{
 			EnableLlmAnalysis:        true,
 			LlmProviderProfile:       "llm-provider-profiles/fast",
+			LlmProviderModel:         "fast-model",
 			StoreFailureSamples:      false,
 			FailureSampleLimit:       30,
 			DefaultScheduleInterval:  durationpb.New(2 * time.Hour),
@@ -574,6 +636,7 @@ func TestConvertToWorkspaceProfileSettingKeepsExplicitDisabledSamples(t *testing
 	require.False(t, dataQuality.GetStoreFailureSamples(), "an explicit false stays false")
 	require.True(t, dataQuality.GetEnableLlmAnalysis())
 	require.Equal(t, "llm-provider-profiles/fast", dataQuality.GetLlmProviderProfile())
+	require.Equal(t, "fast-model", dataQuality.GetLlmProviderModel())
 	require.Equal(t, int32(30), dataQuality.GetFailureSampleLimit())
 	require.Equal(t, 2*time.Hour, dataQuality.GetDefaultScheduleInterval().AsDuration())
 	// Unset numbers are filled with the defaults.

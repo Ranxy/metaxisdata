@@ -10192,6 +10192,11 @@ components:
                     type: boolean
                 llmProviderProfile:
                     type: string
+                llmProviderModel:
+                    type: string
+                    description: |-
+                        The model the quality analyses use, stored with llm_provider_profile. Both
+                         empty means the first enabled model of the first enabled profile.
                 storeFailureSamples:
                     type: boolean
                 failureSampleLimit:
@@ -10843,8 +10848,17 @@ components:
                     type: boolean
                 providerName:
                     type: string
+                    description: |-
+                        The provider profile to explain with, as a profile resource name
+                         ("llm-provider-profiles/{id}"). Set together with model; both empty means
+                         the server's default, the first model the workspace allowlist admits.
                 scopePrefix:
                     type: string
+                model:
+                    type: string
+                    description: |-
+                        The model to explain with, as the provider profile records it. Set
+                         together with provider_name.
         ExplainSQLResponse:
             type: object
             properties:
@@ -12449,6 +12463,21 @@ components:
                          Zero means the server default; an explicit value must be between 256 and
                          131072 and leave a positive message budget inside the context window.
                     format: int32
+        LlmProviderModelRef:
+            type: object
+            properties:
+                providerProfile:
+                    type: string
+                    description: |-
+                        The provider profile, as a profile resource name
+                         ("llm-provider-profiles/{id}").
+                model:
+                    type: string
+                    description: The model name as the provider profile records it.
+            description: |-
+                LlmProviderModelRef names one exact model of one provider profile. The model
+                 is never inferred from the profile: one profile can enable several models at
+                 different prices and capacities, so a feature that runs on a model names both.
         LlmProviderProfile:
             type: object
             properties:
@@ -18574,15 +18603,15 @@ components:
                         openlineage_retention_days bounds how long persisted OpenLineage runs are
                          kept. Zero (the default) keeps them forever: they are audit data.
                     format: int32
-                allowedLlmProviderProfiles:
+                allowedLlmProviderModels:
                     type: array
                     items:
-                        type: string
+                        $ref: '#/components/schemas/LlmProviderModelRef'
                     description: |-
-                        The LLM provider profiles Explain SQL may use, as profile resource names.
-                         Empty means every enabled profile is allowed. The data quality analyses and
-                         the quality agents choose their profile in their own settings, so this list
-                         does not restrict them.
+                        The LLM provider models Explain SQL may use, as exact profile + model
+                         pairs. Empty means every enabled model is allowed. The data quality
+                         analyses and the quality agents choose their model in their own settings,
+                         so this list does not restrict them.
                 mcpEnabled:
                     type: boolean
                     description: |-
