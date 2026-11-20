@@ -121,9 +121,14 @@ func TestPromptAndToolsAreStableBetweenWakes(t *testing.T) {
 		firstPrompt := renderSystemPrompt(spec, agent, "en-US")
 		secondPrompt := renderSystemPrompt(spec, agent, "en-US")
 		require.Equal(t, firstPrompt, secondPrompt)
-		require.Equal(t, toolSpecNames(toolsFor(spec, agent)), toolSpecNames(toolsFor(spec, agent)))
 		require.NotContains(t, firstPrompt, "session-1")
 		require.NotContains(t, firstPrompt, "target-1")
+		engine := NewEngine(newFakeStore())
+		first, err := engine.toolSet(testSession(), agent, &wakeControl{})
+		require.NoError(t, err)
+		second, err := engine.toolSet(testSession(), agent, &wakeControl{})
+		require.NoError(t, err)
+		require.Equal(t, first.Schemas(), second.Schemas(), "the tool schema is deterministic")
 	}
 }
 
@@ -190,4 +195,36 @@ func TestWakeSkipsTheAutomaticPassWhenTheToolRan(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, outcome.adoptionUsed, "the tool reports that it adopted")
 	require.False(t, autoCalled, "the automatic pass is suppressed for this wake")
+}
+
+// Two wakes with an unchanged configuration must not rewrite the stored SYSTEM row,
+// which is the property that keeps the provider prefix cache valid.
+func TestUnchangedConfigurationDoesNotRewriteTheSystemPrompt(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.agent = capabilityTestAgent("suggest", "adopt", "patrol")
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "done"}, {content: "done"}}), resolveToModel, nil)
+	session := testSession()
+
+	_, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	firstSystem := systemMessageContent(stores.messages)
+	require.NotEmpty(t, firstSystem)
+
+	session.WakeCount = 1
+	_, err = engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.Zero(t, stores.systemUpdates, "an unchanged configuration does not rewrite the system row")
+	require.Equal(t, firstSystem, systemMessageContent(stores.messages))
+}
+
+// systemMessageContent returns the stored system prompt.
+func systemMessageContent(messages []*store.QualityAgentTranscriptMessage) string {
+	for _, message := range messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
+			return message.Content
+		}
+	}
+	return ""
 }

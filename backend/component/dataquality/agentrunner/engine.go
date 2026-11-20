@@ -426,6 +426,7 @@ func (e *Engine) modelWake(
 				BlockedReason: control.blockedWhy,
 				ProcessedSeq:  consumed,
 				EngineState:   state,
+				adoptionUsed:  control.adoptionUsed,
 				Summary:       "blocked: " + control.blockedWhy,
 			}, nil
 		}
@@ -433,6 +434,7 @@ func (e *Engine) modelWake(
 			NextWakeAt:   ptrTime(e.now().Add(retryWake)),
 			ProcessedSeq: consumed,
 			EngineState:  state,
+			adoptionUsed: control.adoptionUsed,
 			Summary:      fmt.Sprintf("reported the blocker %q once; waiting for it to persist", control.blockedCode),
 		}, nil
 	}

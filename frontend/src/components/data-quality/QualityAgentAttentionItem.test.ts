@@ -65,7 +65,7 @@ function attentionFixture(): QualityAgentAttention {
   });
 }
 
-async function mountItem(canReply = true, canAdopt = false) {
+async function mountItem(canReply = true, canAdopt = false, adoptBusy = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -99,6 +99,7 @@ async function mountItem(canReply = true, canAdopt = false) {
       agentName: "workspaces/ws/qualityAgents/agent-1",
       canReply,
       canAdopt,
+      adoptBusy,
     },
     global: { plugins: [router, i18n] },
   });
@@ -151,7 +152,9 @@ describe("QualityAgentAttentionItem", () => {
     await trigger.trigger("click");
     await flushPromises();
     expect(wrapper.find("textarea").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Administrators can read only");
+    expect(wrapper.text()).toContain(
+      i18n.global.t("qualityAgent.attentionReadOnly")
+    );
     wrapper.unmount();
   });
 
@@ -185,5 +188,17 @@ describe("QualityAgentAttentionItem", () => {
     // Adoption goes through the parent's RPC, not the reply path.
     expect(mocks.replyQualityAgentAttention).not.toHaveBeenCalled();
     adoptable.unmount();
+
+    // A parent pass in flight disables the action instead of starting a second one.
+    const busy = await mountItem(true, true, true);
+    await busy.findAll("button")[0].trigger("click");
+    await flushPromises();
+    const busyAdopt = busy
+      .findAll("button")
+      .find((button) => button.text().includes(adoptLabel));
+    expect(busyAdopt?.attributes("disabled")).toBeDefined();
+    await busyAdopt?.trigger("click");
+    expect(busy.emitted("adopt")).toBeUndefined();
+    busy.unmount();
   });
 });

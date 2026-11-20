@@ -132,7 +132,7 @@ func (e *Engine) executeTool(
 
 // maxAdoptionDraftIDs bounds one owner-requested adoption call. The review queue
 // itself is bounded, and an oversized list is a malformed request, not a batch.
-const maxAdoptionDraftIDs = 50
+const maxAdoptionDraftIDs = 20
 
 // executeAdoptPendingDrafts runs the one publish-class tool: an adoption the owner
 // explicitly asked for in this wake. It refuses without the owner question, even

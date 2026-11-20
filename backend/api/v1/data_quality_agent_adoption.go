@@ -80,11 +80,13 @@ func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *c
 
 // adoptionPassResult is what one pass did for one target.
 type adoptionPassResult struct {
-	Adopted   int
-	Skipped   int
-	Failed    int
-	Remaining int
-	Items     []dataquality.AgentAdoptionItem
+	Adopted        int
+	Skipped        int
+	Failed         int
+	Remaining      int
+	RemainingKnown bool
+	ItemsTruncated bool
+	Items          []dataquality.AgentAdoptionItem
 }
 
 // report converts one pass into the tool-visible shape.
@@ -94,11 +96,13 @@ func (r adoptionPassResult) report() dataquality.AgentAdoptionReport {
 		items = []dataquality.AgentAdoptionItem{}
 	}
 	return dataquality.AgentAdoptionReport{
-		Adopted:   r.Adopted,
-		Skipped:   r.Skipped,
-		Failed:    r.Failed,
-		Remaining: r.Remaining,
-		Items:     items,
+		Adopted:        r.Adopted,
+		Skipped:        r.Skipped,
+		Failed:         r.Failed,
+		Remaining:      r.Remaining,
+		RemainingKnown: r.RemainingKnown,
+		ItemsTruncated: r.ItemsTruncated,
+		Items:          items,
 	}
 }
 
@@ -107,11 +111,16 @@ func (r *adoptionPassResult) recordItem(suggestion *store.QualitySuggestionMessa
 	if suggestion == nil {
 		return
 	}
+	const maxReportItems = 20
+	if len(r.Items) >= maxReportItems {
+		r.ItemsTruncated = true
+		return
+	}
 	r.Items = append(r.Items, dataquality.AgentAdoptionItem{
 		ResourceID: suggestion.ResourceID,
-		Title:      suggestion.Payload.GetRule().GetTitle(),
+		Title:      common.TruncateUTF8Bytes(suggestion.Payload.GetRule().GetTitle(), 120),
 		Outcome:    outcome,
-		Reason:     reason,
+		Reason:     common.TruncateUTF8Bytes(reason, 200),
 	})
 }
 
@@ -149,7 +158,7 @@ func (s *DataQualityService) runAdoptionPassForAgent(ctx context.Context, sessio
 	}
 	var result adoptionPassResult
 	err := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqadopt:%d", session.AgentID), func() error {
-		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, adopted, true)
+		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, adopted, true, false)
 		return nil
 	})
 	return result, err
@@ -168,7 +177,7 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 		slog.Warn("failed to count the agent adoptions", log.WithError(err))
 		return adoptionPassResult{}
 	}
-	return s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, &adopted, true)
+	return s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, &adopted, true, false)
 }
 
 // adoptionAgentReady is the configuration gate shared by the wake pass and an
@@ -180,7 +189,7 @@ func adoptionAgentReady(agent *store.QualityAgentMessage) bool {
 // adoptQualitySuggestionsForAgentLocked is the pass body. adopted is the running
 // 24h count; the explicit retry shares it across targets so the ceiling is not
 // re-read, and re-set, once per target.
-func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time, agent *store.QualityAgentMessage, adopted *int32, raiseAttention bool) adoptionPassResult {
+func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time, agent *store.QualityAgentMessage, adopted *int32, raiseAttention, requireScope bool) adoptionPassResult {
 	var result adoptionPassResult
 	if !adoptionAgentReady(agent) {
 		return result
@@ -191,6 +200,19 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	}
 	if *adopted >= limit {
 		return result
+	}
+	// The automatic pass and the explicit retry resolve the target before they get
+	// here (the runner cannot create an out-of-scope session). The owner-requested
+	// tool can name any target, so it passes requireScope and the per-draft check
+	// below skips drafts whose database left the agent's scope.
+	var scope []string
+	if requireScope {
+		databases, scopeErr := s.store.ListQualityAgentDatabases(ctx, agent.ID)
+		if scopeErr != nil {
+			slog.Warn("failed to read the agent database scope for adoption", log.WithError(scopeErr))
+			return result
+		}
+		scope = databases
 	}
 	ownerID := agent.OwnerPrincipalID
 	// Without an owner the agent still queues its drafts and escalates to the
@@ -227,6 +249,13 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	for _, suggestion := range suggestions {
 		draft := suggestion.Payload.GetRule()
 		if draft == nil {
+			continue
+		}
+		if requireScope && !scopeCoversTarget(scope, suggestion.TargetGUID) {
+			reason := "the target is outside the agent's database scope"
+			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
+			result.Skipped++
 			continue
 		}
 		ruleType, ok := ruleTypeForDraftConfig(draft.GetConfig())
@@ -298,7 +327,12 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		return result
 	}
 	result.Remaining = len(remaining)
-	if !raiseAttention || len(remaining) == 0 {
+	result.RemainingKnown = true
+	if len(remaining) == 0 {
+		s.resolveProposalAttention(ctx, session.AgentID, targetGUID, owner)
+		return result
+	}
+	if !raiseAttention {
 		return result
 	}
 	language := agentlang.ForAgent(agent, owner)
@@ -442,11 +476,37 @@ func (s *DataQualityService) adoptionTargetInScope(ctx context.Context, agent *s
 	if err != nil {
 		return false, err
 	}
+	return scopeCoversTarget(scope, targetGUID), nil
+}
+
+// scopeCoversTarget reports whether one target GUID belongs to a database ref set.
+func scopeCoversTarget(scope []string, targetGUID string) bool {
 	parts := common.SplitMetaGUID(targetGUID)
 	if len(parts) < 2 {
-		return false, nil
+		return false
 	}
-	return slices.Contains(scope, common.FormatDatabase(parts[0], parts[1])), nil
+	return slices.Contains(scope, common.FormatDatabase(parts[0], parts[1]))
+}
+
+// resolveProposalAttention closes the open proposal-pending item once a pass
+// drained the target's queue, so the owner's to-do list does not keep a stale item.
+func (s *DataQualityService) resolveProposalAttention(ctx context.Context, agentID int64, targetGUID string, owner *store.UserMessage) {
+	if targetGUID == "" {
+		return
+	}
+	attention, err := s.store.GetOpenQualityAgentAttentionByDedupe(ctx, agentID, "proposal:"+targetGUID)
+	if err != nil || attention == nil {
+		return
+	}
+	var resolvedBy *int32
+	if owner != nil {
+		id := int32(owner.ID)
+		resolvedBy = &id
+	}
+	if _, _, resolveErr := s.store.ResolveQualityAgentAttention(ctx, attention.ResourceID,
+		store.QualityAgentAttentionStatusResolved, resolvedBy, time.Now().UTC()); resolveErr != nil {
+		slog.Warn("failed to resolve a drained proposal attention", log.WithError(resolveErr))
+	}
 }
 
 // countPendingDrafts counts the pending rule drafts an adoption report should
@@ -547,8 +607,13 @@ func (s *DataQualityService) adoptQualitySuggestionsExplicitly(ctx context.Conte
 	remaining, err := s.countPendingDrafts(ctx, agent.ID, targetGUID)
 	if err != nil {
 		slog.Warn("failed to count the remaining adoption drafts", log.WithError(err))
+	} else {
+		result.Remaining = remaining
+		result.RemainingKnown = true
+		if remaining == 0 {
+			s.resolveProposalAttention(ctx, agent.ID, targetGUID, owner)
+		}
 	}
-	result.Remaining = remaining
 	return result
 }
 
@@ -575,14 +640,6 @@ func (s *DataQualityService) AdoptQualitySuggestionsForOwner(ctx context.Context
 	if limit <= 0 {
 		limit = defaultAdoptionDaily
 	}
-	adopted, err := s.store.CountQualityAgentAdoptionsSince(ctx, agent.ID, time.Now().UTC().Add(-adoptionDailyWindow))
-	if err != nil {
-		return dataquality.AgentAdoptionReport{}, err
-	}
-	if adopted >= limit && len(req.DraftIDs) == 0 {
-		return dataquality.AgentAdoptionReport{}, connect.NewError(connect.CodeResourceExhausted,
-			fmt.Errorf("the agent's daily adoption limit (%d) is spent; it resets within 24 hours", limit))
-	}
 	targetGUID := strings.TrimSpace(req.TargetGUID)
 	if req.Session.Kind == 1 {
 		targetGUID = req.Session.TargetGUID
@@ -592,6 +649,16 @@ func (s *DataQualityService) AdoptQualitySuggestionsForOwner(ctx context.Context
 	}
 	var result adoptionPassResult
 	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqadopt:%d", agent.ID), func() error {
+		// Read the daily counter inside the lock: two owner passes that read it outside
+		// could both observe an under-limit value and together exceed the ceiling.
+		adopted, countErr := s.store.CountQualityAgentAdoptionsSince(ctx, agent.ID, time.Now().UTC().Add(-adoptionDailyWindow))
+		if countErr != nil {
+			return countErr
+		}
+		if adopted >= limit && len(req.DraftIDs) == 0 {
+			return connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("the agent's daily adoption limit (%d) is spent; it resets within 24 hours", limit))
+		}
 		if len(req.DraftIDs) > 0 {
 			result = s.adoptQualitySuggestionsExplicitly(ctx, req, agent, &adopted)
 			return nil
@@ -600,7 +667,7 @@ func (s *DataQualityService) AdoptQualitySuggestionsForOwner(ctx context.Context
 		if sessionErr != nil {
 			return sessionErr
 		}
-		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, time.Time{}, agent, &adopted, false)
+		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, time.Time{}, agent, &adopted, false, true)
 		return nil
 	})
 	if lockErr != nil {
@@ -637,6 +704,7 @@ func (s *DataQualityService) ownerAdoptionSession(ctx context.Context, session *
 		targetType = pending[0].TargetType
 	}
 	return &store.QualityAgentSessionMessage{
+		ResourceID:  session.ResourceID,
 		WorkspaceID: session.WorkspaceID,
 		AgentID:     agent.ID,
 		TargetGUID:  targetGUID,

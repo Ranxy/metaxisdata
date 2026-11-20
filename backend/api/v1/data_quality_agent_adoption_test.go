@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -60,4 +61,40 @@ func TestAdoptionFailureReasonKeepsTheCause(t *testing.T) {
 	boundedUnicode := adoptionFailureReason(errors.New(strings.Repeat("错", 300)))
 	require.LessOrEqual(t, len(boundedUnicode), 240, "the ledger reason is bounded by bytes")
 	require.True(t, utf8.ValidString(boundedUnicode), "the ledger reason stays valid UTF-8")
+}
+
+// The owner-requested tool must reject a target whose database left the agent's
+// scope; the same predicate is used for the explicit named-draft branch.
+func TestScopeCoversTarget(t *testing.T) {
+	t.Parallel()
+
+	scope := []string{"instances/i-1/databases/db"}
+	require.True(t, scopeCoversTarget(scope, "i-1;db;;orders"))
+	require.False(t, scopeCoversTarget(scope, "i-1;other;;orders"))
+	require.False(t, scopeCoversTarget(scope, ""))
+	require.False(t, scopeCoversTarget(nil, "i-1;db;;orders"))
+}
+
+// A wide adoption call keeps its counts truthful and caps the per-draft detail so
+// the tool result stays inside its byte budget.
+func TestAdoptionReportCapsItemsAndKeepsCounts(t *testing.T) {
+	t.Parallel()
+
+	var result adoptionPassResult
+	for index := 0; index < 25; index++ {
+		result.recordItem(&store.QualitySuggestionMessage{
+			ResourceID: fmt.Sprintf("draft-%d", index),
+			Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+				Rule: &storepb.QualityRuleDraftConfig{Title: "a draft"},
+			}},
+		}, "skipped", "the target is outside the agent's database scope")
+		result.Skipped++
+	}
+	result.RemainingKnown = true
+	report := result.report()
+	require.Equal(t, 25, report.Skipped)
+	require.Len(t, report.Items, 20)
+	require.True(t, report.ItemsTruncated)
+	require.True(t, report.RemainingKnown)
+	require.Equal(t, 20, len(report.Items), "the report detail is bounded")
 }

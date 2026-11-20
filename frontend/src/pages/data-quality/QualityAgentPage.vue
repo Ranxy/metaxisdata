@@ -274,6 +274,7 @@
           :agent-name="agentName"
           :can-reply="canChat"
           :can-adopt="canAdopt && adoptionEnabled"
+          :adopt-busy="busy"
           @adopt="adoptPending"
           @resolved="onAttentionResolved"
         />

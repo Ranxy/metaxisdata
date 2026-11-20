@@ -110,6 +110,7 @@ func (e *Engine) conversationToolResult(ctx context.Context, session *store.Qual
 		rows, err := e.store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
 			AgentID:  &session.AgentID,
 			Statuses: []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+			Kinds:    []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT},
 			Limit:    intValue(20),
 		})
 		if err != nil {

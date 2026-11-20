@@ -37,11 +37,17 @@ type AgentAdoptionItem struct {
 // AgentAdoptionReport is what one adoption pass did. The agent runtime renders it
 // back to the model, so the counts are authoritative for the reply.
 type AgentAdoptionReport struct {
-	Adopted   int                 `json:"adopted"`
-	Skipped   int                 `json:"skipped"`
-	Failed    int                 `json:"failed"`
-	Remaining int                 `json:"remaining"`
-	Items     []AgentAdoptionItem `json:"items"`
+	Adopted   int `json:"adopted"`
+	Skipped   int `json:"skipped"`
+	Failed    int `json:"failed"`
+	Remaining int `json:"remaining"`
+	// RemainingKnown is false when the queue count could not be read; the model must
+	// not claim an empty queue from a zero it did not observe.
+	RemainingKnown bool `json:"remainingKnown"`
+	// ItemsTruncated reports that the per-draft list was capped; the counts are still
+	// complete.
+	ItemsTruncated bool                `json:"itemsTruncated,omitempty"`
+	Items          []AgentAdoptionItem `json:"items"`
 }
 
 // AgentAdoptionReady reports whether an agent can adopt at all: it is active, its

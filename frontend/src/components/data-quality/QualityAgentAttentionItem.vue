@@ -105,11 +105,11 @@
         >
           <Button
             size="sm"
-            :disabled="busy"
+            :disabled="adoptDisabled"
             @click="requestAdopt"
           >
             <Loader2
-              v-if="busy"
+              v-if="adoptDisabled"
               class="mr-2 h-4 w-4 animate-spin"
             />
             {{ t("qualityAgent.attentionAdoptPending") }}
@@ -245,6 +245,8 @@ const props = defineProps<{
   canReply: boolean;
   /** The viewer may run an adoption pass; the parent owns the RPC. */
   canAdopt?: boolean;
+  /** The parent is already running an adoption pass. */
+  adoptBusy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -308,13 +310,15 @@ const canAdoptPending = computed(
     props.attention.kind === QualityAgentAttentionKind.PROPOSAL_PENDING
 );
 
+const adoptDisabled = computed(() => busy.value || props.adoptBusy === true);
+
 function onToggle(next: boolean) {
   open.value = next;
 }
 
 /** The parent runs the adoption pass and reloads this card's list. */
 function requestAdopt() {
-  if (busy.value) {
+  if (adoptDisabled.value) {
     return;
   }
   emit("adopt");
