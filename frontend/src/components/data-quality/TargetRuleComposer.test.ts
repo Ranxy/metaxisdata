@@ -70,6 +70,7 @@ const mocks = vi.hoisted(() => ({
   getQualityRuleTrend: vi.fn(),
   getQualityTarget: vi.fn(),
   listAllMetadata: vi.fn(),
+  getMetadata: vi.fn(),
   listAllQualityRuleTemplates: vi.fn(),
   createQualityRuleTemplate: vi.fn(),
   updateQualityRuleTemplate: vi.fn(),
@@ -90,6 +91,7 @@ vi.mock("@/api/data-quality", () => ({
 
 vi.mock("@/api/database", () => ({
   listAllMetadata: mocks.listAllMetadata,
+  getMetadata: mocks.getMetadata,
 }));
 
 const TABLE = "inst1;db1;public;orders";

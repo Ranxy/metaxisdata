@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMetaGuid,
   guidSegmentsToRouteParams,
   guidToRouteParams,
   routeParamToGuid,
@@ -103,5 +104,23 @@ describe("routeParamToGuid", () => {
     ]) {
       expect(routeParamToGuid(guidToRouteParams(guid))).toBe(guid);
     }
+  });
+});
+
+describe("buildMetaGuid", () => {
+  it("joins segments in the registry's order", () => {
+    expect(buildMetaGuid(["inst", "db", "public", "orders"])).toBe(
+      "inst;db;public;orders"
+    );
+  });
+
+  it("escapes the separator and the escape character, in that order", () => {
+    expect(buildMetaGuid(["inst", "a;b", "pu%3Bblic"])).toBe(
+      "inst;a%3Bb;pu%253Bblic"
+    );
+  });
+
+  it("keeps an empty schema segment meaningful", () => {
+    expect(buildMetaGuid(["inst", "db", "", "orders"])).toBe("inst;db;;orders");
   });
 });

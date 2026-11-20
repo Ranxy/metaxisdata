@@ -37,15 +37,42 @@
 
     <!-- Exactly one source is sent: the backend refuses a config that names
          several, so the fields of the unselected sources are not rendered. -->
-    <FormField
+    <div
       v-if="source === 'list'"
-      v-model="config.values"
-      :id="fieldId('values')"
-      :required="source === 'list'"
-      :error="errorFor(fieldErrors, 'values')"
-      :label="t('dataQuality.editor.values')"
-      :hint="t('dataQuality.editor.valuesHint')"
-    />
+      class="space-y-2"
+    >
+      <FormField
+        v-model="config.values"
+        :id="fieldId('values')"
+        :required="source === 'list'"
+        :error="errorFor(fieldErrors, 'values')"
+        :label="t('dataQuality.editor.values')"
+        :hint="t('dataQuality.editor.valuesHint')"
+      />
+      <div
+        v-if="declaredEnumValues.length > 0"
+        class="space-y-2"
+      >
+        <p class="text-sm text-muted-foreground">
+          {{ t("dataQuality.editor.enumLabelsHint") }}
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <Button
+            v-for="label in declaredEnumValues"
+            :key="label"
+            type="button"
+            variant="outline"
+            size="sm"
+            class="h-7 rounded-full px-2.5 text-xs font-normal"
+            :disabled="!canAddEnumValue(label)"
+            :title="t('dataQuality.editor.enumLabelsAdd')"
+            @click="addEnumValue(label)"
+          >
+            {{ label }}
+          </Button>
+        </div>
+      </div>
+    </div>
     <ColumnSelect
       v-else-if="source === 'field'"
       :model-value="config.acceptedField ?? ''"
@@ -117,6 +144,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ColumnSelect from "@/components/common/ColumnSelect.vue";
+import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { Label } from "@/components/ui/label";
 import {
@@ -128,6 +156,7 @@ import {
 } from "@/components/ui/select";
 import {
   type AcceptedValuesSource,
+  parseValueList,
   type RuleConfigForm,
 } from "@/utils/dataQualityForm";
 import CheckboxField from "../CheckboxField.vue";
@@ -178,4 +207,37 @@ const referenceColumns = computed(() => {
     ? props.columnDetails
     : props.columnDetails.filter((column) => column.name !== checked);
 });
+
+/** The declared labels of the checked column, when it is an enum. */
+const declaredEnumValues = computed(() => {
+  const checked = (config.value.column ?? "").trim();
+  if (checked === "") {
+    return [];
+  }
+  return (
+    props.columnDetails.find((column) => column.name === checked)?.enumValues ??
+    []
+  );
+});
+
+/** The accepted values the form currently holds, in its CSV shape. */
+function acceptedValues(): string[] {
+  return parseValueList(config.value.values ?? "");
+}
+
+/** A label the fixed list can hold: the CSV field separates on comma/newline. */
+function canAddEnumValue(label: string): boolean {
+  if (label.includes(",") || label.includes("\n")) {
+    return false;
+  }
+  return !acceptedValues().includes(label);
+}
+
+/** Append one declared label to the accepted-values list. */
+function addEnumValue(label: string): void {
+  if (!canAddEnumValue(label)) {
+    return;
+  }
+  config.value.values = [...acceptedValues(), label].join(", ");
+}
 </script>

@@ -5,15 +5,22 @@ import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { QualityRuleType } from "@/types/proto-es/v1/data_quality_service_pb";
-import { emptyConfig, type RuleConfigForm } from "@/utils/dataQualityForm";
+import {
+  emptyConfig,
+  type RuleConfigForm,
+  type TargetColumnDetail,
+} from "@/utils/dataQualityForm";
 import AcceptedValuesConfig from "./AcceptedValuesConfig.vue";
 
-const COLUMNS = [
+const COLUMNS: TargetColumnDetail[] = [
   { name: "status", type: "text", nullable: false },
   { name: "status_code", type: "varchar", nullable: true },
 ];
 
-function mountConfig(config: Partial<RuleConfigForm> = {}) {
+function mountConfig(
+  config: Partial<RuleConfigForm> = {},
+  columns: TargetColumnDetail[] = COLUMNS
+) {
   const model: RuleConfigForm = {
     ...emptyConfig(),
     column: "status",
@@ -24,7 +31,7 @@ function mountConfig(config: Partial<RuleConfigForm> = {}) {
     props: {
       ruleType: QualityRuleType.ACCEPTED_VALUES,
       modelValue: model,
-      columnDetails: COLUMNS,
+      columnDetails: columns,
       fieldErrors: {},
     },
     global: { plugins: [i18n] },
@@ -110,6 +117,42 @@ describe("AcceptedValuesConfig sources", () => {
     });
     expect(wrapper.text()).toContain(
       "The reference column must differ from the checked column."
+    );
+    wrapper.unmount();
+  });
+});
+
+describe("AcceptedValuesConfig enum labels", () => {
+  it("offers a declared enum column's labels as one-click accepted values", async () => {
+    const { wrapper, model } = mountConfig(
+      { column: "status", values: "active" },
+      [
+        {
+          name: "status",
+          type: "public.product_status",
+          nullable: false,
+          enumValues: ["active", "inactive", "archived", "draft"],
+        },
+      ]
+    );
+    const draft = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "draft");
+    expect(draft?.exists()).toBe(true);
+    await draft?.trigger("click");
+    expect(model.values).toBe("active, draft");
+    // An already accepted label is not offered twice.
+    const applied = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "draft");
+    expect(applied?.attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it("shows no labels for a column that is not an enum", () => {
+    const { wrapper } = mountConfig();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.editor.enumLabelsHint")
     );
     wrapper.unmount();
   });

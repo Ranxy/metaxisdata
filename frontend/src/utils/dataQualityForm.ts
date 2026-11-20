@@ -620,6 +620,12 @@ export interface TargetColumnDetail {
   name: string;
   type: string;
   nullable: boolean;
+  /**
+   * The labels an enum-typed column declares, when the editor could read them.
+   * The accepted-values form offers them so a fixed list cannot name a value the
+   * target cannot hold.
+   */
+  enumValues?: string[];
 }
 
 /** A form plus its target: the unit the update mask compares. */

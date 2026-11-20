@@ -14,6 +14,7 @@ import {
   QualitySeverity,
   QualitySuggestionKind,
   QualitySuggestionQueueSummarySchema,
+  QualitySuggestionRejectionSchema,
   QualitySuggestionSchema,
   QualitySuggestionSource,
   QualitySuggestionStatus,
@@ -52,6 +53,7 @@ import {
   suggestionKindKey,
   suggestionLabelTypeKey,
   suggestionRationale,
+  suggestionRejectionNotice,
   suggestionRowText,
   suggestionRuleDraftTypeKey,
   suggestionSeverity,
@@ -877,5 +879,53 @@ describe("suggestion row readings", () => {
     expect(groupSelectionState({ ...group, suggestions: [closed] }, [])).toBe(
       false
     );
+  });
+});
+
+describe("suggestionRejectionNotice", () => {
+  function summaryWithRejections(
+    rejected: Array<{ title: string; reason: string }>
+  ) {
+    const summary = create(QualitySuggestionQueueSummarySchema, { created: 1 });
+    summary.rejected = rejected.map((item) =>
+      create(QualitySuggestionRejectionSchema, item)
+    );
+    return summary;
+  }
+
+  it("reports nothing when every draft was usable", () => {
+    expect(
+      suggestionRejectionNotice(
+        create(QualitySuggestionQueueSummarySchema, { created: 1 })
+      )
+    ).toBeUndefined();
+    expect(suggestionRejectionNotice(undefined)).toBeUndefined();
+  });
+
+  it("names the first refusal and counts the rest", () => {
+    const notice = suggestionRejectionNotice(
+      summaryWithRejections([
+        {
+          title: "Status must be a declared enum label",
+          reason:
+            'value "discontinued" is not a label of the enum type "public.product_status"; valid labels: "active", "draft"',
+        },
+        { title: "Amount range", reason: "min exceeds max" },
+      ])
+    );
+    expect(notice).toEqual({
+      title: "Status must be a declared enum label",
+      reason:
+        'value "discontinued" is not a label of the enum type "public.product_status"; valid labels: "active", "draft"',
+      count: 2,
+    });
+  });
+
+  it("elides a long reason so a toast keeps its width", () => {
+    const notice = suggestionRejectionNotice(
+      summaryWithRejections([{ title: "draft", reason: "x".repeat(400) }])
+    );
+    expect(notice?.reason.endsWith("…")).toBe(true);
+    expect(notice?.reason.length).toBeLessThan(400);
   });
 });

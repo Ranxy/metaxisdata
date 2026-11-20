@@ -167,6 +167,44 @@ export function suggestionSummaryView(
   };
 }
 
+/** How much of one refusal's reason a toast shows before eliding it. */
+const REJECTION_REASON_CHARS = 160;
+
+/** One refused draft, as a queue summary's toast names it. */
+export interface SuggestionRejectionNotice {
+  /** The refused draft's title, when the model wrote one. */
+  title: string;
+  /** The server's reason, elided to the toast's width. */
+  reason: string;
+  /** How many drafts the pass refused. */
+  count: number;
+}
+
+/**
+ * The first draft a generation pass refused, when it refused any. A model answer
+ * can name a value the target cannot hold (an accepted value outside an enum
+ * column's labels, for example); the toast explains the smaller queue with that
+ * reason instead of leaving it unexplained.
+ */
+export function suggestionRejectionNotice(
+  summary: QualitySuggestionQueueSummary | undefined
+): SuggestionRejectionNotice | undefined {
+  const rejected = summary?.rejected ?? [];
+  if (rejected.length === 0) {
+    return undefined;
+  }
+  const first = rejected[0];
+  const reason = first?.reason || first?.title || "";
+  return {
+    title: first?.title ?? "",
+    reason:
+      reason.length > REJECTION_REASON_CHARS
+        ? `${reason.slice(0, REJECTION_REASON_CHARS)}…`
+        : reason,
+    count: rejected.length,
+  };
+}
+
 /** Which suggestion kind a pass handled; it changes how a skip is explained. */
 export type SuggestionSummarySubject = "label" | "rule";
 
