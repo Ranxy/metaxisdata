@@ -58,6 +58,7 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
+	require.Contains(t, result, `"enumValues":["draft","published"]`)
 }
 
 func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
@@ -91,6 +92,7 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		Columns: []TableContextColumn{
 			{Name: "id", Type: "int", Key: true},
 			{Name: "amount", Type: "decimal", Nullable: true},
+			{Name: "status", Type: "enum('draft','published')", EnumValues: []string{"draft", "published"}},
 		},
 		Downstream: 3,
 	}, nil

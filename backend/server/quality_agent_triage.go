@@ -50,10 +50,11 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 			break
 		}
 		context.Columns = append(context.Columns, agentrunner.TableContextColumn{
-			Name:     column.Name,
-			Type:     column.Type,
-			Nullable: column.Nullable,
-			Key:      keyColumns[column.Name],
+			Name:       column.Name,
+			Type:       column.Type,
+			Nullable:   column.Nullable,
+			Key:        keyColumns[column.Name],
+			EnumValues: triageEnumValues(column.EnumValues),
 		})
 	}
 	profiles, err := c.store.ListColumnProfiles(ctx, &store.FindColumnProfileMessage{
@@ -139,7 +140,19 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 const (
 	maxTriageContextColumns  = 100
 	maxTriageContextProfiles = 100
+	// maxTriageContextEnumValues bounds one column's labels in the triage context;
+	// a large enum must not bloat the tool result the model reads.
+	maxTriageContextEnumValues = 32
 )
+
+// triageEnumValues bounds the labels one column contributes to the triage
+// context.
+func triageEnumValues(values []string) []string {
+	if len(values) <= maxTriageContextEnumValues {
+		return values
+	}
+	return values[:maxTriageContextEnumValues]
+}
 
 // qualityDraftChecks drafts checks through the shared Suggester, so the drafts land in
 // the suggestion review queue exactly like a person's request would.

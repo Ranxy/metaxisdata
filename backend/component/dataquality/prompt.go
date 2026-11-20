@@ -18,7 +18,7 @@ import (
 // the version whenever a prompt change can alter an answer.
 const (
 	// RuleDraftPromptVersion is the L1 prompt: natural language -> rule drafts.
-	RuleDraftPromptVersion = "dq.rule_draft.v1"
+	RuleDraftPromptVersion = "dq.rule_draft.v2"
 	// ExplainPromptVersion is the L2 prompt: a failed result -> hypotheses.
 	ExplainPromptVersion = "dq.explain.v1"
 )
@@ -62,6 +62,11 @@ const (
 	maxPromptDDLBytes = 8 * 1024
 	// maxPromptExistingRules bounds the rule summaries a draft prompt lists.
 	maxPromptExistingRules = 20
+	// maxPromptEnumValues bounds the enum labels a draft prompt renders per
+	// column, and maxPromptEnumLabelChars bounds one label. An enum with many
+	// labels must not make the schema block unbounded.
+	maxPromptEnumValues     = 32
+	maxPromptEnumLabelChars = 64
 	// maxPromptRecentResults bounds the results an explain prompt lists.
 	maxPromptRecentResults = 10
 	// maxPromptSchemaHistory bounds the schema changes an explain prompt lists.
@@ -292,6 +297,7 @@ func buildRuleDraftSystemPrompt(language string) string {
 	fmt.Fprintf(&builder, "- Between %d and %d suggestions; prefer the fewest that fully cover the intent.\n", minRuleDraftSuggestions, maxRuleDraftSuggestions)
 	_, _ = builder.WriteString("- rule_type must be one of the types listed below.\n")
 	_, _ = builder.WriteString("- columns must name columns of the table exactly as the <schema> block spells them; never invent a column.\n")
+	_, _ = builder.WriteString("- When a column is an enum and the schema block lists its labels, an accepted value or filter value must be one of those labels; never invent a label.\n")
 	_, _ = builder.WriteString("- config must use only the keys documented for that rule_type; give every threshold explicitly as a number.\n")
 	_, _ = builder.WriteString("- Never write SQL and never propose a custom_sql rule.\n")
 	fmt.Fprintf(&builder, "- title is at most %d characters; rationale is at most %d characters and names the columns or facts that justify the rule.\n", maxRuleDraftTitleChars, maxRuleDraftRationaleChars)
@@ -331,6 +337,9 @@ func buildRuleDraftUserPrompt(draft RuleDraftContext, target ResolvedTarget, col
 			_, _ = builder.WriteString(" NULL")
 		} else {
 			_, _ = builder.WriteString(" NOT NULL")
+		}
+		if enumValues := promptEnumValues(column.EnumValues); enumValues != "" {
+			fmt.Fprintf(&builder, " (enum: %s)", enumValues)
 		}
 		if comment := strings.TrimSpace(draft.ColumnComments[column.Name]); comment != "" {
 			fmt.Fprintf(&builder, " -- %s", truncatePromptValue(comment, 200))
@@ -575,6 +584,28 @@ type ExplainContext struct {
 	Lineage []string
 	// IssueStatus describes the open issue, or is empty when there is none.
 	IssueStatus string
+}
+
+// promptEnumValues renders one column's declared enum labels for the draft
+// prompt. It is empty when the registry did not name them, and bounded so a large
+// enum cannot grow the schema block without limit.
+func promptEnumValues(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	named := values
+	if len(named) > maxPromptEnumValues {
+		named = named[:maxPromptEnumValues]
+	}
+	quoted := make([]string, 0, len(named))
+	for _, value := range named {
+		quoted = append(quoted, fmt.Sprintf("%q", sanitizePromptData(truncatePromptValue(value, maxPromptEnumLabelChars))))
+	}
+	rendered := strings.Join(quoted, ", ")
+	if len(values) > len(named) {
+		rendered += fmt.Sprintf(", ... (%d more)", len(values)-len(named))
+	}
+	return rendered
 }
 
 // BuildExplainPrompt renders the L2 system and user prompts. The system prompt

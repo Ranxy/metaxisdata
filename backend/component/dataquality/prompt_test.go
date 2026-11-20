@@ -439,3 +439,37 @@ func TestDraftRuleSpecsAreClosed(t *testing.T) {
 	specs[0].Name = "tampered"
 	require.NotEqual(t, "tampered", DraftRuleSpecs()[0].Name)
 }
+
+// The rule-draft prompt must name the labels of an enum column so the model can
+// write accepted values from the declared set instead of inventing one.
+func TestBuildRuleDraftPromptCarriesEnumLabels(t *testing.T) {
+	t.Parallel()
+
+	target := promptTestTarget()
+	target.Columns = append(target.Columns, ColumnInfo{
+		Name: "status", Type: "public.product_status", Kind: ColumnKindString,
+		EnumValues: []string{"active", "inactive", "archived", "draft"},
+	})
+	system, user := BuildRuleDraftPrompt(RuleDraftContext{Language: "en"}, target, nil, "check the status values", nil)
+	require.Contains(t, system, "never invent a label")
+	require.Contains(t, user, `- status public.product_status NOT NULL (enum: "active", "inactive", "archived", "draft")`)
+}
+
+// A large enum is bounded in the prompt like every other schema fact.
+func TestBuildRuleDraftPromptBoundsEnumLabels(t *testing.T) {
+	t.Parallel()
+
+	labels := make([]string, 0, maxPromptEnumValues+1)
+	for index := 0; index <= maxPromptEnumValues; index++ {
+		labels = append(labels, "label_"+strconv.Itoa(index))
+	}
+	target := promptTestTarget()
+	target.Columns = append(target.Columns, ColumnInfo{
+		Name: "status", Type: "public.product_status", Kind: ColumnKindString, EnumValues: labels,
+	})
+	_, user := BuildRuleDraftPrompt(RuleDraftContext{Language: "en"}, target, nil, "check", nil)
+	require.Contains(t, user, "(1 more)")
+	if strings.Contains(user, "label_"+strconv.Itoa(maxPromptEnumValues)+"\"") {
+		t.Fatal("the prompt rendered a label past the bound")
+	}
+}

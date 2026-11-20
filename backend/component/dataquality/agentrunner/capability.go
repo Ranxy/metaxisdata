@@ -206,7 +206,7 @@ func patrolProfile() capabilityProfile {
 func getTableContextSpec() toolSpec {
 	return toolSpec{
 		name:        "get_table_context",
-		description: "Read the target's schema, column profiles, semantic labels and lineage consumers; no sample rows.",
+		description: "Read the target's schema (including each enum column's declared labels), column profiles, semantic labels and lineage consumers; no sample rows.",
 		parameters:  emptyParameters(),
 		meta:        readMeta(),
 	}

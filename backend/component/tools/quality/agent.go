@@ -64,6 +64,10 @@ type TableContextColumn struct {
 	Nullable bool   `json:"nullable"`
 	Comment  string `json:"comment,omitempty"`
 	Key      bool   `json:"key,omitempty"`
+	// EnumValues are the labels of an enum-typed column, when the registry names
+	// them. It lets the model write accepted values from the declared set instead
+	// of guessing one.
+	EnumValues []string `json:"enumValues,omitempty"`
 }
 
 // TableContextProfile is one column's stored profile summary. Only statistics are
