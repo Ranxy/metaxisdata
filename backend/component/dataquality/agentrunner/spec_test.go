@@ -2,17 +2,21 @@ package agentrunner
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// The rendered system prompt is a model-facing contract: splitting it into
-// sections or editing the spec must not silently change the words the model reads.
+// The base system prompt is a model-facing contract: splitting it into sections or
+// editing the spec must not silently change the words the model reads. Capability
+// fragments and the adoption policy are composed on top and are covered by the
+// matrix tests below.
 func TestSpecSystemPromptIsStable(t *testing.T) {
 	t.Parallel()
 
@@ -30,7 +34,8 @@ func TestSpecSystemPromptIsStable(t *testing.T) {
 		"- You may record asset facts (observations backed by tool results, never published",
 		"  changes), block the session for a person, or schedule an earlier wake when there",
 		"  is concrete unfinished work.",
-		"- You cannot publish, approve, edit checks or change settings.",
+		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
+		"  What you may do follows the capability sections and the Adoption section.",
 		"- Keep every claim backed by a tool result. When a wake has nothing to do, reply",
 		"  briefly and stop calling tools; the session then sleeps until its next wake.",
 	}, "\n")
@@ -50,13 +55,24 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Equal(t, modelMaxTurns, monitor.MaxTurns)
 	require.Equal(t, triageMaxTurns, triage.MaxTurns)
 
-	monitorTools := specNames(monitor.Tools)
-	triageTools := specNames(triage.Tools)
+	// The base tool set is the same for both target products; the capability
+	// profiles add the coverage tools to triage only.
+	require.Equal(t, specNames(monitor.Tools), specNames(triage.Tools))
+	all := capabilityTestAgent(agentcapability.Suggest, agentcapability.Adopt, agentcapability.Patrol)
+	monitorTools := toolSpecNames(toolsFor(monitor, all))
+	triageTools := toolSpecNames(toolsFor(triage, all))
 	require.NotContains(t, monitorTools, "get_table_context")
 	require.NotContains(t, monitorTools, "draft_checks")
 	require.Contains(t, triageTools, "get_table_context")
 	require.Contains(t, triageTools, "draft_checks")
 	require.Subset(t, triageTools, monitorTools, "triage is monitoring plus its coverage tools")
+	require.Contains(t, monitorTools, "adopt_pending_drafts")
+	require.Contains(t, triageTools, "adopt_pending_drafts")
+
+	conversationTools := toolSpecNames(toolsFor(conversationProduct, all))
+	require.Contains(t, conversationTools, "list_pending_proposals")
+	require.Contains(t, conversationTools, "adopt_pending_drafts")
+	require.NotContains(t, conversationTools, "draft_checks")
 
 	require.Same(t, monitor, specFor(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR))
 	require.Same(t, triage, specFor(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE))
@@ -64,47 +80,151 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Same(t, monitor, specFor(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED))
 }
 
-// Every tool-looking name a spec's prompt or wake message uses must be one of its
-// own tools: a renamed or removed tool otherwise leaves stale instructions behind.
+// Every tool-looking name a composed prompt or wake message uses must be one the
+// same capability set exposes: a renamed or removed tool otherwise leaves stale
+// instructions behind.
 func TestPromptsMentionOnlyTheirSpecTools(t *testing.T) {
 	t.Parallel()
 
 	namePattern := regexp.MustCompile(`\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`)
 	known := map[string]bool{}
-	for _, spec := range []*Spec{monitorSpec(), triageSpec()} {
-		for _, name := range specNames(spec.Tools) {
+	for _, spec := range []*Spec{monitorSpec(), triageSpec(), conversationProduct} {
+		for _, name := range allToolNames(spec) {
 			known[name] = true
 		}
 	}
 
-	for _, spec := range []*Spec{monitorSpec(), triageSpec()} {
+	for _, spec := range []*Spec{monitorSpec(), triageSpec(), conversationProduct} {
 		mode := storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
-		if spec.Name == "quality-triage" {
+		if spec.Name == triageProduct.Name {
 			mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
 		}
 		session := &store.QualityAgentSessionMessage{TargetGUID: "1;shop;;orders", Mode: mode}
-		text := spec.Prompt.Render() + "\n" + wakePrompt(session, 1, nil)
-
-		allowed := specNames(spec.Tools)
-		for _, candidate := range namePattern.FindAllString(text, -1) {
-			if !known[candidate] {
-				continue
+		for _, capabilities := range validCapabilitySets() {
+			agent := capabilityTestAgent(capabilities...)
+			conversation := &store.QualityAgentSessionMessage{Mode: mode, Kind: 2}
+			text := renderSystemPrompt(spec, agent, "en-US") + "\n" +
+				wakePrompt(session, 1, nil, agent) + "\n" +
+				wakePrompt(conversation, 1, nil, agent)
+			allowed := toolSpecNames(toolsFor(spec, agent))
+			for _, candidate := range namePattern.FindAllString(text, -1) {
+				if !known[candidate] {
+					continue
+				}
+				require.Contains(t, allowed, candidate,
+					"spec %s with capabilities %v mentions tool %q that it does not expose", spec.Name, capabilities, candidate)
 			}
-			require.Contains(t, allowed, candidate,
-				"spec %s mentions tool %q that it does not expose", spec.Name, candidate)
 		}
 	}
 }
 
-// The server calls ValidateSpecs before the runner starts; the shipped specs must
-// pass it, which also proves every declared tool has an execution branch.
+// The capability matrix is the contract of the composition: a selected capability
+// contributes its fragment and tools to the product it applies to, and only there.
+func TestCapabilityMatrix(t *testing.T) {
+	t.Parallel()
+
+	for _, capabilities := range validCapabilitySets() {
+		agent := capabilityTestAgent(capabilities...)
+		for _, spec := range []*Spec{monitorSpec(), triageSpec(), conversationProduct} {
+			tools := toolSpecNames(toolsFor(spec, agent))
+			prompt := renderSystemPrompt(spec, agent, "en-US")
+
+			has := func(id string) bool { return slices.Contains(capabilities, id) }
+			exposed := func(name string) bool { return slices.Contains(tools, name) }
+
+			if spec.Name == triageProduct.Name {
+				require.Equal(t, has(agentcapability.Suggest), exposed("draft_checks"), "triage draft_checks follows suggest")
+				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Coverage work:"))
+			}
+			if spec.Name == conversationProduct.Name {
+				require.Equal(t, has(agentcapability.Suggest), exposed("list_pending_proposals"))
+				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Pending proposals:"))
+			}
+			if spec.Name == monitorProduct.Name {
+				require.False(t, exposed("draft_checks"), "monitoring never drafts checks")
+				require.Equal(t, has(agentcapability.Patrol), strings.Contains(prompt, "Monitoring:"))
+			}
+			require.Equal(t, has(agentcapability.Adopt), exposed("adopt_pending_drafts"))
+			require.Equal(t, has(agentcapability.Adopt), strings.Contains(prompt, "Adoption authority:"))
+			require.Contains(t, prompt, "Adoption:")
+			require.Contains(t, prompt, "Language:")
+
+			// The adoption hint only appears when adoption is actually configured.
+			ask := []*store.QualityAgentTranscriptMessage{{
+				Origin: storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			}}
+			target := &store.QualityAgentSessionMessage{TargetGUID: "1;shop;;orders", Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR}
+			instruction := wakePrompt(target, 1, ask, agent)
+			require.Equal(t, has(agentcapability.Adopt), strings.Contains(instruction, "adopt_pending_drafts"),
+				"an owner-question wake mentions the adoption tool only when adopt is configured")
+		}
+	}
+}
+
+// The server calls ValidateSpecs before the runner starts; the shipped specs and
+// every capability profile must pass it.
 func TestValidateSpecsAcceptsTheShippedSpecs(t *testing.T) {
 	t.Parallel()
 
 	require.NoError(t, ValidateSpecs())
-	for _, spec := range []*Spec{monitorSpec(), triageSpec()} {
+	for _, spec := range []*Spec{monitorSpec(), triageSpec(), conversationProduct} {
 		for _, declaration := range spec.Tools {
 			require.True(t, handlesTool(declaration.name), "spec %s declares %q without an execution branch", spec.Name, declaration.name)
 		}
 	}
+	// Every catalog capability has a profile and every profile tool has a branch.
+	for _, capability := range agentcapability.All() {
+		profile, ok := profileFor(capability.ID)
+		require.True(t, ok, "capability %q has no profile", capability.ID)
+		for _, spec := range []*Spec{monitorSpec(), triageSpec(), conversationProduct} {
+			for _, declaration := range profile.Tools(spec) {
+				require.True(t, handlesTool(declaration.name), "capability %s declares %q without an execution branch", capability.ID, declaration.name)
+			}
+		}
+	}
+}
+
+// capabilityTestAgent builds the smallest agent the composition needs.
+func capabilityTestAgent(capabilities ...string) *store.QualityAgentMessage {
+	return &store.QualityAgentMessage{
+		ID:                          1,
+		State:                       store.QualityAgentStateActive,
+		Capabilities:                capabilities,
+		AdoptionMode:                store.QualityAgentAdoptionModeActive,
+		AdoptionRuleTypes:           []int16{int16(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT)},
+		AdoptionConfidenceThreshold: 0.7,
+		AdoptionMaxPerDay:           20,
+	}
+}
+
+// validCapabilitySets is every subset of the catalog that the API accepts: adopt
+// requires suggest, so an adopt-only set is not a legal agent.
+func validCapabilitySets() [][]string {
+	ids := []string{agentcapability.Suggest, agentcapability.Adopt, agentcapability.Patrol}
+	sets := make([][]string, 0, 8)
+	for mask := 0; mask < 1<<len(ids); mask++ {
+		set := make([]string, 0, len(ids))
+		for index, id := range ids {
+			if mask&(1<<index) != 0 {
+				set = append(set, id)
+			}
+		}
+		if slices.Contains(set, agentcapability.Adopt) && !slices.Contains(set, agentcapability.Suggest) {
+			continue
+		}
+		if len(set) == 0 {
+			continue
+		}
+		sets = append(sets, set)
+	}
+	return sets
+}
+
+// allToolNames is every tool declaration a product can compose.
+func allToolNames(spec *Spec) []string {
+	names := specNames(spec.Tools)
+	for _, profile := range capabilityProfiles() {
+		names = append(names, toolSpecNames(profile.Tools(spec))...)
+	}
+	return names
 }

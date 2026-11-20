@@ -59,28 +59,27 @@ func internalMeta() tool.Meta {
 	}
 }
 
-// modelToolSpecs is the closed tool set of a model wake. It is read- and
-// propose-only; publishing, approving, editing checks and changing settings are
-// not exposed.
-func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
-	empty := map[string]any{"type": "object", "properties": map[string]any{}}
+// targetToolSpecs is the base tool set of a target work session. Capability
+// profiles add the tools a selected capability grants; the base set itself is
+// read-, propose- and wake-control only.
+func targetToolSpecs() []toolSpec {
 	specs := []toolSpec{
 		{
 			name:        "get_target_summary",
-			description: "Read the target's plan state, criticality, rule count and uncovered declared properties.",
-			parameters:  empty,
+			description: "Read the target's plan state, criticality, rule count, adoption status, pending drafts and uncovered declared properties.",
+			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},
 		{
 			name:        "list_recent_executions",
 			description: "List the target's recent executions with their outcomes and failed row counts.",
-			parameters:  empty,
+			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},
 		{
 			name:        "get_memory",
 			description: "List the target's confirmed asset facts.",
-			parameters:  empty,
+			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},
 		{
@@ -110,36 +109,6 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 			meta: internalMeta(),
 		},
 	}
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
-		specs = append(specs,
-			toolSpec{
-				name:        "get_table_context",
-				description: "Read the target's schema, column profiles, semantic labels and lineage consumers; no sample rows.",
-				parameters:  empty,
-				meta:        readMeta(),
-			},
-			toolSpec{
-				name:        "draft_checks",
-				description: "Draft concrete checks for the target into the review queue; a person approves them before they run.",
-				parameters: map[string]any{"type": "object", "properties": map[string]any{
-					"intent": map[string]any{"type": "string", "description": "what the checks should watch, in one sentence"},
-					"columns": map[string]any{
-						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "optional column names; at most 8",
-					},
-				}, "required": []string{"intent"}},
-				meta: tool.Meta{
-					Group:          "quality",
-					Scope:          tool.ScopeProductOnly,
-					Authz:          tool.AuthzPermission,
-					SideEffect:     tool.SideEffectPropose,
-					Permission:     string(permission.DataQualitySuggest),
-					MaxResultBytes: maxToolResultBytes,
-				},
-			},
-		)
-	}
 	return specs
 }
 
@@ -147,24 +116,17 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 // and queue, plus the two wake controls. It deliberately cannot touch a single
 // target's plan or checks; that work belongs to the target sessions.
 func conversationToolSpecs() []toolSpec {
-	empty := map[string]any{"type": "object", "properties": map[string]any{}}
 	return []toolSpec{
 		{
 			name:        "get_scope_summary",
 			description: "Read the agent's scope health: databases, discovered/monitored/dormant targets and the queue split.",
-			parameters:  empty,
+			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},
 		{
 			name:        "list_scope_targets",
 			description: "List targets in the agent's scope with their queue state, mode and priority.",
-			parameters:  empty,
-			meta:        readMeta(),
-		},
-		{
-			name:        "list_pending_proposals",
-			description: "List this agent's pending check drafts waiting for the owner to review.",
-			parameters:  empty,
+			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},
 		{
@@ -198,7 +160,8 @@ type Spec struct {
 	Feature string
 	// Prompt is the system prompt the runtime renders.
 	Prompt *agent.Prompt
-	// Tools is the explicit whitelist; the registry validates it at wake time.
+	// Tools is the base whitelist; capability profiles add feature tools and the
+	// registry validates the composed set at wake time.
 	Tools []toolSpec
 	// MaxTurns bounds one wake's model calls.
 	MaxTurns int
@@ -222,7 +185,7 @@ var (
 		Name:     "quality-monitor",
 		Feature:  "dq_agent",
 		Prompt:   qualityPrompt(),
-		Tools:    modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR),
+		Tools:    targetToolSpecs(),
 		MaxTurns: modelMaxTurns,
 	}
 	// triageProduct is the coverage product: it inspects an uncovered target,
@@ -231,7 +194,7 @@ var (
 		Name:     "quality-triage",
 		Feature:  "dq_agent",
 		Prompt:   qualityPrompt(),
-		Tools:    modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		Tools:    targetToolSpecs(),
 		MaxTurns: triageMaxTurns,
 	}
 )
@@ -264,9 +227,21 @@ func specFor(mode storepb.QualityAgentSessionMode) *Spec {
 // each name. The server calls it before constructing the runner, so a renamed or
 // misspelled tool fails the boot instead of reaching the model.
 func ValidateSpecs() error {
+	if err := validateCapabilityProfiles(); err != nil {
+		return err
+	}
 	for _, spec := range []*Spec{monitorProduct, triageProduct, conversationProduct} {
+		declarations := append([]toolSpec(nil), spec.Tools...)
+		for _, profile := range capabilityProfiles() {
+			declarations = append(declarations, profile.Tools(spec)...)
+		}
 		registry := tool.NewRegistry()
-		for _, declaration := range spec.Tools {
+		seen := make(map[string]bool, len(declarations))
+		for _, declaration := range declarations {
+			if seen[declaration.name] {
+				return fmt.Errorf("spec %s declares tool %q twice", spec.Name, declaration.name)
+			}
+			seen[declaration.name] = true
 			declarationTool := tool.Tool{
 				Name:        declaration.name,
 				Description: declaration.description,
@@ -279,17 +254,24 @@ func ValidateSpecs() error {
 			if err := registry.Register(declarationTool); err != nil {
 				return fmt.Errorf("spec %s: %w", spec.Name, err)
 			}
-		}
-		if _, err := registry.Resolve(specNames(spec.Tools)); err != nil {
-			return fmt.Errorf("spec %s: %w", spec.Name, err)
-		}
-		for _, declaration := range spec.Tools {
 			if !handlesTool(declaration.name) {
 				return fmt.Errorf("spec %s declares tool %q but the engine has no execution branch", spec.Name, declaration.name)
 			}
 		}
+		if _, err := registry.Resolve(toolSpecNames(declarations)); err != nil {
+			return fmt.Errorf("spec %s: %w", spec.Name, err)
+		}
 	}
 	return nil
+}
+
+// toolSpecNames lists a declaration slice's tool names in order.
+func toolSpecNames(declarations []toolSpec) []string {
+	names := make([]string, 0, len(declarations))
+	for _, declaration := range declarations {
+		names = append(names, declaration.name)
+	}
+	return names
 }
 
 // specNames lists a spec's tool names in declaration order.

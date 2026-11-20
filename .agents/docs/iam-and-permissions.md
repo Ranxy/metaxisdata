@@ -26,7 +26,7 @@ Predefined roles (`backend/store/predefined_roles.go`) are read-only over `RoleS
 
 - **`workspaceAdmin`** holds the whole catalog.
 - **`workspaceMember`** is the authenticated-principal baseline of 29 entries (`memberBaselinePermissions`): the read/discovery surface plus the manual-SQL writes and `users.list`. It deliberately omits instance and data-source writes, user writes, group/role/IAM administration, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles, `applications.apiKeys.*` (issuing a key is a credential that writes data), and `connectedApps.*` — a member still manages their own connections because the handler forces self-scoping, while seeing the workspace or revoking someone else's needs the permission.
-- **`qualityAgent`** is the built-in quality agent's IAM actor: quality-rule reads plus `dataQuality.suggest` and `dataQuality.plans.update`; it cannot publish, approve, edit rules or touch settings.
+- **`qualityAgent`** is the built-in quality agent's IAM actor: quality-rule reads plus `dataQuality.suggest` and `dataQuality.plans.update`; its permission set is unchanged, and it still cannot publish, approve, edit rules or touch settings. The owner-requested adoption tool reuses the adoption RPC's `dataQuality.agents.get`, but its real gate is the product path — the owner's request in the current wake, adoption enabled, database scope, the daily cap and rule validation — not IAM, and every adoption is ledgered and audited.
 
 ## Invariants
 

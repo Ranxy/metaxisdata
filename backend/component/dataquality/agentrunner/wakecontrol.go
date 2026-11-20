@@ -11,4 +11,13 @@ type wakeControl struct {
 	blockedWhy     string
 	nextWake       *time.Time
 	scheduleReason string
+	// wake is the wake number, for the adoption audit correlation.
+	wake int32
+	// ownerAsked reports that this wake is answering a person's question. The
+	// adoption tool is exposed only then: a scheduled or event wake must never
+	// adopt on its own.
+	ownerAsked bool
+	// adoptionUsed reports that the adoption tool ran, so the automatic pass is
+	// suppressed for this wake.
+	adoptionUsed bool
 }

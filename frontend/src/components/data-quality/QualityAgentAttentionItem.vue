@@ -99,6 +99,25 @@
         >
           {{ t("qualityAgent.attentionDraftsMore") }}
         </p>
+        <div
+          v-if="canAdoptPending"
+          class="mt-2 space-y-1"
+        >
+          <Button
+            size="sm"
+            :disabled="adoptDisabled"
+            @click="requestAdopt"
+          >
+            <Loader2
+              v-if="adoptDisabled"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
+            {{ t("qualityAgent.attentionAdoptPending") }}
+          </Button>
+          <p class="text-[11px] text-muted-foreground">
+            {{ t("qualityAgent.attentionAdoptHint") }}
+          </p>
+        </div>
       </div>
 
       <div class="flex flex-wrap gap-2">
@@ -224,10 +243,15 @@ const props = defineProps<{
   attention: QualityAgentAttention;
   agentName: string;
   canReply: boolean;
+  /** The viewer may run an adoption pass; the parent owns the RPC. */
+  canAdopt?: boolean;
+  /** The parent is already running an adoption pass. */
+  adoptBusy?: boolean;
 }>();
 
 const emit = defineEmits<{
   resolved: [name: string];
+  adopt: [];
 }>();
 
 const { t, locale } = useI18n();
@@ -280,8 +304,24 @@ const canReplyToTarget = computed(
   () => props.canReply && props.attention.session !== ""
 );
 
+const canAdoptPending = computed(
+  () =>
+    props.canAdopt === true &&
+    props.attention.kind === QualityAgentAttentionKind.PROPOSAL_PENDING
+);
+
+const adoptDisabled = computed(() => busy.value || props.adoptBusy === true);
+
 function onToggle(next: boolean) {
   open.value = next;
+}
+
+/** The parent runs the adoption pass and reloads this card's list. */
+function requestAdopt() {
+  if (adoptDisabled.value) {
+    return;
+  }
+  emit("adopt");
 }
 
 async function sendReply() {
