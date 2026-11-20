@@ -248,6 +248,9 @@ func convertFilterValues(column ColumnInfo, values []string) ([]any, error) {
 // convertFilterValue converts one value. Temporal and text values stay strings:
 // the engine casts them, and reformatting a date would change the comparison.
 func convertFilterValue(column ColumnInfo, value string) (any, error) {
+	if err := enumValueError(column, value); err != nil {
+		return nil, err
+	}
 	switch column.Kind {
 	case ColumnKindNumeric:
 		if integer, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {

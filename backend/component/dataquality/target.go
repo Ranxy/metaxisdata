@@ -124,6 +124,7 @@ func ResolveTarget(ctx context.Context, s *store.Store, guid string, metaType st
 		KeyColumns:         primaryKeyColumns(resource.Metadata, metaType, columns),
 		MetaHash:           resource.MetaHash,
 	}
+	enrichColumnEnumValues(ctx, s, &target)
 	return &Resolution{Target: target, Instance: instance, Database: database, Metadata: resource.Metadata}, nil
 }
 

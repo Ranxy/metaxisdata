@@ -183,6 +183,9 @@ func compileCountSelect(relation, where, failureCondition string, args []any) Co
 // change the comparison. A value the column cannot represent is a save-time
 // validation error, never a runtime surprise.
 func compileValueArg(column ColumnInfo, value string) (any, error) {
+	if err := enumValueError(column, value); err != nil {
+		return nil, err
+	}
 	switch column.Kind {
 	case ColumnKindNumeric:
 		if integer, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
