@@ -77,6 +77,94 @@ func TestBuildLLMProfileUpdateWithAMask(t *testing.T) {
 	require.NotNil(t, update.Models)
 	require.Len(t, update.Models, 1)
 
+	// An explicit base_url mask writes the address, so changing the endpoint is
+	// persisted; only the validation of a malformed one is covered below.
+	update, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{BaseUrl: "https://llm.example.com/v1"}, []string{"base_url"})
+	require.NoError(t, err)
+	require.NotNil(t, update.BaseURL)
+	require.Equal(t, "https://llm.example.com/v1", *update.BaseURL)
+
 	_, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{BaseUrl: "not-a-url"}, []string{"base_url"})
 	require.Error(t, err)
+}
+
+// Listing models for a custom provider used to resolve only the provider type,
+// so the user-entered base URL never reached the request and every fetch failed.
+func TestResolveFetchModelsBaseURL(t *testing.T) {
+	t.Parallel()
+
+	const (
+		requestURL = "https://request.example.com"
+		storedURL  = "https://stored.example.com"
+	)
+
+	tests := []struct {
+		name         string
+		requestURL   string
+		storedURL    string
+		providerType v1pb.LLMProviderType
+		wantBaseURL  string
+	}{
+		{
+			name:         "the request base URL wins",
+			requestURL:   requestURL,
+			storedURL:    storedURL,
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  requestURL,
+		},
+		{
+			name:         "the stored profile base URL is the fallback",
+			storedURL:    storedURL,
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  storedURL,
+		},
+		{
+			name:         "a built-in provider type falls back to its default",
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+			wantBaseURL:  "https://api.openai.com",
+		},
+		{
+			name:         "a custom provider type has no default",
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.wantBaseURL, resolveFetchModelsBaseURL(tt.requestURL, tt.storedURL, tt.providerType))
+		})
+	}
+}
+
+// A profile's stored key authenticates only the endpoint stored with it:
+// letting a model listing forward it to a caller-supplied URL would turn the
+// fetch permission into a way to read the secret.
+func TestResolveFetchModelsAPIKey(t *testing.T) {
+	t.Parallel()
+
+	const (
+		requestKey = "request-key"
+		storedKey  = "stored-key"
+		storedURL  = "https://llm.example.com"
+	)
+
+	// A request key always wins, including against a different endpoint.
+	apiKey, err := resolveFetchModelsAPIKey(requestKey, "https://other.example.com", storedKey, storedURL)
+	require.NoError(t, err)
+	require.Equal(t, requestKey, apiKey)
+
+	// The stored key may authenticate the stored endpoint, whichever way the
+	// request spells it.
+	for _, requestBaseURL := range []string{"", storedURL, "  " + storedURL + "  "} {
+		apiKey, err = resolveFetchModelsAPIKey("", requestBaseURL, storedKey, storedURL)
+		require.NoError(t, err)
+		require.Equal(t, storedKey, apiKey)
+	}
+
+	// A different endpoint without a request key must not reuse the stored secret.
+	_, err = resolveFetchModelsAPIKey("", "https://other.example.com", storedKey, storedURL)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

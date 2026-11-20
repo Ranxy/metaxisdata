@@ -178,3 +178,153 @@ describe("LLMProviderManagementPage max output tokens", () => {
     wrapper.unmount();
   });
 });
+
+const CUSTOM_PROFILE = create(LlmProviderProfileSchema, {
+  name: "llm-provider-profiles/p2",
+  title: "In-house",
+  type: LLMProviderType.LLM_PROVIDER_TYPE_CUSTOM,
+  baseUrl: "https://llm.example.com/v1",
+  models: [create(LlmProviderModelSchema, { name: "m1", enabled: true })],
+  maskedApiKey: "abc…789",
+  maxOutputTokens: 0,
+});
+
+function customProfileEntry(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAll("button")
+    .find((button) => button.text().includes("In-house"));
+}
+
+function fetchModelsButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAll("button")
+    .find((button) =>
+      button.text().includes(i18n.global.t("llmProvider.fetchModels"))
+    );
+}
+
+describe("LLMProviderManagementPage fetch models", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listProfiles.mockResolvedValue({ profiles: [CUSTOM_PROFILE] });
+    mocks.fetchModelsByKey.mockResolvedValue({ modelIds: ["m1"] });
+    mocks.fetchModelsByProfile.mockResolvedValue({ modelIds: ["m1"] });
+  });
+
+  it("sends the typed base URL when fetching models for a custom provider", async () => {
+    const wrapper = await mountPage();
+    const entry = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("In-house"));
+    expect(entry).toBeTruthy();
+    await entry?.trigger("click");
+    await flushPromises();
+
+    // Editing a profile keeps its stored base URL; it used to be reset to the
+    // provider type's default (empty for custom) on selection.
+    const baseUrlInput = wrapper
+      .findAll("input")
+      .find((input) => input.element.value === "https://llm.example.com/v1");
+    expect(baseUrlInput).toBeTruthy();
+
+    await wrapper.find('input[type="password"]').setValue("sk-new");
+    const fetchButton = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(i18n.global.t("llmProvider.fetchModels"))
+      );
+    expect(fetchButton).toBeTruthy();
+    await fetchButton?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.fetchModelsByKey).toHaveBeenCalledWith(
+      LLMProviderType.LLM_PROVIDER_TYPE_CUSTOM,
+      "sk-new",
+      "https://llm.example.com/v1"
+    );
+  });
+
+  it("uses the stored key while the stored base URL is unchanged", async () => {
+    const wrapper = await mountPage();
+    await customProfileEntry(wrapper)?.trigger("click");
+    await flushPromises();
+
+    await fetchModelsButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.fetchModelsByProfile).toHaveBeenCalledWith(
+      "llm-provider-profiles/p2"
+    );
+    expect(mocks.fetchModelsByKey).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain(
+      label("llmProvider.apiKeyRequiredForBaseUrl")
+    );
+  });
+
+  it("asks for the key instead of forwarding the stored one to a changed base URL", async () => {
+    const wrapper = await mountPage();
+    await customProfileEntry(wrapper)?.trigger("click");
+    await flushPromises();
+
+    const baseUrlInput = wrapper
+      .findAll("input")
+      .find((input) => input.element.value === "https://llm.example.com/v1");
+    expect(baseUrlInput).toBeTruthy();
+    await baseUrlInput?.setValue("https://other.example.com");
+
+    await fetchModelsButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.fetchModelsByProfile).not.toHaveBeenCalled();
+    expect(mocks.fetchModelsByKey).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      label("llmProvider.apiKeyRequiredForBaseUrl")
+    );
+  });
+});
+
+describe("LLMProviderManagementPage API key save", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listProfiles.mockResolvedValue({ profiles: [CUSTOM_PROFILE] });
+    mocks.updateProfile.mockResolvedValue(CUSTOM_PROFILE);
+  });
+
+  it("trims the key before writing it", async () => {
+    const wrapper = await mountPage();
+    await customProfileEntry(wrapper)?.trigger("click");
+    await flushPromises();
+
+    await wrapper.find('input[type="password"]').setValue("  sk-new  ");
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateProfile).toHaveBeenCalledTimes(1);
+    const [profile, mask] = mocks.updateProfile.mock.calls[0] as [
+      { apiKey: string },
+      string[],
+    ];
+    expect(profile.apiKey).toBe("sk-new");
+    expect(mask).toContain("api_key");
+  });
+
+  it("does not overwrite the stored key with whitespace", async () => {
+    const wrapper = await mountPage();
+    await customProfileEntry(wrapper)?.trigger("click");
+    await flushPromises();
+
+    await wrapper.find('input[type="password"]').setValue("   ");
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateProfile).toHaveBeenCalledTimes(1);
+    const [profile, mask] = mocks.updateProfile.mock.calls[0] as [
+      { apiKey: string },
+      string[],
+    ];
+    expect(profile.apiKey).toBe("");
+    expect(mask).not.toContain("api_key");
+  });
+});

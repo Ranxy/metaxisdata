@@ -240,11 +240,16 @@ export declare const DeleteLLMProviderProfileRequestSchema: GenMessage<DeleteLLM
  */
 export declare type FetchLLMModelsRequest = Message<"metaxisdata.v1.FetchLLMModelsRequest"> & {
   /**
+   * An existing profile whose stored base URL and API key are used when the
+   * request does not carry its own.
+   *
    * @generated from field: string name = 1;
    */
   name: string;
 
   /**
+   * Overrides the API key stored on the named profile.
+   *
    * @generated from field: string api_key = 2;
    */
   apiKey: string;
@@ -253,6 +258,14 @@ export declare type FetchLLMModelsRequest = Message<"metaxisdata.v1.FetchLLMMode
    * @generated from field: metaxisdata.v1.LLMProviderType provider_type = 3;
    */
   providerType: LLMProviderType;
+
+  /**
+   * Overrides the profile's stored base URL. A custom provider has no default,
+   * so the request must carry one when no profile is named.
+   *
+   * @generated from field: string base_url = 4;
+   */
+  baseUrl: string;
 };
 
 /**

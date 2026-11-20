@@ -11060,9 +11060,10 @@ usually the SQL naming something the analyzer cannot see.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| api_key | [string](#string) |  |  |
+| name | [string](#string) |  | An existing profile whose stored base URL and API key are used when the request does not carry its own. |
+| api_key | [string](#string) |  | Overrides the API key stored on the named profile. |
 | provider_type | [LLMProviderType](#metaxisdata-v1-LLMProviderType) |  |  |
+| base_url | [string](#string) |  | Overrides the profile&#39;s stored base URL. A custom provider has no default, so the request must carry one when no profile is named. |
 
 
 

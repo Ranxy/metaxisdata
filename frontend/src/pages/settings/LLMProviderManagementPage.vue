@@ -262,7 +262,7 @@
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
 import { Plus, RefreshCw, Search, Sparkles } from "lucide-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createProfile,
@@ -367,15 +367,6 @@ const formData = reactive({
   maxOutputTokens: "",
   enabledModels: [] as string[],
 });
-
-// Keep base_url in sync with provider type selection.
-watch(
-  () => formData.providerType,
-  (t) => {
-    const def = getBuiltinByEnum(t);
-    formData.baseUrl = def?.defaultBaseUrl ?? "";
-  }
-);
 
 const availableModels = ref<string[]>([]);
 const modelSearch = ref("");
@@ -496,6 +487,8 @@ function autoTitle(p: LlmProviderProfile): string {
 /** Radix hands back a string; the form stores the enum. */
 function setProviderType(value: unknown) {
   formData.providerType = Number(value) as LLMProviderType;
+  const def = getBuiltinByEnum(formData.providerType);
+  formData.baseUrl = def?.defaultBaseUrl ?? "";
 }
 
 function providerLabel(type: LLMProviderType): string {
@@ -570,6 +563,13 @@ async function fetchModels() {
   try {
     let modelIds: string[];
     if (editingProfile.value && !formData.apiKey.trim()) {
+      // The stored key only authenticates the stored endpoint: fetching from a
+      // changed Base URL has to carry the caller's own key.
+      if (formData.baseUrl.trim() !== editingProfile.value.baseUrl.trim()) {
+        fetchedError.value = t("llmProvider.apiKeyRequiredForBaseUrl");
+        isFetchingModels.value = false;
+        return;
+      }
       const resp = await fetchModelsByProfile(editingProfile.value.name);
       modelIds = resp.modelIds;
     } else {
@@ -579,7 +579,11 @@ async function fetchModels() {
         isFetchingModels.value = false;
         return;
       }
-      const resp = await fetchModelsByKey(formData.providerType, apiKey);
+      const resp = await fetchModelsByKey(
+        formData.providerType,
+        apiKey,
+        formData.baseUrl.trim()
+      );
       modelIds = resp.modelIds;
     }
 
@@ -600,6 +604,7 @@ async function saveProfile() {
   if (!canSave.value || isSaving.value) return;
   isSaving.value = true;
 
+  const apiKey = formData.apiKey.trim();
   const models = availableModels.value.map((name) =>
     create(LlmProviderModelSchema, {
       name,
@@ -613,7 +618,7 @@ async function saveProfile() {
     title: formData.title.trim(),
     type: formData.providerType,
     baseUrl: formData.baseUrl.trim(),
-    apiKey: formData.apiKey,
+    apiKey,
     models,
     maskedApiKey: "",
     maxOutputTokens: parsedMaxOutputTokens() ?? 0,
@@ -626,7 +631,7 @@ async function saveProfile() {
       // Always name the output budget so clearing it (0) also clears the profile
       // value instead of leaving the previous cap in place.
       const fields = ["title", "base_url", "models", "max_output_tokens"];
-      if (formData.apiKey) fields.push("api_key");
+      if (apiKey) fields.push("api_key");
       await updateProfile(payload, fields);
       showSuccess("llmProvider.updated");
     } else {

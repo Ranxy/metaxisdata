@@ -45,11 +45,13 @@ export async function deleteProfile(name: string) {
 
 export async function fetchModelsByKey(
   providerType: LLMProviderType,
-  apiKey: string
+  apiKey: string,
+  baseUrl: string
 ) {
   const request = create(FetchLLMModelsRequestSchema, {
     providerType,
     apiKey,
+    baseUrl,
   });
   return await llmClient.fetchLLMModels(request);
 }

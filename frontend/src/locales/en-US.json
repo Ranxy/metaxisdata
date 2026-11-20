@@ -2429,6 +2429,7 @@
     "apiKey": "API Key",
     "apiKeyPlaceholder": "sk-...",
     "apiKeyRequired": "API key is required to fetch models",
+    "apiKeyRequiredForBaseUrl": "API key is required to fetch models from a changed Base URL",
     "baseUrl": "Base URL",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
     "builtinCustom": "Custom",

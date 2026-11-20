@@ -2429,6 +2429,7 @@
     "apiKey": "API 密钥",
     "apiKeyPlaceholder": "sk-...",
     "apiKeyRequired": "需要输入 API 密钥才能获取模型列表",
+    "apiKeyRequiredForBaseUrl": "修改 Base URL 后，需重新输入 API 密钥才能获取模型列表",
     "baseUrl": "Base URL",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
     "builtinCustom": "自定义",

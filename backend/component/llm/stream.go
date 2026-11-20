@@ -119,7 +119,7 @@ func Stream(ctx context.Context, request StreamRequest) <-chan StreamChunk {
 			sendStreamChunk(ctx, ch, StreamChunk{Error: err})
 			return
 		}
-		endpoint := strings.TrimRight(request.Provider.BaseURL, "/") + "/v1/chat/completions"
+		endpoint := normalizeAPIBaseURL(request.Provider.BaseURL) + "/v1/chat/completions"
 
 		maxTokens := request.MaxTokens
 		if maxTokens <= 0 {

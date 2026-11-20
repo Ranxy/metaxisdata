@@ -49,13 +49,28 @@ func ValidateBaseURL(baseURL string) error {
 	return nil
 }
 
+// normalizeAPIBaseURL returns the provider's API root: the base URL without a
+// trailing slash or a trailing /v1. Callers append paths that already carry
+// /v1, and the settings form suggests the SDK form (.../v1), so leaving it in
+// place would request /v1/v1/....
+func normalizeAPIBaseURL(baseURL string) string {
+	trimmed := strings.TrimSpace(baseURL)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return strings.TrimRight(trimmed, "/")
+	}
+	parsed.Path = strings.TrimSuffix(strings.TrimRight(parsed.Path, "/"), "/v1")
+	parsed.RawPath = ""
+	return strings.TrimRight(parsed.String(), "/")
+}
+
 // FetchModels calls the provider's /v1/models endpoint and returns the list of model IDs.
 // apiKey may be empty for providers that don't require authentication for model listing.
 func FetchModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
 	if err := ValidateBaseURL(baseURL); err != nil {
 		return nil, err
 	}
-	endpoint := strings.TrimRight(baseURL, "/") + "/v1/models"
+	endpoint := normalizeAPIBaseURL(baseURL) + "/v1/models"
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
