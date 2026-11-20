@@ -95,7 +95,7 @@ var errAnalysisDisabled = connect.NewError(connect.CodeFailedPrecondition,
 // providerContext loads what every provider resolution needs: the workspace data
 // quality settings and the enabled provider configurations. The workspace LLM
 // allowlist is deliberately not read here: it restricts Explain SQL only, and the
-// analyses and agents pick their profile through their own settings.
+// analyses and agents pick their model through their own settings.
 func (s *Suggester) providerContext(ctx context.Context) (Settings, []llm.ResolvedConfig, error) {
 	settings, err := LoadSettings(ctx, s.store)
 	if err != nil {
@@ -118,8 +118,8 @@ func (s *Suggester) providerContext(ctx context.Context) (Settings, []llm.Resolv
 }
 
 // ResolveConfig checks the workspace switch and the provider registry and returns
-// the configuration one analysis runs with. The profile is the one the data
-// quality settings name, and it is not filtered against the Explain SQL allowlist.
+// the configuration one analysis runs with. The pair is the one the data quality
+// settings name, and it is not filtered against the Explain SQL allowlist.
 func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Settings, error) {
 	var empty llm.ResolvedConfig
 	settings, configs, err := s.providerContext(ctx)
@@ -129,8 +129,15 @@ func (s *Suggester) ResolveConfig(ctx context.Context) (llm.ResolvedConfig, Sett
 	if !settings.EnableLLMAnalysis {
 		return empty, settings, errAnalysisDisabled
 	}
-	config, err := llm.ResolveEnabledConfig(configs, settings.LLMProviderProfile)
+	config, err := llm.ResolveAnalysisConfig(configs, settings.LLMProviderProfile, settings.LLMProviderModel)
 	if err != nil {
+		// A stale configured pair is a workspace configuration problem, not a
+		// missing resource the caller asked for: report it as failed
+		// precondition so the UI shows the actionable "not configured" copy.
+		if code := connect.CodeOf(err); code == connect.CodeInvalidArgument || code == connect.CodeNotFound {
+			return empty, settings, connect.NewError(connect.CodeFailedPrecondition,
+				errors.Wrap(err, "the workspace's data quality LLM provider and model are not available; an administrator must update Settings -> Data Quality"))
+		}
 		return empty, settings, err
 	}
 	return *config, settings, nil

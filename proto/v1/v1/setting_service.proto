@@ -9,6 +9,7 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
+import "v1/llm_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -129,11 +130,16 @@ message WorkspaceProfileSetting {
   // Whether to restrict signup and signin to the domains above.
   bool enforce_identity_domain = 6;
 
-  // The LLM provider profiles Explain SQL may use, as profile resource names
-  // ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
-  // The data quality analyses and the quality agents choose their profile in
-  // their own settings, so this list does not restrict them.
-  repeated string allowed_llm_provider_profiles = 7;
+  // The LLM provider models Explain SQL may use, as exact profile + model
+  // pairs. Empty means every enabled model is allowed. The data quality
+  // analyses and the quality agents choose their model in their own settings,
+  // so this list does not restrict them.
+  repeated LlmProviderModelRef allowed_llm_provider_models = 12;
+
+  // The allowlist named provider profiles instead of models; the model is now
+  // the unit of choice, so the old field is retired.
+  reserved 7;
+  reserved "allowed_llm_provider_profiles";
 
   // Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
   // Off by default, and only usable once external_url is configured.
@@ -168,8 +174,15 @@ message DataQualitySetting {
   bool enable_llm_analysis = 1;
 
   // The LLM provider profile the quality analyses use, as a profile resource
-  // name. Empty means the first enabled profile.
+  // name. Set together with llm_provider_model; both empty means the first
+  // enabled model of the first enabled profile.
   string llm_provider_profile = 2;
+
+  // The model the quality analyses use, as the provider profile records it.
+  // Set together with llm_provider_profile; the model is never inferred from
+  // the profile because one profile can enable several models at different
+  // prices and capacities.
+  string llm_provider_model = 30;
 
   // Whether failed checks keep the sampled rows as evidence. Off means a result
   // records its counts but no values.

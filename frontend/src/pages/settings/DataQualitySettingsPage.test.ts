@@ -109,7 +109,10 @@ function dialogButton(text: string): HTMLElement | undefined {
 }
 
 interface PageVm {
-  form: { llmProviderProfile: string };
+  form: { llmProviderProfile: string; llmProviderModel: string };
+  modelOptions: string[];
+  setLlmProfile: (value: unknown) => void;
+  setEnableLlmAnalysis: (enabled: boolean) => void;
 }
 
 function vm(wrapper: ReturnType<typeof mount>): PageVm {
@@ -167,10 +170,13 @@ describe("DataQualitySettingsPage", () => {
       create(WorkspaceProfileSettingSchema, {
         // Deliberately excludes the profile the analyses use: the Explain SQL
         // allowlist does not restrict the data quality pages.
-        allowedLlmProviderProfiles: ["llm-provider-profiles/elsewhere"],
+        allowedLlmProviderModels: [
+          { providerProfile: "llm-provider-profiles/elsewhere", model: "m" },
+        ],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           llmProviderProfile: "llmProfiles/p1",
+          llmProviderModel: "fast",
           storeFailureSamples: true,
           failureSampleLimit: 20,
           defaultScheduleInterval: create(DurationSchema, {
@@ -190,7 +196,7 @@ describe("DataQualitySettingsPage", () => {
         {
           name: "llmProfiles/p1",
           title: "Primary",
-          models: [{ enabled: true }],
+          models: [{ name: "fast", enabled: true }],
         },
       ],
     });
@@ -256,7 +262,9 @@ describe("DataQualitySettingsPage", () => {
     // The LLM profile select lists every enabled profile and the stored profile is
     // kept even though the Explain SQL allowlist excludes it.
     expect(wrapper.text()).toContain("Primary");
+    expect(wrapper.text()).toContain("fast");
     expect(vm(wrapper).form.llmProviderProfile).toBe("llmProfiles/p1");
+    expect(vm(wrapper).form.llmProviderModel).toBe("fast");
   });
 
   it("saves the whole section with the expected setting", async () => {
@@ -286,6 +294,7 @@ describe("DataQualitySettingsPage", () => {
     expect(setting).toMatchObject({
       enableLlmAnalysis: true,
       llmProviderProfile: "llmProfiles/p1",
+      llmProviderModel: "fast",
       storeFailureSamples: true,
       failureSampleLimit: 25,
       dailyExecutionLimit: 10000,
@@ -475,6 +484,55 @@ describe("DataQualitySettingsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQualitySettings.llmDisabledHint")
     );
+    // Both selectors are read-only while the switch is off, so a pair cannot be
+    // edited into a state the server would reject.
+    expect(
+      wrapper.find("#dq-setting-llm-profile").attributes("disabled")
+    ).toBeDefined();
+    expect(
+      wrapper.find("#dq-setting-llm-model").attributes("disabled")
+    ).toBeDefined();
+  });
+
+  it("clears half a pair when model analysis is turned off", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/p1",
+          llmProviderModel: "fast",
+        }),
+      })
+    );
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        {
+          name: "llmProfiles/p1",
+          title: "Primary",
+          models: [{ name: "fast", enabled: true }],
+        },
+        {
+          name: "llmProfiles/p2",
+          title: "Secondary",
+          models: [
+            { name: "a", enabled: true },
+            { name: "b", enabled: true },
+          ],
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+    const page = vm(wrapper);
+
+    // Switching to a multi-model profile leaves the model unnamed: half a pair.
+    page.setLlmProfile("llmProfiles/p2");
+    expect(page.form.llmProviderModel).toBe("");
+
+    // Turning assistance off disables the selectors, so the half pair is cleared
+    // rather than left unfixable until the switch is turned back on.
+    page.setEnableLlmAnalysis(false);
+    expect(page.form.llmProviderProfile).toBe("");
+    expect(page.form.llmProviderModel).toBe("");
   });
 
   it("lists code tables with their value count and updated time", async () => {
@@ -767,10 +825,13 @@ describe("DataQualitySettingsPage", () => {
   it("carries the untouched agent runner switch so saving cannot clear it", async () => {
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
-        allowedLlmProviderProfiles: ["llmProfiles/p1"],
+        allowedLlmProviderModels: [
+          { providerProfile: "llmProfiles/p1", model: "fast" },
+        ],
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           llmProviderProfile: "llmProfiles/p1",
+          llmProviderModel: "fast",
           agentRunnerEnabled: true,
         }),
       })
@@ -792,6 +853,7 @@ describe("DataQualitySettingsPage", () => {
         dataQuality: create(DataQualitySettingSchema, {
           enableLlmAnalysis: true,
           llmProviderProfile: "llmProfiles/idle",
+          llmProviderModel: "fast",
         }),
       })
     );
@@ -800,7 +862,7 @@ describe("DataQualitySettingsPage", () => {
         {
           name: "llmProfiles/idle",
           title: "Idle",
-          models: [{ enabled: false }],
+          models: [{ name: "fast", enabled: false }],
         },
       ],
     });
@@ -809,6 +871,113 @@ describe("DataQualitySettingsPage", () => {
     // Nothing makes that profile usable, so the form falls back to the automatic
     // choice instead of offering a selection the analyses could not run.
     expect(vm(wrapper).form.llmProviderProfile).toBe("");
+    expect(vm(wrapper).form.llmProviderModel).toBe("");
+  });
+
+  it("clears a stored model the profile no longer enables", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/p1",
+          llmProviderModel: "retired",
+        }),
+      })
+    );
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        {
+          name: "llmProfiles/p1",
+          title: "Primary",
+          models: [{ name: "fast", enabled: true }],
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+
+    expect(vm(wrapper).form.llmProviderProfile).toBe("");
+    expect(vm(wrapper).form.llmProviderModel).toBe("");
+  });
+
+  it("keeps the model picker disabled while the provider is Auto", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "",
+          llmProviderModel: "",
+        }),
+      })
+    );
+    const wrapper = await mountPage();
+
+    expect(vm(wrapper).form.llmProviderModel).toBe("");
+    expect(
+      wrapper.find("#dq-setting-llm-model").attributes("disabled")
+    ).toBeDefined();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.llmProfileAuto")
+    );
+  });
+
+  it("follows the chosen profile's models, keeping, auto-selecting or clearing", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/main",
+          llmProviderModel: "fast",
+        }),
+      })
+    );
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        {
+          name: "llmProfiles/main",
+          title: "Main",
+          models: [
+            { name: "fast", enabled: true },
+            { name: "reasoner", enabled: true },
+          ],
+        },
+        {
+          name: "llmProfiles/other",
+          title: "Other",
+          models: [{ name: "fast", enabled: true }],
+        },
+        {
+          name: "llmProfiles/single",
+          title: "Single",
+          models: [{ name: "only", enabled: true }],
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+    const page = vm(wrapper);
+
+    // A profile that also enables the current model keeps it.
+    page.setLlmProfile("llmProfiles/other");
+    expect(page.modelOptions).toEqual(["fast"]);
+    expect(page.form.llmProviderModel).toBe("fast");
+
+    // A single enabled model is unambiguous, so it is selected automatically.
+    page.setLlmProfile("llmProfiles/single");
+    expect(page.form.llmProviderModel).toBe("only");
+
+    // Several models, none of them the current one: the administrator must choose.
+    page.setLlmProfile("llmProfiles/main");
+    expect(page.modelOptions).toEqual(["fast", "reasoner"]);
+    expect(page.form.llmProviderModel).toBe("");
+
+    // Re-clicking the selected profile does not replace a pinned model.
+    page.form.llmProviderModel = "reasoner";
+    page.setLlmProfile("llmProfiles/main");
+    expect(page.form.llmProviderModel).toBe("reasoner");
+
+    // Auto clears the model too.
+    page.setLlmProfile("-");
+    expect(page.form.llmProviderProfile).toBe("");
+    expect(page.form.llmProviderModel).toBe("");
   });
 
   it("explains why nothing is selectable when no profile enables a model", async () => {

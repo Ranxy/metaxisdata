@@ -160,6 +160,7 @@ func TestExplainSQLToolsRealServerIntegration(t *testing.T) {
 		SqlText:         sqlText,
 		ScopePrefix:     scopePrefix,
 		ProviderName:    profile.Msg.GetName(),
+		Model:           "integration-fake",
 		ForceRegenerate: true,
 	}))
 	require.NoError(t, err, "start the explanation stream")

@@ -40,3 +40,10 @@ message LlmProviderProfile {
   reserved 9;
   reserved "max_output_tokens";
 }
+
+// LlmProviderModelRef names one exact model of one provider profile, the pair a
+// setting stores when the model is the unit of choice.
+message LlmProviderModelRef {
+  string provider_profile = 1;
+  string model = 2;
+}

@@ -4,6 +4,7 @@ package metaxisdata.store;
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+import "store/llm.proto";
 
 option go_package = "generated-go/store";
 
@@ -55,11 +56,16 @@ message WorkspaceProfileSetting {
   // kept. Zero (the default) keeps them forever: they are audit data.
   int32 openlineage_retention_days = 14;
 
-  // The LLM provider profiles Explain SQL may use, as profile resource names.
-  // Empty means every enabled profile is allowed. The data quality analyses and
-  // the quality agents choose their profile in their own settings, so this list
-  // does not restrict them.
-  repeated string allowed_llm_provider_profiles = 15;
+  // The LLM provider models Explain SQL may use, as exact profile + model
+  // pairs. Empty means every enabled model is allowed. The data quality
+  // analyses and the quality agents choose their model in their own settings,
+  // so this list does not restrict them.
+  repeated LlmProviderModelRef allowed_llm_provider_models = 20;
+
+  // The allowlist named provider profiles instead of models; the model is now
+  // the unit of choice, so the old field is retired.
+  reserved 15;
+  reserved "allowed_llm_provider_profiles";
 
   // Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
   // Off by default: the surface is new, and enabling it requires a configured
@@ -130,6 +136,9 @@ message EnvironmentSetting {
 message DataQualitySetting {
   bool enable_llm_analysis = 1;
   string llm_provider_profile = 2;
+  // The model the quality analyses use, stored with llm_provider_profile. Both
+  // empty means the first enabled model of the first enabled profile.
+  string llm_provider_model = 30;
   bool store_failure_samples = 3;
   int32 failure_sample_limit = 4;
   google.protobuf.Duration default_schedule_interval = 5;

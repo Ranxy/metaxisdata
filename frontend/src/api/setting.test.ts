@@ -104,7 +104,7 @@ describe("buildUpdateDataQualitySettingRequest", () => {
     );
     // Nothing else in the profile is sent, so the mask has nothing else to apply.
     expect(request.setting?.externalUrl).toBe("");
-    expect(request.setting?.allowedLlmProviderProfiles).toEqual([]);
+    expect(request.setting?.allowedLlmProviderModels).toEqual([]);
   });
 });
 

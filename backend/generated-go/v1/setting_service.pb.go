@@ -221,11 +221,11 @@ type WorkspaceProfileSetting struct {
 	Domains []string `protobuf:"bytes,5,rep,name=domains,proto3" json:"domains,omitempty"`
 	// Whether to restrict signup and signin to the domains above.
 	EnforceIdentityDomain bool `protobuf:"varint,6,opt,name=enforce_identity_domain,json=enforceIdentityDomain,proto3" json:"enforce_identity_domain,omitempty"`
-	// The LLM provider profiles Explain SQL may use, as profile resource names
-	// ("llm-provider-profiles/{id}"). Empty means every enabled profile is allowed.
-	// The data quality analyses and the quality agents choose their profile in
-	// their own settings, so this list does not restrict them.
-	AllowedLlmProviderProfiles []string `protobuf:"bytes,7,rep,name=allowed_llm_provider_profiles,json=allowedLlmProviderProfiles,proto3" json:"allowed_llm_provider_profiles,omitempty"`
+	// The LLM provider models Explain SQL may use, as exact profile + model
+	// pairs. Empty means every enabled model is allowed. The data quality
+	// analyses and the quality agents choose their model in their own settings,
+	// so this list does not restrict them.
+	AllowedLlmProviderModels []*LlmProviderModelRef `protobuf:"bytes,12,rep,name=allowed_llm_provider_models,json=allowedLlmProviderModels,proto3" json:"allowed_llm_provider_models,omitempty"`
 	// Whether the MCP endpoint and its OAuth 2.1 authorization server are served.
 	// Off by default, and only usable once external_url is configured.
 	McpEnabled bool `protobuf:"varint,8,opt,name=mcp_enabled,json=mcpEnabled,proto3" json:"mcp_enabled,omitempty"`
@@ -320,9 +320,9 @@ func (x *WorkspaceProfileSetting) GetEnforceIdentityDomain() bool {
 	return false
 }
 
-func (x *WorkspaceProfileSetting) GetAllowedLlmProviderProfiles() []string {
+func (x *WorkspaceProfileSetting) GetAllowedLlmProviderModels() []*LlmProviderModelRef {
 	if x != nil {
-		return x.AllowedLlmProviderProfiles
+		return x.AllowedLlmProviderModels
 	}
 	return nil
 }
@@ -356,8 +356,14 @@ type DataQualitySetting struct {
 	// default: the rule engine and the agents' deterministic paths are fully offline.
 	EnableLlmAnalysis bool `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
 	// The LLM provider profile the quality analyses use, as a profile resource
-	// name. Empty means the first enabled profile.
+	// name. Set together with llm_provider_model; both empty means the first
+	// enabled model of the first enabled profile.
 	LlmProviderProfile string `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
+	// The model the quality analyses use, as the provider profile records it.
+	// Set together with llm_provider_profile; the model is never inferred from
+	// the profile because one profile can enable several models at different
+	// prices and capacities.
+	LlmProviderModel string `protobuf:"bytes,30,opt,name=llm_provider_model,json=llmProviderModel,proto3" json:"llm_provider_model,omitempty"`
 	// Whether failed checks keep the sampled rows as evidence. Off means a result
 	// records its counts but no values.
 	StoreFailureSamples bool `protobuf:"varint,3,opt,name=store_failure_samples,json=storeFailureSamples,proto3" json:"store_failure_samples,omitempty"`
@@ -444,6 +450,13 @@ func (x *DataQualitySetting) GetEnableLlmAnalysis() bool {
 func (x *DataQualitySetting) GetLlmProviderProfile() string {
 	if x != nil {
 		return x.LlmProviderProfile
+	}
+	return ""
+}
+
+func (x *DataQualitySetting) GetLlmProviderModel() string {
+	if x != nil {
+		return x.LlmProviderModel
 	}
 	return ""
 }
@@ -1490,25 +1503,25 @@ var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\xb1\x04\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x14v1/llm_service.proto\"\xf7\x04\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
 	"\x18disallow_password_signin\x18\x03 \x01(\bR\x16disallowPasswordSignin\x12<\n" +
 	"\x1aopenlineage_retention_days\x18\x04 \x01(\x05R\x18openlineageRetentionDays\x12\x18\n" +
 	"\adomains\x18\x05 \x03(\tR\adomains\x126\n" +
-	"\x17enforce_identity_domain\x18\x06 \x01(\bR\x15enforceIdentityDomain\x12A\n" +
-	"\x1dallowed_llm_provider_profiles\x18\a \x03(\tR\x1aallowedLlmProviderProfiles\x12\x1f\n" +
+	"\x17enforce_identity_domain\x18\x06 \x01(\bR\x15enforceIdentityDomain\x12b\n" +
+	"\x1ballowed_llm_provider_models\x18\f \x03(\v2#.metaxisdata.v1.LlmProviderModelRefR\x18allowedLlmProviderModels\x12\x1f\n" +
 	"\vmcp_enabled\x18\b \x01(\bR\n" +
 	"mcpEnabled\x125\n" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
-	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\xe4\n" +
-	"\n" +
+	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\a\x10\bJ\x04\b\t\x10\n" +
+	"R\x1dallowed_llm_provider_profilesR\x18allow_sso_email_identity\"\x92\v\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
-	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
+	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x12,\n" +
+	"\x12llm_provider_model\x18\x1e \x01(\tR\x10llmProviderModel\x122\n" +
 	"\x15store_failure_samples\x18\x03 \x01(\bR\x13storeFailureSamples\x120\n" +
 	"\x14failure_sample_limit\x18\x04 \x01(\x05R\x12failureSampleLimit\x12U\n" +
 	"\x19default_schedule_interval\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x17defaultScheduleInterval\x122\n" +
@@ -1647,52 +1660,54 @@ var file_v1_setting_service_proto_goTypes = []any{
 	(*MaintenanceWindow)(nil),                    // 20: metaxisdata.v1.MaintenanceWindow
 	(*GetQuietHoursSettingRequest)(nil),          // 21: metaxisdata.v1.GetQuietHoursSettingRequest
 	(*UpdateQuietHoursSettingRequest)(nil),       // 22: metaxisdata.v1.UpdateQuietHoursSettingRequest
-	(*durationpb.Duration)(nil),                  // 23: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                // 24: google.protobuf.FieldMask
-	(*timestamppb.Timestamp)(nil),                // 25: google.protobuf.Timestamp
+	(*LlmProviderModelRef)(nil),                  // 23: metaxisdata.v1.LlmProviderModelRef
+	(*durationpb.Duration)(nil),                  // 24: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                // 25: google.protobuf.FieldMask
+	(*timestamppb.Timestamp)(nil),                // 26: google.protobuf.Timestamp
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
-	4,  // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
-	23, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	5,  // 2: metaxisdata.v1.DataQualitySetting.weekly_digest:type_name -> metaxisdata.v1.QualityDigestSetting
-	2,  // 3: metaxisdata.v1.QualityDigestSetting.day_of_week:type_name -> metaxisdata.v1.DayOfWeek
-	3,  // 4: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	24, // 5: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	13, // 6: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
-	0,  // 7: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
-	1,  // 8: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
-	12, // 9: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
-	24, // 10: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	19, // 11: metaxisdata.v1.QuietHoursSetting.windows:type_name -> metaxisdata.v1.QuietWindow
-	20, // 12: metaxisdata.v1.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.v1.MaintenanceWindow
-	2,  // 13: metaxisdata.v1.QuietWindow.days:type_name -> metaxisdata.v1.DayOfWeek
-	25, // 14: metaxisdata.v1.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
-	25, // 15: metaxisdata.v1.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
-	18, // 16: metaxisdata.v1.UpdateQuietHoursSettingRequest.setting:type_name -> metaxisdata.v1.QuietHoursSetting
-	24, // 17: metaxisdata.v1.UpdateQuietHoursSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	6,  // 18: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	7,  // 19: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	8,  // 20: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
-	10, // 21: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
-	14, // 22: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
-	15, // 23: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
-	16, // 24: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
-	21, // 25: metaxisdata.v1.SettingService.GetQuietHoursSetting:input_type -> metaxisdata.v1.GetQuietHoursSettingRequest
-	22, // 26: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:input_type -> metaxisdata.v1.UpdateQuietHoursSettingRequest
-	3,  // 27: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	3,  // 28: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	9,  // 29: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
-	11, // 30: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
-	12, // 31: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	12, // 32: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	17, // 33: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
-	18, // 34: metaxisdata.v1.SettingService.GetQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
-	18, // 35: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
-	27, // [27:36] is the sub-list for method output_type
-	18, // [18:27] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	23, // 0: metaxisdata.v1.WorkspaceProfileSetting.allowed_llm_provider_models:type_name -> metaxisdata.v1.LlmProviderModelRef
+	4,  // 1: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
+	24, // 2: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	5,  // 3: metaxisdata.v1.DataQualitySetting.weekly_digest:type_name -> metaxisdata.v1.QualityDigestSetting
+	2,  // 4: metaxisdata.v1.QualityDigestSetting.day_of_week:type_name -> metaxisdata.v1.DayOfWeek
+	3,  // 5: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
+	25, // 6: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	13, // 7: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
+	0,  // 8: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
+	1,  // 9: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
+	12, // 10: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
+	25, // 11: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	19, // 12: metaxisdata.v1.QuietHoursSetting.windows:type_name -> metaxisdata.v1.QuietWindow
+	20, // 13: metaxisdata.v1.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.v1.MaintenanceWindow
+	2,  // 14: metaxisdata.v1.QuietWindow.days:type_name -> metaxisdata.v1.DayOfWeek
+	26, // 15: metaxisdata.v1.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
+	26, // 16: metaxisdata.v1.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
+	18, // 17: metaxisdata.v1.UpdateQuietHoursSettingRequest.setting:type_name -> metaxisdata.v1.QuietHoursSetting
+	25, // 18: metaxisdata.v1.UpdateQuietHoursSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 19: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	7,  // 20: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	8,  // 21: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	10, // 22: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	14, // 23: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
+	15, // 24: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
+	16, // 25: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
+	21, // 26: metaxisdata.v1.SettingService.GetQuietHoursSetting:input_type -> metaxisdata.v1.GetQuietHoursSettingRequest
+	22, // 27: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:input_type -> metaxisdata.v1.UpdateQuietHoursSettingRequest
+	3,  // 28: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	3,  // 29: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	9,  // 30: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	11, // 31: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	12, // 32: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	12, // 33: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	17, // 34: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
+	18, // 35: metaxisdata.v1.SettingService.GetQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	18, // 36: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	28, // [28:37] is the sub-list for method output_type
+	19, // [19:28] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_v1_setting_service_proto_init() }
@@ -1701,6 +1716,7 @@ func file_v1_setting_service_proto_init() {
 		return
 	}
 	file_v1_annotation_proto_init()
+	file_v1_llm_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

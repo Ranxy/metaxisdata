@@ -251,6 +251,60 @@ func (x *LlmProviderProfile) GetUpdateTime() *timestamppb.Timestamp {
 	return nil
 }
 
+// LlmProviderModelRef names one exact model of one provider profile, the pair a
+// setting stores when the model is the unit of choice.
+type LlmProviderModelRef struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ProviderProfile string                 `protobuf:"bytes,1,opt,name=provider_profile,json=providerProfile,proto3" json:"provider_profile,omitempty"`
+	Model           string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *LlmProviderModelRef) Reset() {
+	*x = LlmProviderModelRef{}
+	mi := &file_store_llm_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LlmProviderModelRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LlmProviderModelRef) ProtoMessage() {}
+
+func (x *LlmProviderModelRef) ProtoReflect() protoreflect.Message {
+	mi := &file_store_llm_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LlmProviderModelRef.ProtoReflect.Descriptor instead.
+func (*LlmProviderModelRef) Descriptor() ([]byte, []int) {
+	return file_store_llm_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *LlmProviderModelRef) GetProviderProfile() string {
+	if x != nil {
+		return x.ProviderProfile
+	}
+	return ""
+}
+
+func (x *LlmProviderModelRef) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
 var File_store_llm_proto protoreflect.FileDescriptor
 
 const file_store_llm_proto_rawDesc = "" +
@@ -272,7 +326,10 @@ const file_store_llm_proto_rawDesc = "" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTimeJ\x04\b\t\x10\n" +
-	"R\x11max_output_tokens*\xb2\x01\n" +
+	"R\x11max_output_tokens\"V\n" +
+	"\x13LlmProviderModelRef\x12)\n" +
+	"\x10provider_profile\x18\x01 \x01(\tR\x0fproviderProfile\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model*\xb2\x01\n" +
 	"\x0fLLMProviderType\x12!\n" +
 	"\x1dLLM_PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18LLM_PROVIDER_TYPE_OPENAI\x10\x01\x12\x1e\n" +
@@ -293,18 +350,19 @@ func file_store_llm_proto_rawDescGZIP() []byte {
 }
 
 var file_store_llm_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_store_llm_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_store_llm_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_store_llm_proto_goTypes = []any{
 	(LLMProviderType)(0),          // 0: metaxisdata.store.LLMProviderType
 	(*LlmProviderModel)(nil),      // 1: metaxisdata.store.LlmProviderModel
 	(*LlmProviderProfile)(nil),    // 2: metaxisdata.store.LlmProviderProfile
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*LlmProviderModelRef)(nil),   // 3: metaxisdata.store.LlmProviderModelRef
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_store_llm_proto_depIdxs = []int32{
 	0, // 0: metaxisdata.store.LlmProviderProfile.type:type_name -> metaxisdata.store.LLMProviderType
 	1, // 1: metaxisdata.store.LlmProviderProfile.models:type_name -> metaxisdata.store.LlmProviderModel
-	3, // 2: metaxisdata.store.LlmProviderProfile.create_time:type_name -> google.protobuf.Timestamp
-	3, // 3: metaxisdata.store.LlmProviderProfile.update_time:type_name -> google.protobuf.Timestamp
+	4, // 2: metaxisdata.store.LlmProviderProfile.create_time:type_name -> google.protobuf.Timestamp
+	4, // 3: metaxisdata.store.LlmProviderProfile.update_time:type_name -> google.protobuf.Timestamp
 	4, // [4:4] is the sub-list for method output_type
 	4, // [4:4] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -323,7 +381,7 @@ func file_store_llm_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_llm_proto_rawDesc), len(file_store_llm_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

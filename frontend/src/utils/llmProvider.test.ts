@@ -2,30 +2,151 @@ import { describe, expect, it } from "vitest";
 import {
   buildProviderOptions,
   type DiscoveredModelCapacity,
+  enabledModelRefs,
   enabledModelsFor,
   formatTokenCapacity,
-  isProviderAllowed,
+  isModelAllowed,
   type ModelCapacityLimits,
   type ModelCapacityRow,
   mergeDiscoveredModels,
+  modelRefKey,
   parseTokenCapacity,
   profileTitle,
   validateModelRows,
 } from "./llmProvider";
 
-describe("isProviderAllowed", () => {
-  it("allows every profile when the allowlist is empty", () => {
-    expect(isProviderAllowed("llm-provider-profiles/openai", [])).toBe(true);
+describe("isModelAllowed", () => {
+  const profiles = [
+    {
+      name: "llm-provider-profiles/main",
+      title: "Main",
+      models: [
+        { name: "fast", enabled: true },
+        { name: "reasoner", enabled: true },
+      ],
+    },
+    {
+      name: "llm-provider-profiles/other",
+      title: "Other",
+      models: [{ name: "other/fast", enabled: true }],
+    },
+  ];
+
+  it("allows every pair when the allowlist is empty", () => {
+    for (const ref of enabledModelRefs(profiles)) {
+      expect(isModelAllowed(ref.providerProfile, ref.model, [])).toBe(true);
+    }
   });
 
-  it("only allows the listed profiles", () => {
-    const allowed = ["llm-provider-profiles/openai"];
-    expect(isProviderAllowed("llm-provider-profiles/openai", allowed)).toBe(
+  it("requires both the profile and the model to match", () => {
+    const allowed = [
+      { providerProfile: "llm-provider-profiles/main", model: "fast" },
+    ];
+    expect(isModelAllowed("llm-provider-profiles/main", "fast", allowed)).toBe(
       true
     );
-    expect(isProviderAllowed("llm-provider-profiles/local", allowed)).toBe(
+    // Same profile, different model.
+    expect(
+      isModelAllowed("llm-provider-profiles/main", "reasoner", allowed)
+    ).toBe(false);
+    // Same model name, different profile.
+    expect(isModelAllowed("llm-provider-profiles/other", "fast", allowed)).toBe(
       false
     );
+  });
+
+  it("compares profile ids without the prefix and trims both sides", () => {
+    const allowed = [{ providerProfile: " main ", model: " fast " }];
+    expect(isModelAllowed("llm-provider-profiles/main", "fast", allowed)).toBe(
+      true
+    );
+    expect(isModelAllowed("main", "fast", allowed)).toBe(true);
+    expect(
+      isModelAllowed("  llm-provider-profiles/main  ", "fast", allowed)
+    ).toBe(true);
+  });
+
+  it("keeps model names containing a slash distinct from their prefix", () => {
+    const allowed = [
+      { providerProfile: "llm-provider-profiles/other", model: "other/fast" },
+    ];
+    expect(
+      isModelAllowed("llm-provider-profiles/other", "other/fast", allowed)
+    ).toBe(true);
+    expect(isModelAllowed("llm-provider-profiles/other", "fast", allowed)).toBe(
+      false
+    );
+  });
+});
+
+describe("modelRefKey", () => {
+  it("normalizes the profile id and the model name", () => {
+    expect(modelRefKey("llm-provider-profiles/main", "fast")).toBe(
+      modelRefKey(" main ", " fast ")
+    );
+  });
+
+  it("never lets a model name collide with another profile's pair", () => {
+    expect(modelRefKey("llm-provider-profiles/a", "b/c")).not.toBe(
+      modelRefKey("llm-provider-profiles/a/b", "c")
+    );
+  });
+});
+
+describe("enabledModelRefs", () => {
+  it("expands the enabled models in profile and registry order", () => {
+    expect(
+      enabledModelRefs([
+        {
+          name: "llm-provider-profiles/main",
+          title: "Main",
+          models: [
+            { name: "fast", enabled: true },
+            { name: "retired", enabled: false },
+            { name: "reasoner", enabled: true },
+          ],
+        },
+        {
+          name: "llm-provider-profiles/disabled",
+          title: "Disabled",
+          models: [{ name: "idle", enabled: false }],
+        },
+        {
+          name: "llm-provider-profiles/untitled",
+          title: "",
+          models: [{ name: "m", enabled: true }],
+        },
+      ])
+    ).toEqual([
+      {
+        providerProfile: "llm-provider-profiles/main",
+        model: "fast",
+        profileTitle: "Main",
+      },
+      {
+        providerProfile: "llm-provider-profiles/main",
+        model: "reasoner",
+        profileTitle: "Main",
+      },
+      {
+        providerProfile: "llm-provider-profiles/untitled",
+        model: "m",
+        profileTitle: "llm-provider-profiles/untitled",
+      },
+    ]);
+  });
+
+  it("returns nothing when no profile enables a model", () => {
+    expect(
+      enabledModelRefs([
+        {
+          name: "llm-provider-profiles/off",
+          title: "Off",
+          models: [{ name: "idle", enabled: false }],
+        },
+      ])
+    ).toEqual([]);
+    expect(enabledModelRefs([])).toEqual([]);
   });
 });
 

@@ -99,6 +99,17 @@ message LlmProviderProfile {
   reserved "max_output_tokens";
 }
 
+// LlmProviderModelRef names one exact model of one provider profile. The model
+// is never inferred from the profile: one profile can enable several models at
+// different prices and capacities, so a feature that runs on a model names both.
+message LlmProviderModelRef {
+  // The provider profile, as a profile resource name
+  // ("llm-provider-profiles/{id}").
+  string provider_profile = 1;
+  // The model name as the provider profile records it.
+  string model = 2;
+}
+
 // The server-owned capacity contract the provider settings page renders:
 // defaults and bounds for the per-model fields. It is output-only.
 message LlmProviderLimits {

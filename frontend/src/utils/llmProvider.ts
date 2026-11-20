@@ -1,13 +1,59 @@
-// ExplainSQL may be restricted to an admin-configured set of provider profiles
-// (the workspace profile setting's allowed_llm_provider_profiles). An empty
-// allowlist means every enabled profile is allowed. Only ExplainSQL applies it:
-// the data quality analyses and the quality agents choose their profile in their
+// ExplainSQL may be restricted to an admin-configured set of (provider profile,
+// model) pairs (the workspace profile setting's allowed_llm_provider_models). An
+// empty allowlist means every enabled model is allowed. Only ExplainSQL applies
+// it: the data quality analyses and the quality agents choose their pair in their
 // own settings.
-export function isProviderAllowed(
-  profileName: string,
-  allowedProfiles: readonly string[]
+
+/** The resource-name prefix a provider profile is addressed by. */
+const PROFILE_PREFIX = "llm-provider-profiles/";
+
+/**
+ * A profile's identity for comparison: a trimmed id, without the resource-name
+ * prefix, so a stored profile reference and the one a list RPC returns compare
+ * equal even if one carries the prefix and the other does not.
+ */
+function profileId(profile: string): string {
+  const trimmed = profile.trim();
+  return trimmed.startsWith(PROFILE_PREFIX)
+    ? trimmed.slice(PROFILE_PREFIX.length)
+    : trimmed;
+}
+
+/** One stored (provider profile, model) allowlist entry. */
+export interface LlmProviderModelRefLike {
+  providerProfile: string;
+  model: string;
+}
+
+/**
+ * Whether ExplainSQL may use this exact pair. An empty allowlist admits every
+ * enabled model; otherwise the profile id and the trimmed model name must both
+ * match an entry, because one profile can enable several models at different
+ * prices and capacities.
+ */
+export function isModelAllowed(
+  profile: string,
+  model: string,
+  allowed: readonly LlmProviderModelRefLike[]
 ): boolean {
-  return allowedProfiles.length === 0 || allowedProfiles.includes(profileName);
+  if (allowed.length === 0) {
+    return true;
+  }
+  const id = profileId(profile);
+  const name = model.trim();
+  return allowed.some(
+    (entry) =>
+      profileId(entry.providerProfile) === id && entry.model.trim() === name
+  );
+}
+
+/**
+ * A stable key for one pair, for de-duplication, ordering and dirty snapshots.
+ * The separator is a NUL byte because a model name may contain `/`: joining the
+ * two parts into a resource-path-shaped string would let distinct pairs collide.
+ */
+export function modelRefKey(profile: string, model: string): string {
+  return `${profileId(profile)}\u0000${model.trim()}`;
 }
 
 /** One selectable provider profile: it enables at least one model. */
@@ -16,17 +62,51 @@ export interface ProviderOption {
   title: string;
 }
 
-interface ProviderProfileLike {
+/** The shape of a provider profile this module needs to read. */
+export interface ProviderProfileLike {
   name: string;
   title: string;
   models: ReadonlyArray<{ name: string; enabled: boolean }>;
+}
+
+/** One selectable model of one profile, with its profile's display title. */
+export interface EnabledModelRef {
+  providerProfile: string;
+  model: string;
+  profileTitle: string;
+}
+
+/**
+ * Every enabled (profile, model) pair, grouped by profile in registry order and
+ * by model inside the profile. Pages that offer a model pick the pair from here
+ * and apply the ExplainSQL allowlist with `isModelAllowed`; the data quality pages
+ * offer these pairs without that filter.
+ */
+export function enabledModelRefs(
+  profiles: readonly ProviderProfileLike[]
+): EnabledModelRef[] {
+  const refs: EnabledModelRef[] = [];
+  for (const profile of profiles) {
+    const title = profile.title || profile.name;
+    for (const model of profile.models) {
+      if (model.enabled) {
+        refs.push({
+          providerProfile: profile.name,
+          model: model.name,
+          profileTitle: title,
+        });
+      }
+    }
+  }
+  return refs;
 }
 
 /**
  * The profiles a page that picks its own profile may offer: those that enable a
  * model. Kept in one helper so the data quality settings and the agent dialog cannot
  * disagree about which profiles are usable. The ExplainSQL allowlist is applied by
- * that page separately with `isProviderAllowed`.
+ * that page separately with `isModelAllowed`, and the model is chosen with
+ * `enabledModelsFor`.
  */
 export function buildProviderOptions(
   profiles: readonly ProviderProfileLike[]

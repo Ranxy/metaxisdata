@@ -30,6 +30,10 @@ export declare type ExplainSQLRequest = Message<"metaxisdata.v1.ExplainSQLReques
   forceRegenerate: boolean;
 
   /**
+   * The provider profile to explain with, as a profile resource name
+   * ("llm-provider-profiles/{id}"). Set together with model; both empty means
+   * the server's default, the first model the workspace allowlist admits.
+   *
    * @generated from field: string provider_name = 5;
    */
   providerName: string;
@@ -38,6 +42,14 @@ export declare type ExplainSQLRequest = Message<"metaxisdata.v1.ExplainSQLReques
    * @generated from field: string scope_prefix = 6;
    */
   scopePrefix: string;
+
+  /**
+   * The model to explain with, as the provider profile records it. Set
+   * together with provider_name.
+   *
+   * @generated from field: string model = 7;
+   */
+  model: string;
 };
 
 /**

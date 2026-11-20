@@ -18,6 +18,7 @@ func TestDefaultSettings(t *testing.T) {
 	settings := DefaultSettings()
 	require.False(t, settings.EnableLLMAnalysis)
 	require.Empty(t, settings.LLMProviderProfile)
+	require.Empty(t, settings.LLMProviderModel)
 	require.True(t, settings.StoreFailureSamples, "failure samples are kept by default")
 	require.Equal(t, 20, settings.FailureSampleLimit)
 	require.Equal(t, time.Hour, settings.DefaultScheduleInterval)
@@ -44,6 +45,7 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 		DataQuality: &storepb.DataQualitySetting{
 			EnableLlmAnalysis:        true,
 			LlmProviderProfile:       "llm-provider-profiles/fast",
+			LlmProviderModel:         "fast-model",
 			StoreFailureSamples:      true,
 			FailureSampleLimit:       30,
 			DefaultScheduleInterval:  durationpb.New(45 * time.Minute),
@@ -66,6 +68,7 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 	require.Equal(t, Settings{
 		EnableLLMAnalysis:        true,
 		LLMProviderProfile:       "llm-provider-profiles/fast",
+		LLMProviderModel:         "fast-model",
 		StoreFailureSamples:      true,
 		FailureSampleLimit:       30,
 		DefaultScheduleInterval:  45 * time.Minute,
@@ -223,13 +226,18 @@ func TestSettingsFromProfileClampsOutOfRangeValues(t *testing.T) {
 	}
 }
 
-func TestSettingsFromProfileKeepsProviderProfile(t *testing.T) {
+func TestSettingsFromProfileKeepsProviderPair(t *testing.T) {
 	t.Parallel()
 
 	profile := &storepb.WorkspaceProfileSetting{
-		DataQuality: &storepb.DataQualitySetting{LlmProviderProfile: " llm-provider-profiles/fast "},
+		DataQuality: &storepb.DataQualitySetting{
+			LlmProviderProfile: " llm-provider-profiles/fast ",
+			LlmProviderModel:   " fast-model ",
+		},
 	}
-	require.Equal(t, "llm-provider-profiles/fast", SettingsFromProfile(profile).LLMProviderProfile)
+	settings := SettingsFromProfile(profile)
+	require.Equal(t, "llm-provider-profiles/fast", settings.LLMProviderProfile)
+	require.Equal(t, "fast-model", settings.LLMProviderModel)
 }
 
 func TestSettingsFromValue(t *testing.T) {
@@ -245,6 +253,7 @@ func TestSettingsFromValue(t *testing.T) {
 		"dataQuality": {
 			"enableLlmAnalysis": true,
 			"llmProviderProfile": "llm-provider-profiles/fast",
+			"llmProviderModel": "fast-model",
 			"storeFailureSamples": false,
 			"failureSampleLimit": 250,
 			"defaultScheduleInterval": "2700s",
@@ -257,6 +266,7 @@ func TestSettingsFromValue(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.EnableLLMAnalysis)
 	require.Equal(t, "llm-provider-profiles/fast", settings.LLMProviderProfile)
+	require.Equal(t, "fast-model", settings.LLMProviderModel)
 	require.False(t, settings.StoreFailureSamples)
 	require.Equal(t, MaxFailureSampleLimit, settings.FailureSampleLimit)
 	require.Equal(t, 45*time.Minute, settings.DefaultScheduleInterval)
