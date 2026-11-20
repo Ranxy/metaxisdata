@@ -606,7 +606,9 @@
     - [FetchLLMModelsResponse](#metaxisdata-v1-FetchLLMModelsResponse)
     - [ListLLMProviderProfilesRequest](#metaxisdata-v1-ListLLMProviderProfilesRequest)
     - [ListLLMProviderProfilesResponse](#metaxisdata-v1-ListLLMProviderProfilesResponse)
+    - [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel)
     - [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition)
+    - [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits)
     - [LlmProviderModel](#metaxisdata-v1-LlmProviderModel)
     - [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile)
     - [UpdateLLMProviderProfileRequest](#metaxisdata-v1-UpdateLLMProviderProfileRequest)
@@ -11079,6 +11081,7 @@ usually the SQL naming something the analyzer cannot see.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | model_ids | [string](#string) | repeated |  |
+| models | [LlmDiscoveredModel](#metaxisdata-v1-LlmDiscoveredModel) | repeated |  |
 
 
 
@@ -11112,6 +11115,25 @@ usually the SQL naming something the analyzer cannot see.
 | profiles | [LlmProviderProfile](#metaxisdata-v1-LlmProviderProfile) | repeated |  |
 | definitions | [LlmProviderDefinition](#metaxisdata-v1-LlmProviderDefinition) | repeated |  |
 | next_page_token | [string](#string) |  |  |
+| limits | [LlmProviderLimits](#metaxisdata-v1-LlmProviderLimits) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-LlmDiscoveredModel"></a>
+
+### LlmDiscoveredModel
+One model an endpoint disclosed. The capacity fields are advisory: an
+endpoint that lists no capacities leaves them zero.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| context_window | [int32](#int32) |  |  |
+| max_output_tokens | [int32](#int32) |  |  |
 
 
 
@@ -11136,6 +11158,27 @@ usually the SQL naming something the analyzer cannot see.
 
 
 
+<a name="metaxisdata-v1-LlmProviderLimits"></a>
+
+### LlmProviderLimits
+The server-owned capacity contract the provider settings page renders:
+defaults and bounds for the per-model fields. It is output-only.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| default_max_output_tokens | [int32](#int32) |  |  |
+| min_max_output_tokens | [int32](#int32) |  |  |
+| max_max_output_tokens | [int32](#int32) |  |  |
+| default_context_window | [int32](#int32) |  |  |
+| min_context_window | [int32](#int32) |  | Positive-integer floor; the server imposes no larger product minimum. |
+| max_context_window | [int32](#int32) |  | Sanity ceiling for the int32 config and the UI; not a model claim. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-LlmProviderModel"></a>
 
 ### LlmProviderModel
@@ -11146,6 +11189,8 @@ usually the SQL naming something the analyzer cannot see.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  |  |
 | enabled | [bool](#bool) |  |  |
+| context_window | [int32](#int32) |  | The largest combined request and response context this model accepts, in tokens. Zero means the server default; an explicit value must be a positive integer. The quality agent derives its compaction trigger from this value. |
+| max_output_tokens | [int32](#int32) |  | The answer budget one model call requests from this model, in output tokens. Zero means the server default; an explicit value must be between 256 and 131072 and leave a positive message budget inside the context window. |
 
 
 

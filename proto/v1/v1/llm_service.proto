@@ -73,6 +73,14 @@ message LlmProviderDefinition {
 message LlmProviderModel {
   string name = 1;
   bool enabled = 2;
+  // The largest combined request and response context this model accepts, in
+  // tokens. Zero means the server default; an explicit value must be a positive
+  // integer. The quality agent derives its compaction trigger from this value.
+  int32 context_window = 3;
+  // The answer budget one model call requests from this model, in output tokens.
+  // Zero means the server default; an explicit value must be between 256 and
+  // 131072 and leave a positive message budget inside the context window.
+  int32 max_output_tokens = 4;
 }
 
 message LlmProviderProfile {
@@ -99,6 +107,19 @@ message LlmProviderProfile {
   int32 max_output_tokens = 10;
 }
 
+// The server-owned capacity contract the provider settings page renders:
+// defaults and bounds for the per-model fields. It is output-only.
+message LlmProviderLimits {
+  int32 default_max_output_tokens = 1;
+  int32 min_max_output_tokens = 2;
+  int32 max_max_output_tokens = 3;
+  int32 default_context_window = 4;
+  // Positive-integer floor; the server imposes no larger product minimum.
+  int32 min_context_window = 5;
+  // Sanity ceiling for the int32 config and the UI; not a model claim.
+  int32 max_context_window = 6;
+}
+
 message ListLLMProviderProfilesRequest {
   int32 page_size = 1;
   string page_token = 2;
@@ -108,6 +129,7 @@ message ListLLMProviderProfilesResponse {
   repeated LlmProviderProfile profiles = 1;
   repeated LlmProviderDefinition definitions = 2;
   string next_page_token = 3;
+  LlmProviderLimits limits = 4;
 }
 
 message CreateLLMProviderProfileRequest {
@@ -135,6 +157,15 @@ message FetchLLMModelsRequest {
   string base_url = 4;
 }
 
+// One model an endpoint disclosed. The capacity fields are advisory: an
+// endpoint that lists no capacities leaves them zero.
+message LlmDiscoveredModel {
+  string name = 1;
+  int32 context_window = 2;
+  int32 max_output_tokens = 3;
+}
+
 message FetchLLMModelsResponse {
   repeated string model_ids = 1;
+  repeated LlmDiscoveredModel models = 2;
 }

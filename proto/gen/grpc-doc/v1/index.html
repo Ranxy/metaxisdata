@@ -2530,7 +2530,15 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.LlmDiscoveredModel"><span class="badge">M</span>LlmDiscoveredModel</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.LlmProviderDefinition"><span class="badge">M</span>LlmProviderDefinition</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.LlmProviderLimits"><span class="badge">M</span>LlmProviderLimits</a>
                 </li>
               
                 <li>
@@ -32537,6 +32545,13 @@ so the request must carry one when no profile is named. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>models</td>
+                  <td><a href="#metaxisdata.v1.LlmDiscoveredModel">LlmDiscoveredModel</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -32606,6 +32621,51 @@ so the request must carry one when no profile is named. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>limits</td>
+                  <td><a href="#metaxisdata.v1.LlmProviderLimits">LlmProviderLimits</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.LlmDiscoveredModel">LlmDiscoveredModel</h3>
+        <p>One model an endpoint disclosed. The capacity fields are advisory: an</p><p>endpoint that lists no capacities leaves them zero.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -32658,6 +32718,65 @@ so the request must carry one when no profile is named. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.LlmProviderLimits">LlmProviderLimits</h3>
+        <p>The server-owned capacity contract the provider settings page renders:</p><p>defaults and bounds for the per-model fields. It is output-only.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>default_max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>default_context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Positive-integer floor; the server imposes no larger product minimum. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Sanity ceiling for the int32 config and the UI; not a model claim. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.LlmProviderModel">LlmProviderModel</h3>
         <p></p>
 
@@ -32680,6 +32799,24 @@ so the request must carry one when no profile is named. </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The largest combined request and response context this model accepts, in
+tokens. Zero means the server default; an explicit value must be a positive
+integer. The quality agent derives its compaction trigger from this value. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The answer budget one model call requests from this model, in output tokens.
+Zero means the server default; an explicit value must be between 256 and
+131072 and leave a positive message budget inside the context window. </p></td>
                 </tr>
               
             </tbody>

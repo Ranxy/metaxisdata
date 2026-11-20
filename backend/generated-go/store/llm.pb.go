@@ -78,11 +78,16 @@ func (LLMProviderType) EnumDescriptor() ([]byte, []int) {
 }
 
 type LlmProviderModel struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Enabled bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The largest combined request and response context the model accepts; 0
+	// means the server default.
+	ContextWindow int32 `protobuf:"varint,3,opt,name=context_window,json=contextWindow,proto3" json:"context_window,omitempty"`
+	// The answer budget requested from this model; 0 means the server default.
+	MaxOutputTokens int32 `protobuf:"varint,4,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *LlmProviderModel) Reset() {
@@ -127,6 +132,20 @@ func (x *LlmProviderModel) GetEnabled() bool {
 		return x.Enabled
 	}
 	return false
+}
+
+func (x *LlmProviderModel) GetContextWindow() int32 {
+	if x != nil {
+		return x.ContextWindow
+	}
+	return 0
+}
+
+func (x *LlmProviderModel) GetMaxOutputTokens() int32 {
+	if x != nil {
+		return x.MaxOutputTokens
+	}
+	return 0
 }
 
 type LlmProviderProfile struct {
@@ -245,10 +264,12 @@ var File_store_llm_proto protoreflect.FileDescriptor
 
 const file_store_llm_proto_rawDesc = "" +
 	"\n" +
-	"\x0fstore/llm.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"@\n" +
+	"\x0fstore/llm.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\"\x93\x01\n" +
 	"\x10LlmProviderModel\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aenabled\x18\x02 \x01(\bR\aenabled\"\xa2\x03\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12%\n" +
+	"\x0econtext_window\x18\x03 \x01(\x05R\rcontextWindow\x12*\n" +
+	"\x11max_output_tokens\x18\x04 \x01(\x05R\x0fmaxOutputTokens\"\xa2\x03\n" +
 	"\x12LlmProviderProfile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x126\n" +

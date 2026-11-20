@@ -17,6 +17,11 @@ enum LLMProviderType {
 message LlmProviderModel {
   string name = 1;
   bool enabled = 2;
+  // The largest combined request and response context the model accepts; 0
+  // means the server default.
+  int32 context_window = 3;
+  // The answer budget requested from this model; 0 means the server default.
+  int32 max_output_tokens = 4;
 }
 
 message LlmProviderProfile {
