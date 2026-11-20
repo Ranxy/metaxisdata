@@ -408,6 +408,9 @@
                     <SelectItem value="active">{{ t("qualityAgents.adoptionActive") }}</SelectItem>
                   </SelectContent>
                 </Select>
+                <p class="text-xs text-muted-foreground">
+                  {{ t("qualityAgents.adoptionModeHint") }}
+                </p>
               </div>
               <div class="space-y-1">
                 <Label>{{ t("qualityAgents.adoptionMaxPerDay") }}</Label>
@@ -1132,7 +1135,19 @@ function adoptionModeValue(
     case QualityAgentAdoptionMode.PAUSED:
       return "paused";
     default:
-      return "paused";
+      return "off";
+  }
+}
+
+/** The form value stores the state itself, including OFF; create and edit agree. */
+function adoptionModeEnum(value: string): QualityAgentAdoptionMode {
+  switch (value) {
+    case "active":
+      return QualityAgentAdoptionMode.ACTIVE;
+    case "paused":
+      return QualityAgentAdoptionMode.PAUSED;
+    default:
+      return QualityAgentAdoptionMode.OFF;
   }
 }
 
@@ -1164,9 +1179,7 @@ async function submitEdit() {
     });
     next.adoption = create(QualityAgentAdoptionSettingSchema, {
       mode: form.value.capabilities.includes("adopt")
-        ? form.value.adoptionMode === "active"
-          ? QualityAgentAdoptionMode.ACTIVE
-          : QualityAgentAdoptionMode.PAUSED
+        ? adoptionModeEnum(form.value.adoptionMode)
         : QualityAgentAdoptionMode.OFF,
       ruleTypes: form.value.adoptionRuleTypes,
       confidenceThreshold: form.value.adoptionConfidence,
@@ -1260,10 +1273,7 @@ async function submitCreate() {
         : { frequency: QualityAgentReportFrequency.OFF },
       adoption: form.value.capabilities.includes("adopt")
         ? {
-            mode:
-              form.value.adoptionMode === "active"
-                ? QualityAgentAdoptionMode.ACTIVE
-                : QualityAgentAdoptionMode.PAUSED,
+            mode: adoptionModeEnum(form.value.adoptionMode),
             ruleTypes: form.value.adoptionRuleTypes,
             confidenceThreshold: form.value.adoptionConfidence,
             maxPerDay: form.value.adoptionMaxPerDay,

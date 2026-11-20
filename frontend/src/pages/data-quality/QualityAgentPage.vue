@@ -273,6 +273,8 @@
           :attention="attention"
           :agent-name="agentName"
           :can-reply="canChat"
+          :can-adopt="canAdopt && adoptionEnabled"
+          @adopt="adoptPending"
           @resolved="onAttentionResolved"
         />
         <p
