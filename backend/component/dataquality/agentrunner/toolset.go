@@ -22,11 +22,12 @@ func (e *Engine) toolSet(session *store.QualityAgentSessionMessage, agent *store
 	names := make([]string, 0, len(specs))
 	for _, spec := range specs {
 		spec := spec
-		// The adoption tool is the one capability-granted write, and it is reachable
-		// only while answering an owner's question with adoption configured. Filtering
-		// here keeps it out of the schema, not merely rejected at execution time.
-		if spec.name == "adopt_pending_drafts" &&
-			(!control.ownerAsked || !dataquality.AgentAdoptionReady(agent)) {
+		// The adoption tool is the one capability-granted write. It stays in the schema
+		// whenever the capability and adoption configuration are ready, so the tool
+		// prefix is stable between wakes and provider prefix caching survives; the
+		// execution branch refuses it on any wake that is not answering an owner
+		// question, and the audit records the refusal.
+		if spec.name == "adopt_pending_drafts" && !dataquality.AgentAdoptionReady(agent) {
 			continue
 		}
 		names = append(names, spec.name)

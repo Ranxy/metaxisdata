@@ -13,10 +13,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// The adoption tool is a capability-granted write, and the runtime only exposes it
-// while answering an owner's question with adoption configured. A scheduled or
-// event wake must never find it in the schema.
-func TestAdoptionToolIsExposedOnlyOnOwnerAsk(t *testing.T) {
+// The adoption tool is a capability-granted write. Its schema is gated only by the
+// capability and the adoption configuration, not by the wake kind, so the tool
+// prefix stays stable; the execution branch refuses it unless the wake answers an
+// owner question.
+func TestAdoptionToolSchemaIsCapabilityGated(t *testing.T) {
 	t.Parallel()
 
 	engine := NewEngine(newFakeStore())
@@ -25,15 +26,17 @@ func TestAdoptionToolIsExposedOnlyOnOwnerAsk(t *testing.T) {
 
 	set, err := engine.toolSet(session, agent, &wakeControl{})
 	require.NoError(t, err)
-	require.NotContains(t, set.Names(), "adopt_pending_drafts")
-
-	set, err = engine.toolSet(session, agent, &wakeControl{ownerAsked: true})
-	require.NoError(t, err)
 	require.Contains(t, set.Names(), "adopt_pending_drafts")
 
-	set, err = engine.toolSet(session, capabilityTestAgent("suggest"), &wakeControl{ownerAsked: true})
+	set, err = engine.toolSet(session, capabilityTestAgent("suggest"), &wakeControl{})
 	require.NoError(t, err)
 	require.NotContains(t, set.Names(), "adopt_pending_drafts", "the adopt capability is required")
+
+	off := capabilityTestAgent("suggest", "adopt")
+	off.AdoptionMode = store.QualityAgentAdoptionModeOff
+	set, err = engine.toolSet(session, off, &wakeControl{})
+	require.NoError(t, err)
+	require.NotContains(t, set.Names(), "adopt_pending_drafts", "adoption off removes the tool")
 }
 
 // The execution branch refuses a call that bypasses the schema, and runs the
@@ -149,7 +152,7 @@ func TestAdoptionUnavailableKeepsTheAuthorityOutOfThePrompt(t *testing.T) {
 	require.Contains(t, prompt, "Adoption is unavailable")
 
 	engine := NewEngine(newFakeStore())
-	set, err := engine.toolSet(testSession(), agent, &wakeControl{ownerAsked: true})
+	set, err := engine.toolSet(testSession(), agent, &wakeControl{})
 	require.NoError(t, err)
 	require.NotContains(t, set.Names(), "adopt_pending_drafts")
 }
