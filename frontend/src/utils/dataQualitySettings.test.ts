@@ -473,6 +473,14 @@ describe("validateSettingsForm", () => {
         ).map((issue) => issue.key)
       ).toContain(`${SETTINGS_VALIDATION_PREFIX}llmProviderModelRequired`);
     }
+
+    // The mirror image is refused as well, even though the pickers cannot produce
+    // it on their own.
+    expect(
+      validateSettingsForm(baseForm({ llmProviderModel: "fast" })).map(
+        (issue) => issue.key
+      )
+    ).toContain(`${SETTINGS_VALIDATION_PREFIX}llmProviderProfileRequired`);
   });
 });
 

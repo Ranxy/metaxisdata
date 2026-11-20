@@ -263,4 +263,48 @@ describe("ExplainSQLPage", () => {
       expect.anything()
     );
   });
+
+  it("sends a single allowed pair even though the picker is hidden", async () => {
+    mocks.explainSQL.mockReturnValue(hanging([content("Done")]));
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        enabledProfile("llm-provider-profiles/main", "Main", [
+          { name: "fast", enabled: true },
+          { name: "retired", enabled: false },
+        ]),
+      ],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    // One option is not a choice, so the picker stays hidden but the pair is
+    // still the one the request names.
+    expect(vm(wrapper).providerOptions).toHaveLength(1);
+
+    await typeCustomSQL(wrapper);
+    await explainButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.explainSQL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerName: "llm-provider-profiles/main",
+        model: "fast",
+      }),
+      expect.anything()
+    );
+  });
+
+  it("leaves the pair empty for the server default when no model is selectable", async () => {
+    mocks.explainSQL.mockReturnValue(hanging([content("Done")]));
+    const wrapper = await mountPage();
+    expect(vm(wrapper).providerOptions).toHaveLength(0);
+
+    await typeCustomSQL(wrapper);
+    await explainButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.explainSQL).toHaveBeenCalledWith(
+      expect.objectContaining({ providerName: "", model: "" }),
+      expect.anything()
+    );
+  });
 });

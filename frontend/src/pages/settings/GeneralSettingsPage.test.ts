@@ -62,6 +62,7 @@ function profile(
 
 interface PageVm {
   allowedModels: Array<{ providerProfile: string; model: string }>;
+  unavailableModels: Array<{ providerProfile: string; model: string }>;
   toggleAllowedModel: (
     profile: string,
     model: string,
@@ -198,7 +199,52 @@ describe("GeneralSettingsPage", () => {
     expect(mask).not.toContain("allowed_llm_provider_profiles");
   });
 
-  it("keeps a stored pair it cannot render when saving", async () => {
+  it("renders a stored pair the registry no longer enables so it can be removed", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        allowedLlmProviderModels: [
+          modelRef("llm-provider-profiles/main", "fast"),
+          modelRef("llm-provider-profiles/gone", "x"),
+        ],
+      })
+    );
+    const wrapper = await mountPage();
+    const page = vm(wrapper);
+
+    // The gone profile is not in the list, but the pair still restricts Explain
+    // SQL while the allowlist is non-empty, so it stays visible and removable.
+    expect(
+      page.unavailableModels.map((ref) => [ref.providerProfile, ref.model])
+    ).toEqual([["llm-provider-profiles/gone", "x"]]);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("generalSettings.explainProvidersUnavailable")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("generalSettings.explainProvidersUnavailableMarker")
+    );
+
+    await wrapper.find('[id="unavailable-model-0"]').trigger("click");
+    await flushPromises();
+    expect(page.unavailableModels).toEqual([]);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("generalSettings.explainProvidersUnavailable")
+    );
+
+    // Unchecking the remaining enabled pair makes the allowlist empty, which
+    // allows every enabled model again.
+    await modelCheckbox(wrapper, "llm-provider-profiles/main", "fast").trigger(
+      "click"
+    );
+    await flushPromises();
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+    const [setting] = mocks.updateWorkspaceProfileSetting.mock.calls[0] as [
+      WorkspaceProfileSetting,
+    ];
+    expect(setting.allowedLlmProviderModels).toEqual([]);
+  });
+
+  it("keeps an unrendered pair until it is removed", async () => {
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
         allowedLlmProviderModels: [
@@ -217,8 +263,7 @@ describe("GeneralSettingsPage", () => {
     const [setting] = mocks.updateWorkspaceProfileSetting.mock.calls[0] as [
       WorkspaceProfileSetting,
     ];
-    // The profile is gone from the registry, so it is not rendered, but the
-    // authorization survives the save instead of being dropped silently.
+    // The authorization survives the save instead of being dropped silently.
     expect(
       setting.allowedLlmProviderModels.map((ref) => [
         ref.providerProfile,
@@ -245,6 +290,12 @@ describe("GeneralSettingsPage", () => {
   });
 
   it("explains when no profile enables a model", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        externalUrl: "https://metaxisdata.example.com",
+        allowedLlmProviderModels: [],
+      })
+    );
     mocks.listProfiles.mockResolvedValue({
       profiles: [
         profile("llm-provider-profiles/off", "Off", [

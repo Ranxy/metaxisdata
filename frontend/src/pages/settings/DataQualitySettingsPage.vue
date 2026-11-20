@@ -83,7 +83,7 @@
                 id="dq-setting-enable-llm"
                 :checked="form.enableLlmAnalysis"
                 :disabled="!canUpdate"
-                @update:checked="form.enableLlmAnalysis = $event === true"
+                @update:checked="setEnableLlmAnalysis($event === true)"
               />
               <div class="grid gap-1">
                 <Label for="dq-setting-enable-llm">
@@ -874,7 +874,7 @@ const llmModelHint = computed(() => {
     return t("dataQualitySettings.llmModelHint");
   }
   if (form.value.llmProviderModel === "") {
-    return t("dataQualitySettings.llmModelPlaceholder");
+    return t("dataQualitySettings.llmModelRequiredHint");
   }
   return t("dataQualitySettings.llmModelHint");
 });
@@ -950,6 +950,23 @@ function setLlmProfile(value: unknown) {
   // One model is unambiguous; several require the administrator to name one,
   // because models inside a profile differ in price and quality.
   form.value.llmProviderModel = models.length === 1 ? models[0] : "";
+}
+
+/**
+ * Turning model assistance off disables the pair selectors, so a half-configured
+ * pair would become unfixable; the stored pair is written with both halves or
+ * neither, so clear the incomplete one. A complete pair is kept as it was.
+ */
+function setEnableLlmAnalysis(enabled: boolean) {
+  form.value.enableLlmAnalysis = enabled;
+  if (
+    !enabled &&
+    (form.value.llmProviderProfile === "") !==
+      (form.value.llmProviderModel === "")
+  ) {
+    form.value.llmProviderProfile = "";
+    form.value.llmProviderModel = "";
+  }
 }
 
 function setLlmModel(value: unknown) {

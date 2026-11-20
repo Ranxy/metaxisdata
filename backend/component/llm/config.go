@@ -25,8 +25,9 @@ import (
 // profileNamePrefix is the resource-name prefix the store gives every profile.
 const profileNamePrefix = "llm-provider-profiles/"
 
-// ModelRef names one exact model of one provider profile. Profile is the
-// canonical resource name; Model is the name as the profile records it.
+// ModelRef names one exact model of one provider profile. Profile is a profile
+// reference (compared through ProfileID, so a bare id is accepted too); Model is
+// the name as the profile records it.
 type ModelRef struct {
 	Profile string
 	Model   string

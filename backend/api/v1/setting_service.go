@@ -244,10 +244,14 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	return result, nil
 }
 
-// validLLMProviderProfileName reports whether profile is a profile resource name.
+// validLLMProviderProfileName reports whether profile is a provider profile
+// resource name whose id is a single path segment, the form the store's profile
+// rows use. A value the registry can never match must not be stored: it would
+// silently deny every model instead of surfacing a configuration error.
 func validLLMProviderProfileName(profile string) bool {
 	const prefix = "llm-provider-profiles/"
-	return strings.HasPrefix(profile, prefix) && len(profile) > len(prefix)
+	id, ok := strings.CutPrefix(profile, prefix)
+	return ok && id != "" && !strings.Contains(id, "/")
 }
 
 // convertDataQualitySetting copies the stored data quality settings into the API

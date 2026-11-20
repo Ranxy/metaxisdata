@@ -112,6 +112,7 @@ interface PageVm {
   form: { llmProviderProfile: string; llmProviderModel: string };
   modelOptions: string[];
   setLlmProfile: (value: unknown) => void;
+  setEnableLlmAnalysis: (enabled: boolean) => void;
 }
 
 function vm(wrapper: ReturnType<typeof mount>): PageVm {
@@ -483,6 +484,55 @@ describe("DataQualitySettingsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQualitySettings.llmDisabledHint")
     );
+    // Both selectors are read-only while the switch is off, so a pair cannot be
+    // edited into a state the server would reject.
+    expect(
+      wrapper.find("#dq-setting-llm-profile").attributes("disabled")
+    ).toBeDefined();
+    expect(
+      wrapper.find("#dq-setting-llm-model").attributes("disabled")
+    ).toBeDefined();
+  });
+
+  it("clears half a pair when model analysis is turned off", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          enableLlmAnalysis: true,
+          llmProviderProfile: "llmProfiles/p1",
+          llmProviderModel: "fast",
+        }),
+      })
+    );
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        {
+          name: "llmProfiles/p1",
+          title: "Primary",
+          models: [{ name: "fast", enabled: true }],
+        },
+        {
+          name: "llmProfiles/p2",
+          title: "Secondary",
+          models: [
+            { name: "a", enabled: true },
+            { name: "b", enabled: true },
+          ],
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+    const page = vm(wrapper);
+
+    // Switching to a multi-model profile leaves the model unnamed: half a pair.
+    page.setLlmProfile("llmProfiles/p2");
+    expect(page.form.llmProviderModel).toBe("");
+
+    // Turning assistance off disables the selectors, so the half pair is cleared
+    // rather than left unfixable until the switch is turned back on.
+    page.setEnableLlmAnalysis(false);
+    expect(page.form.llmProviderProfile).toBe("");
+    expect(page.form.llmProviderModel).toBe("");
   });
 
   it("lists code tables with their value count and updated time", async () => {

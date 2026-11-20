@@ -178,7 +178,7 @@
               {{ profilesError }}
             </p>
             <p
-              v-else-if="modelGroups.length === 0"
+              v-else-if="modelGroups.length === 0 && unavailableModels.length === 0"
               class="text-sm text-muted-foreground"
             >
               {{ t("generalSettings.explainProvidersEmpty") }}
@@ -204,6 +204,39 @@
                 />
                 <Label :for="`allowed-model-${group.profile}-${model}`">
                   {{ model }}
+                </Label>
+              </div>
+            </div>
+            <!-- A stored pair the registry no longer enables still restricts
+            Explain SQL while the allowlist is non-empty, so it is rendered here
+            and can be removed instead of becoming an invisible lock. -->
+            <div v-if="unavailableModels.length > 0" class="space-y-2">
+              <p class="text-sm font-medium">
+                {{ t("generalSettings.explainProvidersUnavailable") }}
+              </p>
+              <div
+                v-for="(ref, index) in unavailableModels"
+                :key="modelRefKey(ref.providerProfile, ref.model)"
+                class="flex items-center gap-3"
+              >
+                <Checkbox
+                  :id="`unavailable-model-${index}`"
+                  :checked="true"
+                  :disabled="!canUpdate"
+                  @update:checked="
+                    toggleAllowedModel(
+                      ref.providerProfile,
+                      ref.model,
+                      $event === true
+                    )
+                  "
+                />
+                <Label :for="`unavailable-model-${index}`">
+                  {{ profileTitle(ref.providerProfile, llmProfiles) }} ·
+                  {{ ref.model }}
+                  <span class="text-muted-foreground">{{
+                    t("generalSettings.explainProvidersUnavailableMarker")
+                  }}</span>
                 </Label>
               </div>
             </div>
@@ -313,7 +346,11 @@ import {
   LlmProviderModelRefSchema,
   type LlmProviderProfile,
 } from "@/types/proto-es/v1/llm_service_pb";
-import { modelRefKey } from "@/utils/llmProvider";
+import {
+  enabledModelRefs,
+  modelRefKey,
+  profileTitle,
+} from "@/utils/llmProvider";
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -419,9 +456,7 @@ interface ModelGroup {
   models: string[];
 }
 
-// A group only exists when its profile shows at least one enabled model; a pair
-// the list no longer returns is left out of the rendering but kept in
-// `allowedModels`, which is what the save writes back.
+// A group only exists when its profile shows at least one enabled model.
 const modelGroups = computed<ModelGroup[]>(() => {
   const groups: ModelGroup[] = [];
   for (const profile of llmProfiles.value) {
@@ -438,6 +473,26 @@ const modelGroups = computed<ModelGroup[]>(() => {
   }
   return groups;
 });
+
+// The pairs the registry currently enables, as comparison keys.
+const enabledPairKeys = computed(
+  () =>
+    new Set(
+      enabledModelRefs(llmProfiles.value).map((ref) =>
+        modelRefKey(ref.providerProfile, ref.model)
+      )
+    )
+);
+
+// A stored pair the list no longer returns is kept in `allowedModels` and saved
+// back, so it must remain visible and removable: while the allowlist is
+// non-empty, unlisted models stay denied.
+const unavailableModels = computed(() =>
+  allowedModels.value.filter(
+    (ref) =>
+      !enabledPairKeys.value.has(modelRefKey(ref.providerProfile, ref.model))
+  )
+);
 
 // Walk every page: a first-page-only read would silently hide models on a
 // workspace with more profiles than one page holds.

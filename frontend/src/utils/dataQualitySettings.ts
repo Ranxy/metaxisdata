@@ -261,12 +261,15 @@ export function validateSettingsForm(
     });
   }
   // The stored pair is always written with both halves: both blank means Auto,
-  // and a profile without a model is rejected by the server even while LLM
-  // analysis is off, so the form refuses it too.
+  // and half a pair is rejected by the server even while LLM analysis is off, so
+  // the form refuses it too.
   const providerProfile = form.llmProviderProfile.trim();
   const providerModel = form.llmProviderModel.trim();
   if (providerProfile !== "" && providerModel === "") {
     issue("llmProviderModelRequired");
+  }
+  if (providerProfile === "" && providerModel !== "") {
+    issue("llmProviderProfileRequired");
   }
   validateDigest(form.weeklyDigest, issue);
   const checkTimeZone = form.checkTimeZone.trim();

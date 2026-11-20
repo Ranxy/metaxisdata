@@ -125,6 +125,11 @@ func TestNormalizeAllowedLLMModels(t *testing.T) {
 		_, err := normalizeAllowedLLMModels([]*v1pb.LlmProviderModelRef{ref})
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	}
+
+	// A profile id is one path segment: the registry can never match an id with a
+	// slash, so storing it would silently deny every model.
+	_, err = normalizeAllowedLLMModels([]*v1pb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/a/b", Model: "fast"}})
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 func TestApplyWorkspaceProfileUpdateDataQuality(t *testing.T) {
@@ -425,6 +430,11 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 			want:    "LLM provider profile",
 		},
 		{
+			name:    "provider id with a path segment",
+			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/a/b", LlmProviderModel: "fast"},
+			want:    "LLM provider profile",
+		},
+		{
 			name:    "provider without a model",
 			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/fast"},
 			want:    "must be set together",
@@ -558,6 +568,23 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.Equal(t, stored.GetLlmConcurrencyLimit(), back.GetLlmConcurrencyLimit())
 	require.Equal(t, stored.GetSendSampleValuesToLlm(), back.GetSendSampleValuesToLlm())
 	require.Equal(t, stored.GetWeeklyDigest(), back.GetWeeklyDigest())
+}
+
+// GetWorkspaceProfileSetting returns the model-level allowlist in the API form, and
+// a model name with a slash survives the conversion as one string.
+func TestConvertToWorkspaceProfileSettingCarriesAllowedModels(t *testing.T) {
+	t.Parallel()
+
+	converted := convertToWorkspaceProfileSetting(&storepb.WorkspaceProfileSetting{
+		AllowedLlmProviderModels: []*storepb.LlmProviderModelRef{
+			{ProviderProfile: "llm-provider-profiles/main", Model: "anthropic/claude-sonnet"},
+			nil,
+		},
+	})
+	models := converted.GetAllowedLlmProviderModels()
+	require.Len(t, models, 1, "a nil stored entry is skipped, not rendered as an empty pair")
+	require.Equal(t, "llm-provider-profiles/main", models[0].GetProviderProfile())
+	require.Equal(t, "anthropic/claude-sonnet", models[0].GetModel())
 }
 
 // The masks that predate data_quality keep their behavior after the merge moved
