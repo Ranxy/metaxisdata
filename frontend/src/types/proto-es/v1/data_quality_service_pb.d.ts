@@ -2690,6 +2690,17 @@ export declare type QualitySuggestionQueueSummary = Message<"metaxisdata.v1.Qual
    * @generated from field: repeated string skipped_columns = 7;
    */
   skippedColumns: string[];
+
+  /**
+   * Drafts the model proposed that the rule pipeline refused, with the reason.
+   * The model's answer can name a value the target cannot hold (an accepted value
+   * that is not one of an enum column's labels, for example); reporting the
+   * refusal lets the client explain the smaller queue instead of leaving it
+   * unexplained. It is empty when every draft was usable.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestionRejection rejected = 8;
+   */
+  rejected: QualitySuggestionRejection[];
 };
 
 /**
@@ -2697,6 +2708,34 @@ export declare type QualitySuggestionQueueSummary = Message<"metaxisdata.v1.Qual
  * Use `create(QualitySuggestionQueueSummarySchema)` to create a new message.
  */
 export declare const QualitySuggestionQueueSummarySchema: GenMessage<QualitySuggestionQueueSummary>;
+
+/**
+ * QualitySuggestionRejection is one model draft a generation pass refused before
+ * queueing it.
+ *
+ * @generated from message metaxisdata.v1.QualitySuggestionRejection
+ */
+export declare type QualitySuggestionRejection = Message<"metaxisdata.v1.QualitySuggestionRejection"> & {
+  /**
+   * The draft's title, or a placeholder when the model left it out.
+   *
+   * @generated from field: string title = 1;
+   */
+  title: string;
+
+  /**
+   * The server's reason, in the server's wording.
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualitySuggestionRejection.
+ * Use `create(QualitySuggestionRejectionSchema)` to create a new message.
+ */
+export declare const QualitySuggestionRejectionSchema: GenMessage<QualitySuggestionRejection>;
 
 /**
  * ColumnProfile is the cached deterministic statistics of one column plus how

@@ -87,7 +87,7 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	queued, summary, _, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+	queued, summary, rejections, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
 		tableGUID, metaType, requestedColumns, intent, language, req.Msg.GetForceRegenerate(),
 		principalIDPointer(currentUserID(ctx)))
 	if err != nil {
@@ -99,8 +99,19 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	}
 	return connect.NewResponse(&v1pb.SuggestQualityRuleResponse{
 		QualitySuggestions: suggestions,
-		Summary:            convertQualitySuggestionQueueSummary(summary),
+		Summary:            qualitySuggestionQueueSummary(summary, rejections),
 	}), nil
+}
+
+// qualitySuggestionQueueSummary maps what one drafting pass did, including the
+// drafts it refused: the refusals explain a queue smaller than the model's answer.
+func qualitySuggestionQueueSummary(summary *storepb.QualitySuggestionQueueSummary, rejections []dataquality.DraftRejection) *v1pb.QualitySuggestionQueueSummary {
+	converted := convertQualitySuggestionQueueSummary(summary)
+	if converted == nil {
+		return nil
+	}
+	converted.Rejected = convertDraftRejectionsToV1(rejections)
+	return converted
 }
 
 // ExplainQualityExecution streams an explanation of one failed execution.

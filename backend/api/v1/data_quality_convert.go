@@ -1301,6 +1301,24 @@ func convertQualitySuggestionQueueSummary(summary *storepb.QualitySuggestionQueu
 	}
 }
 
+// convertDraftRejectionsToV1 converts the drafts one generation pass refused.
+// They are the reason a model answer produced fewer proposals than it contained,
+// so the client can explain the result instead of showing a silently smaller
+// queue.
+func convertDraftRejectionsToV1(rejections []dataquality.DraftRejection) []*v1pb.QualitySuggestionRejection {
+	if len(rejections) == 0 {
+		return nil
+	}
+	converted := make([]*v1pb.QualitySuggestionRejection, 0, len(rejections))
+	for _, rejection := range rejections {
+		converted = append(converted, &v1pb.QualitySuggestionRejection{
+			Title:  rejection.Title,
+			Reason: rejection.Reason,
+		})
+	}
+	return converted
+}
+
 // convertQualitySuggestionPayloadToV1 converts the review-queue payload.
 func convertQualitySuggestionPayloadToV1(payload *storepb.QualitySuggestionPayload) *v1pb.QualitySuggestionPayload {
 	if payload == nil {

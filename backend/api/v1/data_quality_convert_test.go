@@ -1270,3 +1270,24 @@ func TestConvertQualityExecutionCarriesEvidenceParts(t *testing.T) {
 	require.NotNil(t, converted.GetSegmentEvidence())
 	require.Equal(t, int32(2), converted.GetSegmentEvidence().GetBaselineRuns())
 }
+
+// A generation pass reports the drafts it refused, with their reasons, so a
+// smaller queue is explainable.
+func TestQualitySuggestionQueueSummaryCarriesRejections(t *testing.T) {
+	t.Parallel()
+
+	summary := &storepb.QualitySuggestionQueueSummary{Created: 1, SkippedDecided: 2}
+	converted := qualitySuggestionQueueSummary(summary, []dataquality.DraftRejection{
+		{Title: "Status must be a declared enum label", Reason: `value "discontinued" is not a label of the enum type "public.product_status"; valid labels: "active", "draft"`},
+	})
+	require.NotNil(t, converted)
+	require.Equal(t, int32(1), converted.GetCreated())
+	require.Equal(t, int32(2), converted.GetSkippedDecided())
+	require.Len(t, converted.GetRejected(), 1)
+	require.Equal(t, "Status must be a declared enum label", converted.GetRejected()[0].GetTitle())
+	require.Contains(t, converted.GetRejected()[0].GetReason(), "valid labels")
+
+	require.Nil(t, qualitySuggestionQueueSummary(nil, nil))
+	empty := qualitySuggestionQueueSummary(summary, nil)
+	require.Empty(t, empty.GetRejected())
+}
