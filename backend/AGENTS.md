@@ -95,7 +95,7 @@ The default build does **not** embed the frontend: `backend/server/server_fronte
 ## Go Style
 
 - Standard Go error handling with detailed messages; be explicit but concise about error cases.
-- Errors returned from `backend/api/v1` and `backend/store` carry a `common.Code` — use `common.Errorf(code, ...)`, `common.Wrap(err, code)`, or `common.Wrapf(err, code, ...)` rather than bare `fmt.Errorf`, so Connect handlers can map them to status codes.
+- Errors returned from `backend/api/v1` and `backend/store` carry a `common.Code` — use `common.Errorf(code, ...)` rather than bare `fmt.Errorf`, so Connect handlers can map them to status codes. Outside those packages, wrap with `errors.Wrap` (`github.com/pkg/errors`) or `fmt.Errorf("...: %w", err)`.
 - Always `defer` resource cleanup such as `rows.Close()` (sqlclosecheck). Avoid `defer` inside loops (revive) — use an IIFE or scope it properly.
 - Organize imports sorted by path; goimports runs with the local prefix `github.com/Ranxy/metaxisdata`.
 - Only export functions and types that other packages need, and don't add a receiver a function doesn't use.
