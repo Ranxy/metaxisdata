@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,7 +67,7 @@ func TestFetchModelsReadsModelIDs(t *testing.T) {
 
 	ids, err := FetchModels(context.Background(), server.URL+"/", "secret-key")
 	require.NoError(t, err)
-	require.Equal(t, []string{"gpt-4o", "gpt-4o-mini"}, ids)
+	require.Equal(t, []string{"gpt-4o", "gpt-4o-mini"}, modelNames(ids))
 	require.Equal(t, "/v1/models", gotPath)
 	require.Equal(t, "Bearer secret-key", gotAuth)
 }
@@ -82,7 +83,7 @@ func TestFetchModelsOmitsAuthorizationWithoutKey(t *testing.T) {
 
 	ids, err := FetchModels(context.Background(), server.URL, "")
 	require.NoError(t, err)
-	require.Equal(t, []string{"m"}, ids)
+	require.Equal(t, []string{"m"}, modelNames(ids))
 }
 
 func TestFetchModelsRejectsFailures(t *testing.T) {
@@ -151,7 +152,67 @@ func TestFetchModelsToleratesUnknownFields(t *testing.T) {
 
 	ids, err := FetchModels(context.Background(), server.URL, "")
 	require.NoError(t, err)
-	require.Equal(t, []string{"m1"}, ids)
+	require.Equal(t, []string{"m1"}, modelNames(ids))
+}
+
+// modelNames keeps the existing assertions readable now that FetchModels also
+// returns capacities.
+func modelNames(models []DiscoveredModel) []string {
+	names := make([]string, 0, len(models))
+	for _, model := range models {
+		names = append(names, model.Name)
+	}
+	return names
+}
+
+// Gateways disclose capacities under different spellings; the first usable value
+// wins and a listing without any keeps zero (server default).
+func TestFetchModelsReadsDisclosedCapacities(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openrouter","context_length":200000,"top_provider":{"max_completion_tokens":16000}},
+			{"id":"enriched","contextWindow":128000,"maxOutputTokens":8192},
+			{"id":"nested","limit":{"context":32000,"output":4096}},
+			{"id":"snake","context_window":64000,"max_tokens":2048},
+			{"id":"plain"}
+		]}`))
+	}))
+	defer server.Close()
+
+	models, err := FetchModels(context.Background(), server.URL, "")
+	require.NoError(t, err)
+	require.Len(t, models, 5)
+	require.Equal(t, DiscoveredModel{Name: "openrouter", ContextWindow: 200000, MaxOutputTokens: 16000}, models[0])
+	require.Equal(t, DiscoveredModel{Name: "enriched", ContextWindow: 128000, MaxOutputTokens: 8192}, models[1])
+	require.Equal(t, DiscoveredModel{Name: "nested", ContextWindow: 32000, MaxOutputTokens: 4096}, models[2])
+	require.Equal(t, DiscoveredModel{Name: "snake", ContextWindow: 64000, MaxOutputTokens: 2048}, models[3])
+	require.Equal(t, DiscoveredModel{Name: "plain"}, models[4])
+}
+
+// A capacity that is not a positive integer is treated as not disclosed.
+func TestPositiveInt32(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, int32(4096), mustCapacity(t, 4096.0))
+	_, ok := positiveInt32(0.0)
+	require.False(t, ok)
+	_, ok = positiveInt32(-1.0)
+	require.False(t, ok)
+	_, ok = positiveInt32(1.5)
+	require.False(t, ok)
+	_, ok = positiveInt32("4096")
+	require.False(t, ok)
+	_, ok = positiveInt32(math.MaxInt32 + 1)
+	require.False(t, ok)
+}
+
+func mustCapacity(t *testing.T, value float64) int32 {
+	t.Helper()
+	capacity, ok := positiveInt32(value)
+	require.True(t, ok)
+	return capacity
 }
 
 func TestNormalizeAPIBaseURL(t *testing.T) {
@@ -194,6 +255,6 @@ func TestFetchModelsAcceptsAnSDKStyleBaseURL(t *testing.T) {
 
 	ids, err := FetchModels(context.Background(), server.URL+"/v1", "key")
 	require.NoError(t, err)
-	require.Equal(t, []string{"m"}, ids)
+	require.Equal(t, []string{"m"}, modelNames(ids))
 	require.Equal(t, "/v1/models", gotPath)
 }

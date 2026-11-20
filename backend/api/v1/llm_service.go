@@ -288,14 +288,23 @@ func (s *LLMService) FetchLLMModels(ctx context.Context, req *connect.Request[v1
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	modelIDs, err := llm.FetchModels(ctx, baseURL, apiKey)
+	discovered, err := llm.FetchModels(ctx, baseURL, apiKey)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to fetch models"))
 	}
 
-	return connect.NewResponse(&v1pb.FetchLLMModelsResponse{
-		ModelIds: modelIDs,
-	}), nil
+	response := &v1pb.FetchLLMModelsResponse{
+		Models: make([]*v1pb.LlmDiscoveredModel, 0, len(discovered)),
+	}
+	for _, model := range discovered {
+		response.ModelIds = append(response.ModelIds, model.Name)
+		response.Models = append(response.Models, &v1pb.LlmDiscoveredModel{
+			Name:            model.Name,
+			ContextWindow:   model.ContextWindow,
+			MaxOutputTokens: model.MaxOutputTokens,
+		})
+	}
+	return connect.NewResponse(response), nil
 }
 
 // resolveFetchModelsTarget picks the endpoint and credential for a model
