@@ -60,6 +60,7 @@ type Store interface {
 	QualityAgentEnrollmentSummary(ctx context.Context, workspaceID string, agentID int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error)
 	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
+	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the

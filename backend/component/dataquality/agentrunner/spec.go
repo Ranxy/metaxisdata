@@ -66,7 +66,7 @@ func targetToolSpecs() []toolSpec {
 	specs := []toolSpec{
 		{
 			name:        "get_target_summary",
-			description: "Read the target's plan state, criticality, rule count and uncovered declared properties.",
+			description: "Read the target's plan state, criticality, rule count, adoption status, pending drafts and uncovered declared properties.",
 			parameters:  emptyParameters(),
 			meta:        readMeta(),
 		},

@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -54,4 +55,57 @@ func AgentAdoptionReady(agent *store.QualityAgentMessage) bool {
 			agent.AdoptionMode == store.QualityAgentAdoptionModePaused) &&
 		slices.Contains(agent.Capabilities, agentcapability.Adopt) &&
 		slices.Contains(agent.Capabilities, agentcapability.Suggest)
+}
+
+// RuleTypeForDraftConfig maps the oneof arm of a model-drafted rule back to its
+// rule type. The draft payload stores the config only, so every path that reasons
+// about a draft (adoption, the target summary, the proposal list) needs this map.
+func RuleTypeForDraftConfig(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, bool) {
+	if config == nil {
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
+	}
+	switch config.GetConfig().(type) {
+	case *storepb.QualityRuleConfig_RowCount:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, true
+	case *storepb.QualityRuleConfig_RowCountChange:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, true
+	case *storepb.QualityRuleConfig_NullPercent:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, true
+	case *storepb.QualityRuleConfig_Unique:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, true
+	case *storepb.QualityRuleConfig_UniqueCombination:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, true
+	case *storepb.QualityRuleConfig_AcceptedValues:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, true
+	case *storepb.QualityRuleConfig_Range:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, true
+	case *storepb.QualityRuleConfig_Regex:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, true
+	case *storepb.QualityRuleConfig_StringLength:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, true
+	case *storepb.QualityRuleConfig_ReferentialIntegrity:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, true
+	case *storepb.QualityRuleConfig_CrossColumn:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, true
+	case *storepb.QualityRuleConfig_Freshness:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, true
+	case *storepb.QualityRuleConfig_CustomSql:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, true
+	case *storepb.QualityRuleConfig_CelExpression:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, true
+	case *storepb.QualityRuleConfig_SchemaDrift:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, true
+	case *storepb.QualityRuleConfig_GroupCheck:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, true
+	case *storepb.QualityRuleConfig_Aggregate:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, true
+	case *storepb.QualityRuleConfig_CrossTable:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, true
+	case *storepb.QualityRuleConfig_StandardCode:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, true
+	case *storepb.QualityRuleConfig_SegmentCheck:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK, true
+	default:
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
+	}
 }

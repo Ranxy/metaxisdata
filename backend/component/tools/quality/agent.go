@@ -30,6 +30,12 @@ const MaxTriageDraftColumns = maxTriageDraftColumns
 
 // AgentSession is the session identity the agent tools read and write.
 type AgentSession struct {
+	// WorkspaceID names the workspace in the draft resource names the model passes
+	// back to the adoption tool.
+	WorkspaceID string
+	// AgentID is the proposing agent; adoption status and the pending queue are
+	// agent-scoped even when the read is target-scoped.
+	AgentID int64
 	// TargetGUID is the target every read and proposal is scoped to.
 	TargetGUID string
 	// TargetType is the target's registry type.
@@ -47,6 +53,8 @@ type AgentStore interface {
 	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	ListQualityMemories(ctx context.Context, find *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
+	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
+	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
 }
 
 // TableContextColumn is one column of the target as the registry records it.
@@ -192,20 +200,90 @@ func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (
 	return result, nil
 }
 
-// GetTargetSummary reads the target's plan state, criticality, rule count and gaps.
+// GetTargetSummary reads the target's plan state, criticality, rule count, gaps,
+// the agent's adoption status and the target's pending drafts. The adoption
+// fields are what let the model attribute a rule-count change to its own adoption
+// pass instead of guessing that a person approved it.
 func (t *AgentTools) GetTargetSummary(ctx context.Context, session AgentSession) (string, error) {
 	evidence, err := t.gatherEvidence(ctx, session)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{
+	summary := map[string]any{
 		"target":      evidence.TargetGUID,
 		"type":        evidence.TargetType,
 		"planState":   evidence.PlanState,
 		"criticality": evidence.Criticality,
 		"ruleCount":   evidence.RuleCount,
 		"gaps":        emptyIfNil(evidence.Gaps),
+	}
+	if adoption := t.adoptionView(ctx, session); adoption != nil {
+		summary["adoption"] = adoption
+	}
+	if drafts, count, ok := t.targetPendingDrafts(ctx, session); ok {
+		summary["pendingDrafts"] = drafts
+		summary["pendingDraftCount"] = count
+	}
+	return marshalJSON(summary)
+}
+
+// adoptionView reads the agent's last-24h adoption outcome. A read failure is
+// omitted rather than failing the whole summary: the tool is evidence, not a gate.
+func (t *AgentTools) adoptionView(ctx context.Context, session AgentSession) map[string]any {
+	if session.AgentID == 0 {
+		return nil
+	}
+	status, err := t.deps.Store.GetQualityAgentAdoptionStatus(ctx, session.AgentID, t.now())
+	if err != nil || status == nil {
+		return nil
+	}
+	view := map[string]any{
+		"adoptedLast24h":    status.AdoptedLast24h,
+		"failedLast24h":     status.FailedLast24h,
+		"lastFailureReason": status.LastFailureReason,
+	}
+	if status.LastFailureTime != nil {
+		view["lastFailureTime"] = status.LastFailureTime.UTC().Format(time.RFC3339)
+	}
+	return view
+}
+
+// targetPendingDrafts lists the target's pending rule drafts with the id, check
+// type and confidence the model needs to name them in an adoption request. The
+// queue itself is bounded, and the model-visible list is capped.
+func (t *AgentTools) targetPendingDrafts(ctx context.Context, session AgentSession) ([]map[string]any, int, bool) {
+	if session.AgentID == 0 || session.TargetGUID == "" {
+		return nil, 0, false
+	}
+	agentID := session.AgentID
+	targetGUID := session.TargetGUID
+	limit := 1000
+	rows, err := t.deps.Store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		AgentID:    &agentID,
+		TargetGUID: &targetGUID,
+		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT},
+		Limit:      &limit,
 	})
+	if err != nil {
+		return nil, 0, false
+	}
+	views := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if len(views) >= 20 {
+			break
+		}
+		view := map[string]any{
+			"id":         common.FormatWorkspace(session.WorkspaceID) + "/qualitySuggestions/" + row.ResourceID,
+			"title":      row.Payload.GetRule().GetTitle(),
+			"confidence": row.Confidence,
+		}
+		if ruleType, ok := dataquality.RuleTypeForDraftConfig(row.Payload.GetRule().GetConfig()); ok {
+			view["ruleType"] = strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
+		}
+		views = append(views, view)
+	}
+	return views, len(rows), true
 }
 
 // ListRecentExecutions lists the target's recent executions.

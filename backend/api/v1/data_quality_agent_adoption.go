@@ -80,9 +80,39 @@ func (s *DataQualityService) SetQualityAgentAdoption(ctx context.Context, req *c
 
 // adoptionPassResult is what one pass did for one target.
 type adoptionPassResult struct {
-	Adopted int
-	Skipped int
-	Failed  int
+	Adopted   int
+	Skipped   int
+	Failed    int
+	Remaining int
+	Items     []dataquality.AgentAdoptionItem
+}
+
+// report converts one pass into the tool-visible shape.
+func (r adoptionPassResult) report() dataquality.AgentAdoptionReport {
+	items := r.Items
+	if items == nil {
+		items = []dataquality.AgentAdoptionItem{}
+	}
+	return dataquality.AgentAdoptionReport{
+		Adopted:   r.Adopted,
+		Skipped:   r.Skipped,
+		Failed:    r.Failed,
+		Remaining: r.Remaining,
+		Items:     items,
+	}
+}
+
+// recordItem keeps one draft's outcome in the tool-visible report.
+func (r *adoptionPassResult) recordItem(suggestion *store.QualitySuggestionMessage, outcome, reason string) {
+	if suggestion == nil {
+		return
+	}
+	r.Items = append(r.Items, dataquality.AgentAdoptionItem{
+		ResourceID: suggestion.ResourceID,
+		Title:      suggestion.Payload.GetRule().GetTitle(),
+		Outcome:    outcome,
+		Reason:     reason,
+	})
 }
 
 // AdoptQualitySuggestions applies the agent's auto-adoption guardrails to the rule
@@ -119,7 +149,7 @@ func (s *DataQualityService) runAdoptionPassForAgent(ctx context.Context, sessio
 	}
 	var result adoptionPassResult
 	err := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqadopt:%d", session.AgentID), func() error {
-		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, adopted)
+		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, adopted, true)
 		return nil
 	})
 	return result, err
@@ -138,24 +168,19 @@ func (s *DataQualityService) adoptQualitySuggestionsLocked(ctx context.Context, 
 		slog.Warn("failed to count the agent adoptions", log.WithError(err))
 		return adoptionPassResult{}
 	}
-	return s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, &adopted)
+	return s.adoptQualitySuggestionsForAgentLocked(ctx, session, since, agent, &adopted, true)
 }
 
 // adoptionAgentReady is the configuration gate shared by the wake pass and an
 // explicit retry: an active agent, adoption not off, and both capabilities.
 func adoptionAgentReady(agent *store.QualityAgentMessage) bool {
-	return agent != nil &&
-		agent.State == store.QualityAgentStateActive &&
-		(agent.AdoptionMode == store.QualityAgentAdoptionModeActive ||
-			agent.AdoptionMode == store.QualityAgentAdoptionModePaused) &&
-		slices.Contains(agent.Capabilities, agentcapability.Adopt) &&
-		slices.Contains(agent.Capabilities, agentcapability.Suggest)
+	return dataquality.AgentAdoptionReady(agent)
 }
 
 // adoptQualitySuggestionsForAgentLocked is the pass body. adopted is the running
 // 24h count; the explicit retry shares it across targets so the ceiling is not
 // re-read, and re-set, once per target.
-func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time, agent *store.QualityAgentMessage, adopted *int32) adoptionPassResult {
+func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.Context, session *store.QualityAgentSessionMessage, since time.Time, agent *store.QualityAgentMessage, adopted *int32, raiseAttention bool) adoptionPassResult {
 	var result adoptionPassResult
 	if !adoptionAgentReady(agent) {
 		return result
@@ -170,24 +195,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	ownerID := agent.OwnerPrincipalID
 	// Without an owner the agent still queues its drafts and escalates to the
 	// administrators; only the rule write needs an owner to attribute the rule to.
-	var owner *store.UserMessage
-	agentCtx := ctx
-	canAdopt := false
-	skipReason := "the agent has no owner to attribute the rule to"
-	if ownerID != nil {
-		var ownerErr error
-		owner, ownerErr = s.store.GetUserByID(ctx, int(*ownerID))
-		if ownerErr == nil && owner != nil {
-			if agentUser, userErr := s.store.GetUserByID(ctx, agent.PrincipalID); userErr == nil && agentUser != nil {
-				agentCtx = context.WithValue(ctx, common.UserContextKey, agentUser)
-				canAdopt = true
-			} else {
-				skipReason = "the agent principal is unavailable"
-			}
-		} else {
-			skipReason = "the agent's owner no longer exists"
-		}
-	}
+	agentCtx, owner, canAdopt, skipReason := s.adoptionActorContext(ctx, agent)
 	// A zero since means "every pending draft" and is what an explicit retry uses.
 	// Otherwise a draft counts as this wake's only when it was created or refreshed
 	// after the wake started; a clock skew absorbs the process/database clock gap.
@@ -224,6 +232,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		ruleType, ok := ruleTypeForDraftConfig(draft.GetConfig())
 		if !ok || !adoptionAllowsRuleType(agent, ruleType) {
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "rule type is outside the adoption allowlist")
+			result.recordItem(suggestion, "skipped", "rule type is outside the adoption allowlist")
 			result.Skipped++
 			continue
 		}
@@ -232,47 +241,29 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 			threshold = 0.7
 		}
 		if suggestion.Confidence < threshold {
-			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "confidence is below the adoption threshold")
+			reason := "confidence is below the adoption threshold"
+			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
 			result.Skipped++
 			continue
 		}
 		if critical && !agent.AdoptionAllowCritical {
-			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", "the target is critical and critical adoption is disabled")
+			reason := "the target is critical and critical adoption is disabled"
+			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
 			result.Skipped++
 			continue
 		}
 		if !canAdopt {
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", skipReason)
+			result.recordItem(suggestion, "skipped", skipReason)
 			result.Skipped++
 			continue
 		}
 		if *adopted >= limit {
 			break
 		}
-		state := v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
-		if agent.AdoptionMode == store.QualityAgentAdoptionModePaused {
-			state = v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
-		}
-		// A draft carries no dimension; derive it from the rule type instead of
-		// writing UNSPECIFIED, which the store rejects. The create path fills the
-		// same value for every other caller.
-		dimension, _ := dataquality.DimensionForRuleType(ruleType)
-		rule := &v1pb.QualityRule{
-			Title:       draft.GetTitle(),
-			Description: draft.GetRationale(),
-			Dimension:   v1pb.QualityDimension(dimension),
-			RuleType:    v1pb.QualityRuleType(ruleType),
-			Config:      convertQualityRuleConfigToV1(draft.GetConfig()),
-			Severity:    v1pb.QualitySeverity(draft.GetSeverity()),
-			State:       state,
-			Owner:       common.FormatUserUID(int(*ownerID)),
-			Target: &v1pb.QualityTarget{
-				MetaGuid: suggestion.TargetGUID,
-				MetaType: v1pb.MetaType(suggestion.TargetType),
-			},
-		}
-		name := common.FormatWorkspace(session.WorkspaceID) + "/qualitySuggestions/" + suggestion.ResourceID
-		created, err := s.createQualityRuleFromRequest(agentCtx, session.WorkspaceID, rule, name)
+		created, state, err := s.createRuleFromAdoptionDraft(agentCtx, session.WorkspaceID, agent, suggestion, *ownerID)
 		if err != nil {
 			reason := adoptionFailureReason(err)
 			if lastFailure == "" {
@@ -284,11 +275,13 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 				slog.String("target", suggestion.TargetGUID),
 				log.WithError(err))
 			s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeFailed, "", reason)
+			result.recordItem(suggestion, "failed", reason)
 			result.Failed++
 			continue
 		}
 		s.recordAdoption(ctx, session, suggestion, store.QualityAgentAdoptionOutcomeAdopted, created.GetName(), "")
-		s.recordAdoptionAudit(ctx, session, agent, suggestion, created, state)
+		s.recordAdoptionAudit(ctx, session, agent, suggestion, created, state, false, 0)
+		result.recordItem(suggestion, "adopted", "")
 		(*adopted)++
 		result.Adopted++
 	}
@@ -304,7 +297,8 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	if err != nil {
 		return result
 	}
-	if len(remaining) == 0 {
+	result.Remaining = len(remaining)
+	if !raiseAttention || len(remaining) == 0 {
 		return result
 	}
 	language := agentlang.ForAgent(agent, owner)
@@ -354,6 +348,301 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		slog.Warn("failed to send a proposal attention notification to admins", log.WithError(sendErr))
 	}
 	return result
+}
+
+// adoptionActorContext resolves the actor and owner one adoption needs. The rule
+// is attributed to the agent principal and owned by the agent's owner; without
+// either, the pass records a skip instead of writing a rule with no owner.
+func (s *DataQualityService) adoptionActorContext(ctx context.Context, agent *store.QualityAgentMessage) (context.Context, *store.UserMessage, bool, string) {
+	ownerID := agent.OwnerPrincipalID
+	if ownerID == nil {
+		return ctx, nil, false, "the agent has no owner to attribute the rule to"
+	}
+	owner, err := s.store.GetUserByID(ctx, int(*ownerID))
+	if err != nil || owner == nil {
+		return ctx, nil, false, "the agent's owner no longer exists"
+	}
+	agentUser, err := s.store.GetUserByID(ctx, agent.PrincipalID)
+	if err != nil || agentUser == nil {
+		return ctx, owner, false, "the agent principal is unavailable"
+	}
+	return context.WithValue(ctx, common.UserContextKey, agentUser), owner, true, ""
+}
+
+// createRuleFromAdoptionDraft writes one draft through the one rule-create path.
+// The caller has already decided the draft is eligible; this helper only maps the
+// draft onto a rule and lets the create path validate it.
+func (s *DataQualityService) createRuleFromAdoptionDraft(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage, ownerID int32) (*v1pb.QualityRule, v1pb.QualityRuleState, error) {
+	draft := suggestion.Payload.GetRule()
+	if draft == nil {
+		return nil, v1pb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED, errors.New("the draft has no rule payload")
+	}
+	ruleType, ok := ruleTypeForDraftConfig(draft.GetConfig())
+	if !ok {
+		return nil, v1pb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED, errors.New("the draft has no known rule type")
+	}
+	state := v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
+	if agent.AdoptionMode == store.QualityAgentAdoptionModePaused {
+		state = v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
+	}
+	// A draft carries no dimension; derive it from the rule type instead of
+	// writing UNSPECIFIED, which the store rejects.
+	dimension, _ := dataquality.DimensionForRuleType(ruleType)
+	rule := &v1pb.QualityRule{
+		Title:       draft.GetTitle(),
+		Description: draft.GetRationale(),
+		Dimension:   v1pb.QualityDimension(dimension),
+		RuleType:    v1pb.QualityRuleType(ruleType),
+		Config:      convertQualityRuleConfigToV1(draft.GetConfig()),
+		Severity:    v1pb.QualitySeverity(draft.GetSeverity()),
+		State:       state,
+		Owner:       common.FormatUserUID(int(ownerID)),
+		Target: &v1pb.QualityTarget{
+			MetaGuid: suggestion.TargetGUID,
+			MetaType: v1pb.MetaType(suggestion.TargetType),
+		},
+	}
+	name := common.FormatWorkspace(workspaceID) + "/qualitySuggestions/" + suggestion.ResourceID
+	created, err := s.createQualityRuleFromRequest(ctx, workspaceID, rule, name)
+	return created, state, err
+}
+
+// ownerAdoptionDraft resolves one draft an owner named and proves it is still
+// pending for this agent. The workspace check keeps a conversation from naming a
+// draft of another deployment.
+func (s *DataQualityService) ownerAdoptionDraft(ctx context.Context, workspaceID string, agentID int64, name string) (*store.QualitySuggestionMessage, error) {
+	workspace, resourceID, err := s.qualitySuggestionResourceID(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if workspace != workspaceID {
+		return nil, connectErrorInvalid("the draft belongs to another workspace")
+	}
+	suggestion, err := s.fetchQualitySuggestion(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if suggestion.Kind != storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT {
+		return nil, connectErrorInvalid("quality suggestion %q is not a rule draft", resourceID)
+	}
+	if suggestion.Status != storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING {
+		return nil, connect.NewError(connect.CodeAborted,
+			fmt.Errorf("quality suggestion %q is already decided", resourceID))
+	}
+	if suggestion.AgentID == nil || *suggestion.AgentID != agentID {
+		return nil, connectErrorInvalid("quality suggestion %q belongs to another agent", resourceID)
+	}
+	return suggestion, nil
+}
+
+// adoptionTargetInScope reports whether the agent's database scope still covers
+// the draft's target. An explicit request must not write a rule outside scope.
+func (s *DataQualityService) adoptionTargetInScope(ctx context.Context, agent *store.QualityAgentMessage, targetGUID string) (bool, error) {
+	scope, err := s.store.ListQualityAgentDatabases(ctx, agent.ID)
+	if err != nil {
+		return false, err
+	}
+	parts := common.SplitMetaGUID(targetGUID)
+	if len(parts) < 2 {
+		return false, nil
+	}
+	return slices.Contains(scope, common.FormatDatabase(parts[0], parts[1])), nil
+}
+
+// countPendingDrafts counts the pending rule drafts an adoption report should
+// mention as remaining. An empty target counts the agent's whole queue.
+func (s *DataQualityService) countPendingDrafts(ctx context.Context, agentID int64, targetGUID string) (int, error) {
+	find := &store.FindQualitySuggestionMessage{
+		AgentID:  &agentID,
+		Statuses: []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:    []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT},
+		Limit:    intPointer(1000),
+	}
+	if targetGUID != "" {
+		find.TargetGUID = &targetGUID
+	}
+	rows, err := s.store.ListQualitySuggestions(ctx, find)
+	if err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}
+
+// adoptQualitySuggestionsExplicitly adopts the drafts an owner named. Naming a
+// draft is the owner's decision, so it bypasses the automatic guardrails
+// (allow-list, confidence, critical switch); the active agent, owner, database
+// scope, daily ceiling and the rule validation still apply.
+func (s *DataQualityService) adoptQualitySuggestionsExplicitly(ctx context.Context, req dataquality.AgentAdoptionRequest, agent *store.QualityAgentMessage, adopted *int32) adoptionPassResult {
+	var result adoptionPassResult
+	limit := agent.AdoptionMaxPerDay
+	if limit <= 0 {
+		limit = defaultAdoptionDaily
+	}
+	agentCtx, owner, canAdopt, skipReason := s.adoptionActorContext(ctx, agent)
+	var ownerID int32
+	if owner != nil {
+		ownerID = int32(owner.ID)
+	}
+	targetGUID := strings.TrimSpace(req.TargetGUID)
+	if req.Session.Kind == 1 {
+		targetGUID = req.Session.TargetGUID
+	}
+	for _, name := range req.DraftIDs {
+		suggestion, err := s.ownerAdoptionDraft(ctx, req.Session.WorkspaceID, agent.ID, name)
+		if err != nil {
+			result.recordItem(&store.QualitySuggestionMessage{ResourceID: name}, "failed", adoptionFailureReason(err))
+			result.Failed++
+			continue
+		}
+		if targetGUID != "" && suggestion.TargetGUID != targetGUID {
+			result.recordItem(suggestion, "skipped", "the draft belongs to another target")
+			result.Skipped++
+			continue
+		}
+		if !canAdopt {
+			s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", skipReason)
+			result.recordItem(suggestion, "skipped", skipReason)
+			result.Skipped++
+			continue
+		}
+		if *adopted >= limit {
+			reason := "the daily adoption limit is reached"
+			s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
+			result.Skipped++
+			continue
+		}
+		inScope, scopeErr := s.adoptionTargetInScope(ctx, agent, suggestion.TargetGUID)
+		if scopeErr != nil {
+			result.recordItem(suggestion, "failed", adoptionFailureReason(scopeErr))
+			result.Failed++
+			continue
+		}
+		if !inScope {
+			reason := "the target is outside the agent's database scope"
+			s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
+			result.Skipped++
+			continue
+		}
+		created, state, createErr := s.createRuleFromAdoptionDraft(agentCtx, req.Session.WorkspaceID, agent, suggestion, ownerID)
+		if createErr != nil {
+			reason := adoptionFailureReason(createErr)
+			slog.Warn("failed to adopt an owner-requested quality draft",
+				slog.String("suggestion", suggestion.ResourceID),
+				slog.String("agent", agent.ResourceID),
+				slog.String("target", suggestion.TargetGUID),
+				log.WithError(createErr))
+			s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOutcomeFailed, "", reason)
+			result.recordItem(suggestion, "failed", reason)
+			result.Failed++
+			continue
+		}
+		s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOutcomeAdopted, created.GetName(), "")
+		s.recordAdoptionAudit(ctx, req.Session, agent, suggestion, created, state, true, req.Wake)
+		result.recordItem(suggestion, "adopted", "")
+		(*adopted)++
+		result.Adopted++
+	}
+	remaining, err := s.countPendingDrafts(ctx, agent.ID, targetGUID)
+	if err != nil {
+		slog.Warn("failed to count the remaining adoption drafts", log.WithError(err))
+	}
+	result.Remaining = remaining
+	return result
+}
+
+// AdoptQualitySuggestionsForOwner executes an adoption the owner explicitly asked
+// for in the current wake. It is the in-process implementation of the adopt tool:
+// it reuses the wake pass's lock, ledger and audit, and it never creates an
+// attention item (the owner is already in the conversation).
+func (s *DataQualityService) AdoptQualitySuggestionsForOwner(ctx context.Context, req dataquality.AgentAdoptionRequest) (dataquality.AgentAdoptionReport, error) {
+	if req.Session == nil {
+		return dataquality.AgentAdoptionReport{}, connectErrorInvalid("an adoption needs a session")
+	}
+	agent, err := s.store.GetQualityAgentByID(ctx, req.Session.AgentID)
+	if err != nil {
+		return dataquality.AgentAdoptionReport{}, fmt.Errorf("failed to read the adoption agent: %w", err)
+	}
+	if agent == nil {
+		return dataquality.AgentAdoptionReport{}, connect.NewError(connect.CodeNotFound, errors.New("the adoption agent no longer exists"))
+	}
+	if !dataquality.AgentAdoptionReady(agent) {
+		return dataquality.AgentAdoptionReport{}, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("adoption is not enabled for this agent"))
+	}
+	limit := agent.AdoptionMaxPerDay
+	if limit <= 0 {
+		limit = defaultAdoptionDaily
+	}
+	adopted, err := s.store.CountQualityAgentAdoptionsSince(ctx, agent.ID, time.Now().UTC().Add(-adoptionDailyWindow))
+	if err != nil {
+		return dataquality.AgentAdoptionReport{}, err
+	}
+	if adopted >= limit && len(req.DraftIDs) == 0 {
+		return dataquality.AgentAdoptionReport{}, connect.NewError(connect.CodeResourceExhausted,
+			fmt.Errorf("the agent's daily adoption limit (%d) is spent; it resets within 24 hours", limit))
+	}
+	targetGUID := strings.TrimSpace(req.TargetGUID)
+	if req.Session.Kind == 1 {
+		targetGUID = req.Session.TargetGUID
+	}
+	if len(req.DraftIDs) == 0 && targetGUID == "" {
+		return dataquality.AgentAdoptionReport{}, connectErrorInvalid("name a target or the drafts to adopt")
+	}
+	var result adoptionPassResult
+	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqadopt:%d", agent.ID), func() error {
+		if len(req.DraftIDs) > 0 {
+			result = s.adoptQualitySuggestionsExplicitly(ctx, req, agent, &adopted)
+			return nil
+		}
+		session, sessionErr := s.ownerAdoptionSession(ctx, req.Session, agent, targetGUID)
+		if sessionErr != nil {
+			return sessionErr
+		}
+		result = s.adoptQualitySuggestionsForAgentLocked(ctx, session, time.Time{}, agent, &adopted, false)
+		return nil
+	})
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrQualityAgentBusy) {
+			return dataquality.AgentAdoptionReport{}, connect.NewError(connect.CodeAborted,
+				errors.New("another adoption pass is running; retry shortly"))
+		}
+		return dataquality.AgentAdoptionReport{}, lockErr
+	}
+	return result.report(), nil
+}
+
+// ownerAdoptionSession builds the target-scoped session one guarded pass needs.
+// A target session already carries the target; a conversation names it and the
+// target type is recovered from the queued drafts.
+func (s *DataQualityService) ownerAdoptionSession(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, targetGUID string) (*store.QualityAgentSessionMessage, error) {
+	if session.Kind == 1 {
+		copied := *session
+		copied.AgentID = agent.ID
+		return &copied, nil
+	}
+	targetType := storepb.MetaType(0)
+	pending, err := s.store.ListQualitySuggestions(ctx, &store.FindQualitySuggestionMessage{
+		AgentID:    &agent.ID,
+		TargetGUID: &targetGUID,
+		Statuses:   []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING},
+		Kinds:      []storepb.QualitySuggestionKind{storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT},
+		Limit:      intPointer(1),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) > 0 {
+		targetType = pending[0].TargetType
+	}
+	return &store.QualityAgentSessionMessage{
+		WorkspaceID: session.WorkspaceID,
+		AgentID:     agent.ID,
+		TargetGUID:  targetGUID,
+		TargetType:  targetType,
+		Kind:        1,
+	}, nil
 }
 
 // adoptionFailureReason keeps the real cause in the durable ledger. The generic
@@ -506,13 +795,20 @@ func (s *DataQualityService) AdoptQualityAgentPendingSuggestions(ctx context.Con
 // recordAdoptionAudit writes the permanent ledger row for one automatic
 // adoption. The rule path is internal, so no RPC interceptor sees this write; the
 // actor is the agent principal and the owner is named in the request payload.
-func (s *DataQualityService) recordAdoptionAudit(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage, rule *v1pb.QualityRule, state v1pb.QualityRuleState) {
-	request, err := structpb.NewStruct(map[string]any{
+func (s *DataQualityService) recordAdoptionAudit(ctx context.Context, session *store.QualityAgentSessionMessage, agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage, rule *v1pb.QualityRule, state v1pb.QualityRuleState, explicit bool, wake int32) {
+	payload := map[string]any{
 		"suggestion": suggestion.ResourceID,
 		"agent":      agent.ResourceID,
 		"target":     suggestion.TargetGUID,
 		"ruleState":  state.String(),
-	})
+		"session":    session.ResourceID,
+		"wake":       wake,
+		"explicit":   explicit,
+	}
+	if agent.OwnerPrincipalID != nil {
+		payload["requestedBy"] = common.FormatUserUID(int(*agent.OwnerPrincipalID))
+	}
+	request, err := structpb.NewStruct(payload)
 	if err != nil {
 		return
 	}
@@ -584,53 +880,7 @@ func (s *DataQualityService) targetIsCritical(ctx context.Context, targetGUID st
 
 // ruleTypeForDraftConfig maps the oneof arm of a model draft back to its rule type.
 func ruleTypeForDraftConfig(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, bool) {
-	if config == nil {
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
-	}
-	switch config.GetConfig().(type) {
-	case *storepb.QualityRuleConfig_RowCount:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, true
-	case *storepb.QualityRuleConfig_RowCountChange:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, true
-	case *storepb.QualityRuleConfig_NullPercent:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, true
-	case *storepb.QualityRuleConfig_Unique:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, true
-	case *storepb.QualityRuleConfig_UniqueCombination:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, true
-	case *storepb.QualityRuleConfig_AcceptedValues:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, true
-	case *storepb.QualityRuleConfig_Range:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, true
-	case *storepb.QualityRuleConfig_Regex:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, true
-	case *storepb.QualityRuleConfig_StringLength:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, true
-	case *storepb.QualityRuleConfig_ReferentialIntegrity:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, true
-	case *storepb.QualityRuleConfig_CrossColumn:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, true
-	case *storepb.QualityRuleConfig_Freshness:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, true
-	case *storepb.QualityRuleConfig_CustomSql:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, true
-	case *storepb.QualityRuleConfig_CelExpression:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, true
-	case *storepb.QualityRuleConfig_SchemaDrift:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, true
-	case *storepb.QualityRuleConfig_GroupCheck:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, true
-	case *storepb.QualityRuleConfig_Aggregate:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, true
-	case *storepb.QualityRuleConfig_CrossTable:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, true
-	case *storepb.QualityRuleConfig_StandardCode:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, true
-	case *storepb.QualityRuleConfig_SegmentCheck:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK, true
-	default:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
-	}
+	return dataquality.RuleTypeForDraftConfig(config)
 }
 
 func intPointer(value int) *int { return &value }

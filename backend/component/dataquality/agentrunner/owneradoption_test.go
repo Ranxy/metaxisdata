@@ -133,3 +133,21 @@ func lastWakeInstruction(messages []*store.QualityAgentTranscriptMessage) string
 	}
 	return ""
 }
+
+// An agent that selected adopt but has the mode off must not read an authority it
+// does not have: the fragment is dropped, the policy section says unavailable, and
+// the tool is absent even on an owner question.
+func TestAdoptionUnavailableKeepsTheAuthorityOutOfThePrompt(t *testing.T) {
+	t.Parallel()
+
+	agent := capabilityTestAgent("suggest", "adopt")
+	agent.AdoptionMode = store.QualityAgentAdoptionModeOff
+	prompt := renderSystemPrompt(monitorSpec(), agent, "en-US")
+	require.NotContains(t, prompt, "Adoption authority:")
+	require.Contains(t, prompt, "Adoption is unavailable")
+
+	engine := NewEngine(newFakeStore())
+	set, err := engine.toolSet(testSession(), agent, &wakeControl{ownerAsked: true})
+	require.NoError(t, err)
+	require.NotContains(t, set.Names(), "adopt_pending_drafts")
+}

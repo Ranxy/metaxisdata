@@ -8,6 +8,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -84,6 +85,12 @@ func promptFor(spec *Spec, sessionAgent *store.QualityAgentMessage) *agent.Promp
 	}
 	sections := append([]agent.PromptSection(nil), spec.Prompt.Sections()...)
 	for _, profile := range selectedCapabilities(sessionAgent) {
+		// The adopt fragment claims an authority the runtime does not grant while
+		// adoption is off or the agent is inactive; the policy section below states
+		// that case instead.
+		if profile.ID == agentcapability.Adopt && !dataquality.AgentAdoptionReady(sessionAgent) {
+			continue
+		}
 		sections = append(sections, profile.Prompt(spec)...)
 	}
 	sections = append(sections, agent.PromptSection{Name: "adoption-policy", Text: adoptionPolicySection(sessionAgent)})

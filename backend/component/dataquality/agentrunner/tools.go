@@ -185,6 +185,8 @@ func (e *Engine) executeAdoptPendingDrafts(
 // agentSessionOf maps the stored session onto the shared tool package's view.
 func agentSessionOf(session *store.QualityAgentSessionMessage) quality.AgentSession {
 	return quality.AgentSession{
+		WorkspaceID:      session.WorkspaceID,
+		AgentID:          session.AgentID,
 		TargetGUID:       session.TargetGUID,
 		TargetType:       storepb.MetaType(session.TargetType),
 		ResourceID:       session.ResourceID,

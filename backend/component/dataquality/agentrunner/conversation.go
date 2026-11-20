@@ -3,9 +3,12 @@ package agentrunner
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -113,15 +116,24 @@ func (e *Engine) conversationToolResult(ctx context.Context, session *store.Qual
 			return "", errors.Wrap(err, "failed to list the agent pending proposals")
 		}
 		type proposalView struct {
-			Target string `json:"target"`
-			Title  string `json:"title"`
+			ID         string  `json:"id"`
+			Target     string  `json:"target"`
+			Title      string  `json:"title"`
+			RuleType   string  `json:"ruleType,omitempty"`
+			Confidence float64 `json:"confidence"`
 		}
 		views := make([]proposalView, 0, len(rows))
 		for _, row := range rows {
-			views = append(views, proposalView{
-				Target: row.TargetGUID,
-				Title:  row.Payload.GetRule().GetTitle(),
-			})
+			view := proposalView{
+				ID:         common.FormatWorkspace(session.WorkspaceID) + "/qualitySuggestions/" + row.ResourceID,
+				Target:     row.TargetGUID,
+				Title:      row.Payload.GetRule().GetTitle(),
+				Confidence: row.Confidence,
+			}
+			if ruleType, ok := dataquality.RuleTypeForDraftConfig(row.Payload.GetRule().GetConfig()); ok {
+				view.RuleType = strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
+			}
+			views = append(views, view)
 		}
 		return marshalJSON(map[string]any{"proposals": views})
 	default:
