@@ -74,10 +74,23 @@ Applies everywhere; language-specific rules are in the nested files.
 
 - Follow the Google style guides (Go: https://google.github.io/styleguide/go/). API and proto design follows AIPs (https://google.aip.dev/general), which win when they conflict with the proto guide — enum values use `HELLO`, not `TYPE_HELLO`.
 - Write clean, minimal code: fewer lines is better, and simplicity beats cleverness.
-- Comment only what is essential to understand functionality or is non-obvious.
+- Comment only the essential: the reason, the invariant, the constraint. Don't narrate what the next line does; the code already says that.
 - Use American English. Avoid plural names like `xxxList`, which invite singular/plural ambiguity.
 - Use conventional commit messages (e.g. `fix(lineage): ...`).
 - Run the formatter and linter for the area you touched before committing; don't hand-format.
+
+## Tests
+
+- Every case answers "which future diff turns this red?" If the only answer is an edit to the test, delete the case.
+- A case exists for one of three reasons: a bug that happened (it fails on the pre-fix code, and its name or comment states the bug in black-box terms — the Go suite already names tests as sentences, such as `TestGoRecoversAPanickingRunner`), a derived property (a boundary, an invariant, ordering, a round-trip, a paging cursor), or bookkeeping that is easy to forget (registry completeness, a field's lifecycle, a branch that must not fire, a value copied from an outside spec).
+- Test the public contract: inputs to outputs, the emitted event, the stored row's observable fields. Don't snapshot a helper tuple, an internal page table or another encoding that can change without changing behavior.
+- Go: table-driven with `t.Run`; `t.Parallel()` for independent cases; `t.Cleanup` for teardown; `require` by default and `assert` where the test should keep going. Tests are hermetic — `go test ./...` needs no PostgreSQL, MySQL or Docker; anything that needs a real server carries the `integration` tag.
+- TS: Vitest, colocated `*.test.ts(x)`. `utils/`, `lib/` and `composables/` are under per-file coverage thresholds, so a new file there without a test fails the run; a component or page is tested through one concrete interaction instead.
+- Mock an external or slow boundary only when the assertion still checks a result, a state change, an output or an error. Don't replace the code under test; Go's fakes are hand-written (the module has no mock framework).
+- An ordering or race case forces the interleaving deterministically (a channel, a `sync.WaitGroup`, an emitted event), never a `sleep` that is "long enough in practice".
+- Don't weaken a case to make it pass or run faster: no dropped assertion, no stubbed code under test, no tolerance widened without measured inputs. A changed contract gets a rewritten case.
+- Add a case beside the suite that owns the behavior rather than in a new file for one case.
+
 
 ## Development Workflow
 
