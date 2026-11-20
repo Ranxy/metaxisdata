@@ -10997,8 +10997,12 @@ components:
             properties:
                 name:
                     type: string
+                    description: |-
+                        An existing profile whose stored base URL and API key are used when the
+                         request does not carry its own.
                 apiKey:
                     type: string
+                    description: Overrides the API key stored on the named profile.
                 providerType:
                     enum:
                         - LLM_PROVIDER_TYPE_UNSPECIFIED
@@ -11008,6 +11012,11 @@ components:
                         - LLM_PROVIDER_TYPE_CUSTOM
                     type: string
                     format: enum
+                baseUrl:
+                    type: string
+                    description: |-
+                        Overrides the profile's stored base URL. A custom provider has no default,
+                         so the request must carry one when no profile is named.
         FetchLLMModelsResponse:
             type: object
             properties:

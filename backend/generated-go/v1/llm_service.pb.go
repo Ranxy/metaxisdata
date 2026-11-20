@@ -579,10 +579,16 @@ func (x *DeleteLLMProviderProfileRequest) GetName() string {
 }
 
 type FetchLLMModelsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	ApiKey        string                 `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
-	ProviderType  LLMProviderType        `protobuf:"varint,3,opt,name=provider_type,json=providerType,proto3,enum=metaxisdata.v1.LLMProviderType" json:"provider_type,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// An existing profile whose stored base URL and API key are used when the
+	// request does not carry its own.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Overrides the API key stored on the named profile.
+	ApiKey       string          `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	ProviderType LLMProviderType `protobuf:"varint,3,opt,name=provider_type,json=providerType,proto3,enum=metaxisdata.v1.LLMProviderType" json:"provider_type,omitempty"`
+	// Overrides the profile's stored base URL. A custom provider has no default,
+	// so the request must carry one when no profile is named.
+	BaseUrl       string `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -636,6 +642,13 @@ func (x *FetchLLMModelsRequest) GetProviderType() LLMProviderType {
 		return x.ProviderType
 	}
 	return LLMProviderType_LLM_PROVIDER_TYPE_UNSPECIFIED
+}
+
+func (x *FetchLLMModelsRequest) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
 }
 
 type FetchLLMModelsResponse struct {
@@ -724,11 +737,12 @@ const file_v1_llm_service_proto_rawDesc = "" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\":\n" +
 	"\x1fDeleteLLMProviderProfileRequest\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\x8a\x01\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\xa5\x01\n" +
 	"\x15FetchLLMModelsRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
 	"\aapi_key\x18\x02 \x01(\tR\x06apiKey\x12D\n" +
-	"\rprovider_type\x18\x03 \x01(\x0e2\x1f.metaxisdata.v1.LLMProviderTypeR\fproviderType\"5\n" +
+	"\rprovider_type\x18\x03 \x01(\x0e2\x1f.metaxisdata.v1.LLMProviderTypeR\fproviderType\x12\x19\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\"5\n" +
 	"\x16FetchLLMModelsResponse\x12\x1b\n" +
 	"\tmodel_ids\x18\x01 \x03(\tR\bmodelIds*\xb2\x01\n" +
 	"\x0fLLMProviderType\x12!\n" +

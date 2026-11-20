@@ -262,7 +262,7 @@
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
 import { Plus, RefreshCw, Search, Sparkles } from "lucide-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createProfile,
@@ -367,15 +367,6 @@ const formData = reactive({
   maxOutputTokens: "",
   enabledModels: [] as string[],
 });
-
-// Keep base_url in sync with provider type selection.
-watch(
-  () => formData.providerType,
-  (t) => {
-    const def = getBuiltinByEnum(t);
-    formData.baseUrl = def?.defaultBaseUrl ?? "";
-  }
-);
 
 const availableModels = ref<string[]>([]);
 const modelSearch = ref("");
@@ -496,6 +487,8 @@ function autoTitle(p: LlmProviderProfile): string {
 /** Radix hands back a string; the form stores the enum. */
 function setProviderType(value: unknown) {
   formData.providerType = Number(value) as LLMProviderType;
+  const def = getBuiltinByEnum(formData.providerType);
+  formData.baseUrl = def?.defaultBaseUrl ?? "";
 }
 
 function providerLabel(type: LLMProviderType): string {
@@ -570,7 +563,10 @@ async function fetchModels() {
   try {
     let modelIds: string[];
     if (editingProfile.value && !formData.apiKey.trim()) {
-      const resp = await fetchModelsByProfile(editingProfile.value.name);
+      const resp = await fetchModelsByProfile(
+        editingProfile.value.name,
+        formData.baseUrl.trim()
+      );
       modelIds = resp.modelIds;
     } else {
       const apiKey = formData.apiKey.trim();
@@ -579,7 +575,11 @@ async function fetchModels() {
         isFetchingModels.value = false;
         return;
       }
-      const resp = await fetchModelsByKey(formData.providerType, apiKey);
+      const resp = await fetchModelsByKey(
+        formData.providerType,
+        apiKey,
+        formData.baseUrl.trim()
+      );
       modelIds = resp.modelIds;
     }
 

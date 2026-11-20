@@ -80,3 +80,53 @@ func TestBuildLLMProfileUpdateWithAMask(t *testing.T) {
 	_, err = buildLLMProfileUpdate(&v1pb.LlmProviderProfile{BaseUrl: "not-a-url"}, []string{"base_url"})
 	require.Error(t, err)
 }
+
+// Listing models for a custom provider used to resolve only the provider type,
+// so the user-entered base URL never reached the request and every fetch failed.
+func TestResolveFetchModelsBaseURL(t *testing.T) {
+	t.Parallel()
+
+	const (
+		requestURL = "https://request.example.com"
+		storedURL  = "https://stored.example.com"
+	)
+
+	tests := []struct {
+		name         string
+		requestURL   string
+		storedURL    string
+		providerType v1pb.LLMProviderType
+		wantBaseURL  string
+	}{
+		{
+			name:         "the request base URL wins",
+			requestURL:   requestURL,
+			storedURL:    storedURL,
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  requestURL,
+		},
+		{
+			name:         "the stored profile base URL is the fallback",
+			storedURL:    storedURL,
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  storedURL,
+		},
+		{
+			name:         "a built-in provider type falls back to its default",
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_OPENAI,
+			wantBaseURL:  "https://api.openai.com",
+		},
+		{
+			name:         "a custom provider type has no default",
+			providerType: v1pb.LLMProviderType_LLM_PROVIDER_TYPE_CUSTOM,
+			wantBaseURL:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.wantBaseURL, resolveFetchModelsBaseURL(tt.requestURL, tt.storedURL, tt.providerType))
+		})
+	}
+}

@@ -178,3 +178,56 @@ describe("LLMProviderManagementPage max output tokens", () => {
     wrapper.unmount();
   });
 });
+
+describe("LLMProviderManagementPage fetch models", () => {
+  const CUSTOM_PROFILE = create(LlmProviderProfileSchema, {
+    name: "llm-provider-profiles/p2",
+    title: "In-house",
+    type: LLMProviderType.LLM_PROVIDER_TYPE_CUSTOM,
+    baseUrl: "https://llm.example.com/v1",
+    models: [create(LlmProviderModelSchema, { name: "m1", enabled: true })],
+    maskedApiKey: "abc…789",
+    maxOutputTokens: 0,
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listProfiles.mockResolvedValue({ profiles: [CUSTOM_PROFILE] });
+    mocks.fetchModelsByKey.mockResolvedValue({ modelIds: ["m1"] });
+    mocks.fetchModelsByProfile.mockResolvedValue({ modelIds: ["m1"] });
+  });
+
+  it("sends the typed base URL when fetching models for a custom provider", async () => {
+    const wrapper = await mountPage();
+    const entry = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("In-house"));
+    expect(entry).toBeTruthy();
+    await entry?.trigger("click");
+    await flushPromises();
+
+    // Editing a profile keeps its stored base URL; it used to be reset to the
+    // provider type's default (empty for custom) on selection.
+    const baseUrlInput = wrapper
+      .findAll("input")
+      .find((input) => input.element.value === "https://llm.example.com/v1");
+    expect(baseUrlInput).toBeTruthy();
+
+    await wrapper.find('input[type="password"]').setValue("sk-new");
+    const fetchButton = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(i18n.global.t("llmProvider.fetchModels"))
+      );
+    expect(fetchButton).toBeTruthy();
+    await fetchButton?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.fetchModelsByKey).toHaveBeenCalledWith(
+      LLMProviderType.LLM_PROVIDER_TYPE_CUSTOM,
+      "sk-new",
+      "https://llm.example.com/v1"
+    );
+  });
+});

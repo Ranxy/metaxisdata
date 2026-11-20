@@ -260,37 +260,12 @@ func (s *LLMService) DeleteLLMProviderProfile(ctx context.Context, req *connect.
 }
 
 func (s *LLMService) FetchLLMModels(ctx context.Context, req *connect.Request[v1pb.FetchLLMModelsRequest]) (*connect.Response[v1pb.FetchLLMModelsResponse], error) {
-	var baseURL, apiKey string
-
-	if req.Msg.Name != "" {
-		resourceID := extractLLMProfileResourceID(req.Msg.Name)
-		if resourceID == "" {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid profile name"))
-		}
-		prof, err := s.store.GetLLMProfile(ctx, &store.FindLLMProfileMessage{ResourceID: &resourceID})
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM profile"))
-		}
-		if prof == nil {
-			return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", req.Msg.Name))
-		}
-		baseURL = prof.Metadata.BaseUrl
-		apiKey = req.Msg.ApiKey
-		if apiKey == "" {
-			apiKey = prof.APIKey
-		}
-	} else if req.Msg.ProviderType != v1pb.LLMProviderType_LLM_PROVIDER_TYPE_UNSPECIFIED {
-		baseURL = getDefaultBaseURL(providerTypeToString(req.Msg.ProviderType))
-		if baseURL == "" {
-			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("cannot resolve base URL for the given provider type"))
-		}
-		apiKey = req.Msg.ApiKey
-	} else {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("either name or provider_type is required"))
+	baseURL, apiKey, err := s.resolveFetchModelsTarget(ctx, req.Msg)
+	if err != nil {
+		return nil, err
 	}
-
-	if baseURL == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("base_url is required"))
+	if err := llm.ValidateBaseURL(baseURL); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	modelIDs, err := llm.FetchModels(ctx, baseURL, apiKey)
@@ -301,6 +276,53 @@ func (s *LLMService) FetchLLMModels(ctx context.Context, req *connect.Request[v1
 	return connect.NewResponse(&v1pb.FetchLLMModelsResponse{
 		ModelIds: modelIDs,
 	}), nil
+}
+
+// resolveFetchModelsTarget picks the endpoint and credential for a model
+// listing. A request value wins over what the named profile stores, and a
+// built-in provider type falls back to its default base URL.
+func (s *LLMService) resolveFetchModelsTarget(ctx context.Context, msg *v1pb.FetchLLMModelsRequest) (string, string, error) {
+	var apiKey, storedBaseURL string
+
+	switch {
+	case msg.GetName() != "":
+		resourceID := extractLLMProfileResourceID(msg.GetName())
+		if resourceID == "" {
+			return "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("invalid profile name"))
+		}
+		prof, err := s.store.GetLLMProfile(ctx, &store.FindLLMProfileMessage{ResourceID: &resourceID})
+		if err != nil {
+			return "", "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get LLM profile"))
+		}
+		if prof == nil {
+			return "", "", connect.NewError(connect.CodeNotFound, errors.Errorf("LLM profile %q not found", msg.GetName()))
+		}
+		storedBaseURL = prof.Metadata.BaseUrl
+		apiKey = msg.GetApiKey()
+		if apiKey == "" {
+			apiKey = prof.APIKey
+		}
+	case msg.GetProviderType() != v1pb.LLMProviderType_LLM_PROVIDER_TYPE_UNSPECIFIED:
+		apiKey = msg.GetApiKey()
+	default:
+		return "", "", connect.NewError(connect.CodeInvalidArgument, errors.New("either name or provider_type is required"))
+	}
+
+	return resolveFetchModelsBaseURL(msg.GetBaseUrl(), storedBaseURL, msg.GetProviderType()), apiKey, nil
+}
+
+// resolveFetchModelsBaseURL applies the base URL precedence for a model
+// listing: an explicit request value, then the named profile's stored value,
+// then the built-in provider default. A custom provider has no default, so it
+// resolves to an empty string and the caller rejects it.
+func resolveFetchModelsBaseURL(requestBaseURL, storedBaseURL string, providerType v1pb.LLMProviderType) string {
+	if requestBaseURL != "" {
+		return requestBaseURL
+	}
+	if storedBaseURL != "" {
+		return storedBaseURL
+	}
+	return getDefaultBaseURL(providerTypeToString(providerType))
 }
 
 // ---- conversion helpers ----

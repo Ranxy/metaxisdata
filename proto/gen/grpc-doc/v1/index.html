@@ -32487,14 +32487,15 @@ GetLineage.</p></td>
                   <td>name</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>An existing profile whose stored base URL and API key are used when the
+request does not carry its own. </p></td>
                 </tr>
               
                 <tr>
                   <td>api_key</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Overrides the API key stored on the named profile. </p></td>
                 </tr>
               
                 <tr>
@@ -32502,6 +32503,14 @@ GetLineage.</p></td>
                   <td><a href="#metaxisdata.v1.LLMProviderType">LLMProviderType</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Overrides the profile&#39;s stored base URL. A custom provider has no default,
+so the request must carry one when no profile is named. </p></td>
                 </tr>
               
             </tbody>

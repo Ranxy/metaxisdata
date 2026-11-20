@@ -124,9 +124,15 @@ message DeleteLLMProviderProfileRequest {
 }
 
 message FetchLLMModelsRequest {
+  // An existing profile whose stored base URL and API key are used when the
+  // request does not carry its own.
   string name = 1;
+  // Overrides the API key stored on the named profile.
   string api_key = 2;
   LLMProviderType provider_type = 3;
+  // Overrides the profile's stored base URL. A custom provider has no default,
+  // so the request must carry one when no profile is named.
+  string base_url = 4;
 }
 
 message FetchLLMModelsResponse {
