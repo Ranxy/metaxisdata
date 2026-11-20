@@ -128,7 +128,7 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
 
   /**
    * The LLM provider profile the quality analyses use, as a profile resource
-   * name. Empty means the first allowed profile.
+   * name. Empty means the first enabled profile.
    *
    * @generated from field: string llm_provider_profile = 2;
    */

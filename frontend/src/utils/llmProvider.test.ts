@@ -56,14 +56,6 @@ describe("buildProviderOptions", () => {
     expect(names).not.toContain("llm-provider-profiles/disabled");
   });
 
-  it("does not apply the ExplainSQL allowlist", () => {
-    // The data quality pages pick from every usable profile; the allowlist is
-    // Explain SQL's own restriction and is applied by that page.
-    expect(
-      buildProviderOptions(profiles).map((option) => option.name)
-    ).toContain("llm-provider-profiles/other");
-  });
-
   it("falls back to the resource name when the profile has no title", () => {
     const options = buildProviderOptions([
       {

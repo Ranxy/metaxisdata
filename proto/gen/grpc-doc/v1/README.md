@@ -4227,7 +4227,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | enable_llm_analysis | [bool](#bool) |  | Whether the model-backed paths are enabled: the rule drafts, failure explanations and column labels, and the quality agents&#39; model wakes. Off by default: the rule engine and the agents&#39; deterministic paths are fully offline. |
-| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first allowed profile. |
+| llm_provider_profile | [string](#string) |  | The LLM provider profile the quality analyses use, as a profile resource name. Empty means the first enabled profile. |
 | store_failure_samples | [bool](#bool) |  | Whether failed checks keep the sampled rows as evidence. Off means a result records its counts but no values. |
 | failure_sample_limit | [int32](#int32) |  | How many failed rows a result keeps. Zero means the server default (20); capped at 100. |
 | default_schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | The schedule interval a target starts with when it gets its first rule. Zero means the server default (one hour). Existing targets keep their own schedule. |

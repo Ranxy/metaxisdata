@@ -80,9 +80,10 @@ func setupQualityMySQLFixture(t *testing.T, withReadOnlyDataSource bool) *qualit
 }
 
 // createQualityAgentProvider creates one LLM provider profile with the named models
-// enabled and returns its resource name. The workspace allowlist is empty by default,
-// so the profile is usable immediately. The base URL is never dialed by these
-// scenarios: model analysis stays off, so the agent runs its deterministic paths.
+// enabled and returns its resource name. An enabled profile is usable immediately:
+// the workspace allowlist restricts Explain SQL only and does not apply to agents.
+// The base URL is never dialed by these scenarios: model analysis stays off, so the
+// agent runs its deterministic paths.
 func (f *qualityFixture) createQualityAgentProvider(t *testing.T, models ...string) string {
 	t.Helper()
 

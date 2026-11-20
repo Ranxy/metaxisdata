@@ -356,7 +356,7 @@ type DataQualitySetting struct {
 	// default: the rule engine and the agents' deterministic paths are fully offline.
 	EnableLlmAnalysis bool `protobuf:"varint,1,opt,name=enable_llm_analysis,json=enableLlmAnalysis,proto3" json:"enable_llm_analysis,omitempty"`
 	// The LLM provider profile the quality analyses use, as a profile resource
-	// name. Empty means the first allowed profile.
+	// name. Empty means the first enabled profile.
 	LlmProviderProfile string `protobuf:"bytes,2,opt,name=llm_provider_profile,json=llmProviderProfile,proto3" json:"llm_provider_profile,omitempty"`
 	// Whether failed checks keep the sampled rows as evidence. Off means a result
 	// records its counts but no values.

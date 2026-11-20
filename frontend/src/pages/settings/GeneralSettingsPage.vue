@@ -324,8 +324,9 @@ const domainsInput = ref("");
 // for a named provider.
 const ssoEmailIdentityIdpsInput = ref("");
 
-// Explain SQL, the data quality analyses and the quality agents may only use the
-// provider profiles selected here. An empty list means "every enabled profile is allowed".
+// Explain SQL may only use the provider profiles selected here; the data quality
+// analyses and the quality agents choose their profile in their own settings. An
+// empty list means "every enabled profile is allowed".
 const llmProfiles = ref<{ name: string; title: string }[]>([]);
 const allowedProfiles = ref<string[]>([]);
 // Listing profiles needs its own permission, so a failure here degrades to a

@@ -66,10 +66,10 @@ func TestDecideAgentConfig(t *testing.T) {
 		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 	})
 
-	t.Run("an enabled profile with no enabled pair is not defaulted", func(t *testing.T) {
+	t.Run("no enabled config leaves the agent without a model", func(t *testing.T) {
 		t.Parallel()
-		// Nothing is configured for the profile, so even a named model cannot resolve;
-		// there is no "first enabled model" fallback for an agent.
+		// The registry enables nothing, so even a named pair cannot resolve; there is
+		// no "first enabled model" fallback for an agent.
 		_, err := decideAgentConfig(nil, providerTestAgent("llm-provider-profiles/main", "fast"), true)
 		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 	})

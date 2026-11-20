@@ -413,6 +413,64 @@ describe("QualityAgentsSettingsPage", () => {
     );
   });
 
+  it("treats a profile outside the ExplainSQL allowlist as available", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/e",
+        displayName: "Agent E",
+        owner: "users/1",
+        // Enabled, but deliberately absent from the workspace allowlist.
+        providerProfile: "llm-provider-profiles/excluded",
+        providerModel: "x",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.PAUSED,
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain("Excluded · x");
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("qualityAgents.providerUnavailable")
+    );
+
+    await openEdit(wrapper);
+    expect(vm(wrapper).providerUnavailable).toBe(false);
+    expect(vm(wrapper).modelUnavailable).toBe(false);
+    expect(vm(wrapper).modelOptions).toEqual(["x"]);
+  });
+
+  it("marks a stored pair whose profile enables no model as unavailable", async () => {
+    mocks.listQualityAgents.mockResolvedValue([
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/f",
+        displayName: "Agent F",
+        owner: "users/1",
+        providerProfile: "llm-provider-profiles/disabled",
+        providerModel: "idle",
+        capabilities: ["suggest"],
+        databases: ["instances/i/databases/d"],
+        state: QualityAgentState.PAUSED,
+      }),
+    ]);
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      `Disabled · idle (${i18n.global.t("qualityAgents.providerUnavailable")})`
+    );
+
+    await openEdit(wrapper);
+    expect(vm(wrapper).providerUnavailable).toBe(true);
+    expect(vm(wrapper).modelUnavailable).toBe(true);
+    // The stale pair is kept and an unrelated edit can still be saved.
+    expect(vm(wrapper).form.providerProfile).toBe(
+      "llm-provider-profiles/disabled"
+    );
+    expect(
+      dialogButton(i18n.global.t("qualityAgents.saveAction"))?.disabled
+    ).toBe(false);
+  });
+
   it("shows not-configured for an agent without a pair", async () => {
     mocks.listQualityAgents.mockResolvedValue([
       create(QualityAgentSchema, {

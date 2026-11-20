@@ -89,11 +89,8 @@ func (s *SettingService) UpdateWorkspaceProfileSetting(ctx context.Context, requ
 
 // applyWorkspaceProfileUpdate merges the fields named by paths from update into
 // setting. Validation failures are returned as Connect errors so the RPC can pass
-// them through unchanged.
-//
-// Checks that span several fields run after the loop, which makes the result
-// independent of the mask's field order. (The MCP check stays in the RPC, next to
-// the other cross-setting invariant about external_url.)
+// them through unchanged. The check that spans settings — MCP needs an
+// external_url — stays in the RPC.
 func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, update *v1pb.WorkspaceProfileSetting, paths []string) error {
 	var (
 		dataQuality        *storepb.DataQualitySetting
@@ -155,12 +152,7 @@ func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, updat
 	}
 
 	if dataQualityUpdated {
-		// A cleared data_quality message (nil) resets the workspace to the
-		// defaults. The named profile is the analyses' own choice; the Explain SQL
-		// allowlist deliberately does not apply to it.
-		if err := validateDataQualityProviderProfile(dataQuality.GetLlmProviderProfile()); err != nil {
-			return err
-		}
+		// A cleared data_quality message (nil) resets the workspace to the defaults.
 		setting.DataQuality = dataQuality
 	}
 	return nil
@@ -245,22 +237,6 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
 	}
 	return result, nil
-}
-
-// validateDataQualityProviderProfile checks the provider a data quality update
-// names. Empty means "the first enabled profile"; otherwise it must be a profile
-// resource name. Whether the profile currently enables a model is a runtime
-// concern, not a settings-write one: the analyses resolve it per call, and
-// refusing the save would make unrelated settings uneditable while a profile is
-// disabled.
-func validateDataQualityProviderProfile(profile string) error {
-	if profile == "" {
-		return nil
-	}
-	if !validLLMProviderProfileName(profile) {
-		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", profile))
-	}
-	return nil
 }
 
 // validLLMProviderProfileName reports whether profile is a profile resource name.

@@ -70,7 +70,7 @@ export const DIGEST_WEEKDAYS: readonly DayOfWeek[] = [
 
 export interface DataQualitySettingsForm {
   enableLlmAnalysis: boolean;
-  /** Format: a profile resource name; empty means the first allowed profile. */
+  /** Format: a profile resource name; empty means the first enabled profile. */
   llmProviderProfile: string;
   storeFailureSamples: boolean;
   /** Blank means the server default (20). */

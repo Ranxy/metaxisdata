@@ -713,6 +713,7 @@ import {
   listAllQualityCodeTables,
   updateQualityCodeTable,
 } from "@/api/data-quality";
+import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
@@ -856,7 +857,7 @@ const canDeleteCodeTable = computed(() =>
 const isDirty = computed(() => JSON.stringify(form.value) !== original.value);
 
 /**
- * Radix's Select cannot hold an empty string item, so "the first allowed
+ * Radix's Select cannot hold an empty string item, so "the first enabled
  * profile" needs a sentinel; it is mapped back to "" on the way into the form.
  */
 const AUTO_PROFILE = "-";
@@ -925,8 +926,14 @@ async function load() {
 /** The profiles that currently enable a model; the ExplainSQL allowlist does not apply. */
 async function loadProfiles() {
   try {
-    const response = await listProfiles({ pageSize: 100 });
-    profileOptions.value = buildProviderOptions(response.profiles);
+    const profiles = await listAll(async (pageToken) => {
+      const response = await listProfiles({ pageSize: 100, pageToken });
+      return {
+        items: response.profiles,
+        nextPageToken: response.nextPageToken,
+      };
+    });
+    profileOptions.value = buildProviderOptions(profiles);
     // A configured profile that no longer enables a model would render as an
     // empty select; clear it so the effective choice stays visible and honest.
     if (

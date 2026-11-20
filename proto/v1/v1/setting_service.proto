@@ -168,7 +168,7 @@ message DataQualitySetting {
   bool enable_llm_analysis = 1;
 
   // The LLM provider profile the quality analyses use, as a profile resource
-  // name. Empty means the first allowed profile.
+  // name. Empty means the first enabled profile.
   string llm_provider_profile = 2;
 
   // Whether failed checks keep the sampled rows as evidence. Off means a result

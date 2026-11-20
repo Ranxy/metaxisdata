@@ -157,6 +157,26 @@ func TestApplyWorkspaceProfileUpdateDataQualityProviderIgnoresExplainSQLAllowlis
 	require.Equal(t, "llm-provider-profiles/slow", setting.DataQuality.GetLlmProviderProfile())
 }
 
+// A request may name the allowlist and the analyses' profile together; the order
+// of the mask does not matter because the two are no longer cross-checked.
+func TestApplyWorkspaceProfileUpdateDataQualityAndAllowlistTogether(t *testing.T) {
+	t.Parallel()
+
+	update := &v1pb.WorkspaceProfileSetting{
+		AllowedLlmProviderProfiles: []string{"llm-provider-profiles/fast"},
+		DataQuality:                &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/slow"},
+	}
+	for _, paths := range [][]string{
+		{"data_quality", "allowed_llm_provider_profiles"},
+		{"allowed_llm_provider_profiles", "data_quality"},
+	} {
+		setting := &storepb.WorkspaceProfileSetting{}
+		require.NoError(t, applyWorkspaceProfileUpdate(setting, update, paths), "mask order %v", paths)
+		require.Equal(t, []string{"llm-provider-profiles/fast"}, setting.GetAllowedLlmProviderProfiles())
+		require.Equal(t, "llm-provider-profiles/slow", setting.DataQuality.GetLlmProviderProfile())
+	}
+}
+
 // Dropping the allowlist check leaves the resource-name shape as the only
 // write-time rule, and a rejected update is still not applied.
 func TestApplyWorkspaceProfileUpdateDataQualityRejectsMalformedProvider(t *testing.T) {
@@ -420,15 +440,6 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 	columnCapped, err := normalizeDataQualitySetting(&v1pb.DataQualitySetting{DailyColumnAnalysisLimit: dataquality.MaxDailyColumnAnalysisLimit})
 	require.NoError(t, err)
 	require.Equal(t, int32(dataquality.MaxDailyColumnAnalysisLimit), columnCapped.GetDailyColumnAnalysisLimit())
-}
-
-func TestValidateDataQualityProviderProfile(t *testing.T) {
-	t.Parallel()
-
-	require.NoError(t, validateDataQualityProviderProfile(""))
-	require.NoError(t, validateDataQualityProviderProfile("llm-provider-profiles/a"))
-	require.Equal(t, connect.CodeInvalidArgument,
-		connect.CodeOf(validateDataQualityProviderProfile("a")))
 }
 
 func TestConvertDataQualitySettingRoundTrip(t *testing.T) {

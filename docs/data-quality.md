@@ -585,8 +585,9 @@ create, change or run anything. See [mcp.md](mcp.md).
 
 ## Settings
 
-Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (profile-level: the analyses use
-that profile's first enabled model), failure-sample storage and count (20 by default, at most 100),
+Settings → Data Quality controls the model-analysis switch and the analyses' default provider profile (empty means the first enabled
+profile; profile-level, the analyses use that profile's first enabled model), failure-sample storage and count (20 by default, at most
+100),
 the **check time zone** (IANA name, empty = UTC) used to resolve time variables in filters and custom SQL and a cron schedule saved
 without a zone, the default schedule a target starts with, the daily execution ceiling (only scheduled scans pause at it — **Run now**
 still works), the daily AI analysis ceiling (L1+L2, default 10,000), the concurrent LLM calls (default 8, range 1–64), whether raw
@@ -624,7 +625,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | A cron target did not run at the expected time | The target's own time zone applies; DST gaps are skipped and downtime is not caught up. The header's next-run time is the authority. |
 | An execution stays pending or ends abandoned | The connection budget was busy or the server restarted. Scheduled checks retry later in the cycle (three attempts); manual runs do not. |
 | No notification for a failure | The issue was already open, the check is muted, or more than ten checks failed and one summary replaced them. |
-| Model buttons are disabled | Model analysis is off, no enabled provider profile exists, or the caller lacks `.suggest` / `.explain`. |
+| A model action is unavailable | Model analysis is off, or the caller lacks `.suggest` / `.explain`. With the switch on but no provider profile enabling a model, the action is still offered and the call fails with `FailedPrecondition`. |
 | An AI analysis is rejected as over quota | Today's AI usage shows the limit; raise the daily AI ceiling or concurrent LLM calls. The change applies without a restart. |
 | A model rejects the output budget | The profile's **Max output tokens** exceeds the model's cap; after one retry at 4,096, lower the budget or use another model. |
 | A label suggestion cannot be accepted | Profile the columns first; suggestions need profiles fresher than seven days. |
