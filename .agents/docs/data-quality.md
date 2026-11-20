@@ -96,7 +96,7 @@ Dialect families: MySQL family / TiDB / MariaDB / OceanBase / StarRocks / Doris 
 
 Column capabilities are maintained per engine family as allow-lists (`comparison`, `grouping`, `countDistinct`, `regex`, `length`, `extrema`, `text`, plus `noColumnCount` and `noNullTest` exceptions): a type not listed has zero capability and is rejected at save time rather than guessed at run time. `ColumnKind` alone only decides how a literal binds and is not enough. Profile facts use the same table, so profiles and rule validation cannot drift. Notable consequences: arrays cannot bind scalar values, MSSQL `text/ntext/image` cannot be counted/compared/lengthed, binary types show extrema and top values as `0x…`, and PostgreSQL user-defined types keep a deliberately conservative historical allowance.
 
-A value bound to an enum-typed column must be a declared label; the check sits in the shared conversion path of filters, accepted-values lists, range bounds and custom null values, so validation and compilation cannot disagree. PostgreSQL labels come from the schema resource's `enum_types` metadata (the type's own schema is looked up), the MySQL family's from the inline `enum(...)` type. The lookup is best effort: without labels (domain, composite, unsynced schema, engine without enums) a value is accepted as before. A stored rule violating it fails as `ERROR(UNSUPPORTED)` naming the labels instead of SQLSTATE 22P02.
+A value bound to an enum-typed column must be a declared label; the check sits in the shared conversion path of filters, accepted-values lists and custom null values. PostgreSQL matches labels exactly; a MySQL-family ENUM compares through its collation (case-insensitive unless binary) and accepts the implicit "" member. Labels come from the schema resource's `enum_types` metadata, or the inline `enum(...)` type. Best effort: without labels (domain, composite, unsynced schema, engine without enums) values are accepted. The error names the column and a bounded label list; a stored violation fails as `ERROR(UNSUPPORTED)`, while a PG domain or a label renamed since the last sync can still reach SQLSTATE 22P02.
 
 Judgment (`Evaluate`) uses strict threshold comparison — equal to a bound passes. Empty data is decided by `on_empty ∈ {NOT_EVALUATED (default), PASS, FAIL}`, written into the threshold snapshot on the execution. Freshness lag is computed in SQL with the database clock. `row_count_change` compares against the latest `COMPLETED` execution of the *current* target with `total_rows > 0` inside a recency window (≤7 days and ≤2× the target cadence; zero-row runs are skipped and an expired candidate means no baseline); baseline value and time are stored on the execution. `aggregate` observes one aggregate (percentile only on PostgreSQL and MSSQL; `COUNT` is rejected because it duplicates `row_count`); `group_check` counts groups; `segment_check` compares the current segment set against recent baseline runs (see below); `cross_table` compares a left aggregate with a right one over a registry target reference and judges `max(0, |diff| − tolerance)`; `cel_expression` evaluates the expression in Go over a bounded sample; `custom_sql` wraps the user's single `SELECT`/`WITH` in `SELECT COUNT(*)` for judgment and `SELECT *` for samples and never rewrites it; `schema_drift` compares registry columns with the saved snapshot (missing columns, type/nullability when recorded, order when requested, extra columns when not allowed) and touches no database; `standard_code` validates text rows offline in Go.
 
@@ -279,7 +279,7 @@ The authoritative rule-config definition is `proto/store/store/data_quality.prot
 
 Invariants of that mapping:
 
-- JSONB columns hold `protojson.Marshal` output of the named store message; change the proto and the store together, and read an omitted proto3 zero value as "unset", not as an explicit zero.
+- JSONB columns hold the named store message's `protojson.Marshal` output; change proto and store together, and read an omitted zero value as "unset".
 - Workspace settings use "zero value = default"; for `DataQualitySetting`, message presence distinguishes "not configured" from explicit `false`. The update replaces the whole message, so an omitted string clears it while an omitted `weekly_digest` keeps the stored schedule for old clients.
 - `frequency_tier` and the target schedule columns (`schedule_cron`, `schedule_timezone`, `next_run_at`) are scheduling metadata, not judgment: no revision, no contract fingerprint. `quality_execution.scheduled_at` is internal and only feeds the frequency gate.
 - Retention windows are maintenance-runner constants, not settings: executions and batches 90 days, resolved issues 90, profiles/LLM cache/debug log 7, decided suggestions 90.
@@ -293,7 +293,7 @@ Invariants of that mapping:
 | A target's identity is `(registry GUID, meta type)` plus a display-only path snapshot; resolution validates the current registry row, live instance and visible database | `ResolveTarget` and the store read path |
 | The rule head and its latest revision always agree; an execution records the revision and engine version it actually ran | update transaction + `quality_rule_test.go` |
 | At most one unresolved issue per rule | partial unique index + transition tests |
-| A bound enum value must be a declared label (PG schema metadata, MySQL inline type); an unknown label set skips the check | `enum_values_test.go` + validation matrix |
+| A bound enum value must be a declared label (PG exact, MySQL by collation); an unknown label set skips the check | `enum_values_test.go` + integration enum test |
 | One six-way verdict per execution; `ERROR` and `FAIL` are never merged; batch outcome is a worst-rank rollup for diagnosis only | rollup/status tests |
 | `on_empty` alone decides no-data semantics, and the decision is written into the threshold snapshot | evaluator tests |
 | Query rules run only on a `READ_ONLY` source — never a fallback admin connection — and their SQL is a single `SELECT`/`WITH`; placeholders and args are always passed together | `ReadOnlyQueryer` + validate/compile + execution evidence |
@@ -343,11 +343,11 @@ Invariants of that mapping:
 | Query timeout, or a check timeout meeting the batch deadline | `ERROR(TIMEOUT)` and scheduled retries within the cycle budget (manual does not); the 15m batch cap wins when they collide, unstarted executions are abandoned and no partial verdict is written |
 | Result over the cap | truncated, `truncated=true`, verdict still computed |
 | Column deleted or changed after save | run time `ERROR(UNSUPPORTED)`; preview would have rejected the save |
-| A stored value is not one of the enum's labels | `ERROR(UNSUPPORTED)` naming the labels (no 22P02, no issue); edit the check, or re-sync if the type gained the label |
+| A stored value is not one of the enum's labels | `ERROR(UNSUPPORTED)` naming the synced labels (a renamed label or a PG domain can still reach 22P02); edit the check, or re-sync if the type gained the label |
 | Target/instance deleted or database hidden | `orphaned_reason` on the rule, `SKIPPED(ORPHANED)` at run time, no notification |
 | No usable fingerprint yet (upgraded library not synced, or the read failed) | `schema_changed` stays false and acknowledge returns `FailedPrecondition`; a failed read fails that database's sync while quality keeps the old signal, and both recover after a successful sync |
 | Legacy DDL-hash snapshot, or a change reverted between syncs | a legacy snapshot reads as unchanged until the rule is edited once; a reverted change leaves equal fingerprints and raises no event |
-| Acknowledge with only archived checks | updates zero rows and returns zero; archived checks participate in neither signal nor acknowledgement |
+| Acknowledge with only archived checks | updates zero rows and returns zero; archived checks never signal or acknowledge |
 | Same rule triggered concurrently | in-flight dedupe → the later attempt is `SKIPPED` |
 | Restart | startup sweep abandons stale `PENDING`/`RUNNING` rows after 15 minutes; scheduled checks retry within the cycle, manual do not |
 | A single execution panics | that execution becomes `ERROR(EXECUTION)`, the rest of the batch continues |
@@ -406,7 +406,7 @@ Invariants of that mapping:
 | Time variables deliberately stop at filters and custom SQL | no `${partition}` and no general template language; integer partition keys need custom SQL plus a cast |
 | Cross-table reconciliation is aggregate-only | the reference must be a synced registry object; per-row reconciliation is custom SQL; separate connections mean two snapshots (or two statements on one connection); a second connection is non-blocking, so an instance with a concurrency limit of one rejects such rules at save time |
 | Dynamic accepted-value queries cannot be statically typed | the value column's type/name and emptiness surface at preview or first execution, and the set is re-read per statement |
-| Enum labels are the last synced ones, and PG domains/composites have no label set | a label added since the last sync is refused until re-sync (the message names the synced labels); domains and composites keep the old acceptance — the trade-off buys a static check with no target connection |
+| Enum labels are the last synced ones, and PG domains/composites have no label set | a label added since the last sync is refused until re-sync; domains and composites keep the old acceptance — the trade-off buys a static check with no target connection |
 | Passing rows and segment evidence are expensive | failure evidence can nearly double, segment evidence shares the sample JSONB and is returned by both list and detail reads, and a check that consistently exceeds 500 segments never evaluates until narrowed; segment baselines are counted in runs, so the 90-day retention can silently remove them, a definition edit reopens them, and a new segment alone is never a failure |
 | The whole-message settings update can clear the check time zone | an old client updating another DQ setting resets it to UTC; the digest schedule is the only field that preserves itself when omitted |
 | Cron and frequency tiers are scheduling approximations | a cron schedule guarantees "the next occurrence after now", not every planned occurrence (missed slots are not compensated and there is no misfire policy — run manually if needed), and a tier measures target due slots rather than start times or wall-clock intervals: weekly on a daily target means the seventh following cycle, and "Mondays 02:00 only for this check" requires splitting the target |
@@ -418,11 +418,11 @@ Invariants of that mapping:
 ## Where to look
 
 - Domain, compile, judgment, profiles, suggestions, trends, scores: `backend/component/dataquality/` (tests beside each file; `rule_type_spec_test.go` is the cross-type contract).
-- Dispatch, planning, admission, execution, issues, notifications: `backend/runner/qualityrunner/`; digest: `qualitydigestrunner/`; agent runners: `qualitysessionrunner/`, `qualityenrollmentrunner/`, `qualityagentrunner/`; agent engine/tools: `backend/component/dataquality/agentrunner/`.
+- Dispatch, planning, admission, execution, issues, notifications: `backend/runner/qualityrunner/`; digest: `qualitydigestrunner/`; agent runners: `qualitysessionrunner/`, `qualityenrollmentrunner/`, `qualityagentrunner/`.
 - HTML report: `backend/component/qualityreport/`; cron/interval parsing: `backend/common/schedule/`.
 - Read-only query capability: `backend/plugin/db/`; connection budget: `backend/component/state/connection.go`.
 - Handlers: `backend/api/v1/data_quality_*.go`; store queries: `backend/store/quality_*.go`; MCP tools: `backend/mcp/tool.go`.
 - Protos: `proto/store/store/data_quality.proto`, `proto/v1/v1/data_quality_service.proto`, `proto/store/store/setting.proto`; generated code is never hand-edited.
-- Permissions: `backend/common/permission/permission.json` and `store/predefined_roles.go`; frontend mirror in `frontend/src/lib/permissions.ts`.
+- Permissions: `backend/common/permission/permission.json`, `store/predefined_roles.go`; mirror `frontend/src/lib/permissions.ts`.
 - Frontend: pages in `frontend/src/pages/data-quality/`, components in `frontend/src/components/data-quality/`, pure helpers in `frontend/src/utils/dataQuality*.ts`, API wrapper `frontend/src/api/data-quality.ts`.
 - Integration coverage: `backend/test/integration/runner/data_quality_*_test.go`.

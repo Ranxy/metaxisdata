@@ -60,7 +60,8 @@ reach of that connection; on SQL Server it must be a plain `SELECT`, because the
 NULLs from a dynamic set, *Allow NULL* controls the checked column only, and a query returning **no rows** fails every non-NULL value.
 A fixed list on an **enum column** may only use the labels the type declares; the editor lists them as one-click values (PostgreSQL
 reads them from the synced schema metadata, the MySQL family from the column's type), and save or preview refuses any other value with
-the label list. If the enum gained a label since the instance was last synced, re-sync the instance. **Preview** before saving proves it
+the label list. Labels are matched the way the database compares them: exactly on PostgreSQL, through the column collation (usually
+case-insensitive) on MySQL. If the enum gained a label since the instance was last synced, re-sync the instance. **Preview** before saving proves it
 fits the column.
 - **Segment check** groups rows by one to five columns and fails when a segment its recent runs saw is gone — the "a whole region
 quietly disappeared" case. The baseline is the last three **usable** completed runs against the current table (1–10; truncated
