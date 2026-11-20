@@ -155,20 +155,6 @@
             />
           </div>
 
-          <!-- Max output tokens -->
-          <div class="space-y-2">
-            <Label for="llm-provider-max-output-tokens">
-              {{ t("llmProvider.maxOutputTokens") }}
-            </Label>
-            <FormField
-              id="llm-provider-max-output-tokens"
-              v-model="formData.maxOutputTokens"
-              type="number"
-              :hint="t('llmProvider.maxOutputTokensHint')"
-              :error="maxOutputTokensError"
-            />
-          </div>
-
           <Separator />
 
           <!-- Models section -->
@@ -176,7 +162,7 @@
             <div class="flex items-center justify-between">
               <Label>
                 {{ t("llmProvider.models") }}
-                <span v-if="availableModels.length > 0" class="text-muted-foreground font-normal">
+                <span v-if="modelRows.length > 0" class="text-muted-foreground font-normal">
                   ({{ enabledModelCount }} {{ t("llmProvider.enabled") }})
                 </span>
               </Label>
@@ -193,7 +179,7 @@
 
             <div v-if="fetchedError" class="text-destructive text-sm">{{ fetchedError }}</div>
 
-            <div v-if="availableModels.length > 0" class="space-y-2">
+            <template v-if="modelRows.length > 0">
               <div class="relative">
                 <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <input
@@ -203,32 +189,109 @@
                   class="w-full bg-input-surface border border-border rounded-md py-[5px] pl-8 pr-3 text-sm outline-none focus:border-accent"
                 />
               </div>
-              <div class="max-h-52 overflow-y-auto border rounded-md p-2 space-y-0.5">
+
+              <div class="max-h-96 overflow-y-auto border rounded-md p-2 space-y-1">
                 <div
-                  v-for="model in filteredModels"
-                  :key="model"
-                  class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-accent/30"
+                  v-for="entry in filteredModelRows"
+                  :key="entry.index"
+                  class="rounded-md border border-border/60 px-2 py-1.5"
                 >
-                  <span class="text-sm">{{ model }}</span>
-                  <Checkbox
-                    :checked="isModelEnabled(model)"
-                    @update:checked="(checked: boolean) => toggleModel(model, checked)"
-                  />
+                  <div class="flex items-center gap-2">
+                    <Checkbox
+                      :checked="entry.row.enabled"
+                      :aria-label="t('llmProvider.enableModel', { name: entry.row.name })"
+                      @update:checked="(checked: boolean) => setRowEnabled(entry.index, checked)"
+                    />
+                    <input
+                      v-model="entry.row.name"
+                      :placeholder="t('llmProvider.modelNamePlaceholder')"
+                      :aria-label="t('llmProvider.modelName')"
+                      type="text"
+                      class="min-w-0 flex-1 bg-transparent border-0 text-sm outline-none focus:text-accent"
+                    />
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                      {{ capacitySummary(entry.row) }}
+                    </span>
+                    <button
+                      type="button"
+                      class="p-1 rounded hover:bg-accent/40"
+                      :aria-label="t('llmProvider.modelAdvanced')"
+                      :aria-expanded="entry.row.expanded"
+                      :title="t('llmProvider.modelAdvanced')"
+                      @click="toggleExpanded(entry.index)"
+                    >
+                      <ChevronDown v-if="entry.row.expanded" class="h-4 w-4" />
+                      <ChevronRight v-else class="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      class="p-1 rounded text-destructive hover:bg-destructive/10"
+                      :aria-label="t('llmProvider.removeModel')"
+                      :title="t('llmProvider.removeModel')"
+                      @click="removeModel(entry.index)"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <p v-if="nameError(entry.index)" class="pl-7 pt-1 text-xs text-destructive">
+                    {{ nameError(entry.index) }}
+                  </p>
+
+                  <div
+                    v-if="entry.row.expanded"
+                    class="grid grid-cols-2 gap-3 pl-7 pt-2"
+                  >
+                    <FormField
+                      :label="t('llmProvider.contextWindow')"
+                      :model-value="entry.row.contextWindow"
+                      :placeholder="String(defaultContextWindow)"
+                      :hint="t('llmProvider.contextWindowHint', { value: defaultContextWindowLabel })"
+                      :error="fieldError(entry.index, 'contextWindowInvalid')"
+                      @update:model-value="(value: string | number) => setRowContextWindow(entry.index, String(value))"
+                    />
+                    <FormField
+                      :label="t('llmProvider.maxOutputTokens')"
+                      :model-value="entry.row.maxOutputTokens"
+                      :placeholder="String(defaultMaxOutputTokens)"
+                      :hint="t('llmProvider.maxOutputTokensHint', { value: defaultMaxOutputTokensLabel, min: minMaxOutputTokens, max: maxMaxOutputTokens })"
+                      :error="fieldError(entry.index, 'modelMaxOutputTokensInvalid') || fieldError(entry.index, 'modelCapacityMismatch')"
+                      @update:model-value="(value: string | number) => setRowMaxOutputTokens(entry.index, String(value))"
+                    />
+                  </div>
                 </div>
+
                 <div
-                  v-if="filteredModels.length === 0"
+                  v-if="filteredModelRows.length === 0"
                   class="text-muted-foreground text-xs text-center py-2"
                 >
                   {{ t("llmProvider.noModelMatch") }}
                 </div>
               </div>
-            </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                @click="addManualModel"
+              >
+                <Plus class="h-4 w-4 mr-1" />
+                {{ t("llmProvider.addModel") }}
+              </Button>
+            </template>
 
             <div
               v-else-if="!isFetchingModels"
-              class="text-muted-foreground text-sm text-center py-4 border rounded-md"
+              class="flex flex-col items-center gap-2 text-muted-foreground text-sm text-center py-4 border rounded-md"
             >
-              {{ t("llmProvider.fetchHint") }}
+              <p>{{ t("llmProvider.fetchHint") }}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                @click="addManualModel"
+              >
+                <Plus class="h-4 w-4 mr-1" />
+                {{ t("llmProvider.addModel") }}
+              </Button>
             </div>
           </div>
 
@@ -261,7 +324,15 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
-import { Plus, RefreshCw, Search, Sparkles } from "lucide-vue-next";
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Trash2,
+} from "lucide-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -289,10 +360,21 @@ import Separator from "@/components/ui/separator/Separator.vue";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import {
   LLMProviderType,
+  type LlmProviderLimits,
   LlmProviderModelSchema,
   type LlmProviderProfile,
 } from "@/types/proto-es/v1/llm_service_pb";
 import type { Translate } from "@/utils/i18n";
+import {
+  type DiscoveredModelCapacity,
+  formatTokenCapacity,
+  type ModelCapacityError,
+  type ModelCapacityLimits,
+  type ModelCapacityRow,
+  mergeDiscoveredModels,
+  parseTokenCapacity,
+  validateModelRows,
+} from "@/utils/llmProvider";
 
 // ---- static builtin catalog (mirrors backend builtinDefinitions) ----
 interface BuiltinDef {
@@ -346,12 +428,16 @@ function builtinLabel(def: BuiltinDef, t: Translate): string {
   }
 }
 
+/** One editable model row: the shared capacity state plus its disclosure. */
+type EditableModelRow = ModelCapacityRow & { expanded: boolean };
+
 const { t } = useI18n();
 const { formatError, handleError, showSuccess } = useErrorHandler();
 
 // ---- state ----
 const profiles = ref<LlmProviderProfile[]>([]);
 const isCreating = ref(false);
+const limits = ref<ModelCapacityLimits | undefined>(undefined);
 
 // Left panel
 const searchQuery = ref("");
@@ -363,12 +449,9 @@ const formData = reactive({
   title: "",
   baseUrl: "",
   apiKey: "",
-  /** Output-token budget; blank or 0 means the server default (32,768). */
-  maxOutputTokens: "",
-  enabledModels: [] as string[],
 });
 
-const availableModels = ref<string[]>([]);
+const modelRows = ref<EditableModelRow[]>([]);
 const modelSearch = ref("");
 const isFetchingModels = ref(false);
 const fetchedError = ref<string | null>(null);
@@ -386,58 +469,64 @@ const filteredProfiles = computed(() => {
   );
 });
 
-const enabledModelCount = computed(() => formData.enabledModels.length);
+const enabledModelCount = computed(
+  () => modelRows.value.filter((row) => row.enabled).length
+);
 
-const filteredModels = computed(() => {
+const filteredModelRows = computed(() => {
   const q = modelSearch.value.trim().toLowerCase();
-  if (!q) return availableModels.value;
-  return availableModels.value.filter((m) => m.toLowerCase().includes(q));
+  return modelRows.value
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !q || row.name.toLowerCase().includes(q));
 });
 
-/** The server's accepted output budget: 0 means its default, 32,768. */
-const MIN_MAX_OUTPUT_TOKENS = 256;
-const MAX_MAX_OUTPUT_TOKENS = 131_072;
+const defaultContextWindow = computed(
+  () => limits.value?.defaultContextWindow ?? 0
+);
+const defaultMaxOutputTokens = computed(
+  () => limits.value?.defaultMaxOutputTokens ?? 0
+);
+const minMaxOutputTokens = computed(
+  () => limits.value?.minMaxOutputTokens ?? 0
+);
+const maxMaxOutputTokens = computed(
+  () => limits.value?.maxMaxOutputTokens ?? 0
+);
+const defaultContextWindowLabel = computed(() =>
+  defaultContextWindow.value > 0
+    ? formatTokenCapacity(defaultContextWindow.value)
+    : ""
+);
+const defaultMaxOutputTokensLabel = computed(() =>
+  defaultMaxOutputTokens.value > 0
+    ? formatTokenCapacity(defaultMaxOutputTokens.value)
+    : ""
+);
 
-/** The form's output budget as the request value, or undefined when invalid. */
-function parsedMaxOutputTokens(): number | undefined {
-  const text = formData.maxOutputTokens.trim();
-  if (text === "") {
-    return 0;
+const modelRowErrors = computed<(ModelCapacityError | undefined)[]>(() => {
+  if (!limits.value) {
+    return modelRows.value.map(() => undefined);
   }
-  const parsed = Number(text);
-  if (!Number.isInteger(parsed)) {
-    return undefined;
-  }
-  if (parsed === 0) {
-    return 0;
-  }
-  return parsed >= MIN_MAX_OUTPUT_TOKENS && parsed <= MAX_MAX_OUTPUT_TOKENS
-    ? parsed
-    : undefined;
-}
-
-const maxOutputTokensError = computed(() => {
-  if (formData.maxOutputTokens.trim() === "") {
-    return "";
-  }
-  return parsedMaxOutputTokens() === undefined
-    ? t("llmProvider.maxOutputTokensInvalid", {
-        min: MIN_MAX_OUTPUT_TOKENS,
-        max: MAX_MAX_OUTPUT_TOKENS,
-      })
-    : "";
+  return validateModelRows(modelRows.value, limits.value);
 });
+
+const rowsValid = computed(() =>
+  modelRowErrors.value.every((error) => error === undefined)
+);
 
 const canSave = computed(
   () =>
     formData.providerType !== LLMProviderType.LLM_PROVIDER_TYPE_UNSPECIFIED &&
-    parsedMaxOutputTokens() !== undefined
+    limits.value !== undefined &&
+    rowsValid.value
 );
 
 const autoTitlePreview = computed(() => {
   const def = getBuiltinByEnum(formData.providerType);
   const label = def ? builtinLabel(def, t) : "";
-  const models = formData.enabledModels;
+  const models = modelRows.value
+    .filter((row) => row.enabled && row.name.trim() !== "")
+    .map((row) => row.name.trim());
   if (models.length === 0) return label;
   return `${label} — ${models.slice(0, 3).join(", ")}${models.length > 3 ? "..." : ""}`;
 });
@@ -463,10 +552,27 @@ onMounted(async () => {
 });
 
 // ---- methods ----
+function toCapacityLimits(
+  pbLimits: LlmProviderLimits | undefined
+): ModelCapacityLimits | undefined {
+  if (!pbLimits) {
+    return undefined;
+  }
+  return {
+    defaultContextWindow: pbLimits.defaultContextWindow,
+    minContextWindow: pbLimits.minContextWindow,
+    maxContextWindow: pbLimits.maxContextWindow,
+    defaultMaxOutputTokens: pbLimits.defaultMaxOutputTokens,
+    minMaxOutputTokens: pbLimits.minMaxOutputTokens,
+    maxMaxOutputTokens: pbLimits.maxMaxOutputTokens,
+  };
+}
+
 async function loadData() {
   try {
     const resp = await listProfiles();
     profiles.value = resp.profiles;
+    limits.value = toCapacityLimits(resp.limits);
   } catch (e) {
     handleError(e, "llmProvider.fetchError");
   }
@@ -507,10 +613,17 @@ function editProfile(p: LlmProviderProfile) {
   formData.title = p.title;
   formData.baseUrl = p.baseUrl;
   formData.apiKey = "";
-  formData.maxOutputTokens =
-    p.maxOutputTokens > 0 ? String(p.maxOutputTokens) : "";
-  formData.enabledModels = p.models.filter((m) => m.enabled).map((m) => m.name);
-  availableModels.value = p.models.map((m) => m.name);
+  modelRows.value = p.models.map((model) => ({
+    name: model.name,
+    enabled: model.enabled,
+    contextWindow:
+      model.contextWindow > 0 ? formatTokenCapacity(model.contextWindow) : "",
+    maxOutputTokens:
+      model.maxOutputTokens > 0
+        ? formatTokenCapacity(model.maxOutputTokens)
+        : "",
+    expanded: false,
+  }));
   modelSearch.value = "";
   fetchedError.value = null;
 }
@@ -527,9 +640,7 @@ function startCreate() {
 function resetForm() {
   formData.title = "";
   formData.apiKey = "";
-  formData.maxOutputTokens = "";
-  formData.enabledModels = [];
-  availableModels.value = [];
+  modelRows.value = [];
   modelSearch.value = "";
   fetchedError.value = null;
 }
@@ -540,20 +651,102 @@ function cancelForm() {
   resetForm();
 }
 
-function isModelEnabled(modelId: string): boolean {
-  return formData.enabledModels.includes(modelId);
+function setRowEnabled(index: number, checked: boolean) {
+  const row = modelRows.value[index];
+  if (row) {
+    row.enabled = checked;
+  }
 }
 
-function toggleModel(modelId: string, checked: boolean) {
-  if (checked) {
-    if (!formData.enabledModels.includes(modelId)) {
-      formData.enabledModels.push(modelId);
-    }
-  } else {
-    formData.enabledModels = formData.enabledModels.filter(
-      (m) => m !== modelId
-    );
+function setRowContextWindow(index: number, value: string) {
+  const row = modelRows.value[index];
+  if (row) {
+    row.contextWindow = value;
   }
+}
+
+function setRowMaxOutputTokens(index: number, value: string) {
+  const row = modelRows.value[index];
+  if (row) {
+    row.maxOutputTokens = value;
+  }
+}
+
+function toggleExpanded(index: number) {
+  const row = modelRows.value[index];
+  if (row) {
+    row.expanded = !row.expanded;
+  }
+}
+
+function addManualModel() {
+  modelRows.value.push({
+    name: "",
+    enabled: true,
+    contextWindow: "",
+    maxOutputTokens: "",
+    expanded: true,
+  });
+  modelSearch.value = "";
+}
+
+function removeModel(index: number) {
+  modelRows.value.splice(index, 1);
+}
+
+/** The collapsed row summary: effective capacities, or the server default. */
+function capacitySummary(row: ModelCapacityRow): string {
+  return t("llmProvider.capacitySummary", {
+    context: displayCapacity(row.contextWindow),
+    output: displayCapacity(row.maxOutputTokens),
+  });
+}
+
+function displayCapacity(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return t("llmProvider.serverDefault");
+  }
+  const parsed = parseTokenCapacity(trimmed);
+  if (parsed === undefined || Number.isNaN(parsed)) {
+    return "—";
+  }
+  return formatTokenCapacity(parsed);
+}
+
+function rowErrorText(error: ModelCapacityError, index: number): string {
+  const params = { index: index + 1, ...error.params };
+  switch (error.key) {
+    case "modelNameRequired":
+      return t("llmProvider.modelNameRequired", params);
+    case "modelNameDuplicate":
+      return t("llmProvider.modelNameDuplicate", params);
+    case "contextWindowInvalid":
+      return t("llmProvider.contextWindowInvalid", params);
+    case "modelMaxOutputTokensInvalid":
+      return t("llmProvider.modelMaxOutputTokensInvalid", params);
+    case "modelCapacityMismatch":
+      return t("llmProvider.modelCapacityMismatch", params);
+  }
+}
+
+function nameError(index: number): string {
+  const error = modelRowErrors.value[index];
+  if (
+    error?.key === "modelNameRequired" ||
+    error?.key === "modelNameDuplicate"
+  ) {
+    return rowErrorText(error, index);
+  }
+  return "";
+}
+
+function fieldError(index: number, key: ModelCapacityError["key"]): string {
+  const error = modelRowErrors.value[index];
+  if (error?.key !== key) {
+    return "";
+  }
+  return rowErrorText(error, index);
 }
 
 async function fetchModels() {
@@ -561,7 +754,7 @@ async function fetchModels() {
   fetchedError.value = null;
 
   try {
-    let modelIds: string[];
+    let discovered: DiscoveredModelCapacity[] = [];
     if (editingProfile.value && !formData.apiKey.trim()) {
       // The stored key only authenticates the stored endpoint: fetching from a
       // changed Base URL has to carry the caller's own key.
@@ -571,7 +764,7 @@ async function fetchModels() {
         return;
       }
       const resp = await fetchModelsByProfile(editingProfile.value.name);
-      modelIds = resp.modelIds;
+      discovered = discoveredModels(resp);
     } else {
       const apiKey = formData.apiKey.trim();
       if (!apiKey) {
@@ -584,13 +777,25 @@ async function fetchModels() {
         apiKey,
         formData.baseUrl.trim()
       );
-      modelIds = resp.modelIds;
+      discovered = discoveredModels(resp);
     }
 
-    availableModels.value = modelIds;
-    formData.enabledModels = formData.enabledModels.filter((m) =>
-      modelIds.includes(m)
+    if (limits.value === undefined) {
+      fetchedError.value = t("llmProvider.fetchError");
+      return;
+    }
+
+    const expandedByName = new Map(
+      modelRows.value.map((row) => [row.name.trim(), row.expanded])
     );
+    modelRows.value = mergeDiscoveredModels(
+      modelRows.value,
+      discovered,
+      limits.value
+    ).map((row) => ({
+      ...row,
+      expanded: expandedByName.get(row.name.trim()) ?? false,
+    }));
     showSuccess("llmProvider.modelsFetched");
   } catch (e) {
     handleError(e, "llmProvider.fetchModelsError");
@@ -600,15 +805,44 @@ async function fetchModels() {
   }
 }
 
+/** Adapt the fetched response, tolerating the transitional model_ids field. */
+function discoveredModels(resp: {
+  models: { name: string; contextWindow: number; maxOutputTokens: number }[];
+  modelIds: string[];
+}): DiscoveredModelCapacity[] {
+  if (resp.models.length > 0) {
+    return resp.models.map((model) => ({
+      name: model.name,
+      contextWindow: model.contextWindow,
+      maxOutputTokens: model.maxOutputTokens,
+    }));
+  }
+  return resp.modelIds.map((name) => ({
+    name,
+    contextWindow: 0,
+    maxOutputTokens: 0,
+  }));
+}
+
+function parsedCapacity(text: string): number {
+  const parsed = parseTokenCapacity(text);
+  if (parsed === undefined || Number.isNaN(parsed)) {
+    return 0;
+  }
+  return parsed;
+}
+
 async function saveProfile() {
   if (!canSave.value || isSaving.value) return;
   isSaving.value = true;
 
   const apiKey = formData.apiKey.trim();
-  const models = availableModels.value.map((name) =>
+  const models = modelRows.value.map((row) =>
     create(LlmProviderModelSchema, {
-      name,
-      enabled: formData.enabledModels.includes(name),
+      name: row.name.trim(),
+      enabled: row.enabled,
+      contextWindow: parsedCapacity(row.contextWindow),
+      maxOutputTokens: parsedCapacity(row.maxOutputTokens),
     })
   );
 
@@ -621,16 +855,14 @@ async function saveProfile() {
     apiKey,
     models,
     maskedApiKey: "",
-    maxOutputTokens: parsedMaxOutputTokens() ?? 0,
+    maxOutputTokens: 0,
     createTime: undefined,
     updateTime: undefined,
   };
 
   try {
     if (editingProfile.value) {
-      // Always name the output budget so clearing it (0) also clears the profile
-      // value instead of leaving the previous cap in place.
-      const fields = ["title", "base_url", "models", "max_output_tokens"];
+      const fields = ["title", "base_url", "models"];
       if (apiKey) fields.push("api_key");
       await updateProfile(payload, fields);
       showSuccess("llmProvider.updated");
@@ -640,6 +872,7 @@ async function saveProfile() {
     }
     const resp = await listProfiles();
     profiles.value = resp.profiles;
+    limits.value = toCapacityLimits(resp.limits);
     cancelForm();
   } catch (e) {
     handleError(e, "llmProvider.saveError");
@@ -656,6 +889,7 @@ async function deleteCurrent() {
     showSuccess("llmProvider.deleted");
     const resp = await listProfiles();
     profiles.value = resp.profiles;
+    limits.value = toCapacityLimits(resp.limits);
     cancelForm();
   } catch (e) {
     handleError(e, "llmProvider.deleteError");
