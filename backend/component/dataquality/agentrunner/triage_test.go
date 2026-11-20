@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -67,10 +68,10 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	var gotColumns []string
 	var gotIntent string
 	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, error) {
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, []dataquality.DraftRejection, error) {
 		gotColumns = columns
 		gotIntent = intent
-		return []string{"orders amount not null", "orders id unique"}, nil
+		return []string{"orders amount not null", "orders id unique"}, nil, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
 	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", args, &wakeControl{})
@@ -79,6 +80,27 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	require.Equal(t, "watch order integrity", gotIntent)
 	require.Contains(t, result, `"queued":2`)
 	require.Contains(t, result, "orders id unique")
+	require.NotContains(t, result, `"rejected"`)
+}
+
+// A refused draft is reported with its reason so the model can correct the
+// intent instead of repeating a value the target cannot hold.
+func TestDraftChecksToolReportsRejectedDrafts(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine(newFakeStore())
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, error) {
+		return nil, []dataquality.DraftRejection{{
+			Title:  "Status must be a declared enum label",
+			Reason: `value "discontinued" is not a label of the enum type "public.product_status"; valid labels: "active", "draft"`,
+		}}, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Contains(t, result, `"queued":0`)
+	require.Contains(t, result, `"rejected"`)
+	require.Contains(t, result, "Status must be a declared enum label")
+	require.Contains(t, result, "valid labels")
 }
 
 type fakeTableContextReader struct{}

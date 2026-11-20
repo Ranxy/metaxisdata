@@ -1,6 +1,7 @@
 package dataquality
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -182,4 +183,19 @@ func TestValidateConfigRejectsAnUndeclaredFilterValue(t *testing.T) {
 
 	config.Filter.Clauses[0].Values = []string{"draft"}
 	require.NoError(t, ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config))
+}
+
+// One drafting pass reports a bounded list of refusals with bounded reasons.
+func TestAppendDraftRejectionBoundsTheList(t *testing.T) {
+	t.Parallel()
+
+	rejections := make([]DraftRejection, 0, maxDraftRejections)
+	for index := 0; index < maxDraftRejections+3; index++ {
+		rejections = appendDraftRejection(rejections, "", `value "x" is not a label of the enum type "public.status"; valid labels: "active", "draft"`)
+	}
+	require.Len(t, rejections, maxDraftRejections)
+	require.Equal(t, "untitled draft", rejections[0].Title)
+
+	long := appendDraftRejection(nil, "t", strings.Repeat("x", maxDraftRejectionReasonChars*2))
+	require.Len(t, long[0].Reason, maxDraftRejectionReasonChars)
 }

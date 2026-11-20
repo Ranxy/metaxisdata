@@ -216,7 +216,7 @@ func getTableContextSpec() toolSpec {
 func draftChecksSpec() toolSpec {
 	return toolSpec{
 		name:        "draft_checks",
-		description: "Draft concrete checks for the target into the review queue; a person or the adoption policy decides them before they run.",
+		description: "Draft concrete checks for the target into the review queue; a person or the adoption policy decides them before they run. A draft the rule pipeline refuses is returned with its reason, so correct the intent and retry when a value or column was rejected.",
 		parameters: map[string]any{"type": "object", "properties": map[string]any{
 			"intent": map[string]any{"type": "string", "description": "what the checks should watch, in one sentence"},
 			"columns": map[string]any{

@@ -165,30 +165,30 @@ type qualityDraftChecks struct {
 // is attributed to the agent's principal, which is also how the agent's own provider
 // and model are resolved: a triage wake drafts on the model the agent was configured
 // with, not on a workspace default.
-func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, error) {
+func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, error) {
 	agent, err := d.store.GetQualityAgentByPrincipalID(ctx, int(createdBy))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if agent == nil {
-		return nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
+		return nil, nil, common.Errorf(common.NotFound, "principal %d is not a quality agent", createdBy)
 	}
 	config, settings, err := d.suggester.ResolveAgentConfig(ctx, agent)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	createdByPointer := createdBy
-	queued, _, diagnostic, err := d.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+	queued, _, rejections, diagnostic, err := d.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
 		targetGUID, targetType, columns, intent, "", false, &createdByPointer)
 	if err != nil {
 		if diagnostic != nil && diagnostic.GetErrorCode() != "" {
-			return nil, fmt.Errorf("%w (%s)", err, diagnostic.GetErrorCode())
+			return nil, nil, fmt.Errorf("%w (%s)", err, diagnostic.GetErrorCode())
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	titles := make([]string, 0, len(queued))
 	for _, suggestion := range queued {
 		titles = append(titles, suggestion.Payload.GetRule().GetTitle())
 	}
-	return titles, nil
+	return titles, rejections, nil
 }

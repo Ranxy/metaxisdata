@@ -108,9 +108,12 @@ type TableContextReader interface {
 }
 
 // DraftChecksFunc drafts checks for one target and returns the queued draft
-// titles. It reuses the same Suggester the suggestion center uses, so the drafts
-// land in the review queue; the model cannot create enabled checks.
-type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, error)
+// titles plus the drafts the pipeline refused. It reuses the same Suggester the
+// suggestion center uses, so the drafts land in the review queue; the model
+// cannot create enabled checks. The refusals let an agent correct a draft (an
+// accepted value that is not one of an enum column's labels, say) instead of
+// silently retrying the same intent.
+type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, error)
 
 // AgentDeps is everything the agent tools need from their product.
 type AgentDeps struct {
@@ -402,11 +405,19 @@ func (t *AgentTools) DraftChecks(ctx context.Context, session AgentSession, argu
 			break
 		}
 	}
-	titles, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
+	titles, rejections, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"queued": len(titles), "drafts": titles})
+	result := map[string]any{"queued": len(titles), "drafts": titles}
+	if len(rejections) > 0 {
+		rejected := make([]map[string]string, 0, len(rejections))
+		for _, rejection := range rejections {
+			rejected = append(rejected, map[string]string{"title": rejection.Title, "reason": rejection.Reason})
+		}
+		result["rejected"] = rejected
+	}
+	return marshalJSON(result)
 }
 
 // RuleShapes is the plan derivation's view of the live rules: enabled rules only,

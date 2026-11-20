@@ -87,7 +87,7 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	queued, summary, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
+	queued, summary, _, _, err := s.suggester.Draft(ctx, config, dataquality.LimitsFromSettings(settings),
 		tableGUID, metaType, requestedColumns, intent, language, req.Msg.GetForceRegenerate(),
 		principalIDPointer(currentUserID(ctx)))
 	if err != nil {
