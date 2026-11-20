@@ -69,7 +69,9 @@ func positiveInt32(value any) (int32, bool) {
 	return int32(number), true
 }
 
-// firstCapacity returns the first usable candidate, or 0 when none is.
+// firstCapacity returns the first usable candidate, or 0 when none is. A
+// max_input_tokens field is only an approximation of the combined window, so a
+// gateway that discloses it may make compaction trigger earlier than needed.
 func firstCapacity(candidates ...any) int32 {
 	for _, candidate := range candidates {
 		if value, ok := positiveInt32(candidate); ok {

@@ -250,13 +250,12 @@ export function mergeDiscoveredModels(
   const byName = new Map<string, ModelCapacityRow>();
   for (const row of rows) {
     const name = row.name.trim();
-    if (name !== "" && byName.has(name)) {
-      continue;
-    }
     const copy = { ...row };
-    if (name !== "") {
+    if (name !== "" && !byName.has(name)) {
       byName.set(name, copy);
     }
+    // Duplicate saved rows are kept so the page's row-level validation can
+    // report them instead of silently dropping one with its capacities.
     merged.push(copy);
   }
 
@@ -309,12 +308,12 @@ export function mergeDiscoveredModels(
       ),
     };
     const [error] = validateModelRows([candidate], limits);
-    byName.set(name, candidate);
-    merged.push(
+    const row =
       error === undefined
         ? candidate
-        : { ...candidate, contextWindow: "", maxOutputTokens: "" }
-    );
+        : { ...candidate, contextWindow: "", maxOutputTokens: "" };
+    byName.set(name, row);
+    merged.push(row);
   }
 
   return merged;

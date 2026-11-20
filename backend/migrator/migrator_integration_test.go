@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -313,9 +312,12 @@ func migrationFSBefore0068(t *testing.T) fstest.MapFS {
 	files, err := getSortedVersionedFiles(migrationFS)
 	require.NoError(t, err)
 
+	// The cutoff keeps the FS at the version just before this migration, so a
+	// later incremental cannot change which version a fresh install records.
+	cutoff := semver.MustParse("0.1.67")
 	out := fstest.MapFS{latestSchemaFileName: &fstest.MapFile{Data: latest}}
 	for _, file := range files {
-		if strings.Contains(file.path, "0068") {
+		if file.version.GT(cutoff) {
 			continue
 		}
 		buf, err := fs.ReadFile(migrationFS, file.path)
@@ -340,6 +342,7 @@ func TestMigrateSchemaMovesTheProfileOutputBudgetOntoModels(t *testing.T) {
 		"model-own-budget": `{"maxOutputTokens":8192,"models":[{"name":"d","maxOutputTokens":2048},{"name":"e"}]}`,
 		"null-models":      `{"maxOutputTokens":1000,"models":null}`,
 		"no-models":        `{"maxOutputTokens":1000}`,
+		"bad-element":      `{"maxOutputTokens":1000,"models":[5]}`,
 	}
 	for id, metadata := range rows {
 		_, err := db.ExecContext(ctx,
@@ -355,6 +358,7 @@ func TestMigrateSchemaMovesTheProfileOutputBudgetOntoModels(t *testing.T) {
 		"model-own-budget": `{"models":[{"name":"d","maxOutputTokens":2048},{"name":"e","maxOutputTokens":8192}]}`,
 		"null-models":      `{"models":null}`,
 		"no-models":        `{}`,
+		"bad-element":      `{"models":[5]}`,
 	}
 	for id, want := range expected {
 		var got string

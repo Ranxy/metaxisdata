@@ -253,7 +253,7 @@ describe("mergeDiscoveredModels", () => {
     expect(merged).toHaveLength(2);
   });
 
-  it("drops duplicate saved rows and ignores invalid disclosures", () => {
+  it("keeps duplicate saved rows for row-level validation and ignores invalid disclosures", () => {
     const merged = mergeDiscoveredModels(
       [row("dup", "", ""), row("dup", "65536", "4096")],
       [
@@ -267,10 +267,11 @@ describe("mergeDiscoveredModels", () => {
       ],
       limits
     );
-    expect(merged).toHaveLength(3);
+    expect(merged).toHaveLength(4);
     expect(merged[0].name).toBe("dup");
-    expect(merged[1]).toMatchObject({ name: "bad-range", contextWindow: "" });
-    expect(merged[2]).toMatchObject({
+    expect(merged[1]).toEqual(row("dup", "65536", "4096"));
+    expect(merged[2]).toMatchObject({ name: "bad-range", contextWindow: "" });
+    expect(merged[3]).toMatchObject({
       name: "bad-relation",
       contextWindow: "",
       maxOutputTokens: "",

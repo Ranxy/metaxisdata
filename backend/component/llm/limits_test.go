@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // Zero means the server default; an explicit value is clamped to the documented
@@ -118,16 +116,13 @@ func TestValidateModelNames(t *testing.T) {
 	t.Parallel()
 
 	require.NoError(t, ValidateModelNames(nil))
-	require.NoError(t, ValidateModelNames([]*storepb.LlmProviderModel{
-		{Name: "gpt-4o"},
-		{Name: "gpt-4o-mini"},
-	}))
+	require.NoError(t, ValidateModelNames([]string{"gpt-4o", "gpt-4o-mini"}))
 
-	err := ValidateModelNames([]*storepb.LlmProviderModel{{Name: "  "}})
+	err := ValidateModelNames([]string{"  "})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "models[0]")
 
-	err = ValidateModelNames([]*storepb.LlmProviderModel{{Name: "gpt-4o"}, {Name: " gpt-4o "}})
+	err = ValidateModelNames([]string{"gpt-4o", " gpt-4o "})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate")
 }

@@ -186,3 +186,67 @@ func TestMaybeCompactDerivesTheTriggerFromTheModel(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, compacted)
 }
+
+func TestEmergencyCompactionTrigger(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config llm.ResolvedConfig
+		want   int
+	}{
+		{name: "no message room", config: llm.ResolvedConfig{ContextWindow: 1000, MaxOutputTokens: 2000}, want: 0},
+		{name: "room large enough for the floor", config: llm.ResolvedConfig{ContextWindow: 20000, MaxOutputTokens: 1000}, want: 4750},
+		{name: "room smaller than the floor", config: llm.ResolvedConfig{ContextWindow: 10000, MaxOutputTokens: 1000}, want: 4096},
+		{name: "room smaller than the floor is clamped", config: llm.ResolvedConfig{ContextWindow: 3000, MaxOutputTokens: 1000}, want: 2000},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, test.want, emergencyCompactionTrigger(test.config))
+		})
+	}
+}
+
+// A stale pair whose capacities leave no pressure budget skips model compaction
+// and records a runner note instead of compacting with an accidental threshold.
+func TestMaybeCompactSkipsWhenTheModelCannotCompact(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat(nil), resolveToModel, nil)
+	compactedSession := compactionSession()
+	_, compacted, err := engine.maybeCompact(context.Background(), compactedSession, 1, nil,
+		llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 32768, MaxOutputTokens: 32767},
+		fillerMessages(12), 0, false)
+	require.NoError(t, err)
+	require.False(t, compacted)
+	require.Contains(t, engineContents(stores), "compaction skipped")
+}
+
+// A summary that cannot fit the model's output floor is not attempted.
+func TestMaybeCompactSkipsASummaryBelowTheOutputFloor(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat(nil), resolveToModel, nil)
+	compactedSession := compactionSession()
+	_, compacted, err := engine.maybeCompact(context.Background(), compactedSession, 1, nil,
+		llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 131072, MaxOutputTokens: 1000},
+		fillerMessages(12), 2_000, false)
+	require.NoError(t, err)
+	require.False(t, compacted)
+	require.Contains(t, engineContents(stores), "below the summary floor")
+}
+
+// engineContents joins the runner notes a fake store recorded so a test can
+// assert that a skipped path explained itself.
+func engineContents(stores *fakeStore) string {
+	var contents []string
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE {
+			contents = append(contents, message.Content)
+		}
+	}
+	return strings.Join(contents, "\n")
+}

@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-
-	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // Model capacities are per-model properties: the context window is a capability
@@ -49,15 +47,13 @@ type ModelLimits struct {
 }
 
 // NormalizeModelLimits resolves one model entry's capacities: zero means the
-// server default, out-of-range values clamp, and the output budget never eats
-// the whole context window.
+// server default and out-of-range values clamp. The output budget is kept below
+// the window when stored data is out of band, but never below the minimum.
 func NormalizeModelLimits(contextWindow, maxOutputTokens int32) ModelLimits {
 	ctx := int(contextWindow)
 	switch {
 	case ctx <= 0:
 		ctx = DefaultContextWindow
-	case ctx < MinContextWindow:
-		ctx = MinContextWindow
 	case ctx > MaxContextWindow:
 		ctx = MaxContextWindow
 	default:
@@ -87,9 +83,9 @@ func NormalizeModelLimits(contextWindow, maxOutputTokens int32) ModelLimits {
 // default for either field. The resolved pair must leave a positive message
 // budget (DSH's W - O > 0); there is no fixed output reserve.
 func ValidateModelLimits(contextWindow, maxOutputTokens int32) error {
-	if contextWindow < 0 || contextWindow > MaxContextWindow {
-		return errors.Errorf("context_window must be 0 (server default %d) or a positive integer up to %d",
-			DefaultContextWindow, MaxContextWindow)
+	if contextWindow != 0 && (contextWindow < MinContextWindow || contextWindow > MaxContextWindow) {
+		return errors.Errorf("context_window must be 0 (server default %d) or between %d and %d",
+			DefaultContextWindow, MinContextWindow, MaxContextWindow)
 	}
 	if maxOutputTokens != 0 && (maxOutputTokens < MinMaxOutputTokens || maxOutputTokens > MaxMaxOutputTokens) {
 		return errors.Errorf("max_output_tokens must be 0 (server default %d) or between %d and %d",
@@ -136,10 +132,10 @@ func CompactionTrigger(contextWindow, maxOutputTokens int) int {
 // ValidateModelNames checks a profile's model list: every name is non-empty and
 // unique after trimming. A duplicate would surface twice in the agent picker and
 // make FindModelConfig ambiguous.
-func ValidateModelNames(models []*storepb.LlmProviderModel) error {
-	seen := make(map[string]struct{}, len(models))
-	for index, model := range models {
-		name := strings.TrimSpace(model.GetName())
+func ValidateModelNames(names []string) error {
+	seen := make(map[string]struct{}, len(names))
+	for index, raw := range names {
+		name := strings.TrimSpace(raw)
 		if name == "" {
 			return errors.Errorf("models[%d]: a model name is required", index)
 		}

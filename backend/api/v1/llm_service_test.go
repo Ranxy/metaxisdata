@@ -6,6 +6,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
@@ -170,4 +171,18 @@ func TestResolveFetchModelsAPIKey(t *testing.T) {
 	_, err = resolveFetchModelsAPIKey("", "https://other.example.com", storedKey, storedURL)
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// The settings page no longer mirrors the server's capacity contract, so the
+// list payload must carry every value the page validates against.
+func TestProviderLimitsMirrorTheServerContract(t *testing.T) {
+	t.Parallel()
+
+	limits := providerLimits()
+	require.Equal(t, int32(llm.DefaultMaxOutputTokens), limits.GetDefaultMaxOutputTokens())
+	require.Equal(t, int32(llm.MinMaxOutputTokens), limits.GetMinMaxOutputTokens())
+	require.Equal(t, int32(llm.MaxMaxOutputTokens), limits.GetMaxMaxOutputTokens())
+	require.Equal(t, int32(llm.DefaultContextWindow), limits.GetDefaultContextWindow())
+	require.Equal(t, int32(llm.MinContextWindow), limits.GetMinContextWindow())
+	require.Equal(t, int32(llm.MaxContextWindow), limits.GetMaxContextWindow())
 }

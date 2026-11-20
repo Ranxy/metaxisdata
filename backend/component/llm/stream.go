@@ -175,7 +175,7 @@ func Stream(ctx context.Context, request StreamRequest) <-chan StreamChunk {
 
 		// A model whose output cap is below the effective budget rejects the request
 		// with 400/422 before any streaming starts. Retry once with a conservative
-		// budget so an over-large profile/default does not break the call; a second
+		// budget so an over-large model/default does not break the call; a second
 		// failure is surfaced with its own status.
 		if shouldRetryWithSmallerOutputBudget(resp.StatusCode, maxTokens) {
 			// The rejected attempt's body is the provider's explanation of which limit

@@ -177,7 +177,14 @@
               </Button>
             </div>
 
-            <div v-if="fetchedError" class="text-destructive text-sm">{{ fetchedError }}</div>
+            <p
+              v-if="limitsError"
+              role="alert"
+              class="text-destructive text-sm"
+            >
+              {{ t("llmProvider.limitsUnavailable") }}
+            </p>
+            <div v-if="fetchedError" role="alert" class="text-destructive text-sm">{{ fetchedError }}</div>
 
             <template v-if="modelRows.length > 0">
               <div class="relative">
@@ -191,75 +198,85 @@
               </div>
 
               <div class="max-h-96 overflow-y-auto border rounded-md p-2 space-y-1">
-                <div
+                <Collapsible
                   v-for="entry in filteredModelRows"
                   :key="entry.index"
+                  :open="entry.row.expanded"
                   class="rounded-md border border-border/60 px-2 py-1.5"
+                  @update:open="(open: boolean) => setRowExpanded(entry.index, open)"
                 >
                   <div class="flex items-center gap-2">
                     <Checkbox
                       :checked="entry.row.enabled"
-                      :aria-label="t('llmProvider.enableModel', { name: entry.row.name })"
+                      :aria-label="t('llmProvider.enableModel', { name: entry.row.name || `#${entry.index + 1}` })"
                       @update:checked="(checked: boolean) => setRowEnabled(entry.index, checked)"
                     />
-                    <input
+                    <Input
                       v-model="entry.row.name"
                       :placeholder="t('llmProvider.modelNamePlaceholder')"
-                      :aria-label="t('llmProvider.modelName')"
-                      type="text"
-                      class="min-w-0 flex-1 bg-transparent border-0 text-sm outline-none focus:text-accent"
+                      :aria-label="`${t('llmProvider.modelName')} ${entry.index + 1}`"
+                      class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 focus-visible:ring-0"
                     />
                     <span class="text-xs text-muted-foreground whitespace-nowrap">
                       {{ capacitySummary(entry.row) }}
                     </span>
-                    <button
-                      type="button"
-                      class="p-1 rounded hover:bg-accent/40"
-                      :aria-label="t('llmProvider.modelAdvanced')"
-                      :aria-expanded="entry.row.expanded"
-                      :title="t('llmProvider.modelAdvanced')"
-                      @click="toggleExpanded(entry.index)"
-                    >
-                      <ChevronDown v-if="entry.row.expanded" class="h-4 w-4" />
-                      <ChevronRight v-else class="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      class="p-1 rounded text-destructive hover:bg-destructive/10"
-                      :aria-label="t('llmProvider.removeModel')"
+                    <CollapsibleTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7"
+                        :aria-label="`${t('llmProvider.modelAdvanced')} ${entry.index + 1}`"
+                        :title="t('llmProvider.modelAdvanced')"
+                      >
+                        <ChevronDown v-if="entry.row.expanded" class="h-4 w-4" />
+                        <ChevronRight v-else class="h-4 w-4" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7 text-destructive hover:bg-destructive/10"
+                      :aria-label="`${t('llmProvider.removeModel')} ${entry.index + 1}`"
                       :title="t('llmProvider.removeModel')"
                       @click="removeModel(entry.index)"
                     >
                       <Trash2 class="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
 
                   <p v-if="nameError(entry.index)" class="pl-7 pt-1 text-xs text-destructive">
                     {{ nameError(entry.index) }}
                   </p>
-
-                  <div
-                    v-if="entry.row.expanded"
-                    class="grid grid-cols-2 gap-3 pl-7 pt-2"
+                  <p
+                    v-if="!entry.row.expanded && capacityError(entry.index)"
+                    class="pl-7 pt-1 text-xs text-destructive"
                   >
-                    <FormField
-                      :label="t('llmProvider.contextWindow')"
-                      :model-value="entry.row.contextWindow"
-                      :placeholder="String(defaultContextWindow)"
-                      :hint="t('llmProvider.contextWindowHint', { value: defaultContextWindowLabel })"
-                      :error="fieldError(entry.index, 'contextWindowInvalid')"
-                      @update:model-value="(value: string | number) => setRowContextWindow(entry.index, String(value))"
-                    />
-                    <FormField
-                      :label="t('llmProvider.maxOutputTokens')"
-                      :model-value="entry.row.maxOutputTokens"
-                      :placeholder="String(defaultMaxOutputTokens)"
-                      :hint="t('llmProvider.maxOutputTokensHint', { value: defaultMaxOutputTokensLabel, min: minMaxOutputTokens, max: maxMaxOutputTokens })"
-                      :error="fieldError(entry.index, 'modelMaxOutputTokensInvalid') || fieldError(entry.index, 'modelCapacityMismatch')"
-                      @update:model-value="(value: string | number) => setRowMaxOutputTokens(entry.index, String(value))"
-                    />
-                  </div>
-                </div>
+                    {{ capacityError(entry.index) }}
+                  </p>
+
+                  <CollapsibleContent>
+                    <div class="grid grid-cols-2 gap-3 pl-7 pt-2">
+                      <FormField
+                        :label="t('llmProvider.contextWindow')"
+                        :model-value="entry.row.contextWindow"
+                        :placeholder="contextWindowPlaceholder"
+                        :hint="limits ? t('llmProvider.contextWindowHint', { value: defaultContextWindowLabel }) : ''"
+                        :error="fieldError(entry.index, 'contextWindowInvalid')"
+                        inputmode="numeric"
+                        @update:model-value="(value: string | number) => setRowContextWindow(entry.index, String(value))"
+                      />
+                      <FormField
+                        :label="t('llmProvider.maxOutputTokens')"
+                        :model-value="entry.row.maxOutputTokens"
+                        :placeholder="maxOutputTokensPlaceholder"
+                        :hint="limits ? t('llmProvider.maxOutputTokensHint', { value: defaultMaxOutputTokensLabel, min: minMaxOutputTokens, max: maxMaxOutputTokens }) : ''"
+                        :error="fieldError(entry.index, 'modelMaxOutputTokensInvalid') || fieldError(entry.index, 'modelCapacityMismatch')"
+                        inputmode="numeric"
+                        @update:model-value="(value: string | number) => setRowMaxOutputTokens(entry.index, String(value))"
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
                 <div
                   v-if="filteredModelRows.length === 0"
@@ -268,6 +285,10 @@
                   {{ t("llmProvider.noModelMatch") }}
                 </div>
               </div>
+
+              <p v-if="invalidRowCount > 0" class="text-xs text-destructive">
+                {{ t("llmProvider.rowsNeedFix", { count: invalidRowCount }) }}
+              </p>
 
               <Button
                 variant="outline"
@@ -347,7 +368,13 @@ import PageHeader from "@/components/layout/PageHeader.vue";
 import Badge from "@/components/ui/badge/Badge.vue";
 import Button from "@/components/ui/button/Button.vue";
 import Checkbox from "@/components/ui/checkbox/Checkbox.vue";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
 import Label from "@/components/ui/label/Label.vue";
 import {
   Select,
@@ -438,6 +465,7 @@ const { formatError, handleError, showSuccess } = useErrorHandler();
 const profiles = ref<LlmProviderProfile[]>([]);
 const isCreating = ref(false);
 const limits = ref<ModelCapacityLimits | undefined>(undefined);
+const limitsError = ref(false);
 
 // Left panel
 const searchQuery = ref("");
@@ -502,6 +530,12 @@ const defaultMaxOutputTokensLabel = computed(() =>
     ? formatTokenCapacity(defaultMaxOutputTokens.value)
     : ""
 );
+const contextWindowPlaceholder = computed(() =>
+  limits.value ? String(limits.value.defaultContextWindow) : undefined
+);
+const maxOutputTokensPlaceholder = computed(() =>
+  limits.value ? String(limits.value.defaultMaxOutputTokens) : undefined
+);
 
 const modelRowErrors = computed<(ModelCapacityError | undefined)[]>(() => {
   if (!limits.value) {
@@ -512,6 +546,10 @@ const modelRowErrors = computed<(ModelCapacityError | undefined)[]>(() => {
 
 const rowsValid = computed(() =>
   modelRowErrors.value.every((error) => error === undefined)
+);
+
+const invalidRowCount = computed(
+  () => modelRowErrors.value.filter((error) => error !== undefined).length
 );
 
 const canSave = computed(
@@ -558,7 +596,7 @@ function toCapacityLimits(
   if (!pbLimits) {
     return undefined;
   }
-  return {
+  const limits: ModelCapacityLimits = {
     defaultContextWindow: pbLimits.defaultContextWindow,
     minContextWindow: pbLimits.minContextWindow,
     maxContextWindow: pbLimits.maxContextWindow,
@@ -566,6 +604,21 @@ function toCapacityLimits(
     minMaxOutputTokens: pbLimits.minMaxOutputTokens,
     maxMaxOutputTokens: pbLimits.maxMaxOutputTokens,
   };
+  const values = Object.values(limits);
+  if (values.some((value) => !Number.isInteger(value) || value <= 0)) {
+    return undefined;
+  }
+  if (
+    limits.minContextWindow > limits.maxContextWindow ||
+    limits.defaultContextWindow < limits.minContextWindow ||
+    limits.defaultContextWindow > limits.maxContextWindow ||
+    limits.minMaxOutputTokens > limits.maxMaxOutputTokens ||
+    limits.defaultMaxOutputTokens < limits.minMaxOutputTokens ||
+    limits.defaultMaxOutputTokens > limits.maxMaxOutputTokens
+  ) {
+    return undefined;
+  }
+  return limits;
 }
 
 async function loadData() {
@@ -573,7 +626,9 @@ async function loadData() {
     const resp = await listProfiles();
     profiles.value = resp.profiles;
     limits.value = toCapacityLimits(resp.limits);
+    limitsError.value = limits.value === undefined;
   } catch (e) {
+    limitsError.value = true;
     handleError(e, "llmProvider.fetchError");
   }
 }
@@ -672,10 +727,10 @@ function setRowMaxOutputTokens(index: number, value: string) {
   }
 }
 
-function toggleExpanded(index: number) {
+function setRowExpanded(index: number, open: boolean) {
   const row = modelRows.value[index];
   if (row) {
-    row.expanded = !row.expanded;
+    row.expanded = open;
   }
 }
 
@@ -711,6 +766,9 @@ function displayCapacity(text: string): string {
   if (parsed === undefined || Number.isNaN(parsed)) {
     return "—";
   }
+  if (parsed === 0) {
+    return t("llmProvider.serverDefault");
+  }
   return formatTokenCapacity(parsed);
 }
 
@@ -739,6 +797,18 @@ function nameError(index: number): string {
     return rowErrorText(error, index);
   }
   return "";
+}
+
+function capacityError(index: number): string {
+  const error = modelRowErrors.value[index];
+  if (
+    error === undefined ||
+    error.key === "modelNameRequired" ||
+    error.key === "modelNameDuplicate"
+  ) {
+    return "";
+  }
+  return rowErrorText(error, index);
 }
 
 function fieldError(index: number, key: ModelCapacityError["key"]): string {
@@ -864,6 +934,7 @@ async function saveProfile() {
     const resp = await listProfiles();
     profiles.value = resp.profiles;
     limits.value = toCapacityLimits(resp.limits);
+    limitsError.value = limits.value === undefined;
     cancelForm();
   } catch (e) {
     handleError(e, "llmProvider.saveError");
@@ -881,6 +952,7 @@ async function deleteCurrent() {
     const resp = await listProfiles();
     profiles.value = resp.profiles;
     limits.value = toCapacityLimits(resp.limits);
+    limitsError.value = limits.value === undefined;
     cancelForm();
   } catch (e) {
     handleError(e, "llmProvider.deleteError");

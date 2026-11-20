@@ -89,8 +89,8 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	require.Equal(t, true, streamOptions["include_usage"])
 }
 
-// A caller that sets no cap uses the provider profile's resolved budget, so the
-// profile (not every caller) owns the output ceiling.
+// A caller that sets no cap uses the model's resolved budget, so the model (not
+// every caller) owns the output ceiling.
 func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +108,7 @@ func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
 	require.InDelta(t, 4096, request["max_tokens"], 1e-9)
 }
 
-// A caller's smaller cap wins over the profile budget.
+// A caller's smaller cap wins over the model budget.
 func TestStreamRawKeepsTheCallerCap(t *testing.T) {
 	t.Parallel()
 

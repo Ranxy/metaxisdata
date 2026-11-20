@@ -189,15 +189,16 @@ func (s *Suggester) ValidateAgentProvider(ctx context.Context, profile, model st
 // validateAgentModel rejects a resolved model whose capacities cannot run a
 // quality agent. It is pure so the rule is testable without a store.
 func validateAgentModel(config llm.ResolvedConfig, model string) error {
-	if config.MaxOutputTokens < MinAgentModelOutputTokens {
+	resolved := llm.NormalizeModelLimits(int32(config.ContextWindow), int32(config.MaxOutputTokens))
+	if resolved.MaxOutputTokens < MinAgentModelOutputTokens {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
 			"model %q has an output budget of %d tokens; a quality agent needs at least %d",
-			model, config.MaxOutputTokens, MinAgentModelOutputTokens))
+			model, resolved.MaxOutputTokens, MinAgentModelOutputTokens))
 	}
-	if trigger := llm.CompactionTrigger(config.ContextWindow, config.MaxOutputTokens); trigger <= 0 {
+	if trigger := llm.CompactionTrigger(resolved.ContextWindow, resolved.MaxOutputTokens); trigger <= 0 {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
 			"model %q leaves no room to compact a conversation (context window %d, output budget %d); raise the context window or lower the output budget",
-			model, config.ContextWindow, config.MaxOutputTokens))
+			model, resolved.ContextWindow, resolved.MaxOutputTokens))
 	}
 	return nil
 }

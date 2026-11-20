@@ -602,13 +602,15 @@ values) and delete them; the editor accepts a pasted list or a CSV upload parsed
 remove it). Deleting a table that a check or rule template still references is refused.
 
 Settings → LLM providers configures each provider profile and each model it enables. **Context window** (0 = server default
-262,144; any positive integer) is the model's combined request and response capacity; a quality agent uses it to decide when to compact
+262,144; a positive integer up to 10,000,000) is the model's combined request and response capacity; a quality agent uses it to decide when to compact
 a long conversation. **Max output tokens** (0 = server default 32,768; 256–131,072) is the ceiling sent to the model for every call
 using that model, and it must stay below the context window. Unused tokens are not charged. If the provider caps output lower, the
 request is rejected and the failed analysis reports a provider-status diagnostic.
 
 Settings → Quality agents (`/settings/quality-agents`) is the agent control panel: the **Pause all agents** switch, the agent list, and
-the create/edit dialog for each agent, including the provider profile and model each agent runs on. The agent's home is where its owner
+the create/edit dialog for each agent, including the provider profile and model each agent runs on. A model can be pinned only when its
+output budget is at least 2,048 tokens and its capacities leave room for compaction; a model too small for an agent is reported as
+unavailable rather than silently swapped. The agent's home is where its owner
 talks to it, reads its reports and answers its attention.
 
 ## Retention

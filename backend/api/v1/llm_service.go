@@ -64,7 +64,11 @@ func providerLimits() *v1pb.LlmProviderLimits {
 // validateProfileModels checks every model entry's name and capacities. The
 // error names the model so the settings page can point at the row.
 func validateProfileModels(models []*v1pb.LlmProviderModel) error {
-	if err := llm.ValidateModelNames(convertV1ModelsToStore(models)); err != nil {
+	names := make([]string, 0, len(models))
+	for _, model := range models {
+		names = append(names, model.GetName())
+	}
+	if err := llm.ValidateModelNames(names); err != nil {
 		return err
 	}
 	for _, model := range models {
@@ -405,7 +409,7 @@ func convertV1ModelsToStore(pbModels []*v1pb.LlmProviderModel) []*storepb.LlmPro
 	models := make([]*storepb.LlmProviderModel, 0, len(pbModels))
 	for _, m := range pbModels {
 		models = append(models, &storepb.LlmProviderModel{
-			Name:            m.Name,
+			Name:            strings.TrimSpace(m.Name),
 			Enabled:         m.Enabled,
 			ContextWindow:   m.ContextWindow,
 			MaxOutputTokens: m.MaxOutputTokens,

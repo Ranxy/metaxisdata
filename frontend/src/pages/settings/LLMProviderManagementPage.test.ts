@@ -135,12 +135,27 @@ function outputInputs(wrapper: ReturnType<typeof mount>) {
 async function expandRow(wrapper: ReturnType<typeof mount>, index = 0) {
   const toggles = wrapper
     .findAll("button")
-    .filter(
-      (button) =>
-        button.attributes("aria-label") === label("llmProvider.modelAdvanced")
+    .filter((button) =>
+      button
+        .attributes("aria-label")
+        ?.startsWith(label("llmProvider.modelAdvanced"))
     );
   await toggles[index]?.trigger("click");
   await flushPromises();
+}
+
+function removeButtons(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAll("button")
+    .filter((button) =>
+      button
+        .attributes("aria-label")
+        ?.startsWith(label("llmProvider.removeModel"))
+    );
+}
+
+function enabledCheckboxes(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('[role="checkbox"]');
 }
 
 describe("LLMProviderManagementPage model capacities", () => {
@@ -257,13 +272,7 @@ describe("LLMProviderManagementPage model capacities", () => {
     await modelNameInputs(wrapper)[1].setValue("manual-model");
     await flushPromises();
 
-    const removeButtons = wrapper
-      .findAll("button")
-      .filter(
-        (button) =>
-          button.attributes("aria-label") === label("llmProvider.removeModel")
-      );
-    await removeButtons[1].trigger("click");
+    await removeButtons(wrapper)[1].trigger("click");
     await flushPromises();
     expect(modelNameInputs(wrapper)).toHaveLength(1);
 
@@ -484,5 +493,143 @@ describe("LLMProviderManagementPage API key save", () => {
     ];
     expect(profile.apiKey).toBe("");
     expect(mask).not.toContain("api_key");
+  });
+});
+
+describe("LLMProviderManagementPage capacity limits and row editing", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listProfiles.mockResolvedValue(listProfilesResponse());
+    mocks.updateProfile.mockResolvedValue(PROFILE);
+  });
+
+  it("uses the server capacity limits for placeholders and validation", async () => {
+    const limited = {
+      ...LIMITS,
+      defaultContextWindow: 128_000,
+      maxContextWindow: 200_000,
+      defaultMaxOutputTokens: 8_192,
+      minMaxOutputTokens: 128,
+      maxMaxOutputTokens: 16_384,
+    };
+    mocks.listProfiles.mockResolvedValue({
+      ...listProfilesResponse(),
+      limits: limited,
+    });
+    const wrapper = await mountPage();
+    await openProfile(wrapper);
+    await expandRow(wrapper);
+
+    const customContextInput = wrapper
+      .findAll("input")
+      .find((input) => input.attributes("placeholder") === "128000");
+    const customOutputInput = wrapper
+      .findAll("input")
+      .find((input) => input.attributes("placeholder") === "8192");
+    expect(customContextInput).toBeTruthy();
+    expect(customOutputInput).toBeTruthy();
+
+    await customContextInput?.setValue("300000");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      label("llmProvider.contextWindowInvalid", {
+        index: 1,
+        min: limited.minContextWindow,
+        max: limited.maxContextWindow,
+      })
+    );
+
+    await customContextInput?.setValue("");
+    await customOutputInput?.setValue("20000");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      label("llmProvider.modelMaxOutputTokensInvalid", {
+        index: 1,
+        min: limited.minMaxOutputTokens,
+        max: limited.maxMaxOutputTokens,
+      })
+    );
+  });
+
+  it("reports missing capacity limits and keeps saving disabled", async () => {
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [PROFILE],
+      definitions: [],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    await openProfile(wrapper);
+
+    expect(wrapper.text()).toContain(label("llmProvider.limitsUnavailable"));
+    expect(
+      (saveButton(wrapper)?.element as HTMLButtonElement | undefined)?.disabled
+    ).toBe(true);
+  });
+
+  it("reports a failed fetch and still saves a hand-added row", async () => {
+    mocks.fetchModelsByProfile.mockRejectedValue(new Error("boom"));
+    const wrapper = await mountPage();
+    await openProfile(wrapper);
+    await addModelButton(wrapper)?.trigger("click");
+    await flushPromises();
+    await modelNameInputs(wrapper)[1].setValue("manual-model");
+    await flushPromises();
+
+    await fetchModelsButton(wrapper)?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("boom");
+    expect(
+      (saveButton(wrapper)?.element as HTMLButtonElement | undefined)?.disabled
+    ).toBe(false);
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+    const [profile] = mocks.updateProfile.mock.calls[0] as [
+      { models: { name: string }[] },
+    ];
+    expect(profile.models[1].name).toBe("manual-model");
+  });
+
+  it("saves the enabled flag from the row checkbox", async () => {
+    const wrapper = await mountPage();
+    await openProfile(wrapper);
+
+    await enabledCheckboxes(wrapper)[0].trigger("click");
+    await flushPromises();
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    const [profile] = mocks.updateProfile.mock.calls[0] as [
+      { models: { enabled: boolean }[] },
+    ];
+    expect(profile.models[0].enabled).toBe(false);
+  });
+
+  it("renders field-specific validation next to the edited capacity", async () => {
+    const wrapper = await mountPage();
+    await openProfile(wrapper);
+    await expandRow(wrapper);
+
+    await contextInputs(wrapper)[0].setValue("abc");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      label("llmProvider.contextWindowInvalid", {
+        index: 1,
+        min: LIMITS.minContextWindow,
+        max: LIMITS.maxContextWindow,
+      })
+    );
+
+    await contextInputs(wrapper)[0].setValue("");
+    await outputInputs(wrapper)[0].setValue("100");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      label("llmProvider.modelMaxOutputTokensInvalid", {
+        index: 1,
+        min: LIMITS.minMaxOutputTokens,
+        max: LIMITS.maxMaxOutputTokens,
+      })
+    );
   });
 });

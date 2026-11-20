@@ -5,7 +5,8 @@
 -- copied. Idempotent: the guard and the per-model check make a second run a
 -- no-op. A models value that is not an array (null/object from a hand-edited
 -- row) is left alone except for the retired key, so one malformed row cannot
--- fail the whole startup migration.
+-- fail the whole startup migration, and a non-object array element is kept
+-- verbatim instead of being merged with an object.
 UPDATE llm_provider_profile
 SET metadata =
   CASE
@@ -17,6 +18,7 @@ SET metadata =
           (
             SELECT jsonb_agg(
                      CASE
+                       WHEN jsonb_typeof(model) <> 'object' THEN model
                        WHEN model ? 'maxOutputTokens' THEN model
                        ELSE model || jsonb_build_object('maxOutputTokens', metadata -> 'maxOutputTokens')
                      END
