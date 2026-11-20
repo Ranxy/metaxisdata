@@ -1814,6 +1814,7 @@
     "llmProfile": "LLM 提供商配置",
     "llmProfileAuto": "第一个已启用的配置",
     "llmProfileHint": "用于该工作区的所有质量分析。",
+    "llmProfileNoProfiles": "暂无启用了模型的提供商配置。请在「设置 → LLM 提供商」中创建配置并至少启用一个模型。",
     "llmSection": "LLM 分析",
     "llmSectionDescription": "规则草稿、失败解释和字段标注可以使用模型；检查本身不调用模型。",
     "maxColumnsPerAnalysis": "单次分析的字段数",

@@ -121,7 +121,7 @@
                 </SelectContent>
               </Select>
               <p class="text-sm text-muted-foreground">
-                {{ llmDisabled(form) ? t("dataQualitySettings.llmDisabledHint") : t("dataQualitySettings.llmProfileHint") }}
+                {{ llmProfileHint }}
               </p>
             </div>
 
@@ -805,6 +805,20 @@ const form = ref<DataQualitySettingsForm>(settingsToForm(undefined));
  */
 const agentRunnerEnabled = ref(false);
 const profileOptions = ref<Array<{ name: string; title: string }>>([]);
+// "Nothing to offer" and "the list could not be read" mean different things: the
+// first explains why the picker is empty, the second must not claim the workspace
+// has no usable profile.
+const profilesLoaded = ref(false);
+/** The hint under the provider picker: switch off, nothing selectable, or the default. */
+const llmProfileHint = computed(() => {
+  if (llmDisabled(form.value)) {
+    return t("dataQualitySettings.llmDisabledHint");
+  }
+  if (profilesLoaded.value && profileOptions.value.length === 0) {
+    return t("dataQualitySettings.llmProfileNoProfiles");
+  }
+  return t("dataQualitySettings.llmProfileHint");
+});
 const issues = ref<ReturnType<typeof validateSettingsForm>>([]);
 const isLoading = ref(true);
 const isSaving = ref(false);
@@ -934,6 +948,7 @@ async function loadProfiles() {
       };
     });
     profileOptions.value = buildProviderOptions(profiles);
+    profilesLoaded.value = true;
     // A configured profile that no longer enables a model would render as an
     // empty select; clear it so the effective choice stays visible and honest.
     if (
@@ -946,6 +961,7 @@ async function loadProfiles() {
     }
   } catch {
     profileOptions.value = [];
+    profilesLoaded.value = false;
   }
 }
 

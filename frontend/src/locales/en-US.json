@@ -1814,6 +1814,7 @@
     "llmProfile": "LLM profile",
     "llmProfileAuto": "First enabled profile",
     "llmProfileHint": "Used for every quality analysis in this workspace.",
+    "llmProfileNoProfiles": "No provider profile enables a model yet. Add one under Settings → LLM providers and enable at least one model.",
     "llmSection": "LLM analysis",
     "llmSectionDescription": "Rule drafts, failure explanations and column labels may use a model. The checks themselves never do.",
     "maxColumnsPerAnalysis": "Columns per analysis",

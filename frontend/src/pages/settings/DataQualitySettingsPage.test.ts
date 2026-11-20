@@ -810,4 +810,32 @@ describe("DataQualitySettingsPage", () => {
     // choice instead of offering a selection the analyses could not run.
     expect(vm(wrapper).form.llmProviderProfile).toBe("");
   });
+
+  it("explains why nothing is selectable when no profile enables a model", async () => {
+    mocks.listProfiles.mockResolvedValue({
+      profiles: [
+        { name: "llmProfiles/off", title: "Off", models: [{ enabled: false }] },
+      ],
+    });
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.llmProfileNoProfiles")
+    );
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.llmProfileHint")
+    );
+  });
+
+  it("does not claim there are no profiles when the list cannot be read", async () => {
+    mocks.listProfiles.mockRejectedValue(new Error("permission denied"));
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.llmProfileNoProfiles")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.llmProfileHint")
+    );
+  });
 });
