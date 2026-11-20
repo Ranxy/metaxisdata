@@ -2,7 +2,10 @@ import { create } from "@bufbuild/protobuf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "vue";
 import { i18n } from "@/locales";
-import { QualitySuggestionQueueSummarySchema } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  QualitySuggestionQueueSummarySchema,
+  QualitySuggestionRejectionSchema,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import { useSuggestionSummary } from "./useSuggestionSummary";
 
 const mocks = vi.hoisted(() => ({
@@ -34,8 +37,15 @@ function summary(fields: {
   skippedPending?: number;
   skippedDecided?: number;
   skippedColumns?: string[];
+  rejectedDrafts?: Array<{ title: string; reason: string }>;
 }) {
-  return create(QualitySuggestionQueueSummarySchema, fields);
+  const rejectedDrafts = fields.rejectedDrafts?.map((item) =>
+    create(QualitySuggestionRejectionSchema, item)
+  );
+  return create(QualitySuggestionQueueSummarySchema, {
+    ...fields,
+    rejectedDrafts,
+  });
 }
 
 describe("useSuggestionSummary", () => {
@@ -128,5 +138,36 @@ describe("useSuggestionSummary", () => {
     expect(mocks.info).toHaveBeenLastCalledWith(
       "No new suggestions this time."
     );
+  });
+
+  it("explains the drafts a pass refused", () => {
+    const { summaryText } = inSetup(useSuggestionSummary);
+
+    expect(
+      summaryText(
+        summary({
+          created: 1,
+          rejectedDrafts: [
+            {
+              title: "Status must be a declared enum label",
+              reason:
+                'value "discontinued" is not a declared label of column "status"',
+            },
+          ],
+        }),
+        "rule"
+      )
+    ).toContain("1 draft was refused (Status must be a declared enum label)");
+    expect(
+      summaryText(
+        summary({
+          rejectedDrafts: [
+            { title: "first", reason: "bad value" },
+            { title: "second", reason: "bad value" },
+          ],
+        }),
+        "rule"
+      )
+    ).toContain("2 drafts were refused; first (first): bad value");
   });
 });

@@ -67,6 +67,9 @@ const (
 	// labels must not make the schema block unbounded.
 	maxPromptEnumValues     = 32
 	maxPromptEnumLabelChars = 64
+	// maxPromptEnumBytes bounds all enum labels one prompt renders together, so a
+	// wide table of large enums cannot grow the schema block without limit.
+	maxPromptEnumBytes = 4 * 1024
 	// maxPromptRecentResults bounds the results an explain prompt lists.
 	maxPromptRecentResults = 10
 	// maxPromptSchemaHistory bounds the schema changes an explain prompt lists.
@@ -325,6 +328,7 @@ func buildRuleDraftUserPrompt(draft RuleDraftContext, target ResolvedTarget, col
 	fmt.Fprintf(&builder, "table: %s\n", sanitizePromptData(describePromptTarget(target)))
 	fmt.Fprintf(&builder, "object type: %s\n", target.MetaType.String())
 	_, _ = builder.WriteString("columns:\n")
+	enumBudget := maxPromptEnumBytes
 	rendered := 0
 	for _, column := range target.Columns {
 		if rendered == maxPromptSchemaColumns {
@@ -338,7 +342,7 @@ func buildRuleDraftUserPrompt(draft RuleDraftContext, target ResolvedTarget, col
 		} else {
 			_, _ = builder.WriteString(" NOT NULL")
 		}
-		if enumValues := promptEnumValues(column.EnumValues); enumValues != "" {
+		if enumValues := promptEnumValues(column.EnumValues, &enumBudget); enumValues != "" {
 			fmt.Fprintf(&builder, " (enum: %s)", enumValues)
 		}
 		if comment := strings.TrimSpace(draft.ColumnComments[column.Name]); comment != "" {
@@ -587,10 +591,12 @@ type ExplainContext struct {
 }
 
 // promptEnumValues renders one column's declared enum labels for the draft
-// prompt. It is empty when the registry did not name them, and bounded so a large
-// enum cannot grow the schema block without limit.
-func promptEnumValues(values []string) string {
-	if len(values) == 0 {
+// prompt. It is empty when the registry did not name them, when the column has
+// more labels than a prompt may name, and when the pass's shared byte budget is
+// spent. Labels are rendered exactly as declared: trimming one would show the
+// model a value the server then refuses.
+func promptEnumValues(values []string, budget *int) string {
+	if len(values) == 0 || budget == nil || *budget <= 0 {
 		return ""
 	}
 	named := values
@@ -599,7 +605,12 @@ func promptEnumValues(values []string) string {
 	}
 	quoted := make([]string, 0, len(named))
 	for _, value := range named {
-		quoted = append(quoted, fmt.Sprintf("%q", sanitizePromptData(truncatePromptValue(value, maxPromptEnumLabelChars))))
+		rendered := fmt.Sprintf("%q", sanitizePromptData(limitRunes(value, maxPromptEnumLabelChars)))
+		if len(rendered)+2 > *budget {
+			return ""
+		}
+		*budget -= len(rendered) + 2
+		quoted = append(quoted, rendered)
 	}
 	rendered := strings.Join(quoted, ", ")
 	if len(values) > len(named) {

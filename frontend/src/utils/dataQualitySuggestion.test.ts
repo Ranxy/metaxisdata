@@ -887,7 +887,7 @@ describe("suggestionRejectionNotice", () => {
     rejected: Array<{ title: string; reason: string }>
   ) {
     const summary = create(QualitySuggestionQueueSummarySchema, { created: 1 });
-    summary.rejected = rejected.map((item) =>
+    summary.rejectedDrafts = rejected.map((item) =>
       create(QualitySuggestionRejectionSchema, item)
     );
     return summary;
@@ -927,5 +927,14 @@ describe("suggestionRejectionNotice", () => {
     );
     expect(notice?.reason.endsWith("…")).toBe(true);
     expect(notice?.reason.length).toBeLessThan(400);
+  });
+
+  it("does not split a surrogate pair when eliding", () => {
+    const notice = suggestionRejectionNotice(
+      summaryWithRejections([{ title: "draft", reason: "😀".repeat(200) }])
+    );
+    // A lone surrogate would render as a replacement glyph; code points are kept.
+    expect(notice?.reason).not.toMatch(/[\uD800-\uDFFF]/u);
+    expect(Array.from(notice?.reason ?? "")).toHaveLength(161);
   });
 });

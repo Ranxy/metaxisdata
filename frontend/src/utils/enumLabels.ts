@@ -76,8 +76,15 @@ export function enumValuesFromColumnType(type: string): string[] {
           case "Z":
             label += "\u001a";
             break;
-          default:
+          case "\\":
+          case "'":
+          case '"':
             label += escaped;
+            break;
+          default:
+            // An escape this build does not know could mean a label it would
+            // read wrongly; report the set as unknown instead.
+            return [];
         }
         index += 2;
         continue;
@@ -94,25 +101,41 @@ export function enumValuesFromColumnType(type: string): string[] {
 }
 
 /**
- * Labels of a schema-qualified PostgreSQL enum reference, looked up by type name
- * in the schema's enum types (`public.product_status` → `product_status`). Empty
- * when the spelling is not a schema-qualified type or the schema does not declare
- * that enum.
+ * Labels of a schema-qualified PostgreSQL enum reference, looked up in the enum
+ * types of the schema the caller loaded (`public.product_status` →
+ * `product_status` in schema `public`). Empty when the spelling is not a
+ * schema-qualified type, the type belongs to another schema (its labels were not
+ * loaded, and a same-named type elsewhere is not it), or the schema does not
+ * declare that enum.
  */
 export function enumValuesFromSchemaType(
   type: string,
-  enumTypes: Record<string, string[]>
+  enumTypes: Record<string, string[]>,
+  schema: string
 ): string[] {
-  const trimmed = type.trim();
-  if (trimmed === "" || trimmed.endsWith("[]")) {
+  if (qualifiedTypeSchema(type) !== schema) {
     return [];
   }
+  const name = type.trim().slice(type.trim().lastIndexOf(".") + 1);
+  return enumTypes[name] ?? [];
+}
+
+/**
+ * The schema a schema-qualified type belongs to, or the empty string for a
+ * built-in, array, parameterized or unqualified spelling. The backend resolves
+ * labels in this schema, so the caller only offers them when it read that one.
+ */
+export function qualifiedTypeSchema(type: string): string {
+  const trimmed = type.trim();
+  if (trimmed === "" || trimmed.endsWith("[]")) {
+    return "";
+  }
   if (trimmed.includes("(") || trimmed.includes(")") || trimmed.includes(" ")) {
-    return [];
+    return "";
   }
   const dot = trimmed.lastIndexOf(".");
   if (dot <= 0 || dot === trimmed.length - 1) {
-    return [];
+    return "";
   }
-  return enumTypes[trimmed.slice(dot + 1)] ?? [];
+  return trimmed.slice(0, dot);
 }

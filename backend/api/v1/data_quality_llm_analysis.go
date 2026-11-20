@@ -110,7 +110,7 @@ func qualitySuggestionQueueSummary(summary *storepb.QualitySuggestionQueueSummar
 	if converted == nil {
 		return nil
 	}
-	converted.Rejected = convertDraftRejectionsToV1(rejections)
+	converted.RejectedDrafts = convertDraftRejectionsToV1(rejections)
 	return converted
 }
 

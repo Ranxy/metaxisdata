@@ -2698,9 +2698,9 @@ export declare type QualitySuggestionQueueSummary = Message<"metaxisdata.v1.Qual
    * refusal lets the client explain the smaller queue instead of leaving it
    * unexplained. It is empty when every draft was usable.
    *
-   * @generated from field: repeated metaxisdata.v1.QualitySuggestionRejection rejected = 8;
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestionRejection rejected_drafts = 8;
    */
-  rejected: QualitySuggestionRejection[];
+  rejectedDrafts: QualitySuggestionRejection[];
 };
 
 /**
@@ -2717,7 +2717,7 @@ export declare const QualitySuggestionQueueSummarySchema: GenMessage<QualitySugg
  */
 export declare type QualitySuggestionRejection = Message<"metaxisdata.v1.QualitySuggestionRejection"> & {
   /**
-   * The draft's title, or a placeholder when the model left it out.
+   * The draft's title.
    *
    * @generated from field: string title = 1;
    */

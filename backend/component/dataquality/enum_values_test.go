@@ -1,12 +1,14 @@
 package dataquality
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -24,6 +26,11 @@ func TestEnumValuesFromType(t *testing.T) {
 		{name: "case-insensitive keyword", raw: "ENUM('a')", want: []string{"a"}},
 		{name: "quotes, commas and backslashes", raw: `enum('it''s ok','a,b','c\\d')`, want: []string{"it's ok", "a,b", `c\d`}},
 		{name: "control characters", raw: "enum('a\tb','c\\nd','q\"z','r\\0s')", want: []string{"a\tb", "c\nd", `q"z`, "r\x00s"}},
+		{name: "carriage return and ctrl-z", raw: "enum('a\\rb','a\\Zb')", want: []string{"a\rb", "a\u001ab"}},
+		{name: "padded label keeps its spaces", raw: "enum(' draft ','active')", want: []string{" draft ", "active"}},
+		{name: "trailing separator", raw: "enum('a',)", want: []string{"a"}},
+		{name: "dangling backslash", raw: "enum('a\\)", wantNil: true},
+		{name: "unknown escape", raw: "enum('a\\qb')", wantNil: true},
 		{name: "set is not an enum", raw: "set('a','b')", wantNil: true},
 		{name: "varchar", raw: "varchar(255)", wantNil: true},
 		{name: "text", raw: "text", wantNil: true},
@@ -198,4 +205,113 @@ func TestAppendDraftRejectionBoundsTheList(t *testing.T) {
 
 	long := appendDraftRejection(nil, "t", strings.Repeat("x", maxDraftRejectionReasonChars*2))
 	require.Len(t, long[0].Reason, maxDraftRejectionReasonChars)
+}
+
+// The MySQL family compares an ENUM through the column collation: a non-binary
+// collation is case-insensitive, and a non-strict ENUM also holds "".
+func TestEnumValueComparisonFollowsTheEngine(t *testing.T) {
+	t.Parallel()
+
+	mysql := ColumnInfo{
+		Name: "status", Type: "enum('draft','active')", Kind: ColumnKindString,
+		EnumValues: []string{"draft", "active"}, EnumCaseInsensitive: true, EnumErrorMember: true,
+	}
+	for _, value := range []string{"Draft", "ACTIVE", ""} {
+		_, err := convertFilterValue(mysql, value)
+		require.NoError(t, err, "value %q", value)
+	}
+	_, err := convertFilterValue(mysql, "archived")
+	require.ErrorContains(t, err, `"status"`)
+
+	binary := mysql
+	binary.EnumCaseInsensitive = false
+	_, err = convertFilterValue(binary, "Draft")
+	require.ErrorContains(t, err, "valid labels")
+
+	postgres := enumValidationColumn()
+	_, err = convertFilterValue(postgres, "Draft")
+	require.ErrorContains(t, err, "valid labels")
+}
+
+// A large enum type must not make the stored/structured error unbounded, and the
+// label list has to survive the caps.
+func TestEnumValueErrorStaysBounded(t *testing.T) {
+	t.Parallel()
+
+	labels := make([]string, 0, 300)
+	for index := 0; index < 300; index++ {
+		labels = append(labels, fmt.Sprintf("label_%03d", index))
+	}
+	column := ColumnInfo{
+		Name: "status", Kind: ColumnKindString,
+		Type:       "enum('" + strings.Join(labels, "','") + "')",
+		EnumValues: labels,
+	}
+	err := enumValueError(column, "missing")
+	require.ErrorContains(t, err, "valid labels")
+	require.Less(t, len(err.Error()), 1024)
+	require.NotContains(t, err.Error(), "label_299")
+}
+
+// The PostgreSQL enrichment maps each column to the schema its type names, and
+// copies the labels instead of aliasing the registry's cached slice.
+func TestApplyEnumLabelsResolvesTheTypesSchema(t *testing.T) {
+	t.Parallel()
+
+	enums := map[string]map[string][]string{
+		"public": {"product_status": {"active", "draft"}},
+		"shared": {"mood": {"happy", "sad"}},
+	}
+	target := ResolvedTarget{
+		Engine: storepb.Engine_POSTGRES,
+		Columns: []ColumnInfo{
+			{Name: "status", Type: "public.product_status", Kind: ColumnKindString},
+			{Name: "mood", Type: "shared.mood", Kind: ColumnKindString},
+			{Name: "other", Type: "public.citext", Kind: ColumnKindString},
+			{Name: "names", Type: "text[]", Kind: ColumnKindString},
+		},
+	}
+	applyEnumLabels(&target, func(schema string) map[string][]string { return enums[schema] })
+	require.Equal(t, []string{"active", "draft"}, target.Columns[0].EnumValues)
+	require.Equal(t, []string{"happy", "sad"}, target.Columns[1].EnumValues)
+	require.Empty(t, target.Columns[2].EnumValues)
+	require.Empty(t, target.Columns[3].EnumValues)
+
+	// The resolver copies out of the registry's cached message.
+	target.Columns[0].EnumValues[0] = "mutated"
+	require.Equal(t, []string{"active", "draft"}, enums["public"]["product_status"])
+}
+
+// Contract filters and null_percent custom values bind through the same helpers
+// as rule filters, so they reject an undeclared label too.
+func TestEnumValidationCoversContractFilterAndNullValues(t *testing.T) {
+	t.Parallel()
+
+	target := validationTarget(storepb.Engine_POSTGRES)
+	target.Columns = append(target.Columns, enumValidationColumn())
+
+	dialect, err := DialectFor(storepb.Engine_POSTGRES)
+	require.NoError(t, err)
+	_, _, err = CompileFilter(dialect, target, Filter{Clauses: []FilterClause{{
+		Column: "status", Op: FilterEQ, Values: []string{"discontinued"},
+	}}})
+	require.ErrorContains(t, err, "valid labels")
+
+	nullConfig := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
+			Column:       "status",
+			NullValues:   []string{"discontinued"},
+			MaxNullCount: proto.Int64(0),
+		}},
+	}
+	err = ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, nullConfig)
+	require.ErrorContains(t, err, "valid labels")
+}
+
+// A draft's internal failure is logged, not reported as the model's refusal.
+func TestReportableDraftRejection(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, reportableDraftRejection(invalidConfig("bad value")))
+	require.False(t, reportableDraftRejection(common.Errorf(common.Internal, "store down")))
 }

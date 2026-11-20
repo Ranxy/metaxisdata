@@ -151,14 +151,30 @@ func metadataColumns(metadata *storepb.StoredMetadata, metaType storepb.MetaType
 		if column == nil {
 			continue
 		}
+		caseInsensitive, errorMember := mysqlEnumComparison(engine, column)
 		columns = append(columns, ColumnInfo{
-			Name:     column.GetName(),
-			Type:     column.GetType(),
-			Kind:     classifyColumnTypeForEngine(engine, column.GetType()),
-			Nullable: column.GetNullable(),
+			Name:                column.GetName(),
+			Type:                column.GetType(),
+			Kind:                classifyColumnTypeForEngine(engine, column.GetType()),
+			Nullable:            column.GetNullable(),
+			EnumCaseInsensitive: caseInsensitive,
+			EnumErrorMember:     errorMember,
 		})
 	}
 	return columns, nil
+}
+
+// mysqlEnumComparison reports how a MySQL-family ENUM compares its labels. The
+// engine compares through the column's collation, so a non-binary collation is
+// case-insensitive; a non-strict ENUM also holds the implicit "" member. Any
+// other engine (and a non-enum column) carries no such semantics, so it returns
+// false, false.
+func mysqlEnumComparison(engine storepb.Engine, column *storepb.ColumnMetadata) (caseInsensitive, errorMember bool) {
+	if !isMySQLWireEngine(engine) || enumValuesFromType(column.GetType()) == nil {
+		return false, false
+	}
+	collation := strings.ToLower(strings.TrimSpace(column.GetCollation()))
+	return !strings.HasSuffix(collation, "_bin"), true
 }
 
 // primaryKeyColumns returns the primary-key columns of a registered relation in

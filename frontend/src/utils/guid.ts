@@ -40,24 +40,21 @@ export function routeParamToGuid(
   return segments.map((segment) => (segment === "~" ? "" : segment)).join(";");
 }
 
-/** The separator between the segments of a metadata GUID. */
-const GUID_SEPARATOR = ";";
-
 /**
- * Escapes one GUID segment the way the server builds metadata GUIDs: the
- * separator and the escape character are percent-encoded, the escape character
- * first so a name containing a literal `%3B` cannot be read back as a separator.
+ * The GUID of an object's parent, or the empty string for a top-level GUID. The
+ * last `;` is the separator before the object's own segment (a segment cannot
+ * hold a literal `;`; it is percent-encoded), so this is the inverse of one step
+ * of `guidSegmentsToRouteParams` without re-escaping any name.
  */
-export function escapeGuidPart(part: string): string {
-  return part
-    .replace(/%/g, "%25")
-    .replace(new RegExp(GUID_SEPARATOR, "g"), "%3B");
+export function parentGuid(guid: string): string {
+  const separator = guid.lastIndexOf(";");
+  return separator < 0 ? "" : guid.slice(0, separator);
 }
 
 /**
- * Builds a metadata GUID from its segments, for addressing a parent object the
- * way the registry addresses it (a table's schema, for example).
+ * Reverses `EscapeGUIDPart`: the separator first, then the escape character, so
+ * a name written as `a%3Bb` comes back as `a;b` and a literal `%3B` survives.
  */
-export function buildMetaGuid(segments: string[]): string {
-  return segments.map(escapeGuidPart).join(GUID_SEPARATOR);
+export function unescapeGuidPart(part: string): string {
+  return part.split("%3B").join(";").split("%25").join("%");
 }

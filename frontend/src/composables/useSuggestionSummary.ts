@@ -68,6 +68,7 @@ export function useSuggestionSummary() {
     const refused = rejection
       ? t("dataQuality.suggestionSummary.rejected", {
           count: rejection.count,
+          title: rejection.title,
           reason: rejection.reason,
         })
       : "";

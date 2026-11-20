@@ -65,7 +65,7 @@
             size="sm"
             class="h-7 rounded-full px-2.5 text-xs font-normal"
             :disabled="!canAddEnumValue(label)"
-            :title="t('dataQuality.editor.enumLabelsAdd')"
+            :title="enumValueTitle(label)"
             @click="addEnumValue(label)"
           >
             {{ label }}
@@ -225,19 +225,41 @@ function acceptedValues(): string[] {
   return parseValueList(config.value.values ?? "");
 }
 
-/** A label the fixed list can hold: the CSV field separates on comma/newline. */
+/**
+ * A label the fixed list can hold. The CSV field separates on comma/newline and
+ * trims every item, so a label with either or with surrounding whitespace cannot
+ * round-trip; the chip is offered but explained as unsupported instead.
+ */
 function canAddEnumValue(label: string): boolean {
-  if (label.includes(",") || label.includes("\n")) {
+  if (label !== label.trim() || label.includes(",") || label.includes("\n")) {
     return false;
   }
   return !acceptedValues().includes(label);
 }
 
-/** Append one declared label to the accepted-values list. */
+/** Why a chip is or is not available, used as its tooltip. */
+function enumValueTitle(label: string): string {
+  if (acceptedValues().includes(label)) {
+    return t("dataQuality.editor.enumLabelsAlready");
+  }
+  if (!canAddEnumValue(label)) {
+    return t("dataQuality.editor.enumLabelsUnsupported");
+  }
+  return t("dataQuality.editor.enumLabelsAdd");
+}
+
+/** Append one declared label to the accepted-values list, keeping typed text. */
 function addEnumValue(label: string): void {
   if (!canAddEnumValue(label)) {
     return;
   }
-  config.value.values = [...acceptedValues(), label].join(", ");
+  const raw = (config.value.values ?? "").trimEnd();
+  if (raw === "") {
+    config.value.values = label;
+    return;
+  }
+  config.value.values = raw.endsWith(",")
+    ? `${raw} ${label}`
+    : `${raw}, ${label}`;
 }
 </script>

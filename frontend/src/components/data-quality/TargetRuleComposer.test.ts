@@ -1062,6 +1062,104 @@ describe("TargetRuleComposer", () => {
     expect(mocks.listAllMetadata).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
+  it("reads a PostgreSQL enum's declared labels from the target schema", async () => {
+    mocks.getMetadata.mockResolvedValue({
+      metadata: {
+        type: {
+          case: "schemaMetadata",
+          value: {
+            enumTypes: [
+              { name: "product_status", values: ["active", "draft"] },
+            ],
+          },
+        },
+      },
+    });
+    const provided: TargetColumnDetail[] = [
+      { name: "status", type: "public.product_status", nullable: false },
+    ];
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "status",
+      columnDetails: provided,
+    });
+    await flushPromises();
+
+    // The schema is the target's parent object, so the read addresses it
+    // directly instead of rebuilding (and re-escaping) its names.
+    expect(mocks.getMetadata).toHaveBeenCalledWith({
+      guid: "inst1;db1;public",
+      metaType: MetaType.SCHEMA,
+    });
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual([
+      {
+        name: "status",
+        type: "public.product_status",
+        nullable: false,
+        enumValues: ["active", "draft"],
+      },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("does not offer a cross-schema enum's labels from the target schema", async () => {
+    mocks.getMetadata.mockResolvedValue({
+      metadata: {
+        type: {
+          case: "schemaMetadata",
+          value: {
+            enumTypes: [
+              { name: "product_status", values: ["active", "draft"] },
+            ],
+          },
+        },
+      },
+    });
+    const provided: TargetColumnDetail[] = [
+      { name: "status", type: "shared.product_status", nullable: false },
+    ];
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "status",
+      columnDetails: provided,
+    });
+    await flushPromises();
+
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual([
+      { name: "status", type: "shared.product_status", nullable: false },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("parses a MySQL enum's labels inline without a schema read", async () => {
+    const provided: TargetColumnDetail[] = [
+      { name: "status", type: "enum('draft','published')", nullable: false },
+    ];
+    const wrapper = await mountComposer({
+      engine: Engine.MYSQL,
+      scope: "column",
+      initialColumn: "status",
+      columnDetails: provided,
+    });
+    await flushPromises();
+
+    expect(mocks.getMetadata).not.toHaveBeenCalled();
+    expect(
+      wrapper.findComponent(RuleConfigForm).props("columnDetails")
+    ).toEqual([
+      {
+        name: "status",
+        type: "enum('draft','published')",
+        nullable: false,
+        enumValues: ["draft", "published"],
+      },
+    ]);
+    wrapper.unmount();
+  });
   it("uses the saved check's trend to suggest thresholds, without saving", async () => {
     const success = vi.spyOn(notify, "success");
     const wrapper = await mountComposer({ rule: ruleFixture() });

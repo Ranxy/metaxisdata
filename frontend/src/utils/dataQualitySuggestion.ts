@@ -189,17 +189,18 @@ export interface SuggestionRejectionNotice {
 export function suggestionRejectionNotice(
   summary: QualitySuggestionQueueSummary | undefined
 ): SuggestionRejectionNotice | undefined {
-  const rejected = summary?.rejected ?? [];
+  const rejected = summary?.rejectedDrafts ?? [];
   if (rejected.length === 0) {
     return undefined;
   }
   const first = rejected[0];
   const reason = first?.reason || first?.title || "";
+  const characters = Array.from(reason);
   return {
     title: first?.title ?? "",
     reason:
-      reason.length > REJECTION_REASON_CHARS
-        ? `${reason.slice(0, REJECTION_REASON_CHARS)}…`
+      characters.length > REJECTION_REASON_CHARS
+        ? `${characters.slice(0, REJECTION_REASON_CHARS).join("")}…`
         : reason,
     count: rejected.length,
   };

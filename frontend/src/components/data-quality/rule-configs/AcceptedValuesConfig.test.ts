@@ -157,3 +157,43 @@ describe("AcceptedValuesConfig enum labels", () => {
     wrapper.unmount();
   });
 });
+
+describe("AcceptedValuesConfig enum label constraints", () => {
+  it("explains a label it cannot put in the comma-separated field", async () => {
+    const { wrapper } = mountConfig({ column: "status", values: "" }, [
+      {
+        name: "status",
+        type: "public.product_status",
+        nullable: false,
+        enumValues: ["active", " padded ", "two,values"],
+      },
+    ]);
+    const padded = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "padded");
+    expect(padded?.attributes("disabled")).toBeDefined();
+    expect(padded?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.editor.enumLabelsUnsupported")
+    );
+    wrapper.unmount();
+  });
+
+  it("marks an already accepted label as such", () => {
+    const { wrapper } = mountConfig({ column: "status", values: "active" }, [
+      {
+        name: "status",
+        type: "public.product_status",
+        nullable: false,
+        enumValues: ["active"],
+      },
+    ]);
+    const active = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "active");
+    expect(active?.attributes("disabled")).toBeDefined();
+    expect(active?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.editor.enumLabelsAlready")
+    );
+    wrapper.unmount();
+  });
+});

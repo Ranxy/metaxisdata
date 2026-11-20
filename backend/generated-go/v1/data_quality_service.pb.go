@@ -7546,9 +7546,9 @@ type QualitySuggestionQueueSummary struct {
 	// that is not one of an enum column's labels, for example); reporting the
 	// refusal lets the client explain the smaller queue instead of leaving it
 	// unexplained. It is empty when every draft was usable.
-	Rejected      []*QualitySuggestionRejection `protobuf:"bytes,8,rep,name=rejected,proto3" json:"rejected,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RejectedDrafts []*QualitySuggestionRejection `protobuf:"bytes,8,rep,name=rejected_drafts,json=rejectedDrafts,proto3" json:"rejected_drafts,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *QualitySuggestionQueueSummary) Reset() {
@@ -7630,9 +7630,9 @@ func (x *QualitySuggestionQueueSummary) GetSkippedColumns() []string {
 	return nil
 }
 
-func (x *QualitySuggestionQueueSummary) GetRejected() []*QualitySuggestionRejection {
+func (x *QualitySuggestionQueueSummary) GetRejectedDrafts() []*QualitySuggestionRejection {
 	if x != nil {
-		return x.Rejected
+		return x.RejectedDrafts
 	}
 	return nil
 }
@@ -7641,7 +7641,7 @@ func (x *QualitySuggestionQueueSummary) GetRejected() []*QualitySuggestionReject
 // queueing it.
 type QualitySuggestionRejection struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The draft's title, or a placeholder when the model left it out.
+	// The draft's title.
 	Title string `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
 	// The server's reason, in the server's wording.
 	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
@@ -21358,7 +21358,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"decideTime\x12#\n" +
 	"\rdecision_note\x18\r \x01(\tR\fdecisionNote\x12=\n" +
 	"\frefresh_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vrefreshTime:b\xeaA_\n" +
-	"\x1dmetaxisdata/QualitySuggestion\x12>workspaces/{workspace}/qualitySuggestions/{quality_suggestion}\"\xee\x02\n" +
+	"\x1dmetaxisdata/QualitySuggestion\x12>workspaces/{workspace}/qualitySuggestions/{quality_suggestion}\"\xfb\x02\n" +
 	"\x1dQualitySuggestionQueueSummary\x12\x18\n" +
 	"\acreated\x18\x01 \x01(\x05R\acreated\x12\x1c\n" +
 	"\trefreshed\x18\x02 \x01(\x05R\trefreshed\x12\x1e\n" +
@@ -21368,8 +21368,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x15skipped_existing_fact\x18\x04 \x01(\x05R\x13skippedExistingFact\x12'\n" +
 	"\x0fskipped_pending\x18\x05 \x01(\x05R\x0eskippedPending\x12'\n" +
 	"\x0fskipped_decided\x18\x06 \x01(\x05R\x0eskippedDecided\x12'\n" +
-	"\x0fskipped_columns\x18\a \x03(\tR\x0eskippedColumns\x12F\n" +
-	"\brejected\x18\b \x03(\v2*.metaxisdata.v1.QualitySuggestionRejectionR\brejected\"J\n" +
+	"\x0fskipped_columns\x18\a \x03(\tR\x0eskippedColumns\x12S\n" +
+	"\x0frejected_drafts\x18\b \x03(\v2*.metaxisdata.v1.QualitySuggestionRejectionR\x0erejectedDrafts\"J\n" +
 	"\x1aQualitySuggestionRejection\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x83\x03\n" +
@@ -23322,7 +23322,7 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	262, // 104: metaxisdata.v1.QualitySuggestion.create_time:type_name -> google.protobuf.Timestamp
 	262, // 105: metaxisdata.v1.QualitySuggestion.decide_time:type_name -> google.protobuf.Timestamp
 	262, // 106: metaxisdata.v1.QualitySuggestion.refresh_time:type_name -> google.protobuf.Timestamp
-	93,  // 107: metaxisdata.v1.QualitySuggestionQueueSummary.rejected:type_name -> metaxisdata.v1.QualitySuggestionRejection
+	93,  // 107: metaxisdata.v1.QualitySuggestionQueueSummary.rejected_drafts:type_name -> metaxisdata.v1.QualitySuggestionRejection
 	263, // 108: metaxisdata.v1.ColumnProfile.meta_type:type_name -> metaxisdata.v1.MetaType
 	86,  // 109: metaxisdata.v1.ColumnProfile.profile:type_name -> metaxisdata.v1.ColumnProfileStats
 	262, // 110: metaxisdata.v1.ColumnProfile.profiled_at:type_name -> google.protobuf.Timestamp

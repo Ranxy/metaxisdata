@@ -68,10 +68,10 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	var gotColumns []string
 	var gotIntent string
 	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, []dataquality.DraftRejection, error) {
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 		gotColumns = columns
 		gotIntent = intent
-		return []string{"orders amount not null", "orders id unique"}, nil, nil
+		return []string{"orders amount not null", "orders id unique"}, nil, nil, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
 	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", args, &wakeControl{})
@@ -89,11 +89,11 @@ func TestDraftChecksToolReportsRejectedDrafts(t *testing.T) {
 	t.Parallel()
 
 	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, error) {
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 		return nil, []dataquality.DraftRejection{{
 			Title:  "Status must be a declared enum label",
-			Reason: `value "discontinued" is not a label of the enum type "public.product_status"; valid labels: "active", "draft"`,
-		}}, nil
+			Reason: `value "discontinued" is not a declared label of column "status"; valid labels: "active", "draft"`,
+		}}, nil, nil
 	}
 	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
 	require.NoError(t, err)
@@ -118,4 +118,23 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		},
 		Downstream: 3,
 	}, nil
+}
+
+// A valid draft that was not queued for a non-refusal reason is explained too, so
+// the model does not repeat a correct intent.
+func TestDraftChecksToolReportsSkippedDrafts(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine(newFakeStore())
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+		return nil, nil, &storepb.QualitySuggestionQueueSummary{
+			SkippedExistingFact: 2,
+			SkippedDecided:      1,
+		}, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Contains(t, result, `"queued":0`)
+	require.Contains(t, result, `"existingFact":2`)
+	require.Contains(t, result, `"decided":1`)
 }

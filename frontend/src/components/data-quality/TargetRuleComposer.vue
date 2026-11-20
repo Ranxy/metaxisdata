@@ -712,8 +712,9 @@ import {
 import {
   enumValuesFromColumnType,
   enumValuesFromSchemaType,
+  qualifiedTypeSchema,
 } from "@/utils/enumLabels";
-import { buildMetaGuid } from "@/utils/guid";
+import { parentGuid, unescapeGuidPart } from "@/utils/guid";
 
 /**
  * The one authoring surface for a quality check: a dialog fixed to the target the
@@ -1527,15 +1528,25 @@ async function applyColumnEnumValues(
   if (current.length === 0) {
     return;
   }
-  const schema = selection.path.schema.trim();
+  // The schema is the target's parent object, so its GUID is the target GUID
+  // without the last segment: no name has to be re-escaped to address it.
+  const schemaGuid = parentGuid(selection.guid);
+  const schema = unescapeGuidPart(
+    schemaGuid.slice(schemaGuid.lastIndexOf(";") + 1)
+  );
+  const mayHaveSchemaEnums =
+    engine.value === Engine.POSTGRES &&
+    schema !== "" &&
+    current.some((column) => qualifiedTypeSchema(column.type) !== "");
   let enumTypes: Record<string, string[]> = {};
-  if (engine.value === Engine.POSTGRES && schema !== "") {
-    const schemaGuid = buildMetaGuid([
-      selection.path.instance.trim(),
-      selection.path.database.trim(),
-      schema,
-    ]);
-    enumTypes = await loadSchemaEnumTypes(schemaGuid);
+  if (mayHaveSchemaEnums) {
+    try {
+      enumTypes = await loadSchemaEnumTypes(schemaGuid);
+    } catch {
+      // The hints are best effort: a failed read leaves the column without
+      // labels and the server still refuses a value the enum cannot hold.
+      return;
+    }
     if (!props.open || target.value?.guid !== selection.guid) {
       return;
     }
@@ -1550,7 +1561,7 @@ async function applyColumnEnumValues(
     const declared =
       inline.length > 0
         ? inline
-        : enumValuesFromSchemaType(column.type, enumTypes);
+        : enumValuesFromSchemaType(column.type, enumTypes, schema);
     return declared.length > 0 ? { ...column, enumValues: declared } : column;
   });
 }

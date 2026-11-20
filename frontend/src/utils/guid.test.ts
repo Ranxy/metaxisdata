@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildMetaGuid,
   guidSegmentsToRouteParams,
   guidToRouteParams,
+  parentGuid,
   routeParamToGuid,
 } from "./guid";
 
@@ -107,20 +107,22 @@ describe("routeParamToGuid", () => {
   });
 });
 
-describe("buildMetaGuid", () => {
-  it("joins segments in the registry's order", () => {
-    expect(buildMetaGuid(["inst", "db", "public", "orders"])).toBe(
-      "inst;db;public;orders"
-    );
+describe("parentGuid", () => {
+  it("returns the parent of a table and of a schema", () => {
+    expect(parentGuid("inst;db;public;orders")).toBe("inst;db;public");
+    expect(parentGuid("inst;db;public")).toBe("inst;db");
   });
 
-  it("escapes the separator and the escape character, in that order", () => {
-    expect(buildMetaGuid(["inst", "a;b", "pu%3Bblic"])).toBe(
-      "inst;a%3Bb;pu%253Bblic"
-    );
+  it("keeps the empty MySQL schema segment in place", () => {
+    expect(parentGuid("inst;db;;orders")).toBe("inst;db;");
   });
 
-  it("keeps an empty schema segment meaningful", () => {
-    expect(buildMetaGuid(["inst", "db", "", "orders"])).toBe("inst;db;;orders");
+  it("returns an empty string for a top-level GUID", () => {
+    expect(parentGuid("inst")).toBe("");
+    expect(parentGuid("")).toBe("");
+  });
+
+  it("does not decode an escaped name", () => {
+    expect(parentGuid("inst;a%3Bb;public;orders")).toBe("inst;a%3Bb;public");
   });
 });

@@ -58,6 +58,19 @@ type DraftRejection struct {
 	Reason string
 }
 
+// reportableDraftRejection reports whether a refused draft's error is the model's
+// answer being wrong (a value outside an enum's labels, a column that does not
+// support the rule) rather than an internal failure. An internal failure is
+// logged, never surfaced as a refusal the caller should act on.
+func reportableDraftRejection(err error) bool {
+	switch common.ErrorCode(err) {
+	case common.Invalid, common.NotFound:
+		return true
+	default:
+		return false
+	}
+}
+
 // appendDraftRejection collects one refusal within the pass's bounds.
 func appendDraftRejection(rejections []DraftRejection, title, reason string) []DraftRejection {
 	if len(rejections) >= maxDraftRejections {
@@ -324,7 +337,9 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		}
 		draftConfig, referencedColumns, err := draftConfig(draft, columns)
 		if err != nil {
-			rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			if reportableDraftRejection(err) {
+				rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			}
 			slog.Warn("dropping a rule draft whose config could not be built",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title),
@@ -339,7 +354,9 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			continue
 		}
 		if _, err := ValidateRule(ctx, s.store, draft.Type, targetGUID, metaType, draftConfig, nil, nil, referenceTimeVariables()); err != nil {
-			rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			if reportableDraftRejection(err) {
+				rejections = appendDraftRejection(rejections, draft.Title, err.Error())
+			}
 			slog.Warn("dropping a rule draft that failed validation",
 				slog.String("table_guid", targetGUID),
 				slog.String("title", draft.Title),

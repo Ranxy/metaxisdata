@@ -2088,13 +2088,13 @@ message QualitySuggestionQueueSummary {
   // that is not one of an enum column's labels, for example); reporting the
   // refusal lets the client explain the smaller queue instead of leaving it
   // unexplained. It is empty when every draft was usable.
-  repeated QualitySuggestionRejection rejected = 8;
+  repeated QualitySuggestionRejection rejected_drafts = 8;
 }
 
 // QualitySuggestionRejection is one model draft a generation pass refused before
 // queueing it.
 message QualitySuggestionRejection {
-  // The draft's title, or a placeholder when the model left it out.
+  // The draft's title.
   string title = 1;
   // The server's reason, in the server's wording.
   string reason = 2;

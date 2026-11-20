@@ -70,8 +70,12 @@ func enumValuesFromType(columnType string) []string {
 					_ = label.WriteByte('\r')
 				case 'Z':
 					_ = label.WriteByte(0x1a)
-				default:
+				case '\\', '\'', '"':
 					_ = label.WriteByte(body[index+1])
+				default:
+					// An escape this build does not know could mean a label it
+					// would read wrongly. Report the set as unknown instead.
+					return nil
 				}
 				index += 2
 			default:
@@ -156,25 +160,9 @@ func enrichColumnEnumValues(ctx context.Context, s *store.Store, target *Resolve
 		if s == nil {
 			return
 		}
-		labelsBySchema := make(map[string]map[string][]string, 1)
-		for index := range target.Columns {
-			column := &target.Columns[index]
-			if len(column.EnumValues) > 0 {
-				continue
-			}
-			schema, name, ok := postgresUserDefinedType(column.Type)
-			if !ok {
-				continue
-			}
-			labels, cached := labelsBySchema[schema]
-			if !cached {
-				labels = schemaEnumLabels(ctx, s, target.InstanceResourceID, target.Database, schema)
-				labelsBySchema[schema] = labels
-			}
-			if values := labels[name]; len(values) > 0 {
-				column.EnumValues = values
-			}
-		}
+		applyEnumLabels(target, func(schema string) map[string][]string {
+			return schemaEnumLabels(ctx, s, target.InstanceResourceID, target.Database, schema)
+		})
 	case isMySQLWireEngine(target.Engine):
 		for index := range target.Columns {
 			column := &target.Columns[index]
@@ -188,20 +176,60 @@ func enrichColumnEnumValues(ctx context.Context, s *store.Store, target *Resolve
 	}
 }
 
+// applyEnumLabels attaches the labels a lookup function reports to the target's
+// PostgreSQL enum columns. It is the pure half of the enrichment, so the
+// column-to-schema mapping can be tested without a store.
+func applyEnumLabels(target *ResolvedTarget, lookup func(schema string) map[string][]string) {
+	if target == nil || target.Engine != storepb.Engine_POSTGRES || len(target.Columns) == 0 {
+		return
+	}
+	labelsBySchema := make(map[string]map[string][]string, 1)
+	for index := range target.Columns {
+		column := &target.Columns[index]
+		if len(column.EnumValues) > 0 {
+			continue
+		}
+		schema, name, ok := postgresUserDefinedType(column.Type)
+		if !ok {
+			continue
+		}
+		labels, cached := labelsBySchema[schema]
+		if !cached {
+			labels = lookup(schema)
+			labelsBySchema[schema] = labels
+		}
+		if values := labels[name]; len(values) > 0 {
+			// Copy: the slice belongs to the store's cached registry message, and
+			// a future consumer must not be able to sort or cut it in place.
+			column.EnumValues = append([]string(nil), values...)
+		}
+	}
+}
+
 // enumValueError rejects a value the target's enum type cannot hold. It returns
 // nil when the column is not an enum or the registry did not name its labels, so
 // a best-effort lookup can never reject a value it knows nothing about.
+//
+// The comparison follows the engine: PostgreSQL matches a label exactly, while a
+// MySQL-family ENUM compares through its column collation, which is
+// case-insensitive unless it is binary, and can hold the implicit empty-string
+// error member. The label list is bounded and the type spelling is deliberately
+// not echoed: a MySQL ENUM type can be thousands of bytes, and the stored error
+// text and the draft-rejection reason both have small caps.
 func enumValueError(column ColumnInfo, value string) error {
 	if len(column.EnumValues) == 0 {
 		return nil
 	}
+	if column.EnumErrorMember && value == "" {
+		return nil
+	}
 	for _, label := range column.EnumValues {
-		if label == value {
+		if label == value || (column.EnumCaseInsensitive && strings.EqualFold(label, value)) {
 			return nil
 		}
 	}
-	return invalidConfig("value %q is not a label of the enum type %q; valid labels: %s",
-		value, column.Type, enumLabelList(column.EnumValues))
+	return invalidConfig("value %q is not a declared label of column %q; valid labels: %s",
+		value, column.Name, enumLabelList(column.EnumValues))
 }
 
 // enumLabelList renders the labels one error message may name, quoted so a label

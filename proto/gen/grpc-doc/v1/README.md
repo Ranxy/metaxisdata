@@ -8196,7 +8196,7 @@ proposals; these counts let the client explain the result.
 | skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default mode leaves it untouched instead of spending another analysis. |
 | skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the request did not force regeneration. |
 | skipped_columns | [string](#string) | repeated | The columns a generation pass derived no proposal for, so the client can name them. A label pass lists columns it left out because they already had a label or a live proposal; a deterministic recommendation lists columns no check could be derived for. A column whose candidate lost the pass&#39;s per-type budget is not listed, because a proposal for it was derived. |
-| rejected | [QualitySuggestionRejection](#metaxisdata-v1-QualitySuggestionRejection) | repeated | Drafts the model proposed that the rule pipeline refused, with the reason. The model&#39;s answer can name a value the target cannot hold (an accepted value that is not one of an enum column&#39;s labels, for example); reporting the refusal lets the client explain the smaller queue instead of leaving it unexplained. It is empty when every draft was usable. |
+| rejected_drafts | [QualitySuggestionRejection](#metaxisdata-v1-QualitySuggestionRejection) | repeated | Drafts the model proposed that the rule pipeline refused, with the reason. The model&#39;s answer can name a value the target cannot hold (an accepted value that is not one of an enum column&#39;s labels, for example); reporting the refusal lets the client explain the smaller queue instead of leaving it unexplained. It is empty when every draft was usable. |
 
 
 
@@ -8212,7 +8212,7 @@ queueing it.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| title | [string](#string) |  | The draft&#39;s title, or a placeholder when the model left it out. |
+| title | [string](#string) |  | The draft&#39;s title. |
 | reason | [string](#string) |  | The server&#39;s reason, in the server&#39;s wording. |
 
 
