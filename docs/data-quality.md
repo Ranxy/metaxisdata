@@ -531,8 +531,10 @@ only a changed pair is validated. Agents do not follow the workspace provider in
 analyses' default.
 - **Database scope** — the databases the agent may watch. Every table, external table, view and materialized view in them is discovered
 and either triaged (no checks yet) or monitored; there is no per-target enrollment screen.
-- **Capabilities** — *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under the guardrails
-below) and *Patrol* (the scheduled review of the scope and its reports).
+- **Capabilities** — each selected capability shapes the prompt and tool set the agent runs with, composed from the agent's product,
+capabilities and adoption settings: *Suggest* (draft checks from what it learns), *Adopt* (accept low-risk drafts for the owner under
+the guardrails below, and adopt pending drafts when the owner asks in conversation) and *Patrol* (the scheduled review of
+the scope and its reports). A capability change takes effect on the next wake; nothing restarts.
 - **Report schedule** — off, daily or weekly, with a time, a time zone and (for weekly) a weekday.
 - **Adoption guardrails** — off, paused or active; the eligible rule types, a minimum model confidence, a daily ceiling, and whether
 critical assets may be adopted. *Paused* creates an adopted check disabled for the owner to enable; *Active* creates it enabled. The
@@ -559,17 +561,24 @@ enabled checks, executions by verdict, new and open problems, pending proposals 
 generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** Three things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
 adoption pass, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
-names the most recent write failure. The owner answers or dismisses it from the agent's home; answering resumes the target's session.
-The owner also gets an in-app notification.
+names the most recent write failure. The owner answers or dismisses it from the agent's home; answering resumes the target's session,
+and a reply can ask the agent to adopt the pending drafts while the proposal item also offers an **Adopt pending drafts** action when
+adoption is enabled. The owner also gets an in-app notification.
 - **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks adopted, drafts that failed to write, and
 drafts still pending — plus the most recent write failure. **Adopt pending drafts now** runs the same guardrails over drafts already
 in the queue; the owner or an administrator can use it to clear drafts a failed pass left behind, drafts above the daily ceiling
 from an earlier pass, or drafts whose wake failed after drafting. It does not bypass the rule-type allowlist, the confidence
 threshold, the critical-asset switch, the agent's current database scope or the daily ceiling; drafts outside the scope are skipped
-and stay pending.
-- **Does not write freely.** An agent cannot publish a contract, decide a proposal, edit a check or change settings. Its only writes are
-the proposal and asset-fact tools inside its own runtime, and an adopted check is created through the normal check path under the
-guardrails above, owned by the agent's owner.
+and stay pending. The owner can also ask the agent in conversation to adopt pending drafts: with no drafts named the agent applies
+those same guardrails to the target the conversation names, while drafts the owner names count as the owner's explicit decision —
+bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily ceiling or rule validation.
+The proposal item in **Needs you** offers the guardrailed pass as an explicit action too, when adoption is enabled and the viewer
+can adopt.
+- **Does not write freely.** An agent never approves on its own, but it may execute an adoption the owner explicitly asks for —
+applying the configured guardrails, or accepting the drafts the owner names — always within the agent's database scope, the daily
+ceiling, rule validation and the audit ledger. Publishing a contract, editing a check, rejecting a draft and changing settings remain
+human-only. Its other writes are proposals and asset facts inside its own runtime, an adopted check is created through the normal
+check path owned by the agent's owner, and MCP stays read-only.
 
 ### Budgets, blocks and work sessions
 
