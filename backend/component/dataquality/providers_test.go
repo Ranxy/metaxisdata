@@ -74,3 +74,24 @@ func TestDecideAgentConfig(t *testing.T) {
 		require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 	})
 }
+
+// A quality agent needs a model that can hold a conversation and compact it: the
+// output budget must clear the summary floor and the capacities must leave a
+// positive pressure budget.
+func TestValidateAgentModel(t *testing.T) {
+	t.Parallel()
+
+	valid := llm.ResolvedConfig{ModelName: "m", ContextWindow: 131072, MaxOutputTokens: 8192}
+	require.NoError(t, validateAgentModel(valid, "m"))
+
+	smallOutput := llm.ResolvedConfig{ModelName: "m", ContextWindow: 131072, MaxOutputTokens: MinAgentModelOutputTokens - 1}
+	err := validateAgentModel(smallOutput, "m")
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	noRoom := llm.ResolvedConfig{ModelName: "m", ContextWindow: 32768, MaxOutputTokens: 32767}
+	err = validateAgentModel(noRoom, "m")
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "compact")
+}

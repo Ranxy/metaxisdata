@@ -168,3 +168,21 @@ func TestMaybeCompactForcedIgnoresTheTrigger(t *testing.T) {
 	require.True(t, compacted)
 	require.NotEmpty(t, session.Summary)
 }
+
+// A zero trigger derives the pressure threshold from the pinned model's
+// capacities instead of the retired package constant.
+func TestMaybeCompactDerivesTheTriggerFromTheModel(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "## Session Objective and Target\n- target-1\n\n## Next Step\n- (none)"},
+	}), resolveToModel, nil)
+	session := compactionSession()
+	messages := fillerMessages(12)
+
+	config := llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 12000, MaxOutputTokens: 4096}
+	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil, config, messages, 0, false)
+	require.NoError(t, err)
+	require.True(t, compacted)
+}

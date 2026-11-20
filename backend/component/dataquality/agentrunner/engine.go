@@ -119,11 +119,12 @@ func NewModelEngine(store Store, chat Chat, resolve ResolveModel, m *metrics.Met
 	return engine
 }
 
-// Options carries the per-wake budgets the runner resolves (the compaction trigger is a
-// package constant, so only an explicit override moves it).
+// Options carries the per-wake budgets the runner resolves. The compaction
+// trigger is derived from the pinned model's capacities; an explicit value is a
+// test/override hook only.
 type Options struct {
-	// CompactionTriggerTokens is the context size that triggers compaction; zero uses
-	// the server default.
+	// CompactionTriggerTokens overrides the derived context size that triggers
+	// compaction; zero derives it from the model capacities.
 	CompactionTriggerTokens int
 }
 

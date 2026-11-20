@@ -26,6 +26,24 @@ const (
 	compactionFeature = "dq_agent_compaction"
 )
 
+// emergencyCompactionTrigger is the forced-compaction threshold for a stale model
+// pair whose normal pressure budget is zero: leave a quarter of the message room
+// as the verbatim tail so overflow recovery still has a legal cut.
+func emergencyCompactionTrigger(config llm.ResolvedConfig) int {
+	room := config.ContextWindow - config.MaxOutputTokens
+	if room <= 0 {
+		return 0
+	}
+	trigger := room / 4
+	if trigger < 4096 {
+		trigger = 4096
+	}
+	if trigger > room {
+		trigger = room
+	}
+	return trigger
+}
+
 // compactionInstruction is the final user message of a summary call. The replayed
 // conversation comes first, so the provider can reuse its prefix cache.
 const compactionInstruction = `You are now acting as a compaction engine for a long-running data quality agent.
@@ -88,7 +106,20 @@ func (e *Engine) maybeCompact(
 		return 0, false, nil
 	}
 	if trigger <= 0 {
-		trigger = dataquality.DefaultAgentRunnerCompactionTriggerTokens
+		trigger = llm.CompactionTrigger(config.ContextWindow, config.MaxOutputTokens)
+	}
+	if trigger <= 0 {
+		if !forced {
+			e.recordEngine(ctx, session, wake, 0,
+				"compaction skipped: the model capacities leave no pressure budget")
+			return 0, false, nil
+		}
+		trigger = emergencyCompactionTrigger(config)
+		if trigger <= 0 {
+			e.recordEngine(ctx, session, wake, 0,
+				"compaction skipped: the model output budget fills its context window")
+			return 0, false, nil
+		}
 	}
 	entries := transcriptEntries(messages)
 	// Prune first: replacing the middle of old tool results is free and may already be
@@ -119,6 +150,16 @@ func (e *Engine) maybeCompact(
 	summaryMessages = append(summaryMessages, transcript.PruneToolResults(transcript.BuildConversation("", "", plan.Region), 0)...)
 	summaryMessages = append(summaryMessages, agent.Message{Role: "user", Content: compactionInstruction})
 
+	summaryBudget := compactionMaxOutputTokens
+	if config.MaxOutputTokens > 0 && config.MaxOutputTokens < summaryBudget {
+		summaryBudget = config.MaxOutputTokens
+	}
+	if summaryBudget < dataquality.MinAgentModelOutputTokens {
+		e.recordEngine(ctx, session, wake, 0, fmt.Sprintf(
+			"compaction skipped: the model output budget (%d) is below the summary floor", summaryBudget))
+		return 0, false, nil
+	}
+
 	var (
 		summary string
 		tokens  int64
@@ -128,7 +169,7 @@ func (e *Engine) maybeCompact(
 		Feature:              compactionFeature,
 		History:              summaryMessages,
 		MaxTurns:             1,
-		MaxTokens:            compactionMaxOutputTokens,
+		MaxTokens:            summaryBudget,
 		MaxConversationBytes: agent.DefaultMaxConversationBytes,
 		IncludeUsage:         true,
 		Metrics:              e.metrics,
