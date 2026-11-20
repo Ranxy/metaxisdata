@@ -1540,6 +1540,11 @@ async function applyColumnEnumValues(
       return;
     }
   }
+  // A newer load replaced the list while the schema metadata was in flight; it
+  // owns the list now, so this enrichment is stale.
+  if (columns.value !== current) {
+    return;
+  }
   columns.value = current.map((column) => {
     const inline = enumValuesFromColumnType(column.type);
     const declared =
