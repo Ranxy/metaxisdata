@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	apiv1 "github.com/Ranxy/metaxisdata/backend/api/v1"
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -2129,7 +2130,8 @@ func TestQualitySuggestionQueueIsIdempotentRealServerIntegration(t *testing.T) {
 	superseded, err := stores.SupersedePendingQualitySuggestions(ctx, targetGUID,
 		storepb.MetaType_TABLE, []string{signature}, "the column already has a semantic label", nil, time.Now())
 	require.NoError(t, err)
-	require.Equal(t, int64(1), superseded)
+	require.Len(t, superseded, 1, "one row was closed")
+	require.Zero(t, superseded[0], "a human label proposal has no proposing agent")
 
 	// Closing a proposal is not a reviewer decision: the signature has no last
 	// decision, so a later pass may still propose it.
@@ -4584,12 +4586,11 @@ func insertFailedQualityExecution(t *testing.T, fixture *qualityFixture, rule *s
 // TestQualityAgentAdoptionRealServerIntegration is the regression guard for the
 // automatic adoption write: a draft carries no dimension, the create path derives
 // it from the rule type, and a write failure must be recorded with its real cause.
-// It drives the explicit adoption pass, so no model is needed.
+// It drives the internal wake hook, so no model is needed.
 func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	fixture := setupQualityMySQLFixture(t, true)
 	adminToken := fixture.env.AdminToken()
 	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "adoption-owner")
-	_, strangerToken := createQualityAgentTestMember(t, fixture, "adoption-stranger")
 
 	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
 	providerProfile := fixture.createQualityAgentProvider(t, "adoption")
@@ -4657,19 +4658,30 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	}}
 	seedDraft(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountConfig, "users has rows", 0.95)
 
-	// A member who is neither the owner nor an administrator cannot trigger an
-	// adoption pass.
-	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
-		withToken(strangerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// The owner may run the pass explicitly; it applies the same guardrails as a wake.
-	pass, err := fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
-		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	// The adoption pass is internal: the agent never calls an RPC, and the SPA has no
+	// explicit-retry endpoint. Driving the exported wake hook against the same
+	// database the server process uses is the only way to exercise the policy write
+	// without a model; it bypasses the server's IAM, audit and notifier wiring, which
+	// is the right boundary for an internal hook. The pass needs a real target session
+	// row so the proposal item it raises carries the session the attention read
+	// resolves the target through.
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)
-	require.EqualValues(t, 1, pass.Msg.GetAdopted(), "the valid draft is adopted")
-	require.Zero(t, pass.Msg.GetFailed())
+	adoptionService := apiv1.NewDataQualityService(fixture.env.Store, nil, nil, nil, nil, nil, nil, nil, nil)
+	session, err := fixture.env.Store.GetQualityAgentSessionByTarget(fixture.ctx, workspaceID, storedAgent.ID, fixture.usersGUID)
+	require.NoError(t, err)
+	if session == nil {
+		session, err = fixture.env.Store.CreateQualityAgentSession(fixture.ctx, &store.CreateQualityAgentSessionInput{
+			WorkspaceID: workspaceID,
+			TargetGUID:  fixture.usersGUID,
+			TargetType:  storepb.MetaType_TABLE,
+			AgentID:     storedAgent.ID,
+			Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+			Kind:        1,
+		})
+		require.NoError(t, err)
+	}
+	adoptionService.AdoptQualitySuggestions(fixture.ctx, session, time.Time{})
 
 	rules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityRulesRequest{
@@ -4703,11 +4715,7 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 		Range: &storepb.RangeConfig{Column: "no_such_column", Min: &lowerBound, Inclusive: true},
 	}}
 	bad := seedDraft(storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, badConfig, "missing column", 0.95)
-	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
-		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
-	require.NoError(t, err)
-	require.EqualValues(t, 1, pass.Msg.GetFailed())
-	require.EqualValues(t, 1, pass.Msg.GetRemainingPending())
+	adoptionService.AdoptQualitySuggestions(fixture.ctx, session, time.Time{})
 
 	read, err = fixture.dataQuality.GetQualityAgent(fixture.ctx,
 		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
@@ -4724,18 +4732,45 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedBad.Status,
 		"a failed write returns the draft to the queue")
 
-	// A draft on a database outside the agent's current scope is never written as a
-	// rule by the explicit retry: the wake path could not reach it either.
+	// The proposal item the pass raised carries the session, so the agent page can
+	// show the target and its drafts. A targetless item would make the card's
+	// per-target approval widen to the whole agent queue.
+	attentions, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
+			Parent: agent.GetName(),
+			Status: v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
+		}))
+	require.NoError(t, err)
+	var proposal *v1pb.QualityAgentAttention
+	for _, attention := range attentions.Msg.GetQualityAgentAttentions() {
+		if attention.GetKind() == v1pb.QualityAgentAttentionKind_QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING {
+			proposal = attention
+			break
+		}
+	}
+	require.NotNil(t, proposal, "the failed draft leaves an open proposal item")
+	require.NotEmpty(t, proposal.GetSession(), "the item links its target session")
+	require.Equal(t, fixture.usersGUID, proposal.GetTarget().GetMetaGuid())
+	require.Contains(t, proposal.GetPendingDraftTitles(), "missing column")
+
+	// The owner-requested tool is the one adoption path that checks the agent's
+	// current database scope; a draft outside it is skipped and stays pending.
 	outOfScopeTarget := "another-instance;another_db;;users"
 	seedDraftOn(outOfScopeTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountConfig,
 		"outside the agent scope", 0.95)
-	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
-		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	report, err := adoptionService.AdoptQualitySuggestionsForOwner(fixture.ctx, dataquality.AgentAdoptionRequest{
+		Session: &store.QualityAgentSessionMessage{
+			WorkspaceID: workspaceID,
+			AgentID:     storedAgent.ID,
+			TargetGUID:  outOfScopeTarget,
+			TargetType:  storepb.MetaType_TABLE,
+			Kind:        1,
+		},
+		Wake: 1,
+	})
 	require.NoError(t, err)
-	require.Zero(t, pass.Msg.GetAdopted(), "an out-of-scope target is not adopted")
-	require.EqualValues(t, 1, pass.Msg.GetSkipped(), "the out-of-scope draft is counted as skipped")
-	require.EqualValues(t, 1, pass.Msg.GetFailed(), "the invalid in-scope draft still fails")
-	require.EqualValues(t, 2, pass.Msg.GetRemainingPending())
+	require.Zero(t, report.Adopted, "an out-of-scope target is not adopted")
+	require.EqualValues(t, 1, report.Skipped, "the out-of-scope draft is counted as skipped")
 	outOfScopeRules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityRulesRequest{
 			Parent:     "workspaces/-",
@@ -4803,4 +4838,366 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 		}
 	}
 	require.True(t, found, "a draft refreshed after the cutoff is eligible even with an old created_at")
+}
+
+// TestQualityAgentOwnerApprovalRealServerIntegration guards the owner's approval
+// path: a member who owns the agent can approve its drafts without holding the
+// rule-write permission the review queue needs, the check is attributed to the
+// person, the autonomous daily ceiling is never charged, and the drained proposal
+// attention closes. It replaces the removed explicit policy pass.
+func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "approval-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "approval-stranger")
+	providerProfile := fixture.createQualityAgentProvider(t, "approval")
+
+	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:          "workspaces/-",
+			DisplayName:     "approval agent",
+			Owner:           ownerName,
+			ProviderProfile: providerProfile,
+			ProviderModel:   "approval",
+			Databases:       []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
+			Capabilities:    []string{"suggest"},
+			Start:           true,
+		}))
+	require.NoError(t, err)
+	agent := created.Msg.GetAgent()
+	storedAgent, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceIDFromName(agent.GetName()))
+	require.NoError(t, err)
+	require.NotNil(t, storedAgent)
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	ownerID, err := common.GetUserID(ownerName)
+	require.NoError(t, err)
+
+	// The draft is below the default confidence threshold. The approval must not apply
+	// that guardrail: the person decided, so the low confidence is irrelevant.
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	payload := qualityDraftSuggestionPayload("approved row count")
+	payload.GetRule().Confidence = 0.1
+	_, createdDraft, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+		ResourceID: resourceID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		AgentID:    &storedAgent.ID,
+		TargetGUID: fixture.usersGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, payload.GetRule().GetConfig()),
+		Payload:    payload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.1,
+	})
+	require.NoError(t, err)
+	require.True(t, createdDraft)
+
+	// The adoption pass left the owner an open proposal item for the target.
+	dedupeKey := store.ProposalAttentionDedupeKey(fixture.usersGUID)
+	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
+		WorkspaceID: workspaceID,
+		AgentID:     storedAgent.ID,
+		Kind:        store.QualityAgentAttentionKindProposalPending,
+		Title:       "check drafts",
+		Question:    "one draft needs a decision",
+		DedupeKey:   dedupeKey,
+		CreatedAt:   time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	// A member who is neither the owner nor an administrator cannot approve.
+	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(strangerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The owner is a plain member: no rule-write permission and no adopt capability,
+	// but the approval is the person's decision and the check is created for them.
+	pass, err := fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{
+			Name:       agent.GetName(),
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pass.Msg.GetAdopted(), "a below-threshold draft is still approved")
+	require.Zero(t, pass.Msg.GetFailed())
+	require.Zero(t, pass.Msg.GetRemainingPending())
+
+	// The draft is decided by the owner, not by the agent.
+	stored, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(resourceID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, stored.Status)
+	require.NotNil(t, stored.DecidedBy)
+	require.Equal(t, int32(ownerID), *stored.DecidedBy)
+
+	// The check exists on the target with the person as author and the agent's owner
+	// as owner.
+	rules, err := fixture.dataQuality.ListQualityRules(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityRulesRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			PageSize:   100,
+		}))
+	require.NoError(t, err)
+	approvedRuleName := ""
+	for _, rule := range rules.Msg.GetQualityRules() {
+		if rule.GetTitle() == "approved row count" {
+			approvedRuleName = rule.GetName()
+			require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, rule.GetState(),
+				"a person's approval creates an enabled check")
+			require.Equal(t, ownerName, rule.GetOwner())
+		}
+	}
+	require.NotEmpty(t, approvedRuleName, "the approved draft became a rule")
+	storedRule, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{
+		ResourceID: ptrString(resourceIDFromName(approvedRuleName)),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, storedRule)
+	require.NotNil(t, storedRule.CreatedBy)
+	require.Equal(t, int32(ownerID), *storedRule.CreatedBy,
+		"the check is attributed to the person who approved it, not to the agent principal")
+
+	// The approval is recorded for accounting but never spends the autonomous
+	// ceiling: the agent's own adopted count stays zero, the approved count is one,
+	// and the cap query itself agrees.
+	read, err := fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.Zero(t, read.Msg.GetAdoptionStatus().GetAdoptedLast_24H())
+	require.EqualValues(t, 1, read.Msg.GetAdoptionStatus().GetApprovedLast_24H())
+	require.Zero(t, read.Msg.GetAdoptionStatus().GetPendingDraftCount())
+	capCount, err := fixture.env.Store.CountQualityAgentAdoptionsSince(fixture.ctx, storedAgent.ID,
+		time.Now().UTC().Add(-24*time.Hour))
+	require.NoError(t, err)
+	require.Zero(t, capCount, "a person's approval never spends the autonomous daily ceiling")
+
+	// The drained proposal item leaves the owner's to-do list.
+	attention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, dedupeKey)
+	require.NoError(t, err)
+	require.Nil(t, attention, "approving the last draft resolves the proposal attention")
+
+	// A second target's draft is not touched when the approval names the first
+	// target: the target GUID narrows the pass, and its own proposal item stays open.
+	guidPrefix := fmt.Sprintf("%s;%s", fixture.instanceID, fixture.sourceDatabase)
+	ordersGUID := waitForMetaGUIDByName(fixture.ctx, t, fixture.env, guidPrefix, storepb.MetaType_TABLE, "orders")
+	ordersPayload := qualityDraftSuggestionPayload("approved orders row count")
+	ordersID, err := common.RandomString(12)
+	require.NoError(t, err)
+	_, ordersCreated, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+		ResourceID: ordersID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		AgentID:    &storedAgent.ID,
+		TargetGUID: ordersGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, ordersPayload.GetRule().GetConfig()),
+		Payload:    ordersPayload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.9,
+	})
+	require.NoError(t, err)
+	require.True(t, ordersCreated)
+	ordersDedupe := store.ProposalAttentionDedupeKey(ordersGUID)
+	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
+		WorkspaceID: workspaceID,
+		AgentID:     storedAgent.ID,
+		Kind:        store.QualityAgentAttentionKindProposalPending,
+		Title:       "check drafts",
+		Question:    "one draft needs a decision",
+		DedupeKey:   ordersDedupe,
+		CreatedAt:   time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{
+			Name:       agent.GetName(),
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	require.Zero(t, pass.Msg.GetAdopted(), "the first target has nothing left")
+	storedOrders, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(ordersID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedOrders.Status,
+		"the other target's draft is not approved")
+	ordersAttention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, ordersDedupe)
+	require.NoError(t, err)
+	require.NotNil(t, ordersAttention, "the other target's proposal item stays open")
+
+	// Without a target, the approval covers the agent's whole queue.
+	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pass.Msg.GetAdopted())
+	storedOrders, err = fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(ordersID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, storedOrders.Status)
+	ordersAttention, err = fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, ordersDedupe)
+	require.NoError(t, err)
+	require.Nil(t, ordersAttention, "the second target's proposal item closes too")
+
+	// A draft the check path cannot write is ledgered as a failure, so the home's
+	// failed count and last failure cover a person's approval too. The draft stays
+	// pending for a retry.
+	lowerBound := "0"
+	badPayload := &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+		Rule: &storepb.QualityRuleDraftConfig{
+			Title:      "unapprovable draft",
+			Rationale:  "integration fixture draft",
+			Confidence: 0.9,
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
+				Range: &storepb.RangeConfig{Column: "no_such_column", Min: &lowerBound, Inclusive: true},
+			}},
+		},
+	}}
+	badID, err := common.RandomString(12)
+	require.NoError(t, err)
+	_, badCreated, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+		ResourceID: badID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		AgentID:    &storedAgent.ID,
+		TargetGUID: fixture.usersGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature:  dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, badPayload.GetRule().GetConfig()),
+		Payload:    badPayload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.9,
+	})
+	require.NoError(t, err)
+	require.True(t, badCreated)
+
+	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.Zero(t, pass.Msg.GetAdopted())
+	require.EqualValues(t, 1, pass.Msg.GetFailed())
+	require.EqualValues(t, 1, pass.Msg.GetRemainingPending())
+
+	read, err = fixture.dataQuality.GetQualityAgent(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentRequest{Name: agent.GetName()}))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, read.Msg.GetAdoptionStatus().GetFailedLast_24H())
+	require.Contains(t, read.Msg.GetAdoptionStatus().GetLastFailureReason(), "rule creation failed")
+	require.NotEqual(t, "rule creation failed", read.Msg.GetAdoptionStatus().GetLastFailureReason(),
+		"the durable reason carries the real error")
+	storedBad, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(badID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedBad.Status,
+		"a failed approval returns the draft to the queue")
+}
+
+// TestQualityAgentSupersedeResolvesTheOtherAgentsAttention guards the cross-agent
+// case: approving one agent's draft closes another agent's pending draft with the
+// same identity on the target (the supersede is not agent-scoped), so that agent's
+// proposal item must close too. The create path's own suggestion names only the
+// approving agent, which is why the supersede reports the affected agents.
+func TestQualityAgentSupersedeResolvesTheOtherAgentsAttention(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "supersede-owner")
+	providerProfile := fixture.createQualityAgentProvider(t, "supersede")
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+
+	createAgent := func(displayName string) *store.QualityAgentMessage {
+		t.Helper()
+		created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+			withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+				Parent:          "workspaces/-",
+				DisplayName:     displayName,
+				Owner:           ownerName,
+				ProviderProfile: providerProfile,
+				ProviderModel:   "supersede",
+				Databases:       []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
+				Capabilities:    []string{"suggest"},
+				Start:           true,
+			}))
+		require.NoError(t, err)
+		stored, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceIDFromName(created.Msg.GetAgent().GetName()))
+		require.NoError(t, err)
+		require.NotNil(t, stored)
+		return stored
+	}
+	approvingAgent := createAgent("approving agent")
+	otherAgent := createAgent("other agent")
+
+	payload := qualityDraftSuggestionPayload("superseded row count")
+	signature := dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, payload.GetRule().GetConfig())
+	seedDraft := func(agent *store.QualityAgentMessage, title string) string {
+		t.Helper()
+		resourceID, err := common.RandomString(12)
+		require.NoError(t, err)
+		_, created, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
+			ResourceID: resourceID,
+			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+			AgentID:    &agent.ID,
+			TargetGUID: fixture.usersGUID,
+			TargetType: storepb.MetaType_TABLE,
+			Signature:  signature,
+			Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+				Rule: &storepb.QualityRuleDraftConfig{
+					Title:      title,
+					Rationale:  "integration fixture draft",
+					Confidence: 0.9,
+					Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+					Config:     payload.GetRule().GetConfig(),
+				},
+			}},
+			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+			Confidence: 0.9,
+		})
+		require.NoError(t, err)
+		require.True(t, created)
+		return resourceID
+	}
+	seedDraft(approvingAgent, "approving agent draft")
+	otherDraftID := seedDraft(otherAgent, "other agent draft")
+
+	otherDedupe := store.ProposalAttentionDedupeKey(fixture.usersGUID)
+	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
+		WorkspaceID: workspaceID,
+		AgentID:     otherAgent.ID,
+		Kind:        store.QualityAgentAttentionKindProposalPending,
+		Title:       "check drafts",
+		Question:    "one draft needs a decision",
+		DedupeKey:   otherDedupe,
+		CreatedAt:   time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	// Approving the first agent's draft creates the rule; the supersede closes the
+	// second agent's identical draft, and its proposal item must close with it.
+	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
+		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{
+			Name:       common.FormatWorkspace(workspaceID) + "/qualityAgents/" + approvingAgent.ResourceID,
+			TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	storedOther, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: ptrString(otherDraftID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED, storedOther.Status,
+		"the other agent's identical draft is superseded by the saved rule")
+	attention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, otherAgent.ID, otherDedupe)
+	require.NoError(t, err)
+	require.Nil(t, attention, "the other agent's drained proposal item closes too")
 }

@@ -698,6 +698,7 @@ func convertQualityAgentAdoptionStatusToV1(status *store.QualityAgentAdoptionSta
 	}
 	view := &v1pb.QualityAgentAdoptionStatus{
 		AdoptedLast_24H:   status.AdoptedLast24h,
+		ApprovedLast_24H:  status.ApprovedLast24h,
 		FailedLast_24H:    status.FailedLast24h,
 		PendingDraftCount: status.PendingDraftCount,
 		LastFailureReason: status.LastFailureReason,

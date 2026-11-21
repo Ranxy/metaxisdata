@@ -203,6 +203,48 @@ func (s *Store) ResolveQualityAgentAttention(ctx context.Context, resourceID str
 	return attention, true, nil
 }
 
+// ProposalAttentionDedupeKey is the dedupe key of the per-target proposal item.
+// The creation and the drain check must agree on it, so it lives here.
+func ProposalAttentionDedupeKey(targetGUID string) string {
+	return "proposal:" + targetGUID
+}
+
+// ResolveDrainedProposalAttention closes one agent target's proposal-pending item
+// once no pending rule draft is left. The NOT EXISTS guard makes the check and the
+// update one statement, so a concurrent pass that queues a new draft cannot leave a
+// fresh item resolved. It reports whether an item changed.
+func (s *Store) ResolveDrainedProposalAttention(ctx context.Context, agentID int64, targetGUID string, resolvedBy *int32, at time.Time) (bool, error) {
+	if agentID <= 0 || targetGUID == "" {
+		return false, nil
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	} else {
+		at = at.UTC()
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention
+		SET status = $1, resolved_at = $2, resolved_by = $3
+		WHERE agent_id = $4 AND dedupe_key = $5 AND status = $6
+			AND NOT EXISTS (
+				SELECT 1 FROM quality_suggestion
+				WHERE agent_id = $4 AND target_guid = $7 AND status = $8 AND kind = $9
+			)`,
+		int16(QualityAgentAttentionStatusResolved), at, resolvedBy,
+		agentID, ProposalAttentionDedupeKey(targetGUID),
+		int16(QualityAgentAttentionStatusOpen),
+		targetGUID, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
+		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to resolve a drained proposal attention")
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read the resolved attention count")
+	}
+	return rows > 0, nil
+}
+
 func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*QualityAgentAttentionMessage, error) {
 	var (
 		message    QualityAgentAttentionMessage

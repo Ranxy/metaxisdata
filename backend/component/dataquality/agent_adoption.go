@@ -52,8 +52,8 @@ type AgentAdoptionReport struct {
 
 // AgentAdoptionReady reports whether an agent can adopt at all: it is active, its
 // adoption mode is not off, and it holds both the suggest and adopt capabilities.
-// The same predicate gates the automatic pass, the explicit retry and the model
-// tool, so the prompt and the executable capability cannot disagree.
+// The same predicate gates the automatic pass and the model tool, so the prompt and
+// the executable capability cannot disagree.
 func AgentAdoptionReady(agent *store.QualityAgentMessage) bool {
 	return agent != nil &&
 		agent.State == store.QualityAgentStateActive &&

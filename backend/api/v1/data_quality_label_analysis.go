@@ -125,12 +125,12 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	if len(plan.SupersedeSignatures) > 0 {
 		// One statement closes every stale proposal this pass found; the returned
 		// count is what actually changed (a concurrent reviewer may have decided one).
-		superseded, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+		affected, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
 			plan.SupersedeSignatures, "the column already has a semantic label", nil, time.Now())
 		if supersedeErr != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(supersedeErr, "failed to close stale label suggestions"))
 		}
-		summary.Superseded += int32(superseded)
+		summary.Superseded += int32(len(affected))
 	}
 	columns := plan.Columns
 	if len(columns) == 0 {
@@ -262,12 +262,19 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 		state := draftStates[candidate.signature]
 		if _, covered := ruleSignatures[candidate.signature]; covered {
 			if state.Pending {
-				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+				affected, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
 					[]string{candidate.signature}, "a saved rule with the same identity exists", nil, time.Now())
 				if err != nil {
 					return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale rule draft suggestion"))
 				}
-				summary.Superseded += int32(superseded)
+				summary.Superseded += int32(len(affected))
+				for _, proposingAgentID := range affected {
+					if proposingAgentID <= 0 {
+						continue
+					}
+					s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid},
+						principalIDPointer(currentUserID(ctx)))
+				}
 			} else {
 				summary.SkippedExistingFact++
 			}

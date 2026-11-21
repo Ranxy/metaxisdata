@@ -100,22 +100,22 @@
           {{ t("qualityAgent.attentionDraftsMore") }}
         </p>
         <div
-          v-if="canAdoptPending"
+          v-if="canApprovePending"
           class="mt-2 space-y-1"
         >
           <Button
             size="sm"
-            :disabled="adoptDisabled"
-            @click="requestAdopt"
+            :disabled="approveDisabled"
+            @click="requestApprove"
           >
             <Loader2
-              v-if="adoptDisabled"
+              v-if="approveDisabled"
               class="mr-2 h-4 w-4 animate-spin"
             />
-            {{ t("qualityAgent.attentionAdoptPending") }}
+            {{ t("qualityAgent.attentionApprovePending") }}
           </Button>
           <p class="text-[11px] text-muted-foreground">
-            {{ t("qualityAgent.attentionAdoptHint") }}
+            {{ t("qualityAgent.attentionApproveHint") }}
           </p>
         </div>
       </div>
@@ -243,15 +243,15 @@ const props = defineProps<{
   attention: QualityAgentAttention;
   agentName: string;
   canReply: boolean;
-  /** The viewer may run an adoption pass; the parent owns the RPC. */
-  canAdopt?: boolean;
-  /** The parent is already running an adoption pass. */
-  adoptBusy?: boolean;
+  /** The viewer may create checks from the pending drafts; the parent owns the write. */
+  canApprove?: boolean;
+  /** The parent is already approving this target's drafts. */
+  approveBusy?: boolean;
 }>();
 
 const emit = defineEmits<{
   resolved: [name: string];
-  adopt: [];
+  approve: [targetGuid: string];
 }>();
 
 const { t, locale } = useI18n();
@@ -304,24 +304,30 @@ const canReplyToTarget = computed(
   () => props.canReply && props.attention.session !== ""
 );
 
-const canAdoptPending = computed(
+// The card approves one target. An attention without a linked target (a legacy or
+// malformed row) must not fall back to the agent-wide approval an empty GUID means.
+const canApprovePending = computed(
   () =>
-    props.canAdopt === true &&
-    props.attention.kind === QualityAgentAttentionKind.PROPOSAL_PENDING
+    props.canApprove === true &&
+    props.attention.kind === QualityAgentAttentionKind.PROPOSAL_PENDING &&
+    (props.attention.target?.metaGuid ?? "") !== ""
 );
 
-const adoptDisabled = computed(() => busy.value || props.adoptBusy === true);
+const approveDisabled = computed(
+  () => busy.value || props.approveBusy === true
+);
 
 function onToggle(next: boolean) {
   open.value = next;
 }
 
-/** The parent runs the adoption pass and reloads this card's list. */
-function requestAdopt() {
-  if (adoptDisabled.value) {
+/** The parent creates the target's pending drafts as the viewer's decision. */
+function requestApprove() {
+  const targetGuid = props.attention.target?.metaGuid ?? "";
+  if (approveDisabled.value || targetGuid === "") {
     return;
   }
-  emit("adopt");
+  emit("approve", targetGuid);
 }
 
 async function sendReply() {

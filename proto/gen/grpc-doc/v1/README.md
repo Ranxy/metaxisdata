@@ -4977,13 +4977,14 @@ AcceptedValuesQuery is the accepted set a single-column query returns.
 <a name="metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest"></a>
 
 ### AdoptQualityAgentPendingSuggestionsRequest
-AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
-adoption guardrails to the rule drafts already in its review queue.
+AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from
+the agent&#39;s pending rule drafts as the caller&#39;s decision.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| target_guid | [string](#string) |  | Restrict the approval to one target. Empty approves every pending draft. |
 
 
 
@@ -4993,7 +4994,7 @@ adoption guardrails to the rule drafts already in its review queue.
 <a name="metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse"></a>
 
 ### AdoptQualityAgentPendingSuggestionsResponse
-AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.
 
 
 | Field | Type | Label | Description |
@@ -7054,11 +7055,12 @@ so an owner can tell &#34;nothing was eligible&#34; from &#34;the write kept fai
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| adopted_last_24h | [int32](#int32) |  |  |
+| adopted_last_24h | [int32](#int32) |  | Adoptions the agent started on its own or through the owner-requested tool; the value the daily autonomous ceiling counts. A person&#39;s approval is approved_last_24h, not this. |
 | failed_last_24h | [int32](#int32) |  |  |
 | pending_draft_count | [int32](#int32) |  |  |
 | last_failure_reason | [string](#string) |  | The most recent write failure, with its error class; empty when none. |
 | last_failure_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| approved_last_24h | [int32](#int32) |  | Checks a person approved from the agent page in the last 24 hours. It is recorded for the owner&#39;s accounting but never spends the autonomous ceiling. |
 
 
 
@@ -10049,7 +10051,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
 | DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
 | SetQualityAgentAdoption | [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Let the owner turn automatic adoption off or back to paused; administrators may also set ACTIVE. The rest of the configuration stays administrator-managed. |
-| AdoptQualityAgentPendingSuggestions | [AdoptQualityAgentPendingSuggestionsRequest](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest) | [AdoptQualityAgentPendingSuggestionsResponse](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse) | Apply the agent&#39;s adoption guardrails to its pending rule drafts now. The owner or an administrator uses this to clear drafts an earlier failed pass left behind; it makes no decision on their behalf and writes only what the configured allowlist, confidence and daily cap already permit. |
+| AdoptQualityAgentPendingSuggestions | [AdoptQualityAgentPendingSuggestionsRequest](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsRequest) | [AdoptQualityAgentPendingSuggestionsResponse](#metaxisdata-v1-AdoptQualityAgentPendingSuggestionsResponse) | Approve the agent&#39;s pending rule drafts as the caller&#39;s decision. The owner or an administrator may use it, and it does not require the caller&#39;s rule-write permission because it can only turn the agent&#39;s already-queued drafts into checks: the draft is accepted and the check attributed to the caller, and the check starts enabled. Neither the adoption allowlist, the confidence threshold, the critical switch nor the agent&#39;s daily autonomous adoption ceiling applies; the agent&#39;s database scope is the agent&#39;s guardrail, not the person&#39;s. A target GUID narrows the approval to one target; empty approves every pending draft. |
 | UpdateQualityAgent | [UpdateQualityAgentRequest](#metaxisdata-v1-UpdateQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Replace the masked configuration of one agent. Administrator only. |
 | StartQualityAgent | [StartQualityAgentRequest](#metaxisdata-v1-StartQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Activate a DRAFT or PAUSED agent. The owner or an administrator may start it. |
 | PauseQualityAgent | [PauseQualityAgentRequest](#metaxisdata-v1-PauseQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Pause an ACTIVE agent. The owner and administrators may pause; only an administrator may edit the configuration. |

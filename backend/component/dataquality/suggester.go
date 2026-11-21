@@ -413,13 +413,27 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 			// The fact exists. A pending proposal for it is stale, so close it rather
 			// than leave the queue contradicting the saved rules.
 			if states[candidate.signature].Pending {
-				superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, targetGUID, metaType,
+				affected, err := s.store.SupersedePendingQualitySuggestions(ctx, targetGUID, metaType,
 					[]string{candidate.signature}, "a saved rule with the same identity exists", agentID, now)
 				if err != nil {
 					return nil, summary, nil, nil, connect.NewError(connect.CodeInternal,
 						errors.Wrap(err, "failed to close a stale rule draft suggestion"))
 				}
-				summary.Superseded += int32(superseded)
+				summary.Superseded += int32(len(affected))
+				// A human drafting pass does not carry an agent id, so its supersede can
+				// close an agent's draft for the same identity. Close that agent's drained
+				// proposal item too; the pass is background work, so it resolves anonymously.
+				for _, proposingAgentID := range affected {
+					if proposingAgentID <= 0 {
+						continue
+					}
+					if _, resolveErr := s.store.ResolveDrainedProposalAttention(ctx, proposingAgentID, targetGUID, nil, now); resolveErr != nil {
+						slog.Warn("failed to resolve a drained proposal attention after a supersede",
+							slog.Int64("agent", proposingAgentID),
+							slog.String("target", targetGUID),
+							slog.Any("error", resolveErr))
+					}
+				}
 			} else {
 				summary.SkippedExistingFact++
 			}
