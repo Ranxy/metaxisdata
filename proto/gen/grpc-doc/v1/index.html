@@ -1683,6 +1683,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityAgentSessionContextUsage"><span class="badge">M</span>QualityAgentSessionContextUsage</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityAgentSessionMessage"><span class="badge">M</span>QualityAgentSessionMessage</a>
                 </li>
               
@@ -20688,6 +20692,95 @@ duration, so a client must treat last_activity_time as the heartbeat. </p></td>
                   <td><a href="#metaxisdata.v1.QualityAgentSessionMode">QualityAgentSessionMode</a></td>
                   <td></td>
                   <td><p>MONITOR reviews a covered target; TRIAGE analyses an uncovered one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_usage</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentSessionContextUsage">QualityAgentSessionContextUsage</a></td>
+                  <td></td>
+                  <td><p>The last model input the engine measured; empty until the first model wake. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentSessionContextUsage">QualityAgentSessionContextUsage</h3>
+        <p>QualityAgentSessionContextUsage is the session's last measured model input:</p><p>the provider-reported prompt size (or the engine's text estimate) against the</p><p>pinned model's context window. It is a runtime observability sample, not the</p><p>session's token spend.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>used_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>compaction_trigger_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The pressure threshold at which the engine compacts; 0 when the pair cannot.
+It is measured on the transcript pressure, while used_tokens is the full model
+input, so the two are close but not identical. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>wake</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>turn</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>measured_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>estimated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when used_tokens is an estimate rather than a provider prompt count. </p></td>
                 </tr>
               
             </tbody>

@@ -5,6 +5,8 @@ import {
   QualityAgentMessageOrigin,
   QualityAgentMessageRole,
   type QualityAgentSession,
+  type QualityAgentSessionContextUsage,
+  QualityAgentSessionContextUsageSchema,
   type QualityAgentSessionMessage,
   QualityAgentSessionMessageSchema,
   QualityAgentSessionMode,
@@ -20,6 +22,8 @@ import {
   agentEventExecutionReference,
   agentMessageOriginKey,
   agentMessageRoleKey,
+  agentSessionContextLevel,
+  agentSessionContextRatio,
   agentSessionHeartbeat,
   agentSessionModeKey,
   agentSessionModeVariant,
@@ -422,5 +426,50 @@ describe("target display", () => {
     expect(agentSessionTargetPath(sessionFixture({ target: undefined }))).toBe(
       "-"
     );
+  });
+});
+
+function contextUsageFixture(
+  overrides: MessageInitShape<typeof QualityAgentSessionContextUsageSchema> = {}
+): QualityAgentSessionContextUsage {
+  return create(QualityAgentSessionContextUsageSchema, {
+    usedTokens: 1000,
+    contextWindow: 4000,
+    maxOutputTokens: 1000,
+    compactionTriggerTokens: 3000,
+    model: "test-model",
+    wake: 2,
+    estimated: false,
+    ...overrides,
+  });
+}
+
+describe("context usage", () => {
+  it("measures the sample against the window and clamps the bar", () => {
+    expect(agentSessionContextRatio(contextUsageFixture())).toBe(0.25);
+    expect(
+      agentSessionContextRatio(contextUsageFixture({ usedTokens: 5000 }))
+    ).toBe(1);
+    expect(
+      agentSessionContextRatio(contextUsageFixture({ contextWindow: 0 }))
+    ).toBe(0);
+    expect(agentSessionContextRatio(undefined)).toBe(0);
+  });
+
+  it("warns at the compaction trigger and is critical at the window", () => {
+    expect(agentSessionContextLevel(contextUsageFixture())).toBe("normal");
+    expect(
+      agentSessionContextLevel(contextUsageFixture({ usedTokens: 3000 }))
+    ).toBe("warning");
+    expect(
+      agentSessionContextLevel(contextUsageFixture({ usedTokens: 4000 }))
+    ).toBe("critical");
+    // Without a trigger, only the window crosses the boundary.
+    expect(
+      agentSessionContextLevel(
+        contextUsageFixture({ usedTokens: 3500, compactionTriggerTokens: 0 })
+      )
+    ).toBe("normal");
+    expect(agentSessionContextLevel(undefined)).toBe("normal");
   });
 });

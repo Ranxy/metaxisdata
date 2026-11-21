@@ -324,6 +324,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentSessionContextUsage"><span class="badge">M</span>QualityAgentSessionContextUsage</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentSessionEngineState"><span class="badge">M</span>QualityAgentSessionEngineState</a>
                 </li>
               
@@ -3116,6 +3120,96 @@ returned none; never sent back to the provider. </p></td>
                   <td><a href="#metaxisdata.store.QualityAgentSessionMode">QualityAgentSessionMode</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_usage</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionContextUsage">QualityAgentSessionContextUsage</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentSessionContextUsage">QualityAgentSessionContextUsage</h3>
+        <p>QualityAgentSessionContextUsage is the JSONB payload of</p><p>quality_agent_session.context_usage: the last model input the engine measured,</p><p>with the pinned model's capacities at that moment. It is an observability</p><p>sample, not the session's token spend (which stays on the transcript rows).</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>used_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Provider-reported prompt tokens, or the engine&#39;s text estimate when the
+provider reported none. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_window</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_output_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>compaction_trigger_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The pressure threshold the engine compacts at; 0 when the pair cannot compact.
+It is measured on the transcript pressure, while used_tokens is the full model
+input, so the two are close but not identical. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>wake</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>turn</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>measured_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>estimated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when used_tokens is an estimate rather than a provider prompt count. </p></td>
                 </tr>
               
             </tbody>

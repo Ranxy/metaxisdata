@@ -1518,6 +1518,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_session (
     mode INT2 NOT NULL DEFAULT 1,
     -- 1 TARGET work thread, 2 CONVERSATION front office.
     kind INT2 NOT NULL DEFAULT 1,
+    -- The last model-input sample the session engine measured; observability only.
+    context_usage JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT quality_agent_session_kind_check
         CHECK ((kind = 1 AND target_guid <> '') OR (kind = 2 AND target_guid = ''))
 );
@@ -1544,6 +1546,7 @@ COMMENT ON COLUMN quality_agent_session.mode IS 'Stored as QualityAgentSessionMo
 COMMENT ON COLUMN quality_agent_session.engine_state IS 'Stored as QualityAgentSessionEngineState (proto/store/store/data_quality.proto); deterministic wake bookkeeping';
 COMMENT ON COLUMN quality_agent_session.summary IS 'Rolling checkpoint summary that replaces messages up to summary_through_seq in model context';
 COMMENT ON COLUMN quality_agent_session.kind IS '1 TARGET work thread, 2 CONVERSATION front office';
+COMMENT ON COLUMN quality_agent_session.context_usage IS 'Stored as QualityAgentSessionContextUsage (proto/store/store/data_quality.proto); last measured model-input size and the pinned model capacities at that moment';
 ALTER SEQUENCE quality_agent_session_id_seq RESTART WITH 101;
 
 -- One row per message in a session's conversation. assistant rows carry their

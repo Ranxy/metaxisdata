@@ -34,6 +34,19 @@ func TestClaimDueQualityAgentSessionsQueryPinsTheWakePredicate(t *testing.T) {
 	})
 }
 
+// A context sample is observability, not a lifecycle mutation: it must not bump the
+// revision a human CAS compares, must not reorder the list through updated_at, and
+// must never write an archived session.
+func TestUpdateQualityAgentSessionContextUsageKeepsStateUntouched(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, updateQualityAgentSessionContextUsageQuery, "context_usage = $2")
+	require.Contains(t, updateQualityAgentSessionContextUsageQuery, "archived_at IS NULL")
+	require.NotContains(t, updateQualityAgentSessionContextUsageQuery, "revision")
+	require.NotContains(t, updateQualityAgentSessionContextUsageQuery, "updated_at")
+	requirePlaceholdersMatchArgs(t, updateQualityAgentSessionContextUsageQuery, []any{"res", []byte(`{}`)})
+}
+
 // Only transient budgets may wake a blocked session on their own; a person-action
 // blocker must stay parked until someone resumes it.
 func TestRetryableSessionBlockedCodes(t *testing.T) {
@@ -117,20 +130,23 @@ func (f *fakeScanner) Scan(dest ...any) error {
 	return nil
 }
 
-func sessionScanValues(engineState []byte) []any {
+func sessionScanValues(engineState, contextUsage []byte) []any {
 	return []any{
 		int64(7), "res", "ws", "target-guid", int16(1), "instances/i/databases/d", int64(3),
 		int32(42), int16(1), "", "", int32(4), int32(9), "summary text", int64(11),
 		int64(12), engineState, (*time.Time)(nil), (*time.Time)(nil), int32(0),
 		time.Unix(1000, 0).UTC(), time.Unix(2000, 0).UTC(), (*time.Time)(nil),
-		int16(1), int16(1),
+		int16(1), int16(1), contextUsage,
 	}
 }
 
 func TestScanQualityAgentSessionDecodesStateAndEngineState(t *testing.T) {
 	t.Parallel()
 
-	message, err := scanQualityAgentSession(&fakeScanner{values: sessionScanValues([]byte(`{"done":["gap-a"],"blockedRounds":2,"blockedCode":"needs-data"}`))})
+	message, err := scanQualityAgentSession(&fakeScanner{values: sessionScanValues(
+		[]byte(`{"done":["gap-a"],"blockedRounds":2,"blockedCode":"needs-data"}`),
+		[]byte(`{"usedTokens":1200,"contextWindow":64000,"compactionTriggerTokens":48000,"model":"m","wake":3,"turn":1,"estimated":true}`),
+	)})
 	require.NoError(t, err)
 	require.Equal(t, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, message.State)
 	require.Equal(t, storepb.MetaType(1), message.TargetType)
@@ -139,13 +155,28 @@ func TestScanQualityAgentSessionDecodesStateAndEngineState(t *testing.T) {
 	require.Equal(t, int32(2), message.EngineState.GetBlockedRounds())
 	require.Equal(t, "needs-data", message.EngineState.GetBlockedCode())
 	require.Nil(t, message.NextWakeAt)
+	require.Equal(t, int32(1200), message.ContextUsage.GetUsedTokens())
+	require.Equal(t, int32(64000), message.ContextUsage.GetContextWindow())
+	require.Equal(t, int32(48000), message.ContextUsage.GetCompactionTriggerTokens())
+	require.Equal(t, "m", message.ContextUsage.GetModel())
+	require.Equal(t, int32(3), message.ContextUsage.GetWake())
+	require.Equal(t, int32(1), message.ContextUsage.GetTurn())
+	require.True(t, message.ContextUsage.GetEstimated())
+}
+
+func TestScanQualityAgentSessionAcceptsEmptyContextUsage(t *testing.T) {
+	t.Parallel()
+
+	message, err := scanQualityAgentSession(&fakeScanner{values: sessionScanValues([]byte("{}"), []byte("{}"))})
+	require.NoError(t, err)
+	require.Nil(t, message.ContextUsage)
 }
 
 func TestScanQualityAgentSessionReadIncludesLastActivity(t *testing.T) {
 	t.Parallel()
 
 	lastActivity := time.Unix(3000, 0).UTC()
-	values := append(sessionScanValues([]byte("{}")), &lastActivity)
+	values := append(sessionScanValues([]byte("{}"), []byte("{}")), &lastActivity)
 	message, err := scanQualityAgentSessionRead(&fakeScanner{values: values})
 	require.NoError(t, err)
 	require.NotNil(t, message.LastActivityAt)

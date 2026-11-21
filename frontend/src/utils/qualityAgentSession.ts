@@ -3,6 +3,7 @@ import {
   QualityAgentMessageOrigin,
   QualityAgentMessageRole,
   type QualityAgentSession,
+  type QualityAgentSessionContextUsage,
   type QualityAgentSessionMessage,
   QualityAgentSessionMode,
   QualityAgentSessionState,
@@ -492,4 +493,45 @@ function compareSeq(
     return 0;
   }
   return left.seq < right.seq ? -1 : 1;
+}
+
+// ---- context usage ----
+
+export type AgentSessionContextLevel = "normal" | "warning" | "critical";
+
+/**
+ * The share of the model window the last sample occupies. An unmeasured sample or a
+ * missing window is 0, never NaN, so the bar can render before the first wake.
+ */
+export function agentSessionContextRatio(
+  usage?: QualityAgentSessionContextUsage
+): number {
+  if (!usage || usage.contextWindow <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, usage.usedTokens / usage.contextWindow));
+}
+
+/**
+ * Where the sample sits: at the window it is critical, at the engine's compaction
+ * trigger it is a warning, below both it is normal. The trigger is measured on the
+ * engine's transcript pressure and the sample is the full model input, so the warning
+ * is a conservative approximation of when compaction starts, not an exact boundary.
+ */
+export function agentSessionContextLevel(
+  usage?: QualityAgentSessionContextUsage
+): AgentSessionContextLevel {
+  if (!usage || usage.contextWindow <= 0) {
+    return "normal";
+  }
+  if (usage.usedTokens >= usage.contextWindow) {
+    return "critical";
+  }
+  if (
+    usage.compactionTriggerTokens > 0 &&
+    usage.usedTokens >= usage.compactionTriggerTokens
+  ) {
+    return "warning";
+  }
+  return "normal";
 }

@@ -390,6 +390,7 @@
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
     - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
     - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
+    - [QualityAgentSessionContextUsage](#metaxisdata-v1-QualityAgentSessionContextUsage)
     - [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage)
     - [QualityCodeTable](#metaxisdata-v1-QualityCodeTable)
     - [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap)
@@ -7191,6 +7192,33 @@ schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | archive_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | MONITOR reviews a covered target; TRIAGE analyses an uncovered one. |
+| context_usage | [QualityAgentSessionContextUsage](#metaxisdata-v1-QualityAgentSessionContextUsage) |  | The last model input the engine measured; empty until the first model wake. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionContextUsage"></a>
+
+### QualityAgentSessionContextUsage
+QualityAgentSessionContextUsage is the session&#39;s last measured model input:
+the provider-reported prompt size (or the engine&#39;s text estimate) against the
+pinned model&#39;s context window. It is a runtime observability sample, not the
+session&#39;s token spend.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| used_tokens | [int32](#int32) |  |  |
+| context_window | [int32](#int32) |  |  |
+| max_output_tokens | [int32](#int32) |  |  |
+| compaction_trigger_tokens | [int32](#int32) |  | The pressure threshold at which the engine compacts; 0 when the pair cannot. It is measured on the transcript pressure, while used_tokens is the full model input, so the two are close but not identical. |
+| model | [string](#string) |  |  |
+| wake | [int32](#int32) |  |  |
+| turn | [int32](#int32) |  |  |
+| measured_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| estimated | [bool](#bool) |  | True when used_tokens is an estimate rather than a provider prompt count. |
 
 
 

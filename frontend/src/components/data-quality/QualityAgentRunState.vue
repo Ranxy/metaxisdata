@@ -14,6 +14,13 @@
       </span>
     </div>
 
+    <QualityAgentContextUsage
+      :usage="session.contextUsage"
+      :agent-model="agentModel"
+      :agent-model-known="agentModelKnown"
+      :session-mode="session.mode"
+    />
+
     <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
       <dt class="text-muted-foreground">{{ t("qualityAgent.sessionWakes") }}</dt>
       <dd class="text-right tabular-nums">{{ session.wakeCount }}</dd>
@@ -87,6 +94,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import QualityAgentContextUsage from "@/components/data-quality/QualityAgentContextUsage.vue";
 import { Button } from "@/components/ui/button";
 import type { QualityAgentSession } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime } from "@/utils/datetime";
@@ -111,6 +119,10 @@ const props = defineProps<{
   lastActivityLabel: string;
   currentTurn?: number;
   pollError: string;
+  /** The model the agent is configured for now; used to flag a stale context sample. */
+  agentModel?: string;
+  /** False while the agent read is pending or failed; distinguishes "no model" from "unknown". */
+  agentModelKnown?: boolean;
 }>();
 
 const { t, locale } = useI18n();

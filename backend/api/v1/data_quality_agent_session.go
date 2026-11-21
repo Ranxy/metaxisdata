@@ -319,9 +319,32 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 		RestartCount:     message.RestartCount,
 		Running:          message.LeaseUntil != nil && message.LeaseUntil.After(now),
 		Mode:             v1pb.QualityAgentSessionMode(message.Mode),
+		ContextUsage:     convertQualityAgentSessionContextUsageToV1(message.ContextUsage),
 		CreateTime:       timestamppb.New(message.CreatedAt),
 		UpdateTime:       timestamppb.New(message.UpdatedAt),
 		ArchiveTime:      timestampOrNil(message.ArchivedAt),
+	}
+}
+
+// convertQualityAgentSessionContextUsageToV1 renders the engine's last model-input
+// sample. An empty sample stays nil so the rail can tell "not measured yet" from zero.
+func convertQualityAgentSessionContextUsageToV1(usage *storepb.QualityAgentSessionContextUsage) *v1pb.QualityAgentSessionContextUsage {
+	if usage == nil {
+		return nil
+	}
+	if usage.UsedTokens == 0 && usage.ContextWindow == 0 && usage.Model == "" && usage.MeasuredAt == nil {
+		return nil
+	}
+	return &v1pb.QualityAgentSessionContextUsage{
+		UsedTokens:              usage.UsedTokens,
+		ContextWindow:           usage.ContextWindow,
+		MaxOutputTokens:         usage.MaxOutputTokens,
+		CompactionTriggerTokens: usage.CompactionTriggerTokens,
+		Model:                   usage.Model,
+		Wake:                    usage.Wake,
+		Turn:                    usage.Turn,
+		MeasuredAt:              usage.GetMeasuredAt(),
+		Estimated:               usage.Estimated,
 	}
 }
 

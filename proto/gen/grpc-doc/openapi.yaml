@@ -14300,9 +14300,49 @@ components:
                         - QUALITY_AGENT_SESSION_MODE_TRIAGE
                     type: string
                     format: enum
+                contextUsage:
+                    $ref: '#/components/schemas/QualityAgentSessionContextUsage'
             description: |-
                 QualityAgentSession is one target's durable agent conversation and wake schedule.
                  "Running" is expressed by lease_until, never by state.
+        QualityAgentSessionContextUsage:
+            type: object
+            properties:
+                usedTokens:
+                    type: integer
+                    format: int32
+                contextWindow:
+                    type: integer
+                    format: int32
+                maxOutputTokens:
+                    type: integer
+                    format: int32
+                compactionTriggerTokens:
+                    type: integer
+                    description: |-
+                        The pressure threshold at which the engine compacts; 0 when the pair cannot.
+                         It is measured on the transcript pressure, while used_tokens is the full model
+                         input, so the two are close but not identical.
+                    format: int32
+                model:
+                    type: string
+                wake:
+                    type: integer
+                    format: int32
+                turn:
+                    type: integer
+                    format: int32
+                measuredAt:
+                    type: string
+                    format: date-time
+                estimated:
+                    type: boolean
+                    description: True when used_tokens is an estimate rather than a provider prompt count.
+            description: |-
+                QualityAgentSessionContextUsage is the session's last measured model input:
+                 the provider-reported prompt size (or the engine's text estimate) against the
+                 pinned model's context window. It is a runtime observability sample, not the
+                 session's token spend.
         QualityAgentSessionEngineState:
             type: object
             properties:
