@@ -36,6 +36,7 @@ type QualityAgentSessionMessage struct {
 	SummaryThroughSeq int64
 	ProcessedSeq      int64
 	EngineState       *storepb.QualityAgentSessionEngineState
+	ContextUsage      *storepb.QualityAgentSessionContextUsage
 	NextWakeAt        *time.Time
 	LeaseUntil        *time.Time
 	RestartCount      int32
@@ -78,7 +79,7 @@ const qualityAgentSessionColumns = `id, resource_id, workspace_id, target_guid, 
 	COALESCE((SELECT principal_id FROM quality_agent WHERE quality_agent.id = agent_id), 0) AS agent_principal_id,
 	state, blocked_code, blocked_reason, revision, wake_count, summary,
 	summary_through_seq, processed_seq, engine_state, next_wake_at, lease_until,
-	restart_count, created_at, updated_at, archived_at, mode, kind`
+	restart_count, created_at, updated_at, archived_at, mode, kind, context_usage`
 
 // qualityAgentSessionReadColumns adds the newest message timestamp the list and detail
 // readers show as "last activity".
@@ -409,6 +410,36 @@ func (s *Store) UpdateQualityAgentSessionProgress(ctx context.Context, resourceI
 	return message, nil
 }
 
+// updateQualityAgentSessionContextUsageQuery pins the observability contract: a
+// sample never bumps revision or updated_at and never writes an archived session.
+const updateQualityAgentSessionContextUsageQuery = `
+	UPDATE quality_agent_session
+	SET context_usage = $2
+	WHERE resource_id = $1 AND archived_at IS NULL`
+
+// UpdateQualityAgentSessionContextUsage records the engine's latest model-input
+// sample. It is observability only: it neither bumps revision nor updated_at, because
+// a sample must not interfere with the human state CAS or the list's activity order.
+// It reports false when the session is archived.
+func (s *Store) UpdateQualityAgentSessionContextUsage(ctx context.Context, resourceID string, usage *storepb.QualityAgentSessionContextUsage) (bool, error) {
+	if usage == nil {
+		return false, common.Errorf(common.Invalid, "a context usage sample is required")
+	}
+	payload, err := protojson.Marshal(usage)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.GetDB().ExecContext(ctx, updateQualityAgentSessionContextUsageQuery, resourceID, payload)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to update the session context usage")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the updated session")
+	}
+	return affected > 0, nil
+}
+
 // UpdateQualityAgentSessionCompaction stores the rolling checkpoint summary that
 // replaces messages up to throughSeq in the next model context.
 func (s *Store) UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error) {
@@ -701,14 +732,15 @@ func scanQualityAgentSessionRead(scanner interface{ Scan(dest ...any) error }) (
 
 func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error }, withLastActivity bool) (*QualityAgentSessionMessage, error) {
 	var (
-		message     QualityAgentSessionMessage
-		targetType  int16
-		state       int16
-		engineState []byte
-		agentID     int64
-		agentPrinID int32
-		mode        int16
-		kind        int16
+		message      QualityAgentSessionMessage
+		targetType   int16
+		state        int16
+		engineState  []byte
+		contextUsage []byte
+		agentID      int64
+		agentPrinID  int32
+		mode         int16
+		kind         int16
 	)
 	dest := []any{
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.TargetGUID,
@@ -718,7 +750,7 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		&message.SummaryThroughSeq, &message.ProcessedSeq, &engineState,
 		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount,
 		&message.CreatedAt, &message.UpdatedAt, &message.ArchivedAt,
-		&mode, &kind,
+		&mode, &kind, &contextUsage,
 	}
 	if withLastActivity {
 		dest = append(dest, &message.LastActivityAt)
@@ -739,6 +771,13 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		}
 	}
 	message.EngineState = engineStateMessage
+	if len(contextUsage) > 0 && string(contextUsage) != "{}" {
+		usage := &storepb.QualityAgentSessionContextUsage{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(contextUsage, usage); err != nil {
+			return nil, errors.Wrap(err, "failed to decode the session context usage")
+		}
+		message.ContextUsage = usage
+	}
 	return &message, nil
 }
 

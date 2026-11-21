@@ -1221,6 +1221,28 @@ message QualityAgentSessionEngineState {
   reserved "phase";
 }
 
+// QualityAgentSessionContextUsage is the JSONB payload of
+// quality_agent_session.context_usage: the last model input the engine measured,
+// with the pinned model's capacities at that moment. It is an observability
+// sample, not the session's token spend (which stays on the transcript rows).
+message QualityAgentSessionContextUsage {
+  // Provider-reported prompt tokens, or the engine's text estimate when the
+  // provider reported none.
+  int32 used_tokens = 1;
+  int32 context_window = 2;
+  int32 max_output_tokens = 3;
+  // The pressure threshold the engine compacts at; 0 when the pair cannot compact.
+  // It is measured on the transcript pressure, while used_tokens is the full model
+  // input, so the two are close but not identical.
+  int32 compaction_trigger_tokens = 4;
+  string model = 5;
+  int32 wake = 6;
+  int32 turn = 7;
+  google.protobuf.Timestamp measured_at = 8;
+  // True when used_tokens is an estimate rather than a provider prompt count.
+  bool estimated = 9;
+}
+
 // QualityAgentSession is one target's durable agent conversation and wake schedule.
 // "Running" is expressed by lease_until, never by state.
 message QualityAgentSession {
@@ -1262,6 +1284,7 @@ message QualityAgentSession {
   reserved 27;
   reserved "source";
   QualityAgentSessionMode mode = 28;
+  QualityAgentSessionContextUsage context_usage = 29;
 }
 
 // QualityAgentEnrollment is one target's place in the runner's queue: the desired

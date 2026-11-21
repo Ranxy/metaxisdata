@@ -40,6 +40,7 @@
     - [QualityAgentEnrollment](#metaxisdata-store-QualityAgentEnrollment)
     - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
     - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
+    - [QualityAgentSessionContextUsage](#metaxisdata-store-QualityAgentSessionContextUsage)
     - [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState)
     - [QualityCodeTableValues](#metaxisdata-store-QualityCodeTableValues)
     - [QualityContractCheck](#metaxisdata-store-QualityContractCheck)
@@ -927,6 +928,33 @@ QualityAgentSession is one target&#39;s durable agent conversation and wake sche
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | archived_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | mode | [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode) |  |  |
+| context_usage | [QualityAgentSessionContextUsage](#metaxisdata-store-QualityAgentSessionContextUsage) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionContextUsage"></a>
+
+### QualityAgentSessionContextUsage
+QualityAgentSessionContextUsage is the JSONB payload of
+quality_agent_session.context_usage: the last model input the engine measured,
+with the pinned model&#39;s capacities at that moment. It is an observability
+sample, not the session&#39;s token spend (which stays on the transcript rows).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| used_tokens | [int32](#int32) |  | Provider-reported prompt tokens, or the engine&#39;s text estimate when the provider reported none. |
+| context_window | [int32](#int32) |  |  |
+| max_output_tokens | [int32](#int32) |  |  |
+| compaction_trigger_tokens | [int32](#int32) |  | The pressure threshold the engine compacts at; 0 when the pair cannot compact. It is measured on the transcript pressure, while used_tokens is the full model input, so the two are close but not identical. |
+| model | [string](#string) |  |  |
+| wake | [int32](#int32) |  |  |
+| turn | [int32](#int32) |  |  |
+| measured_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| estimated | [bool](#bool) |  | True when used_tokens is an estimate rather than a provider prompt count. |
 
 
 

@@ -9430,6 +9430,73 @@ export declare type QualityToolCall = Message<"metaxisdata.v1.QualityToolCall"> 
 export declare const QualityToolCallSchema: GenMessage<QualityToolCall>;
 
 /**
+ * QualityAgentSessionContextUsage is the session's last measured model input:
+ * the provider-reported prompt size (or the engine's text estimate) against the
+ * pinned model's context window. It is a runtime observability sample, not the
+ * session's token spend.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentSessionContextUsage
+ */
+export declare type QualityAgentSessionContextUsage = Message<"metaxisdata.v1.QualityAgentSessionContextUsage"> & {
+  /**
+   * @generated from field: int32 used_tokens = 1;
+   */
+  usedTokens: number;
+
+  /**
+   * @generated from field: int32 context_window = 2;
+   */
+  contextWindow: number;
+
+  /**
+   * @generated from field: int32 max_output_tokens = 3;
+   */
+  maxOutputTokens: number;
+
+  /**
+   * The pressure threshold at which the engine compacts; 0 when the pair cannot.
+   * It is measured on the transcript pressure, while used_tokens is the full model
+   * input, so the two are close but not identical.
+   *
+   * @generated from field: int32 compaction_trigger_tokens = 4;
+   */
+  compactionTriggerTokens: number;
+
+  /**
+   * @generated from field: string model = 5;
+   */
+  model: string;
+
+  /**
+   * @generated from field: int32 wake = 6;
+   */
+  wake: number;
+
+  /**
+   * @generated from field: int32 turn = 7;
+   */
+  turn: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp measured_at = 8;
+   */
+  measuredAt?: Timestamp;
+
+  /**
+   * True when used_tokens is an estimate rather than a provider prompt count.
+   *
+   * @generated from field: bool estimated = 9;
+   */
+  estimated: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentSessionContextUsage.
+ * Use `create(QualityAgentSessionContextUsageSchema)` to create a new message.
+ */
+export declare const QualityAgentSessionContextUsageSchema: GenMessage<QualityAgentSessionContextUsage>;
+
+/**
  * QualityAgentSession is one target's long-lived agent conversation and wake
  * schedule. "Running" is derived from lease_expire_time, never from state.
  *
@@ -9542,6 +9609,13 @@ export declare type QualityAgentSession = Message<"metaxisdata.v1.QualityAgentSe
    * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 22;
    */
   mode: QualityAgentSessionMode;
+
+  /**
+   * The last model input the engine measured; empty until the first model wake.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionContextUsage context_usage = 23;
+   */
+  contextUsage?: QualityAgentSessionContextUsage;
 };
 
 /**

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
@@ -54,6 +55,7 @@ type Store interface {
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
+	UpdateQualityAgentSessionContextUsage(ctx context.Context, resourceID string, usage *storepb.QualityAgentSessionContextUsage) (bool, error)
 	UpdateQualityAgentSystemMessage(ctx context.Context, sessionID int64, content string) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
@@ -338,6 +340,12 @@ func (e *Engine) modelWake(
 			case agent.EventUsage:
 				if event.Usage != nil {
 					turnUsage[int32(event.Turn)] = event.Usage
+					if event.Usage.PromptTokens > 0 {
+						// The provider counted the whole request it saw, which is the real
+						// context occupancy for this turn.
+						e.recordContextUsage(ctx, session, config, wake, int32(event.Turn),
+							int(event.Usage.PromptTokens), false)
+					}
 				}
 			case agent.EventAssistant:
 				if event.Assistant == nil {
@@ -384,6 +392,15 @@ func (e *Engine) modelWake(
 	if err != nil {
 		return Outcome{}, err
 	}
+	// Record the engine's text estimate of the full model input before each call. It
+	// covers providers that report no usage; the compaction decision itself uses the
+	// transcript pressure alone, so the meter's warning line is an approximation.
+	// Replacing the previous provider reading here is intentional: a failed call is then
+	// honestly labeled as an estimate for this wake.
+	recordEstimate := func() {
+		e.recordContextUsage(ctx, session, config, wake, 0, EstimateTokens(conversation), true)
+	}
+	recordEstimate()
 	failure := runLoop(conversation)
 	if failure != nil && llm.IsContextOverflow(failure.Error) {
 		// The provider rejected the context as too large. Compact as much as possible,
@@ -394,6 +411,7 @@ func (e *Engine) modelWake(
 			if conversation, err = buildContext(); err != nil {
 				return Outcome{}, err
 			}
+			recordEstimate()
 			failure = runLoop(conversation)
 		}
 	}
@@ -865,6 +883,33 @@ func (e *Engine) recordEngineKeyed(ctx context.Context, session *store.QualityAg
 		Content:        truncateRunes(content, 2000),
 		IdempotencyKey: key,
 	})
+}
+
+// recordContextUsage persists the engine's latest model-input sample for the session
+// detail's context meter. It is best-effort observability: a failed sample never
+// aborts a wake, and the sample carries the model capacities it was measured against.
+func (e *Engine) recordContextUsage(ctx context.Context, session *store.QualityAgentSessionMessage, config llm.ResolvedConfig, wake, turn int32, used int, estimated bool) {
+	if session == nil || used <= 0 {
+		return
+	}
+	// The resolved config is normalized in production; normalize again so a caller that
+	// passes zero capacities cannot persist an unusable window.
+	limits := llm.NormalizeModelLimits(int32(config.ContextWindow), int32(config.MaxOutputTokens))
+	usage := &storepb.QualityAgentSessionContextUsage{
+		UsedTokens:              clampInt32(int64(used)),
+		ContextWindow:           int32(limits.ContextWindow),
+		MaxOutputTokens:         int32(limits.MaxOutputTokens),
+		CompactionTriggerTokens: int32(llm.CompactionTrigger(limits.ContextWindow, limits.MaxOutputTokens)),
+		Model:                   config.ModelName,
+		Wake:                    wake,
+		Turn:                    turn,
+		MeasuredAt:              timestamppb.New(e.now()),
+		Estimated:               estimated,
+	}
+	if _, err := e.store.UpdateQualityAgentSessionContextUsage(ctx, session.ResourceID, usage); err != nil {
+		slog.Warn("failed to record the session context usage",
+			slog.String("session", session.ResourceID), slog.Any("error", err))
+	}
 }
 
 // toolCallsToStore maps the provider's tool calls to the stored shape.

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -92,6 +93,55 @@ func TestConvertQualityAgentSessionRebuildsTheTargetPath(t *testing.T) {
 	}, now)
 	require.Equal(t, "sales", database.GetTarget().GetPath().GetDatabase())
 	require.Empty(t, database.GetTarget().GetPath().GetObject())
+}
+
+// The run-state rail reads the engine's sample: used tokens, the window and compaction
+// point it was measured against, and where the measurement came from.
+func TestConvertQualityAgentSessionRendersTheContextUsage(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(10_000, 0).UTC()
+	measured := now.Add(-time.Minute)
+	message := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID: "s1",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		ContextUsage: &storepb.QualityAgentSessionContextUsage{
+			UsedTokens:              1200,
+			ContextWindow:           64000,
+			MaxOutputTokens:         8192,
+			CompactionTriggerTokens: 48000,
+			Model:                   "m",
+			Wake:                    3,
+			Turn:                    2,
+			MeasuredAt:              timestamppb.New(measured),
+			Estimated:               false,
+		},
+	}, now)
+	usage := message.GetContextUsage()
+	require.Equal(t, int32(1200), usage.GetUsedTokens())
+	require.Equal(t, int32(64000), usage.GetContextWindow())
+	require.Equal(t, int32(8192), usage.GetMaxOutputTokens())
+	require.Equal(t, int32(48000), usage.GetCompactionTriggerTokens())
+	require.Equal(t, "m", usage.GetModel())
+	require.Equal(t, int32(3), usage.GetWake())
+	require.Equal(t, int32(2), usage.GetTurn())
+	require.Equal(t, measured.Unix(), usage.GetMeasuredAt().AsTime().Unix())
+	require.False(t, usage.GetEstimated())
+}
+
+// An empty JSONB sample is "not measured yet", not a zero-token reading.
+func TestConvertQualityAgentSessionOmitsAnEmptyContextUsage(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(10_000, 0).UTC()
+	message := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID:   "s1",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		ContextUsage: &storepb.QualityAgentSessionContextUsage{},
+	}, now)
+	require.Nil(t, message.GetContextUsage())
 }
 
 // A transcript entry renders its tool calls and keeps the tool call identity the model

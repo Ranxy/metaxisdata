@@ -28,6 +28,7 @@ type fakeStore struct {
 	memoryInputs  []*store.CreateQualityMemoryInput
 	nextSeq       int64
 	systemUpdates int
+	contextUsage  []*storepb.QualityAgentSessionContextUsage
 	agent         *store.QualityAgentMessage
 }
 
@@ -123,6 +124,11 @@ func (f *fakeStore) UpdateQualityAgentSystemMessage(_ context.Context, sessionID
 		}
 	}
 	return false, nil
+}
+
+func (f *fakeStore) UpdateQualityAgentSessionContextUsage(_ context.Context, _ string, usage *storepb.QualityAgentSessionContextUsage) (bool, error) {
+	f.contextUsage = append(f.contextUsage, usage)
+	return true, nil
 }
 
 func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error) {
@@ -580,6 +586,71 @@ func TestWakeRepairsADanglingToolCall(t *testing.T) {
 	require.True(t, found, "the dangling call got a synthetic result")
 }
 
+// A model wake records what it sent: an engine estimate before the first call, then
+// the provider's prompt count after the call. The sample carries the capacities it was
+// measured against, so the session detail can render used/window without resolving the
+// model again.
+func TestModelWakeRecordsTheContextItSent(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "done"}}), resolveToModel, nil)
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(stores.contextUsage), 2)
+
+	estimate := stores.contextUsage[0]
+	require.True(t, estimate.GetEstimated())
+	require.Positive(t, estimate.GetUsedTokens())
+	require.Equal(t, int32(llm.DefaultContextWindow), estimate.GetContextWindow())
+	require.Positive(t, estimate.GetCompactionTriggerTokens())
+	require.Equal(t, "test-model", estimate.GetModel())
+	require.Equal(t, int32(1), estimate.GetWake())
+	require.Equal(t, int32(0), estimate.GetTurn())
+	require.NotNil(t, estimate.GetMeasuredAt())
+
+	provider := stores.contextUsage[len(stores.contextUsage)-1]
+	require.False(t, provider.GetEstimated())
+	require.Equal(t, int32(100), provider.GetUsedTokens(), "the provider's prompt count wins over the estimate")
+	require.Equal(t, int32(1), provider.GetTurn())
+}
+
+// A provider that reports no usage still leaves a usable sample: the pre-call estimate
+// stays the last measurement instead of the meter going blank.
+func TestModelWakeKeepsTheEstimateWithoutProviderUsage(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	chat := func(_ context.Context, _ agent.Config) <-chan agent.Event {
+		events := make(chan agent.Event, 4)
+		go func() {
+			defer close(events)
+			events <- agent.Event{Type: agent.EventTurnStart, Turn: 1}
+			assistant := agent.Message{Role: "assistant", Content: "done"}
+			events <- agent.Event{Type: agent.EventAssistant, Assistant: &assistant, Turn: 1}
+			events <- agent.Event{Type: agent.EventEnd, Turn: 1}
+		}()
+		return events
+	}
+	engine := NewModelEngine(stores, chat, resolveToModel, nil)
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, stores.contextUsage, 1)
+	require.True(t, stores.contextUsage[0].GetEstimated())
+	require.Positive(t, stores.contextUsage[0].GetUsedTokens())
+}
+
+// The deterministic survey never builds a model input, so it must not overwrite the
+// last model sample with an empty or fabricated one.
+func TestDeterministicWakeLeavesTheContextSampleAlone(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	_, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Empty(t, stores.contextUsage)
+}
+
 // Distinct asset facts can be recorded in one session; an identical statement is
 // deduplicated against the confirmed fact already stored for the target.
 func TestRecordAssetFactKeepsDistinctFacts(t *testing.T) {
@@ -659,6 +730,59 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+}
+
+// A provider that reports no usage after an overflow must leave the compressed estimate,
+// not the pre-compaction one: otherwise the session rail stays critical until the next
+// wake even though the conversation was just compacted.
+func TestWakeReRecordsTheEstimateAfterACompactionRetry(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	session := testSession()
+	for index := 0; index < 12; index++ {
+		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+			SessionID: 1, WorkspaceID: "ws",
+			Role:    storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
+			Content: strings.Repeat("earlier conversation. ", 200),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	chat := func(_ context.Context, _ agent.Config) <-chan agent.Event {
+		calls++
+		events := make(chan agent.Event, 8)
+		go func() {
+			defer close(events)
+			switch calls {
+			case 1:
+				events <- agent.Event{Type: agent.EventError,
+					Error: &llm.ResponseError{Code: llm.FailureContextOverflow}}
+			case 2:
+				events <- agent.Event{Type: agent.EventAssistant,
+					Assistant: &agent.Message{Role: "assistant", Content: "## Next Step\n- (none)"}}
+				events <- agent.Event{Type: agent.EventEnd}
+			default:
+				events <- agent.Event{Type: agent.EventTurnStart, Turn: 1}
+				events <- agent.Event{Type: agent.EventAssistant,
+					Assistant: &agent.Message{Role: "assistant", Content: "recovered"}}
+				events <- agent.Event{Type: agent.EventEnd}
+			}
+		}()
+		return events
+	}
+	engine := NewModelEngine(stores, chat, resolveToModel, nil)
+	_, err := engine.Wake(context.Background(), session, Options{CompactionTriggerTokens: 1_000_000})
+	require.NoError(t, err)
+	require.NotEmpty(t, session.Summary, "the overflow forced a compaction")
+	require.Len(t, stores.contextUsage, 2, "one estimate before each model call")
+	require.True(t, stores.contextUsage[0].GetEstimated())
+	require.True(t, stores.contextUsage[1].GetEstimated())
+	require.Less(t, stores.contextUsage[1].GetUsedTokens(), stores.contextUsage[0].GetUsedTokens(),
+		"the retried estimate reflects the compacted conversation")
 }
 
 // denyingChecker refuses every permission and records what was asked.

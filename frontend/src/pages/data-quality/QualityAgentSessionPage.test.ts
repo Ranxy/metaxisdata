@@ -10,6 +10,8 @@ import {
   QualityAgentMessageRole,
   QualityAgentSchema,
   type QualityAgentSession,
+  type QualityAgentSessionContextUsage,
+  QualityAgentSessionContextUsageSchema,
   QualityAgentSessionMessageSchema,
   QualityAgentSessionSchema,
   QualityAgentSessionState,
@@ -64,7 +66,9 @@ const Dummy = { template: "<div />" };
 const SESSION = "workspaces/ws/qualityAgentSessions/session-1";
 const START = new Date("2026-11-07T10:00:00Z");
 
-function sessionFixture(): QualityAgentSession {
+function sessionFixture(
+  contextUsage?: QualityAgentSessionContextUsage
+): QualityAgentSession {
   return create(QualityAgentSessionSchema, {
     name: SESSION,
     target: create(QualityTargetSchema, {
@@ -82,6 +86,7 @@ function sessionFixture(): QualityAgentSession {
     running: false,
     wakeCount: 4,
     lastActivityTime: timestampFromDate(START),
+    contextUsage,
   });
 }
 
@@ -229,6 +234,37 @@ describe("QualityAgentSessionPage", () => {
     expect(wrapper.text()).not.toContain("look at the latest execution");
     expect(wrapper.text()).not.toContain("Load earlier");
     expect(wrapper.text()).toContain("Start of the transcript");
+    wrapper.unmount();
+  });
+
+  it("renders the model context sample in the run state", async () => {
+    mocks.getQualityAgent.mockResolvedValue(
+      create(QualityAgentSchema, {
+        name: "workspaces/ws/qualityAgents/agent-1",
+        displayName: "rece",
+        providerModel: "new-model",
+      })
+    );
+    mocks.getQualityAgentSession.mockResolvedValue(
+      sessionFixture(
+        create(QualityAgentSessionContextUsageSchema, {
+          usedTokens: 1000,
+          contextWindow: 4000,
+          maxOutputTokens: 1000,
+          compactionTriggerTokens: 3000,
+          model: "old-model",
+          wake: 2,
+          measuredAt: timestampFromDate(START),
+          estimated: false,
+        })
+      )
+    );
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain("1,000 / 4,000");
+    expect(wrapper.text()).toContain("wake 2");
+    expect(wrapper.text()).toContain("The agent model changed to new-model");
+    expect(wrapper.text()).not.toContain("No model input measured yet.");
     wrapper.unmount();
   });
 

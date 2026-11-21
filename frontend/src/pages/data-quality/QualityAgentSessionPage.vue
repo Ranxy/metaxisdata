@@ -139,6 +139,8 @@
                   :last-activity-label="lastActivityLabel"
                   :current-turn="currentTurn"
                   :poll-error="pollError"
+                  :agent-model="agent?.providerModel"
+                  :agent-model-known="agent !== undefined"
                 />
               </div>
             </CollapsibleContent>
@@ -157,6 +159,8 @@
                 :last-activity-label="lastActivityLabel"
                 :current-turn="currentTurn"
                 :poll-error="pollError"
+                :agent-model="agent?.providerModel"
+                :agent-model-known="agent !== undefined"
               />
             </CardContent>
           </Card>
