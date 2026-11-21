@@ -126,12 +126,19 @@ func (s *DataQualityService) RecommendQualityChecks(ctx context.Context, req *co
 	if len(plan.Supersede) > 0 {
 		// One statement closes every stale proposal this pass found; the returned count
 		// is what actually changed (a concurrent reviewer may have decided one).
-		superseded, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
+		affected, err := s.store.SupersedePendingQualitySuggestions(ctx, guid, metaType,
 			plan.Supersede, "a saved rule with the same identity exists", nil, now)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to close a stale recommended check"))
 		}
-		summary.Superseded += int32(superseded)
+		summary.Superseded += int32(len(affected))
+		for _, proposingAgentID := range affected {
+			if proposingAgentID <= 0 {
+				continue
+			}
+			s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid},
+				principalIDPointer(currentUserID(ctx)))
+		}
 	}
 
 	callerID := principalIDPointer(currentUserID(ctx))

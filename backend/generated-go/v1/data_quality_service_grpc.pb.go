@@ -375,10 +375,14 @@ type DataQualityServiceClient interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error)
-	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
-	// or an administrator uses this to clear drafts an earlier failed pass left
-	// behind; it makes no decision on their behalf and writes only what the
-	// configured allowlist, confidence and daily cap already permit.
+	// Approve the agent's pending rule drafts as the caller's decision. The owner or an
+	// administrator may use it, and it does not require the caller's rule-write
+	// permission because it can only turn the agent's already-queued drafts into checks:
+	// the draft is accepted and the check attributed to the caller, and the check starts
+	// enabled. Neither the adoption allowlist, the confidence threshold, the critical
+	// switch nor the agent's daily autonomous adoption ceiling applies; the agent's
+	// database scope is the agent's guardrail, not the person's. A target GUID narrows
+	// the approval to one target; empty approves every pending draft.
 	AdoptQualityAgentPendingSuggestions(ctx context.Context, in *AdoptQualityAgentPendingSuggestionsRequest, opts ...grpc.CallOption) (*AdoptQualityAgentPendingSuggestionsResponse, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
@@ -1517,10 +1521,14 @@ type DataQualityServiceServer interface {
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error)
-	// Apply the agent's adoption guardrails to its pending rule drafts now. The owner
-	// or an administrator uses this to clear drafts an earlier failed pass left
-	// behind; it makes no decision on their behalf and writes only what the
-	// configured allowlist, confidence and daily cap already permit.
+	// Approve the agent's pending rule drafts as the caller's decision. The owner or an
+	// administrator may use it, and it does not require the caller's rule-write
+	// permission because it can only turn the agent's already-queued drafts into checks:
+	// the draft is accepted and the check attributed to the caller, and the check starts
+	// enabled. Neither the adoption allowlist, the confidence threshold, the critical
+	// switch nor the agent's daily autonomous adoption ceiling applies; the agent's
+	// database scope is the agent's guardrail, not the person's. A target GUID narrows
+	// the approval to one target; empty approves every pending draft.
 	AdoptQualityAgentPendingSuggestions(context.Context, *AdoptQualityAgentPendingSuggestionsRequest) (*AdoptQualityAgentPendingSuggestionsResponse, error)
 	// Replace the masked configuration of one agent. Administrator only.
 	UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error)

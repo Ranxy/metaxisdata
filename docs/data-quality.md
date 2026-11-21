@@ -570,23 +570,29 @@ generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** Three things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
 adoption pass, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
 names the most recent write failure. The owner answers or dismisses it from the agent's home; answering resumes the target's session,
-and a reply can ask the agent to adopt the pending drafts while the proposal item also offers an **Adopt pending drafts** action when
-adoption is enabled. The owner also gets an in-app notification.
-- **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks adopted, drafts that failed to write, and
-drafts still pending — plus the most recent write failure. **Adopt pending drafts now** runs the same guardrails over drafts already
-in the queue; the owner or an administrator can use it to clear drafts a failed pass left behind, drafts above the daily ceiling
-from an earlier pass, or drafts whose wake failed after drafting. It does not bypass the rule-type allowlist, the confidence
-threshold, the critical-asset switch, the agent's current database scope or the daily ceiling; drafts outside the scope are skipped
-and stay pending. The owner can also ask the agent in conversation to adopt pending drafts: with no drafts named the agent applies
-those same guardrails to the target the conversation names, while drafts the owner names count as the owner's explicit decision —
-bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily ceiling or rule validation.
-The proposal item in **Needs you** offers the guardrailed pass as an explicit action too, when adoption is enabled and the viewer
-can adopt.
-- **Does not write freely.** An agent never approves on its own, but it may execute an adoption the owner explicitly asks for —
-applying the configured guardrails, or accepting the drafts the owner names — always within the agent's database scope, the daily
-ceiling, rule validation and the audit ledger. Publishing a contract, editing a check, rejecting a draft and changing settings remain
-human-only. Its other writes are proposals and asset facts inside its own runtime, an adopted check is created through the normal
-check path owned by the agent's owner, and MCP stays read-only.
+and a reply can ask the agent to adopt the pending drafts, while the proposal item offers an **Approve pending drafts** action to the
+agent's owner or an administrator; a person's approval does not need adoption to be enabled. The item closes once no pending draft is left,
+whether the agent adopted them or a person created or rejected the last one. The owner also gets an in-app notification.
+- **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks the agent adopted, checks a person
+approved, drafts that failed to write, and drafts still pending — plus the most recent write failure. **Approve pending drafts**
+creates the agent's pending drafts as your decision: the approval writes through the internal create path, so it needs no rule-write
+permission of your own, the check is attributed to you and owned by the agent's owner (or by you when the agent has none), and the
+check starts enabled. Neither the rule-type allowlist, the confidence threshold, the critical-asset switch, the agent's current
+database scope nor the agent's daily autonomous ceiling applies. Each draft is still validated; a draft whose rule cannot be written
+is reported, recorded as a failure in the last 24 hours, and stays pending.
+The action is available to the agent's owner and to administrators whether or not adoption is enabled, and it narrows to one
+target when opened from a proposal item. The owner can also ask the agent in conversation to adopt pending drafts: with no drafts
+named the agent applies its guardrails to the target the conversation names, while drafts the owner names count as the owner's
+explicit decision — bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily
+ceiling or rule validation. The daily ceiling therefore bounds what the agent adopts on its own or through that conversation
+tool; a person's approval is recorded under its own origin but never spends it.
+- **Does not write freely.** An agent never approves on its own. It may adopt drafts the owner explicitly asks for — applying the
+configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
+through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the
+person's own decision: it turns the agent's queued drafts into checks without the guardrails or the ceiling, but with rule
+validation, the audit ledger and the person's attribution. Publishing a contract, editing a check, rejecting a draft and changing
+settings remain human-only. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
+the agent's owner (or by the approver when there is none), and MCP stays read-only.
 
 ### Budgets, blocks and work sessions
 

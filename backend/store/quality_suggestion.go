@@ -553,30 +553,50 @@ func (s *Store) ReopenQualitySuggestion(ctx context.Context, resourceID string) 
 // given identities because their fact now exists or was replaced. It closes them
 // without a reviewer decision, which is why the status is SUPERSEDED rather than
 // ACCEPTED/REJECTED, and it records the reason in the note. A proposal that is not
-// pending is left untouched, so this is safe to call on every write path.
-func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string, reason string, agentID *int64, at time.Time) (int64, error) {
+// pending is left untouched, so this is safe to call on every write path. It returns
+// one entry per closed row: the proposing agent's id, or 0 for a human proposal. The
+// length is the number of rows that changed; a caller resolves the drained proposal
+// attention of each non-zero id.
+func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGUID string, targetType storepb.MetaType, signatures []string, reason string, agentID *int64, at time.Time) ([]int64, error) {
 	if len(signatures) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	if at.IsZero() {
 		at = time.Now().UTC()
 	} else {
 		at = at.UTC()
 	}
-	result, err := s.GetDB().ExecContext(ctx, `
+	rows, err := s.GetDB().QueryContext(ctx, `
 		UPDATE quality_suggestion
 		SET status = $1, decided_at = $2, decision_note = $3
 		WHERE target_guid = $4 AND target_type = $5 AND status = $6 AND signature = ANY($7::text[])
 			AND ($8::bigint IS NULL OR agent_id = $8)
+		RETURNING agent_id
 	`,
 		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED), at, strings.TrimSpace(reason),
 		targetGUID, int16(targetType),
 		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
 		pq.Array(signatures), agentID)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to supersede pending quality suggestions")
+		return nil, errors.Wrap(err, "failed to supersede pending quality suggestions")
 	}
-	return result.RowsAffected()
+	defer rows.Close()
+	affected := make([]int64, 0, len(signatures))
+	for rows.Next() {
+		var proposingAgent sql.NullInt64
+		if err := rows.Scan(&proposingAgent); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a superseded quality suggestion")
+		}
+		if proposingAgent.Valid {
+			affected = append(affected, proposingAgent.Int64)
+		} else {
+			affected = append(affected, 0)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to supersede pending quality suggestions")
+	}
+	return affected, nil
 }
 
 // QualitySuggestionSignatureState is what the queue knows about one proposal

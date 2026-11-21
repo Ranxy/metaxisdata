@@ -39,7 +39,7 @@ vi.mock("@/lib/notify", () => ({
 const ATTENTION = "workspaces/ws/qualityAgentAttentions/a1";
 const SESSION = "workspaces/ws/qualityAgentSessions/s1";
 
-function attentionFixture(): QualityAgentAttention {
+function attentionFixture(targetless = false): QualityAgentAttention {
   return create(QualityAgentAttentionSchema, {
     name: ATTENTION,
     kind: QualityAgentAttentionKind.PROPOSAL_PENDING,
@@ -52,20 +52,29 @@ function attentionFixture(): QualityAgentAttention {
       "Discount must be a fraction",
     ],
     createTime: timestampFromDate(new Date("2026-11-19T06:00:00Z")),
-    target: create(QualityTargetSchema, {
-      metaGuid: "inst-1;sales;public;orders",
-      metaType: MetaType.TABLE,
-      path: create(QualityTargetPathSchema, {
-        instance: "inst-1",
-        database: "sales",
-        schema: "public",
-        object: "orders",
-      }),
-    }),
+    ...(targetless
+      ? {}
+      : {
+          target: create(QualityTargetSchema, {
+            metaGuid: "inst-1;sales;public;orders",
+            metaType: MetaType.TABLE,
+            path: create(QualityTargetPathSchema, {
+              instance: "inst-1",
+              database: "sales",
+              schema: "public",
+              object: "orders",
+            }),
+          }),
+        }),
   });
 }
 
-async function mountItem(canReply = true, canAdopt = false, adoptBusy = false) {
+async function mountItem(
+  canReply = true,
+  canApprove = false,
+  approveBusy = false,
+  targetless = false
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -95,11 +104,11 @@ async function mountItem(canReply = true, canAdopt = false, adoptBusy = false) {
   await router.isReady();
   const wrapper = mount(QualityAgentAttentionItem, {
     props: {
-      attention: attentionFixture(),
+      attention: attentionFixture(targetless),
       agentName: "workspaces/ws/qualityAgents/agent-1",
       canReply,
-      canAdopt,
-      adoptBusy,
+      canApprove,
+      approveBusy,
     },
     global: { plugins: [router, i18n] },
   });
@@ -158,8 +167,8 @@ describe("QualityAgentAttentionItem", () => {
     wrapper.unmount();
   });
 
-  it("emits adopt for a pending proposal only when the viewer can adopt", async () => {
-    const adoptLabel = i18n.global.t("qualityAgent.attentionAdoptPending");
+  it("emits approve for a pending proposal only when the viewer can approve", async () => {
+    const approveLabel = i18n.global.t("qualityAgent.attentionApprovePending");
 
     const readOnly = await mountItem(true, false);
     await readOnly.findAll("button")[0].trigger("click");
@@ -167,38 +176,62 @@ describe("QualityAgentAttentionItem", () => {
     expect(
       readOnly
         .findAll("button")
-        .some((button) => button.text().includes(adoptLabel))
+        .some((button) => button.text().includes(approveLabel))
     ).toBe(false);
     readOnly.unmount();
 
-    const adoptable = await mountItem(true, true);
-    await adoptable.findAll("button")[0].trigger("click");
+    const approvable = await mountItem(true, true);
+    await approvable.findAll("button")[0].trigger("click");
     await flushPromises();
-    const adopt = adoptable
+    const approve = approvable
       .findAll("button")
-      .find((button) => button.text().includes(adoptLabel));
-    expect(adopt).toBeDefined();
-    // The guardrail hint sits next to the action the parent will run.
-    expect(adoptable.text()).toContain(
-      i18n.global.t("qualityAgent.attentionAdoptHint")
+      .find((button) => button.text().includes(approveLabel));
+    expect(approve).toBeDefined();
+    // The hint says the write is the viewer's decision, not the agent's policy.
+    expect(approvable.text()).toContain(
+      i18n.global.t("qualityAgent.attentionApproveHint")
     );
 
-    await adopt?.trigger("click");
-    expect(adoptable.emitted("adopt")).toHaveLength(1);
-    // Adoption goes through the parent's RPC, not the reply path.
+    await approve?.trigger("click");
+    expect(approvable.emitted("approve")).toEqual([
+      ["inst-1;sales;public;orders"],
+    ]);
+    // Approval goes through the parent's create path, not the reply path.
     expect(mocks.replyQualityAgentAttention).not.toHaveBeenCalled();
-    adoptable.unmount();
+    approvable.unmount();
 
-    // A parent pass in flight disables the action instead of starting a second one.
+    // A parent approval in flight disables the action instead of starting a second one.
     const busy = await mountItem(true, true, true);
     await busy.findAll("button")[0].trigger("click");
     await flushPromises();
-    const busyAdopt = busy
+    const busyApprove = busy
       .findAll("button")
-      .find((button) => button.text().includes(adoptLabel));
-    expect(busyAdopt?.attributes("disabled")).toBeDefined();
-    await busyAdopt?.trigger("click");
-    expect(busy.emitted("adopt")).toBeUndefined();
+      .find((button) => button.text().includes(approveLabel));
+    expect(busyApprove?.attributes("disabled")).toBeDefined();
+    await busyApprove?.trigger("click");
+    expect(busy.emitted("approve")).toBeUndefined();
     busy.unmount();
+  });
+
+  it("does not offer a whole-agent approval for a targetless attention", async () => {
+    const wrapper = await mountItem(true, true, false, true);
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("qualityAgent.attentionApprovePending")
+    );
+    expect(wrapper.emitted("approve")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("offers approval to an administrator who cannot reply", async () => {
+    const wrapper = await mountItem(false, true);
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+    expect(wrapper.find("textarea").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("qualityAgent.attentionApprovePending")
+    );
+    wrapper.unmount();
   });
 });

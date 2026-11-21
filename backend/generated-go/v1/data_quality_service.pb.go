@@ -15582,15 +15582,21 @@ func (x *QualityAgentAdoptionSetting) GetAllowCritical() bool {
 // QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
 // so an owner can tell "nothing was eligible" from "the write kept failing".
 type QualityAgentAdoptionStatus struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	AdoptedLast_24H   int32                  `protobuf:"varint,1,opt,name=adopted_last_24h,json=adoptedLast24h,proto3" json:"adopted_last_24h,omitempty"`
-	FailedLast_24H    int32                  `protobuf:"varint,2,opt,name=failed_last_24h,json=failedLast24h,proto3" json:"failed_last_24h,omitempty"`
-	PendingDraftCount int32                  `protobuf:"varint,3,opt,name=pending_draft_count,json=pendingDraftCount,proto3" json:"pending_draft_count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Adoptions the agent started on its own or through the owner-requested tool;
+	// the value the daily autonomous ceiling counts. A person's approval is
+	// approved_last_24h, not this.
+	AdoptedLast_24H   int32 `protobuf:"varint,1,opt,name=adopted_last_24h,json=adoptedLast24h,proto3" json:"adopted_last_24h,omitempty"`
+	FailedLast_24H    int32 `protobuf:"varint,2,opt,name=failed_last_24h,json=failedLast24h,proto3" json:"failed_last_24h,omitempty"`
+	PendingDraftCount int32 `protobuf:"varint,3,opt,name=pending_draft_count,json=pendingDraftCount,proto3" json:"pending_draft_count,omitempty"`
 	// The most recent write failure, with its error class; empty when none.
 	LastFailureReason string                 `protobuf:"bytes,4,opt,name=last_failure_reason,json=lastFailureReason,proto3" json:"last_failure_reason,omitempty"`
 	LastFailureTime   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_failure_time,json=lastFailureTime,proto3" json:"last_failure_time,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Checks a person approved from the agent page in the last 24 hours. It is
+	// recorded for the owner's accounting but never spends the autonomous ceiling.
+	ApprovedLast_24H int32 `protobuf:"varint,6,opt,name=approved_last_24h,json=approvedLast24h,proto3" json:"approved_last_24h,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *QualityAgentAdoptionStatus) Reset() {
@@ -15656,6 +15662,13 @@ func (x *QualityAgentAdoptionStatus) GetLastFailureTime() *timestamppb.Timestamp
 		return x.LastFailureTime
 	}
 	return nil
+}
+
+func (x *QualityAgentAdoptionStatus) GetApprovedLast_24H() int32 {
+	if x != nil {
+		return x.ApprovedLast_24H
+	}
+	return 0
 }
 
 // QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
@@ -17076,12 +17089,14 @@ func (x *SetQualityAgentAdoptionRequest) GetAdoption() *QualityAgentAdoptionSett
 	return nil
 }
 
-// AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
-// adoption guardrails to the rule drafts already in its review queue.
+// AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from
+// the agent's pending rule drafts as the caller's decision.
 type AdoptQualityAgentPendingSuggestionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Restrict the approval to one target. Empty approves every pending draft.
+	TargetGuid    string `protobuf:"bytes,2,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17123,7 +17138,14 @@ func (x *AdoptQualityAgentPendingSuggestionsRequest) GetName() string {
 	return ""
 }
 
-// AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+func (x *AdoptQualityAgentPendingSuggestionsRequest) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+// AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.
 type AdoptQualityAgentPendingSuggestionsResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Adopted          int32                  `protobuf:"varint,1,opt,name=adopted,proto3" json:"adopted,omitempty"`
@@ -22186,13 +22208,14 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"rule_types\x18\x02 \x03(\x0e2\x1f.metaxisdata.v1.QualityRuleTypeR\truleTypes\x121\n" +
 	"\x14confidence_threshold\x18\x03 \x01(\x01R\x13confidenceThreshold\x12\x1e\n" +
 	"\vmax_per_day\x18\x04 \x01(\x05R\tmaxPerDay\x12%\n" +
-	"\x0eallow_critical\x18\x05 \x01(\bR\rallowCritical\"\x96\x02\n" +
+	"\x0eallow_critical\x18\x05 \x01(\bR\rallowCritical\"\xc2\x02\n" +
 	"\x1aQualityAgentAdoptionStatus\x12(\n" +
 	"\x10adopted_last_24h\x18\x01 \x01(\x05R\x0eadoptedLast24h\x12&\n" +
 	"\x0ffailed_last_24h\x18\x02 \x01(\x05R\rfailedLast24h\x12.\n" +
 	"\x13pending_draft_count\x18\x03 \x01(\x05R\x11pendingDraftCount\x12.\n" +
 	"\x13last_failure_reason\x18\x04 \x01(\tR\x11lastFailureReason\x12F\n" +
-	"\x11last_failure_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x0flastFailureTime\"\xc9\x02\n" +
+	"\x11last_failure_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x0flastFailureTime\x12*\n" +
+	"\x11approved_last_24h\x18\x06 \x01(\x05R\x0fapprovedLast24h\"\xc9\x02\n" +
 	"\x12QualityAgentBudget\x12&\n" +
 	"\x0ftokens_per_hour\x18\x01 \x01(\x03R\rtokensPerHour\x12$\n" +
 	"\x0ewakes_per_hour\x18\x02 \x01(\x05R\fwakesPerHour\x126\n" +
@@ -22334,10 +22357,12 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1eSetQualityAgentAdoptionRequest\x124\n" +
 	"\x04name\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +
 	"\x18metaxisdata/QualityAgentR\x04name\x12L\n" +
-	"\badoption\x18\x02 \x01(\v2+.metaxisdata.v1.QualityAgentAdoptionSettingB\x03\xe0A\x02R\badoption\"b\n" +
+	"\badoption\x18\x02 \x01(\v2+.metaxisdata.v1.QualityAgentAdoptionSettingB\x03\xe0A\x02R\badoption\"\x83\x01\n" +
 	"*AdoptQualityAgentPendingSuggestionsRequest\x124\n" +
 	"\x04name\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +
-	"\x18metaxisdata/QualityAgentR\x04name\"\xa6\x01\n" +
+	"\x18metaxisdata/QualityAgentR\x04name\x12\x1f\n" +
+	"\vtarget_guid\x18\x02 \x01(\tR\n" +
+	"targetGuid\"\xa6\x01\n" +
 	"+AdoptQualityAgentPendingSuggestionsResponse\x12\x18\n" +
 	"\aadopted\x18\x01 \x01(\x05R\aadopted\x12\x18\n" +
 	"\askipped\x18\x02 \x01(\x05R\askipped\x12\x16\n" +

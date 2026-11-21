@@ -7086,6 +7086,10 @@ export declare const QualityAgentAdoptionSettingSchema: GenMessage<QualityAgentA
  */
 export declare type QualityAgentAdoptionStatus = Message<"metaxisdata.v1.QualityAgentAdoptionStatus"> & {
   /**
+   * Adoptions the agent started on its own or through the owner-requested tool;
+   * the value the daily autonomous ceiling counts. A person's approval is
+   * approved_last_24h, not this.
+   *
    * @generated from field: int32 adopted_last_24h = 1;
    */
   adoptedLast24h: number;
@@ -7111,6 +7115,14 @@ export declare type QualityAgentAdoptionStatus = Message<"metaxisdata.v1.Quality
    * @generated from field: google.protobuf.Timestamp last_failure_time = 5;
    */
   lastFailureTime?: Timestamp;
+
+  /**
+   * Checks a person approved from the agent page in the last 24 hours. It is
+   * recorded for the owner's accounting but never spends the autonomous ceiling.
+   *
+   * @generated from field: int32 approved_last_24h = 6;
+   */
+  approvedLast24h: number;
 };
 
 /**
@@ -7897,8 +7909,8 @@ export declare type SetQualityAgentAdoptionRequest = Message<"metaxisdata.v1.Set
 export declare const SetQualityAgentAdoptionRequestSchema: GenMessage<SetQualityAgentAdoptionRequest>;
 
 /**
- * AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
- * adoption guardrails to the rule drafts already in its review queue.
+ * AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from
+ * the agent's pending rule drafts as the caller's decision.
  *
  * @generated from message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest
  */
@@ -7909,6 +7921,13 @@ export declare type AdoptQualityAgentPendingSuggestionsRequest = Message<"metaxi
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * Restrict the approval to one target. Empty approves every pending draft.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
 };
 
 /**
@@ -7918,7 +7937,7 @@ export declare type AdoptQualityAgentPendingSuggestionsRequest = Message<"metaxi
 export declare const AdoptQualityAgentPendingSuggestionsRequestSchema: GenMessage<AdoptQualityAgentPendingSuggestionsRequest>;
 
 /**
- * AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+ * AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.
  *
  * @generated from message metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse
  */
@@ -12684,10 +12703,14 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityAgentSchema;
   },
   /**
-   * Apply the agent's adoption guardrails to its pending rule drafts now. The owner
-   * or an administrator uses this to clear drafts an earlier failed pass left
-   * behind; it makes no decision on their behalf and writes only what the
-   * configured allowlist, confidence and daily cap already permit.
+   * Approve the agent's pending rule drafts as the caller's decision. The owner or an
+   * administrator may use it, and it does not require the caller's rule-write
+   * permission because it can only turn the agent's already-queued drafts into checks:
+   * the draft is accepted and the check attributed to the caller, and the check starts
+   * enabled. Neither the adoption allowlist, the confidence threshold, the critical
+   * switch nor the agent's daily autonomous adoption ceiling applies; the agent's
+   * database scope is the agent's guardrail, not the person's. A target GUID narrows
+   * the approval to one target; empty approves every pending draft.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.AdoptQualityAgentPendingSuggestions
    */

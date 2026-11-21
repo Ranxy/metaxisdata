@@ -684,10 +684,14 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
-  // Apply the agent's adoption guardrails to its pending rule drafts now. The owner
-  // or an administrator uses this to clear drafts an earlier failed pass left
-  // behind; it makes no decision on their behalf and writes only what the
-  // configured allowlist, confidence and daily cap already permit.
+  // Approve the agent's pending rule drafts as the caller's decision. The owner or an
+  // administrator may use it, and it does not require the caller's rule-write
+  // permission because it can only turn the agent's already-queued drafts into checks:
+  // the draft is accepted and the check attributed to the caller, and the check starts
+  // enabled. Neither the adoption allowlist, the confidence threshold, the critical
+  // switch nor the agent's daily autonomous adoption ceiling applies; the agent's
+  // database scope is the agent's guardrail, not the person's. A target GUID narrows
+  // the approval to one target; empty approves every pending draft.
   rpc AdoptQualityAgentPendingSuggestions(AdoptQualityAgentPendingSuggestionsRequest) returns (AdoptQualityAgentPendingSuggestionsResponse) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgents/*}:adoptPendingSuggestions"
@@ -3806,12 +3810,18 @@ message QualityAgentAdoptionSetting {
 // QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
 // so an owner can tell "nothing was eligible" from "the write kept failing".
 message QualityAgentAdoptionStatus {
+  // Adoptions the agent started on its own or through the owner-requested tool;
+  // the value the daily autonomous ceiling counts. A person's approval is
+  // approved_last_24h, not this.
   int32 adopted_last_24h = 1;
   int32 failed_last_24h = 2;
   int32 pending_draft_count = 3;
   // The most recent write failure, with its error class; empty when none.
   string last_failure_reason = 4;
   google.protobuf.Timestamp last_failure_time = 5;
+  // Checks a person approved from the agent page in the last 24 hours. It is
+  // recorded for the owner's accounting but never spends the autonomous ceiling.
+  int32 approved_last_24h = 6;
 }
 
 // QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
@@ -4103,17 +4113,19 @@ message SetQualityAgentAdoptionRequest {
   QualityAgentAdoptionSetting adoption = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
-// AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
-// adoption guardrails to the rule drafts already in its review queue.
+// AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from
+// the agent's pending rule drafts as the caller's decision.
 message AdoptQualityAgentPendingSuggestionsRequest {
   // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
   ];
+  // Restrict the approval to one target. Empty approves every pending draft.
+  string target_guid = 2;
 }
 
-// AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+// AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.
 message AdoptQualityAgentPendingSuggestionsResponse {
   int32 adopted = 1;
   int32 skipped = 2;

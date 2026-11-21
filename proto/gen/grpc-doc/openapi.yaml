@@ -5654,10 +5654,14 @@ paths:
             tags:
                 - DataQualityService
             description: |-
-                Apply the agent's adoption guardrails to its pending rule drafts now. The owner
-                 or an administrator uses this to clear drafts an earlier failed pass left
-                 behind; it makes no decision on their behalf and writes only what the
-                 configured allowlist, confidence and daily cap already permit.
+                Approve the agent's pending rule drafts as the caller's decision. The owner or an
+                 administrator may use it, and it does not require the caller's rule-write
+                 permission because it can only turn the agent's already-queued drafts into checks:
+                 the draft is accepted and the check attributed to the caller, and the check starts
+                 enabled. Neither the adoption allowlist, the confidence threshold, the critical
+                 switch nor the agent's daily autonomous adoption ceiling applies; the agent's
+                 database scope is the agent's guardrail, not the person's. A target GUID narrows
+                 the approval to one target; empty approves every pending draft.
             operationId: DataQualityService_AdoptQualityAgentPendingSuggestions
             parameters:
                 - name: workspace
@@ -8606,9 +8610,12 @@ components:
                 name:
                     type: string
                     description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                targetGuid:
+                    type: string
+                    description: Restrict the approval to one target. Empty approves every pending draft.
             description: |-
-                AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured
-                 adoption guardrails to the rule drafts already in its review queue.
+                AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from
+                 the agent's pending rule drafts as the caller's decision.
         AdoptQualityAgentPendingSuggestionsResponse:
             type: object
             properties:
@@ -8624,7 +8631,7 @@ components:
                 remainingPending:
                     type: integer
                     format: int32
-            description: AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.
+            description: AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.
         AggregateConfig:
             type: object
             properties:
@@ -14010,6 +14017,10 @@ components:
             properties:
                 adoptedLast24h:
                     type: integer
+                    description: |-
+                        Adoptions the agent started on its own or through the owner-requested tool;
+                         the value the daily autonomous ceiling counts. A person's approval is
+                         approved_last_24h, not this.
                     format: int32
                 failedLast24h:
                     type: integer
@@ -14023,6 +14034,12 @@ components:
                 lastFailureTime:
                     type: string
                     format: date-time
+                approvedLast24h:
+                    type: integer
+                    description: |-
+                        Checks a person approved from the agent page in the last 24 hours. It is
+                         recorded for the owner's accounting but never spends the autonomous ceiling.
+                    format: int32
             description: |-
                 QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
                  so an owner can tell "nothing was eligible" from "the write kept failing".

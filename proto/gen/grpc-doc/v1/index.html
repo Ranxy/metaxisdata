@@ -14857,7 +14857,7 @@ for NULL (a NULL in the set would make NOT IN unknown for every row). </p></td>
         
       
         <h3 id="metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest">AdoptQualityAgentPendingSuggestionsRequest</h3>
-        <p>AdoptQualityAgentPendingSuggestionsRequest asks an agent to apply its configured</p><p>adoption guardrails to the rule drafts already in its review queue.</p>
+        <p>AdoptQualityAgentPendingSuggestionsRequest asks the server to create checks from</p><p>the agent's pending rule drafts as the caller's decision.</p>
 
         
           <table class="field-table">
@@ -14873,6 +14873,13 @@ for NULL (a NULL in the set would make NOT IN unknown for every row). </p></td>
                   <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
                 </tr>
               
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Restrict the approval to one target. Empty approves every pending draft. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -14881,7 +14888,7 @@ for NULL (a NULL in the set would make NOT IN unknown for every row). </p></td>
         
       
         <h3 id="metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse">AdoptQualityAgentPendingSuggestionsResponse</h3>
-        <p>AdoptQualityAgentPendingSuggestionsResponse reports one explicit adoption pass.</p>
+        <p>AdoptQualityAgentPendingSuggestionsResponse reports one approval pass.</p>
 
         
           <table class="field-table">
@@ -20147,7 +20154,9 @@ low-risk set. </p></td>
                   <td>adopted_last_24h</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Adoptions the agent started on its own or through the owner-requested tool;
+the value the daily autonomous ceiling counts. A person&#39;s approval is
+approved_last_24h, not this. </p></td>
                 </tr>
               
                 <tr>
@@ -20176,6 +20185,14 @@ low-risk set. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approved_last_24h</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Checks a person approved from the agent page in the last 24 hours. It is
+recorded for the owner&#39;s accounting but never spends the autonomous ceiling. </p></td>
                 </tr>
               
             </tbody>
@@ -29199,10 +29216,14 @@ also set ACTIVE. The rest of the configuration stays administrator-managed.</p><
                 <td>AdoptQualityAgentPendingSuggestions</td>
                 <td><a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsRequest">AdoptQualityAgentPendingSuggestionsRequest</a></td>
                 <td><a href="#metaxisdata.v1.AdoptQualityAgentPendingSuggestionsResponse">AdoptQualityAgentPendingSuggestionsResponse</a></td>
-                <td><p>Apply the agent&#39;s adoption guardrails to its pending rule drafts now. The owner
-or an administrator uses this to clear drafts an earlier failed pass left
-behind; it makes no decision on their behalf and writes only what the
-configured allowlist, confidence and daily cap already permit.</p></td>
+                <td><p>Approve the agent&#39;s pending rule drafts as the caller&#39;s decision. The owner or an
+administrator may use it, and it does not require the caller&#39;s rule-write
+permission because it can only turn the agent&#39;s already-queued drafts into checks:
+the draft is accepted and the check attributed to the caller, and the check starts
+enabled. Neither the adoption allowlist, the confidence threshold, the critical
+switch nor the agent&#39;s daily autonomous adoption ceiling applies; the agent&#39;s
+database scope is the agent&#39;s guardrail, not the person&#39;s. A target GUID narrows
+the approval to one target; empty approves every pending draft.</p></td>
               </tr>
             
               <tr>

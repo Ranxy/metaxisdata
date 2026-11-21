@@ -192,7 +192,7 @@
                 </Badge>
               </div>
               <div
-                v-if="agent?.adoptionStatus && agent.capabilities.includes('adopt')"
+                v-if="agent?.adoptionStatus"
                 class="space-y-1 border-t pt-2 text-xs"
               >
                 <div class="flex items-center justify-between gap-2">
@@ -200,6 +200,7 @@
                   <span>
                     {{ t("qualityAgent.adoptionStatusSummary", {
                       adopted: agent.adoptionStatus.adoptedLast24h,
+                      approved: agent.adoptionStatus.approvedLast24h,
                       failed: agent.adoptionStatus.failedLast24h,
                       pending: agent.adoptionStatus.pendingDraftCount,
                     }) }}
@@ -232,12 +233,12 @@
                 </Button>
               </div>
               <Button
-                v-if="canAdopt"
+                v-if="canApprove"
                 size="sm"
                 variant="secondary"
                 class="w-full"
-                :disabled="busy || !adoptionEnabled || (agent?.adoptionStatus?.pendingDraftCount ?? 0) === 0"
-                @click="adoptPending"
+                :disabled="busy || (agent?.adoptionStatus?.pendingDraftCount ?? 0) === 0"
+                @click="adoptPending()"
               >
                 {{ t("qualityAgent.adoptPending") }}
               </Button>
@@ -273,9 +274,9 @@
           :attention="attention"
           :agent-name="agentName"
           :can-reply="canChat"
-          :can-adopt="canAdopt && adoptionEnabled"
-          :adopt-busy="busy"
-          @adopt="adoptPending"
+          :can-approve="canApprove"
+          :approve-busy="busy"
+          @approve="adoptPending"
           @resolved="onAttentionResolved"
         />
         <p
@@ -567,14 +568,11 @@ const adoptionEnabled = computed(
     agent.value?.adoption?.mode === QualityAgentAdoptionMode.ACTIVE ||
     agent.value?.adoption?.mode === QualityAgentAdoptionMode.PAUSED
 );
-// The backend lets the owner or an administrator run a pass; the button mirrors
-// that, while the guardrails still decide what is actually written.
-const canAdopt = computed(
-  () =>
-    (canChat.value || canManage.value) &&
-    agent.value?.state === QualityAgentState.ACTIVE &&
-    agent.value?.capabilities.includes("adopt") === true
-);
+// The owner or an administrator may approve the agent's drafts. The approval runs
+// through the internal create path, so a member owner needs no rule-write
+// permission; it is attributed to the approver and the autonomous ceiling is not
+// charged.
+const canApprove = computed(() => canChat.value || canManage.value);
 const visibleMessages = computed(() =>
   messages.value.filter(
     (message) =>
@@ -826,13 +824,21 @@ async function toggleAdoption() {
   }
 }
 
-async function adoptPending() {
+/**
+ * Approve the agent's pending drafts as the viewer's decision. The approval is
+ * attributed to the viewer and the autonomous adoption guardrails and daily ceiling
+ * do not apply; an optional target narrows it to one target.
+ */
+async function adoptPending(targetGuid = "") {
   if (!agent.value || busy.value) {
     return;
   }
   busy.value = true;
   try {
-    const result = await adoptQualityAgentPendingSuggestions(agentName.value);
+    const result = await adoptQualityAgentPendingSuggestions(
+      agentName.value,
+      targetGuid
+    );
     agent.value = await getQualityAgent(agentName.value);
     await loadAttentions();
     await loadSessions();

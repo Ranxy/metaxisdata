@@ -55,6 +55,7 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 
 	batchParent := strings.TrimSpace(req.Msg.GetParent())
 	results := make([]*v1pb.BatchCreateQualityRuleResult, 0, len(req.Msg.GetRequests()))
+	drained := make(map[agentTargetKey]struct{})
 	for _, item := range req.Msg.GetRequests() {
 		result := &v1pb.BatchCreateQualityRuleResult{}
 		if item == nil {
@@ -68,14 +69,18 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 			continue
 		}
 		result.Suggestion = strings.TrimSpace(item.GetSuggestion())
-		created, err := s.createQualityRuleFromRequest(ctx, workspaceID, item.GetRule(), item.GetSuggestion())
+		created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, item.GetRule(), item.GetSuggestion())
 		if err != nil {
 			result.Error = err.Error()
 		} else {
 			result.Rule = created
+			if key, ok := proposalAttentionKey(suggestion); ok {
+				drained[key] = struct{}{}
+			}
 		}
 		results = append(results, result)
 	}
+	s.resolveDrainedProposalAttentions(ctx, drained, principalIDPointer(currentUserID(ctx)))
 	return connect.NewResponse(&v1pb.BatchCreateQualityRulesResponse{Results: results}), nil
 }
 
@@ -151,6 +156,7 @@ func (s *DataQualityService) BatchUpdateQualitySuggestions(ctx context.Context, 
 	}
 
 	results := make([]*v1pb.BatchUpdateQualitySuggestionResult, 0, len(req.Msg.GetRequests()))
+	drained := make(map[agentTargetKey]struct{})
 	for _, item := range req.Msg.GetRequests() {
 		result := &v1pb.BatchUpdateQualitySuggestionResult{}
 		if item == nil {
@@ -158,14 +164,18 @@ func (s *DataQualityService) BatchUpdateQualitySuggestions(ctx context.Context, 
 			results = append(results, result)
 			continue
 		}
-		updated, err := s.decideQualitySuggestion(ctx, item.GetName(), item.GetDecision(), item.GetDecisionNote())
+		updated, decided, err := s.decideQualitySuggestion(ctx, item.GetName(), item.GetDecision(), item.GetDecisionNote())
 		if err != nil {
 			result.Error = err.Error()
 		} else {
 			result.Suggestion = updated
+			if key, ok := proposalAttentionKey(decided); ok {
+				drained[key] = struct{}{}
+			}
 		}
 		result.Name = strings.TrimSpace(item.GetName())
 		results = append(results, result)
 	}
+	s.resolveDrainedProposalAttentions(ctx, drained, principalIDPointer(currentUserID(ctx)))
 	return connect.NewResponse(&v1pb.BatchUpdateQualitySuggestionsResponse{Results: results}), nil
 }

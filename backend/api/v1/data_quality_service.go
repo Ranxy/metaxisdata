@@ -429,22 +429,23 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
+	created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
 	if err != nil {
 		return nil, err
 	}
+	s.resolveProposalAttentionForSuggestion(ctx, suggestion)
 	return connect.NewResponse(created), nil
 }
 
 // createQualityRuleFromRequest implements the one create path. When suggestion
 // names a pending rule draft, the draft supplies the target and is accepted once
 // the rule exists; a request target that disagrees with the draft is refused.
-func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, workspaceID string, rule *v1pb.QualityRule, suggestionName string) (*v1pb.QualityRule, error) {
+func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, workspaceID string, rule *v1pb.QualityRule, suggestionName string) (*v1pb.QualityRule, *store.QualitySuggestionMessage, error) {
 	if rule == nil {
-		return nil, connectErrorInvalid("the rule is required")
+		return nil, nil, connectErrorInvalid("the rule is required")
 	}
 	if strings.TrimSpace(rule.GetTitle()) == "" {
-		return nil, connectErrorInvalid("title is required")
+		return nil, nil, connectErrorInvalid("title is required")
 	}
 	ruleType := storepb.QualityRuleType(rule.GetRuleType())
 	// The dimension is a property of the rule type. A client that leaves it unset
@@ -461,60 +462,60 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if name := strings.TrimSpace(suggestionName); name != "" {
 		loaded, err := s.pendingRuleDraftSuggestion(ctx, name)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		suggestion = loaded
 	}
 	if err := validateRuleTargetAgainstSuggestion(rule.GetTarget(), suggestion); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)
 	if settingsErr != nil {
-		return nil, errLoadQualitySettings(settingsErr)
+		return nil, nil, errLoadQualitySettings(settingsErr)
 	}
 	// Scheduling belongs to the target. The workspace default seeds the target's
 	// schedule the first time the target gets a rule; an existing target keeps its
 	// cadence and the new check joins the next run.
 	targetSchedule, err := schedule.Parse(settings.DefaultScheduleInterval, "", "", settings.TimeZone)
 	if err != nil {
-		return nil, connectErrorInvalid("%v", err)
+		return nil, nil, connectErrorInvalid("%v", err)
 	}
 	frequencyTier, err := qualityFrequencyTierFromV1(rule.GetFrequencyTier())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
 	target := ruleTargetForSuggestion(rule, suggestion)
 	if target == nil {
-		return nil, connectErrorInvalid("target is required")
+		return nil, nil, connectErrorInvalid("target is required")
 	}
 	validated, _, err := s.validateRuleInput(ctx, workspaceID, ruleType,
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := requireReadOnlySourceForNewRule(ruleType, validated); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := requireReferenceConnectionBudget(validated); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := s.checkQualityRuleLimits(ctx, validated.Target); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	schemaHash, err := s.targetSchemaHash(ctx, validated.Target)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ownerID, err := qualityOwnerID(rule.GetOwner())
 	if err != nil {
-		return nil, connectErrorInvalid("%v", err)
+		return nil, nil, connectErrorInvalid("%v", err)
 	}
 
 	resourceID, err := common.RandomString(12)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate the quality rule id")
+		return nil, nil, errors.Wrap(err, "failed to generate the quality rule id")
 	}
 	callerID := principalIDPointer(currentUserID(ctx))
 	// Claim the draft before writing the rule. The decision's PENDING→ACCEPTED
@@ -527,9 +528,9 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 			int32(currentUserID(ctx)), "", time.Now())
 		if err != nil {
 			if common.ErrorCode(err) == common.Conflict {
-				return nil, connect.NewError(connect.CodeAborted, err)
+				return nil, nil, connect.NewError(connect.CodeAborted, err)
 			}
-			return nil, errors.Wrap(err, "failed to accept the quality suggestion a rule is created from")
+			return nil, nil, errors.Wrap(err, "failed to accept the quality suggestion a rule is created from")
 		}
 		suggestion = claimed
 	}
@@ -572,13 +573,13 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 					slog.Any("error", reopenErr))
 			}
 		}
-		return nil, errors.Wrap(err, "failed to create the quality rule")
+		return nil, nil, errors.Wrap(err, "failed to create the quality rule")
 	}
 	// A saved rule is the fact; any pending proposal with the same identity is now
 	// stale. Closing it here keeps the review queue consistent with the rule list
 	// even when the rule was written by hand rather than from the draft.
 	s.supersedeMatchingRuleDrafts(ctx, created)
-	return convertQualityRule(workspaceID, created), nil
+	return convertQualityRule(workspaceID, created), suggestion, nil
 }
 
 // supersedeMatchingRuleDrafts closes pending rule-draft proposals that the saved
@@ -589,13 +590,24 @@ func (s *DataQualityService) supersedeMatchingRuleDrafts(ctx context.Context, ru
 		return
 	}
 	signature := dataquality.RuleSignature(rule.RuleType, rule.Config)
-	_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
+	affected, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, rule.TargetGUID, rule.TargetType,
 		[]string{signature}, "a saved rule with the same identity exists", nil, time.Now())
 	if supersedeErr != nil {
 		slog.Warn("failed to close a pending rule draft covered by a saved rule",
 			slog.String("rule", rule.ResourceID),
 			slog.String("signature", signature),
 			slog.Any("error", supersedeErr))
+		return
+	}
+	// The supersede is not scoped to this agent: it can close another agent's draft
+	// for the same identity, so that agent's proposal item must close too when its
+	// queue is now empty.
+	for _, proposingAgentID := range affected {
+		if proposingAgentID <= 0 {
+			continue
+		}
+		s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: rule.TargetGUID},
+			principalIDPointer(currentUserID(ctx)))
 	}
 }
 
@@ -2331,23 +2343,24 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 
 // UpdateQualitySuggestion accepts or rejects one queued suggestion.
 func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *connect.Request[v1pb.UpdateQualitySuggestionRequest]) (*connect.Response[v1pb.QualitySuggestion], error) {
-	updated, err := s.decideQualitySuggestion(ctx, req.Msg.GetName(), req.Msg.GetDecision(), req.Msg.GetDecisionNote())
+	updated, decided, err := s.decideQualitySuggestion(ctx, req.Msg.GetName(), req.Msg.GetDecision(), req.Msg.GetDecisionNote())
 	if err != nil {
 		return nil, err
 	}
+	s.resolveProposalAttentionForSuggestion(ctx, decided)
 	return connect.NewResponse(updated), nil
 }
 
 // decideQualitySuggestion records one decision and performs its side effects, so
 // the single and batch RPCs share the label-upsert and conflict behavior.
-func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name string, decision v1pb.QualitySuggestionStatus, note string) (*v1pb.QualitySuggestion, error) {
+func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name string, decision v1pb.QualitySuggestionStatus, note string) (*v1pb.QualitySuggestion, *store.QualitySuggestionMessage, error) {
 	workspaceID, resourceID, err := s.qualitySuggestionResourceID(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	status, err := qualitySuggestionDecision(decision)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	updated, err := s.store.DecideQualitySuggestion(ctx, resourceID, status, int32(currentUserID(ctx)),
 		note, time.Now())
@@ -2355,9 +2368,9 @@ func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name s
 		// A suggestion another reviewer already decided is Aborted for the
 		// client, not the AlreadyExists the shared code mapping would produce.
 		if common.ErrorCode(err) == common.Conflict {
-			return nil, connect.NewError(connect.CodeAborted, err)
+			return nil, nil, connect.NewError(connect.CodeAborted, err)
 		}
-		return nil, errors.Wrap(err, "failed to decide the quality suggestion")
+		return nil, nil, errors.Wrap(err, "failed to decide the quality suggestion")
 	}
 	// Accepting a label proposal also asserts it: column_semantic_label is the row
 	// the rest of the product reads. The decision is already durable at this point,
@@ -2368,21 +2381,21 @@ func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name s
 		now := time.Now().UTC()
 		label, err := labelSuggestionToLabelMessage(updated, principalIDPointer(currentUserID(ctx)), now)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal,
+			return nil, nil, connect.NewError(connect.CodeInternal,
 				errors.Wrap(err, "the suggestion was accepted but its label payload is not usable"))
 		}
 		if _, err := s.store.UpsertColumnSemanticLabel(ctx, label); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err,
+			return nil, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err,
 				"the suggestion was accepted but its label could not be stored; retry the column label with UpdateColumnLabel"))
 		}
 		if err := s.redactProfileForLabel(ctx, label.TableGUID, label.TableType, label.ColumnName, label.Label); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	// Accepting a rule draft only records the decision: the reviewer creates the
 	// rule through the normal rule path (optionally in the same request, see
 	// CreateQualityRuleRequest.suggestion).
-	return convertQualitySuggestion(workspaceID, updated), nil
+	return convertQualitySuggestion(workspaceID, updated), updated, nil
 }
 
 // qualitySuggestionDecision validates the decision enum: a suggestion is only
@@ -2581,6 +2594,7 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 		_, supersedeErr := s.store.SupersedePendingQualitySuggestions(ctx, update.tableGUID, update.metaType,
 			[]string{dataquality.LabelSuggestionSignature(update.column)},
 			"the column label was set manually", nil, time.Now())
+
 		if supersedeErr != nil {
 			slog.Warn("failed to close a pending label suggestion after a manual label write",
 				slog.String("table_guid", update.tableGUID),

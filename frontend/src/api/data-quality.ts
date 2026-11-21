@@ -1662,13 +1662,19 @@ export async function setQualityAgentAdoption(
   return await dataQualityClient.setQualityAgentAdoption(request, { signal });
 }
 
-/** Apply the agent's adoption guardrails to every pending rule draft now. */
+/**
+ * Approve the agent's pending drafts as the caller's decision. The approval is
+ * attributed to the caller and the autonomous adoption guardrails do not apply. A
+ * target GUID narrows it to one target, empty approves every pending draft.
+ */
 export async function adoptQualityAgentPendingSuggestions(
   name: string,
+  targetGuid = "",
   signal?: AbortSignal
 ): Promise<AdoptQualityAgentPendingSuggestionsResponse> {
   const request = create(AdoptQualityAgentPendingSuggestionsRequestSchema, {
     name,
+    targetGuid,
   });
   return await dataQualityClient.adoptQualityAgentPendingSuggestions(request, {
     signal,
