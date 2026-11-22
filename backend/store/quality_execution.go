@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -101,6 +102,10 @@ type FindQualityExecutionMessage struct {
 	// RuleID and TargetGUID select one rule or one target.
 	RuleID     *int64
 	TargetGUID *string
+	// Scopes restricts the list to the target subtrees an authorization scope set
+	// allows. A nil slice adds no predicate; an empty non-nil slice matches
+	// nothing.
+	Scopes []resource.Scope
 	// States filters the lifecycle; Statuses filters the quality outcome.
 	States   []storepb.QualityExecutionState
 	Statuses []storepb.QualityStatus
@@ -158,6 +163,13 @@ func buildQualityExecutionWhere(find *FindQualityExecutionMessage) (string, []an
 	}
 	if find.TargetGUID != nil {
 		conditions = append(conditions, "target_guid = "+placeholder(*find.TargetGUID))
+	}
+	if find.Scopes != nil {
+		if len(find.Scopes) == 0 {
+			conditions = append(conditions, "FALSE")
+		} else {
+			conditions, args = appendGUIDSubtreeConditions(conditions, args, find.Scopes)
+		}
 	}
 	if find.InstanceResourceID != nil {
 		conditions = append(conditions, "instance_resource_id = "+placeholder(*find.InstanceResourceID))

@@ -287,16 +287,15 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	if err := applyQualityRuleListFilters(find, req.Msg); err != nil {
 		return nil, err
 	}
-	scopes, err := s.qualityRuleListScopes(ctx, permission.DataQualityRulesList)
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityRulesList)
 	if err != nil {
 		return nil, err
 	}
-	if !scopes.All {
-		metadata := scopes.MetadataScopes()
-		if len(metadata) == 0 {
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
 			return connect.NewResponse(&v1pb.ListQualityRulesResponse{}), nil
 		}
-		find.Scopes = metadata
+		find.Scopes = scopeFilter
 	}
 	rules, err := s.store.ListQualityRules(ctx, find)
 	if err != nil {
@@ -1519,6 +1518,16 @@ func (s *DataQualityService) ListQualityExecutions(ctx context.Context, req *con
 	if err := s.applyQualityExecutionListFilters(ctx, find, req.Msg); err != nil {
 		return nil, err
 	}
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityExecutionsList)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualityExecutionsResponse{}), nil
+		}
+		find.Scopes = scopeFilter
+	}
 	executions, err := s.store.ListQualityExecutions(ctx, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality executions")
@@ -2007,6 +2016,16 @@ func (s *DataQualityService) ListQualityIssues(ctx context.Context, req *connect
 		find.RuleIDs = ruleIDs
 	}
 
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityIssuesList)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualityIssuesResponse{}), nil
+		}
+		find.Scopes = scopeFilter
+	}
 	issues, err := s.store.ListQualityIssues(ctx, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality issues")
@@ -2292,6 +2311,9 @@ func (s *DataQualityService) GetQualitySuggestion(ctx context.Context, req *conn
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualitySuggestionRead(ctx, suggestion); err != nil {
+		return nil, err
+	}
 	return connect.NewResponse(convertQualitySuggestion(workspaceID, suggestion)), nil
 }
 
@@ -2315,6 +2337,16 @@ func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *co
 	find := &store.FindQualitySuggestionMessage{Limit: &limitPlusOne, Offset: &offset.offset}
 	if err := applyQualitySuggestionListFilters(find, req.Msg); err != nil {
 		return nil, err
+	}
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualitySuggest)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualitySuggestionsResponse{}), nil
+		}
+		find.Scopes = scopeFilter
 	}
 	suggestions, err := s.store.ListQualitySuggestions(ctx, find)
 	if err != nil {

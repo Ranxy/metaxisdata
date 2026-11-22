@@ -418,7 +418,7 @@ func buildQualityRuleWhere(find *FindQualityRuleMessage) (string, []any, error) 
 		if len(find.Scopes) == 0 {
 			where = append(where, "FALSE")
 		} else {
-			where, args = appendGUIDSubtreeConditions(where, args, "target_guid", find.Scopes)
+			where, args = appendGUIDSubtreeConditions(where, args, find.Scopes)
 		}
 	}
 

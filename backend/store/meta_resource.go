@@ -112,15 +112,13 @@ func appendGUIDSubtreeCondition(where []string, args []any, column string, guidP
 	return where, args
 }
 
-// appendGUIDSubtreeConditions ORs the subtree predicate of every scope into one
-// condition. The caller owns the empty-set decision: an empty slice produces an
-// empty OR, so callers pass a non-empty set or add FALSE themselves.
-func appendGUIDSubtreeConditions(where []string, args []any, column string, scopes []resource.Scope) ([]string, []any) {
+// appendGUIDSubtreeConditions ORs the target_guid subtree predicate of every
+// scope into one condition. The caller owns the empty-set decision: an empty
+// slice produces an empty OR, so callers pass a non-empty set or add FALSE
+// themselves.
+func appendGUIDSubtreeConditions(where []string, args []any, scopes []resource.Scope) ([]string, []any) {
 	if len(scopes) == 0 {
 		return where, args
-	}
-	if len(scopes) == 1 {
-		return appendGUIDSubtreeCondition(where, args, column, scopes[0].ID)
 	}
 	conditions := make([]string, 0, len(scopes))
 	for _, scope := range scopes {
@@ -131,7 +129,7 @@ func appendGUIDSubtreeConditions(where []string, args []any, column string, scop
 		descendantPattern := likePatternEscaper.Replace(scope.ID+common.MetaGUIDSplit) + "%"
 		args = append(args, descendantPattern)
 
-		conditions = append(conditions, fmt.Sprintf(`(%s = $%d OR %s LIKE $%d ESCAPE E'\\')`, column, exactArgIndex, column, descendantArgIndex))
+		conditions = append(conditions, fmt.Sprintf(`(target_guid = $%d OR target_guid LIKE $%d ESCAPE E'\\')`, exactArgIndex, descendantArgIndex))
 	}
 	where = append(where, "("+strings.Join(conditions, " OR ")+")")
 	return where, args

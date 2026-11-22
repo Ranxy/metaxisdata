@@ -89,7 +89,7 @@ func (s *DataQualityService) requireQualityRuleRead(ctx context.Context, targetG
 
 // qualityRuleListScopes returns the caller's scope set for the rule list. A nil
 // authorizer keeps the legacy unfiltered behavior for focused unit tests.
-func (s *DataQualityService) qualityRuleListScopes(ctx context.Context, perm permission.Permission) (resource.ScopeSet, error) {
+func (s *DataQualityService) qualityListScopes(ctx context.Context, perm permission.Permission) (resource.ScopeSet, error) {
 	if s.authorizer == nil {
 		return resource.ScopeSet{All: true}, nil
 	}
@@ -143,4 +143,31 @@ func (s *DataQualityService) qualityRuleViewerPermissions(ctx context.Context, r
 		}
 	}
 	return viewer, nil
+}
+
+// qualityListScopeFilter turns the caller's scope set into a store filter: nil
+// means no filter (the permission is workspace-wide), an empty non-nil slice
+// means the caller holds it nowhere, and otherwise the metadata scopes.
+func (s *DataQualityService) qualityListScopeFilter(ctx context.Context, perm permission.Permission) ([]resource.Scope, error) {
+	scopes, err := s.qualityListScopes(ctx, perm)
+	if err != nil {
+		return nil, err
+	}
+	if scopes.All {
+		return nil, nil
+	}
+	return scopes.MetadataScopes(), nil
+}
+
+// requireQualitySuggestionRead maps a denied suggestion read to NotFound so a
+// reader cannot learn that a draft exists outside its scope.
+func (s *DataQualityService) requireQualitySuggestionRead(ctx context.Context, suggestion *store.QualitySuggestionMessage) error {
+	if suggestion == nil {
+		return nil
+	}
+	err := s.requireQualityTargetPermission(ctx, permission.DataQualitySuggest, suggestion.TargetGUID)
+	if err != nil && connect.CodeOf(err) == connect.CodePermissionDenied {
+		return connect.NewError(connect.CodeNotFound, errors.New("the quality suggestion is not found"))
+	}
+	return err
 }
