@@ -3709,8 +3709,9 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	// RotateQualityAgentToken does not exist, so there is no credential to assert: the
 	// compile-time surface below is the assertion.
 
-	// The agent is an internal principal: the store binds it to the qualityAgent role
-	// and the user directory hides it, while an audit reference still resolves.
+	// The agent is an internal principal: it holds no workspace-wide binding (the
+	// scoped authorizer derives the qualityAgent role on the agent's databases), and
+	// the user directory hides it while an audit reference still resolves.
 	resourceID := resourceIDFromName(agent.GetName())
 	stored, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceID)
 	require.NoError(t, err)
@@ -3720,8 +3721,8 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	policy, err := iamClient.GetWorkspaceIamPolicy(fixture.ctx,
 		withToken(adminToken, &v1pb.GetWorkspaceIamPolicyRequest{}))
 	require.NoError(t, err)
-	require.True(t, iamPolicyBindsMember(policy.Msg.GetPolicy(), "roles/qualityAgent", principalName),
-		"creating the agent binds its principal to roles/qualityAgent")
+	require.False(t, iamPolicyBindsMember(policy.Msg.GetPolicy(), "roles/qualityAgent", principalName),
+		"the agent principal holds its role through the derived agent scope, not a workspace binding")
 
 	principal, err := userClient.GetUser(fixture.ctx,
 		withToken(adminToken, &v1pb.GetUserRequest{Name: principalName}))

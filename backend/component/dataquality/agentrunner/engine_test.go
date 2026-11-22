@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -1014,4 +1015,47 @@ func TestWakePassesAMissingAgentToTheResolver(t *testing.T) {
 	require.True(t, called)
 	require.False(t, outcome.Blocked)
 	require.Contains(t, outcome.Summary, "surveyed")
+}
+
+type resourceCheckingFake struct {
+	allowed         bool
+	ref             resource.Ref
+	resourceCalls   int
+	capabilityCalls int
+}
+
+func (f *resourceCheckingFake) CheckPermission(context.Context, permission.Permission, *store.UserMessage) (bool, error) {
+	f.capabilityCalls++
+	return f.allowed, nil
+}
+
+func (f *resourceCheckingFake) CheckResource(_ context.Context, _ permission.Permission, _ *store.UserMessage, ref resource.Ref) (bool, error) {
+	f.resourceCalls++
+	f.ref = ref
+	return f.allowed, nil
+}
+
+// A target session checks a tool's permission on the session target, so the
+// agent's derived database scope cannot be used to reach a sibling target.
+func TestSessionPermissionCheckerBindsTheTarget(t *testing.T) {
+	t.Parallel()
+
+	principal := &store.UserMessage{ID: 7}
+	checker := &resourceCheckingFake{allowed: true}
+
+	bound := sessionPermissionChecker{checker: checker, targetGUID: "i;db;t"}
+	allowed, err := bound.CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, checker.resourceCalls)
+	require.Zero(t, checker.capabilityCalls)
+	require.Equal(t, resource.NewRef(resource.TypeTable, "i;db;t"), checker.ref)
+
+	// A conversation session has no target and keeps the capability check.
+	unbound := sessionPermissionChecker{checker: checker}
+	allowed, err = unbound.CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, checker.capabilityCalls)
+	require.Equal(t, 1, checker.resourceCalls)
 }

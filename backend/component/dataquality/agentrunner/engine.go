@@ -17,6 +17,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -501,9 +503,33 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	}
 	invocation.Principal = principal
 	if e.checker != nil {
-		invocation.Checker = e.checker
+		invocation.Checker = sessionPermissionChecker{checker: e.checker, targetGUID: session.TargetGUID}
 	}
 	return invocation, nil
+}
+
+// sessionPermissionChecker binds a target session's tool checks to the session
+// target: the agent's derived database scope is checked against the target, so a
+// tool cannot reach a sibling target outside the agent's databases. A
+// conversation session has no target and keeps the capability check (the agent
+// may read across its scope).
+type sessionPermissionChecker struct {
+	checker    tool.PermissionChecker
+	targetGUID string
+}
+
+// resourcePermissionChecker is the resource-scoped half of the scoped checker.
+type resourcePermissionChecker interface {
+	CheckResource(context.Context, permission.Permission, *store.UserMessage, resource.Ref) (bool, error)
+}
+
+func (c sessionPermissionChecker) CheckPermission(ctx context.Context, perm permission.Permission, principal *store.UserMessage) (bool, error) {
+	if c.targetGUID != "" {
+		if targetChecker, ok := c.checker.(resourcePermissionChecker); ok {
+			return targetChecker.CheckResource(ctx, perm, principal, resource.NewRef(resource.TypeTable, c.targetGUID))
+		}
+	}
+	return c.checker.CheckPermission(ctx, perm, principal)
 }
 
 // agentToolObserver labels the shared tool metrics with this product's name.
