@@ -8,7 +8,7 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 
 ## Decisions
 
-- **Workspace-scoped only** — `CheckPermission` resolves against the workspace policy; per-resource lookup and `ResourceRef` plumbing would be dead weight in a single-workspace product.
+- **Workspace-scoped today** — `CheckPermission` resolves against the workspace policy. The resource-scoped target, its grant model and the compatibility contract are in [resource-iam.md](resource-iam.md); new authorization paths are written against that model.
 - **`workspaceMember` is an implicit `allUsers` binding resolved in memory** before any policy read, so a fresh install with an empty policy is usable; **`workspaceAdmin` holds the whole catalog**, so admin falls out of normal role→permission resolution instead of being a special case.
 - **Custom roles are real** — an operator can grant "sync instances but not touch users" without a code change.
 - **Groups are IAM principals** — a binding can name `groups/{email}`; the last-admin guard expands groups with the departing member excluded, so a group containing only the departing admin does not count as a survivor.
@@ -53,7 +53,7 @@ Predefined roles (`backend/store/predefined_roles.go`) are read-only over `RoleS
 
 ## Open items
 
-None tracked here. Per-resource IAM is a deliberate non-goal ([docs/security-posture.md](../../docs/security-posture.md)); `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog, guarded by a drift test rather than generated.
+Per-resource IAM is the target and is tracked in [resource-iam.md](resource-iam.md). `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog today, guarded by a drift test; the resource model makes it generated from the same source.
 
 ## Where things live
 

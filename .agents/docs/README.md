@@ -7,6 +7,7 @@ Everything here describes **shipped behavior**, not a plan: implementation steps
 | Reference | Covers | Read when |
 | --- | --- | --- |
 | [iam-and-permissions.md](iam-and-permissions.md) | Permission catalog, predefined and custom roles, the workspace IAM policy, the ACL interceptor | Touching authorization or adding an RPC |
+| [resource-iam.md](resource-iam.md) | Resource-scoped authorization: the resource model, scoped grants, derived ownership, resource-aware lists and the frontend permission contract | Adding a scoped grant, a resource resolver, a permission-aware list or a resource-scoped action |
 | [sso.md](sso.md) | SSO: the identity provider admin surface, the OAuth2 login flow, subject binding and account adoption, the encrypted client secret | Touching auth, the `idp` tables, the login page or the provider settings page |
 | [environments.md](environments.md) | The environment catalog, `EnvironmentService` and the selection UI | Touching instances, sync or environment scoping |
 | [schemasync.md](schemasync.md) | Schema sync: what it writes, its deliberate log-only deletion, its known issues | Touching `backend/runner/schemasync/` |
