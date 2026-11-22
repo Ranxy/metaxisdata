@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -21,6 +22,9 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	IamService_GetWorkspaceIamPolicy_FullMethodName = "/metaxisdata.v1.IamService/GetWorkspaceIamPolicy"
 	IamService_SetWorkspaceIamPolicy_FullMethodName = "/metaxisdata.v1.IamService/SetWorkspaceIamPolicy"
+	IamService_ListIamGrants_FullMethodName         = "/metaxisdata.v1.IamService/ListIamGrants"
+	IamService_CreateIamGrant_FullMethodName        = "/metaxisdata.v1.IamService/CreateIamGrant"
+	IamService_DeleteIamGrant_FullMethodName        = "/metaxisdata.v1.IamService/DeleteIamGrant"
 )
 
 // IamServiceClient is the client API for IamService service.
@@ -35,6 +39,12 @@ type IamServiceClient interface {
 	GetWorkspaceIamPolicy(ctx context.Context, in *GetWorkspaceIamPolicyRequest, opts ...grpc.CallOption) (*IamPolicyView, error)
 	// Set the workspace IAM policy (full replace, etag-guarded).
 	SetWorkspaceIamPolicy(ctx context.Context, in *SetWorkspaceIamPolicyRequest, opts ...grpc.CallOption) (*IamPolicyView, error)
+	// List the scoped grants, optionally narrowed to one resource.
+	ListIamGrants(ctx context.Context, in *ListIamGrantsRequest, opts ...grpc.CallOption) (*ListIamGrantsResponse, error)
+	// Add one scoped grant. Additive to the workspace policy.
+	CreateIamGrant(ctx context.Context, in *CreateIamGrantRequest, opts ...grpc.CallOption) (*IamGrant, error)
+	// Delete one scoped grant.
+	DeleteIamGrant(ctx context.Context, in *DeleteIamGrantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type iamServiceClient struct {
@@ -65,6 +75,36 @@ func (c *iamServiceClient) SetWorkspaceIamPolicy(ctx context.Context, in *SetWor
 	return out, nil
 }
 
+func (c *iamServiceClient) ListIamGrants(ctx context.Context, in *ListIamGrantsRequest, opts ...grpc.CallOption) (*ListIamGrantsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListIamGrantsResponse)
+	err := c.cc.Invoke(ctx, IamService_ListIamGrants_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *iamServiceClient) CreateIamGrant(ctx context.Context, in *CreateIamGrantRequest, opts ...grpc.CallOption) (*IamGrant, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IamGrant)
+	err := c.cc.Invoke(ctx, IamService_CreateIamGrant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *iamServiceClient) DeleteIamGrant(ctx context.Context, in *DeleteIamGrantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, IamService_DeleteIamGrant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IamServiceServer is the server API for IamService service.
 // All implementations must embed UnimplementedIamServiceServer
 // for forward compatibility.
@@ -77,6 +117,12 @@ type IamServiceServer interface {
 	GetWorkspaceIamPolicy(context.Context, *GetWorkspaceIamPolicyRequest) (*IamPolicyView, error)
 	// Set the workspace IAM policy (full replace, etag-guarded).
 	SetWorkspaceIamPolicy(context.Context, *SetWorkspaceIamPolicyRequest) (*IamPolicyView, error)
+	// List the scoped grants, optionally narrowed to one resource.
+	ListIamGrants(context.Context, *ListIamGrantsRequest) (*ListIamGrantsResponse, error)
+	// Add one scoped grant. Additive to the workspace policy.
+	CreateIamGrant(context.Context, *CreateIamGrantRequest) (*IamGrant, error)
+	// Delete one scoped grant.
+	DeleteIamGrant(context.Context, *DeleteIamGrantRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedIamServiceServer()
 }
 
@@ -92,6 +138,15 @@ func (UnimplementedIamServiceServer) GetWorkspaceIamPolicy(context.Context, *Get
 }
 func (UnimplementedIamServiceServer) SetWorkspaceIamPolicy(context.Context, *SetWorkspaceIamPolicyRequest) (*IamPolicyView, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetWorkspaceIamPolicy not implemented")
+}
+func (UnimplementedIamServiceServer) ListIamGrants(context.Context, *ListIamGrantsRequest) (*ListIamGrantsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListIamGrants not implemented")
+}
+func (UnimplementedIamServiceServer) CreateIamGrant(context.Context, *CreateIamGrantRequest) (*IamGrant, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateIamGrant not implemented")
+}
+func (UnimplementedIamServiceServer) DeleteIamGrant(context.Context, *DeleteIamGrantRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteIamGrant not implemented")
 }
 func (UnimplementedIamServiceServer) mustEmbedUnimplementedIamServiceServer() {}
 func (UnimplementedIamServiceServer) testEmbeddedByValue()                    {}
@@ -150,6 +205,60 @@ func _IamService_SetWorkspaceIamPolicy_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IamService_ListIamGrants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListIamGrantsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IamServiceServer).ListIamGrants(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IamService_ListIamGrants_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IamServiceServer).ListIamGrants(ctx, req.(*ListIamGrantsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IamService_CreateIamGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIamGrantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IamServiceServer).CreateIamGrant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IamService_CreateIamGrant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IamServiceServer).CreateIamGrant(ctx, req.(*CreateIamGrantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IamService_DeleteIamGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteIamGrantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IamServiceServer).DeleteIamGrant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IamService_DeleteIamGrant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IamServiceServer).DeleteIamGrant(ctx, req.(*DeleteIamGrantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IamService_ServiceDesc is the grpc.ServiceDesc for IamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -164,6 +273,18 @@ var IamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetWorkspaceIamPolicy",
 			Handler:    _IamService_SetWorkspaceIamPolicy_Handler,
+		},
+		{
+			MethodName: "ListIamGrants",
+			Handler:    _IamService_ListIamGrants_Handler,
+		},
+		{
+			MethodName: "CreateIamGrant",
+			Handler:    _IamService_CreateIamGrant_Handler,
+		},
+		{
+			MethodName: "DeleteIamGrant",
+			Handler:    _IamService_DeleteIamGrant_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2356,7 +2356,19 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateIamGrantRequest"><span class="badge">M</span>CreateIamGrantRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteIamGrantRequest"><span class="badge">M</span>DeleteIamGrantRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetWorkspaceIamPolicyRequest"><span class="badge">M</span>GetWorkspaceIamPolicyRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.IamGrant"><span class="badge">M</span>IamGrant</a>
                 </li>
               
                 <li>
@@ -2365,6 +2377,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.IamPolicyView"><span class="badge">M</span>IamPolicyView</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIamGrantsRequest"><span class="badge">M</span>ListIamGrantsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListIamGrantsResponse"><span class="badge">M</span>ListIamGrantsResponse</a>
                 </li>
               
                 <li>
@@ -30873,10 +30893,128 @@ binding applies only while the condition evaluates to true. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateIamGrantRequest">CreateIamGrantRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>grant</td>
+                  <td><a href="#metaxisdata.v1.IamGrant">IamGrant</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteIamGrantRequest">DeleteIamGrantRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: iamGrants/{iam_grant} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetWorkspaceIamPolicyRequest">GetWorkspaceIamPolicyRequest</h3>
         <p></p>
 
         
+
+        
+      
+        <h3 id="metaxisdata.v1.IamGrant">IamGrant</h3>
+        <p>IamGrant binds one role to one member at one resource scope. The workspace</p><p>policy remains the root; a grant is additive over the resource subtree.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: iamGrants/{iam_grant} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scoped resource: instances/{instance} or
+instances/{instance}/databases/{database}. The server maps it to the
+resource type and id the ledger stores. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>role</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: roles/{role} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>member</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{id} or groups/{email}. allUsers is the workspace read
+baseline and is not accepted as a scoped grant member. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>condition</td>
+                  <td><a href="#google.type.Expr">google.type.Expr</a></td>
+                  <td></td>
+                  <td><p>The condition associated with this grant. When present the grant applies
+only while the condition evaluates to true; only request.time is bound. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the creator is no longer resolvable. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -30923,6 +31061,75 @@ binding applies only while the condition evaluates to true. </p></td>
               
                 <tr>
                   <td>etag</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIamGrantsRequest">ListIamGrantsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Restrict to one scope; empty lists every scoped grant. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListIamGrantsResponse">ListIamGrantsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>grants</td>
+                  <td><a href="#metaxisdata.v1.IamGrant">IamGrant</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -30994,6 +31201,27 @@ binding applies only while the condition evaluates to true. </p></td>
                 <td><p>Set the workspace IAM policy (full replace, etag-guarded).</p></td>
               </tr>
             
+              <tr>
+                <td>ListIamGrants</td>
+                <td><a href="#metaxisdata.v1.ListIamGrantsRequest">ListIamGrantsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListIamGrantsResponse">ListIamGrantsResponse</a></td>
+                <td><p>List the scoped grants, optionally narrowed to one resource.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateIamGrant</td>
+                <td><a href="#metaxisdata.v1.CreateIamGrantRequest">CreateIamGrantRequest</a></td>
+                <td><a href="#metaxisdata.v1.IamGrant">IamGrant</a></td>
+                <td><p>Add one scoped grant. Additive to the workspace policy.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteIamGrant</td>
+                <td><a href="#metaxisdata.v1.DeleteIamGrantRequest">DeleteIamGrantRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete one scoped grant.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -31029,6 +31257,36 @@ binding applies only while the condition evaluates to true. </p></td>
                 <td>PUT</td>
                 <td>/v1/iamPolicy</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListIamGrants</td>
+                <td>GET</td>
+                <td>/v1/iamGrants</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateIamGrant</td>
+                <td>POST</td>
+                <td>/v1/iamGrants</td>
+                <td>grant</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteIamGrant</td>
+                <td>DELETE</td>
+                <td>/v1/{name=iamGrants/*}</td>
+                <td></td>
               </tr>
               
             

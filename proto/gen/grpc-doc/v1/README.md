@@ -561,9 +561,14 @@
   
 - [v1/iam_service.proto](#v1_iam_service-proto)
     - [Binding](#metaxisdata-v1-Binding)
+    - [CreateIamGrantRequest](#metaxisdata-v1-CreateIamGrantRequest)
+    - [DeleteIamGrantRequest](#metaxisdata-v1-DeleteIamGrantRequest)
     - [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest)
+    - [IamGrant](#metaxisdata-v1-IamGrant)
     - [IamPolicy](#metaxisdata-v1-IamPolicy)
     - [IamPolicyView](#metaxisdata-v1-IamPolicyView)
+    - [ListIamGrantsRequest](#metaxisdata-v1-ListIamGrantsRequest)
+    - [ListIamGrantsResponse](#metaxisdata-v1-ListIamGrantsResponse)
     - [SetWorkspaceIamPolicyRequest](#metaxisdata-v1-SetWorkspaceIamPolicyRequest)
   
     - [IamService](#metaxisdata-v1-IamService)
@@ -10419,10 +10424,62 @@ IamService.SetWorkspaceIamPolicy.
 
 
 
+<a name="metaxisdata-v1-CreateIamGrantRequest"></a>
+
+### CreateIamGrantRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| grant | [IamGrant](#metaxisdata-v1-IamGrant) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteIamGrantRequest"></a>
+
+### DeleteIamGrantRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: iamGrants/{iam_grant} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetWorkspaceIamPolicyRequest"></a>
 
 ### GetWorkspaceIamPolicyRequest
 
+
+
+
+
+
+
+<a name="metaxisdata-v1-IamGrant"></a>
+
+### IamGrant
+IamGrant binds one role to one member at one resource scope. The workspace
+policy remains the root; a grant is additive over the resource subtree.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: iamGrants/{iam_grant} |
+| resource | [string](#string) |  | The scoped resource: instances/{instance} or instances/{instance}/databases/{database}. The server maps it to the resource type and id the ledger stores. |
+| role | [string](#string) |  | Format: roles/{role} |
+| member | [string](#string) |  | Format: users/{id} or groups/{email}. allUsers is the workspace read baseline and is not accepted as a scoped grant member. |
+| condition | [google.type.Expr](#google-type-Expr) |  | The condition associated with this grant. When present the grant applies only while the condition evaluates to true; only request.time is bound. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. Empty when the creator is no longer resolvable. |
 
 
 
@@ -10464,6 +10521,39 @@ skips the check (first write).
 
 
 
+<a name="metaxisdata-v1-ListIamGrantsRequest"></a>
+
+### ListIamGrantsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| resource | [string](#string) |  | Restrict to one scope; empty lists every scoped grant. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListIamGrantsResponse"></a>
+
+### ListIamGrantsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| grants | [IamGrant](#metaxisdata-v1-IamGrant) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-SetWorkspaceIamPolicyRequest"></a>
 
 ### SetWorkspaceIamPolicyRequest
@@ -10497,6 +10587,9 @@ by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
 | ----------- | ------------ | ------------- | ------------|
 | GetWorkspaceIamPolicy | [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Get the workspace IAM policy. |
 | SetWorkspaceIamPolicy | [SetWorkspaceIamPolicyRequest](#metaxisdata-v1-SetWorkspaceIamPolicyRequest) | [IamPolicyView](#metaxisdata-v1-IamPolicyView) | Set the workspace IAM policy (full replace, etag-guarded). |
+| ListIamGrants | [ListIamGrantsRequest](#metaxisdata-v1-ListIamGrantsRequest) | [ListIamGrantsResponse](#metaxisdata-v1-ListIamGrantsResponse) | List the scoped grants, optionally narrowed to one resource. |
+| CreateIamGrant | [CreateIamGrantRequest](#metaxisdata-v1-CreateIamGrantRequest) | [IamGrant](#metaxisdata-v1-IamGrant) | Add one scoped grant. Additive to the workspace policy. |
+| DeleteIamGrant | [DeleteIamGrantRequest](#metaxisdata-v1-DeleteIamGrantRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one scoped grant. |
 
  
 

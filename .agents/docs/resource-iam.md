@@ -61,10 +61,11 @@ CREATE TABLE iam_grant (
 
 - **Inheritance is down the resource tree.** A permission is allowed when a grant on the resource, or on any ancestor, names a role that contains it. A database grant therefore covers every table under it; an instance grant covers every database.
 - **Grants are additive.** There is no deny in the first model: a scoped grant adds authority, it does not restrict a root grant. The root `workspaceMember` baseline stays the discovery read surface; a scoped `qualityOwner` grant adds write authority on the scope. Restricting a read surface needs a baseline decision or a deny model, and is not part of this design.
+- **Grants name users and groups.** The API accepts `users/{id}` and `groups/{email}`; `allUsers` is the workspace read baseline and is rejected as a scoped grant, so a grant cannot turn the every-principal baseline into a write role.
 - **The workspace policy stays the root.** The workspace IAM policy remains the editor and the decision for every principal it covers; `workspaceAdmin` and the implicit `workspaceMember` baseline keep their current meaning. An `iam_grant` row adds a role at a resource subtree; a workspace-typed row is accepted and treated as `All`, but the policy API is still the root editor.
 - **Conditions name time only.** A binding condition is validated at write time and evaluated against `request.time`; resource attributes in a condition are rejected because a list cannot push them into SQL and a check could not explain them. A condition that does not evaluate fails closed.
 - **Cache and invalidation.** A grant read is cached with the role snapshot, keyed by principal and resource, and invalidated by a grant-generation bump on every grant/role write. The cache is advisory: a miss re-reads, a failed read fails closed.
-- **Explicit grants are rows; ownership is derived.** An administrator creating a grant writes a row. Ownership (below) is computed at check time and cached, so changing an agent's owner or scope takes effect without a second source of truth.
+- **Explicit grants are rows; ownership is derived.** An administrator creating a grant writes a row through `IamService.{List,Create,Delete}IamGrant`; the IAM page's scope picker names an instance or one of its databases. Ownership (below) is computed at check time, so changing an agent's owner or scope takes effect without a second source of truth.
 
 ## Derived ownership
 
@@ -148,7 +149,7 @@ The first scoped path is the data-quality surface, because it already has a targ
 - Types, ancestors, scopes: `backend/common/resource/` ([resource.go](../../backend/common/resource/resource.go), [scope.go](../../backend/common/resource/scope.go)).
 - Authorizer and compatibility: `backend/component/iam/authorizer.go` and `backend/component/iam/scoped_authorizer.go`; the workspace engine stays in `backend/component/iam/manager.go`; the ACL interceptor and its scoped-method set are `backend/api/v1/acl_interceptor.go` and `backend/api/v1/data_quality_scoped.go`.
 - Catalog: `backend/common/permission/permission.json` and its generator; the frontend mirror is generated from it.
-- Grants: `backend/store/iam_grant.go` and `backend/migrator/migration/LATEST.sql`; the workspace policy remains `backend/store/policy.go`. The `qualityOwner` bundle is in `backend/store/predefined_roles.go`.
+- Grants: `backend/store/iam_grant.go`, `backend/api/v1/iam_grant_service.go` and `backend/migrator/migration/LATEST.sql`; the workspace policy remains `backend/store/policy.go`. The `qualityOwner` bundle is in `backend/store/predefined_roles.go`; the IAM page is `frontend/src/pages/settings/IamPage.vue`.
 - Resource-aware lists: the `Find*Message` scope fields and the store query builders, starting with `backend/store/quality_rule.go`.
 - The quality slice: `backend/api/v1/data_quality_*.go`, `backend/store/quality_agent*.go`, `backend/store/quality_suggestion.go`.
 - Frontend: `frontend/src/store/modules/auth.ts`, `frontend/src/lib/permissions.ts`, `frontend/src/composables/`, the target and data-quality pages.

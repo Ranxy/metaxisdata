@@ -2118,6 +2118,27 @@
     "welcome": "Welcome to MetaxisData"
   },
   "iam": {
+    "grants": {
+      "add": "Add scoped grant",
+      "created": "Scoped grant added",
+      "createdBy": "Created by {member}",
+      "database": "Database",
+      "delete": "Delete scoped grant",
+      "deleteConfirm": "Delete the grant on {resource}? The members lose the role on that scope.",
+      "deleteFailed": "Failed to delete the scoped grant",
+      "deleteTitle": "Delete scoped grant",
+      "deleted": "Scoped grant deleted",
+      "description": "A scoped grant adds a role over one instance or database for the chosen member. It is additive to the workspace policy above: it adds access, it never removes it.",
+      "empty": "No scoped grants",
+      "instance": "Instance",
+      "scope": "Scope",
+      "scopeType": "Scope type",
+      "scopeTypeDatabase": "Database",
+      "scopeTypeInstance": "Instance",
+      "selectDatabase": "Select a database",
+      "selectInstance": "Select an instance",
+      "title": "Scoped grants"
+    },
     "groups": {
       "create": "Create group",
       "created": "Group created",

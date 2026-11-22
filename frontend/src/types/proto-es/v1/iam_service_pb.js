@@ -5,6 +5,7 @@
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import { file_google_api_annotations } from "../google/api/annotations_pb";
 import { file_google_api_field_behavior } from "../google/api/field_behavior_pb";
+import { file_google_protobuf_empty, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_type_expr } from "../google/type/expr_pb";
 import { file_v1_annotation } from "./annotation_pb";
 
@@ -12,7 +13,7 @@ import { file_v1_annotation } from "./annotation_pb";
  * Describes the file v1/iam_service.proto.
  */
 export const file_v1_iam_service = /*@__PURE__*/
-  fileDesc("ChR2MS9pYW1fc2VydmljZS5wcm90bxIObWV0YXhpc2RhdGEudjEiTgoHQmluZGluZxIMCgRyb2xlGAEgASgJEg8KB21lbWJlcnMYAiADKAkSJAoJY29uZGl0aW9uGAMgASgLMhEuZ29vZ2xlLnR5cGUuRXhwciI2CglJYW1Qb2xpY3kSKQoIYmluZGluZ3MYASADKAsyFy5tZXRheGlzZGF0YS52MS5CaW5kaW5nIkgKDUlhbVBvbGljeVZpZXcSKQoGcG9saWN5GAEgASgLMhkubWV0YXhpc2RhdGEudjEuSWFtUG9saWN5EgwKBGV0YWcYAiABKAkiHgocR2V0V29ya3NwYWNlSWFtUG9saWN5UmVxdWVzdCJcChxTZXRXb3Jrc3BhY2VJYW1Qb2xpY3lSZXF1ZXN0Ei4KBnBvbGljeRgBIAEoCzIZLm1ldGF4aXNkYXRhLnYxLklhbVBvbGljeUID4EECEgwKBGV0YWcYAiABKAkyyQIKCklhbVNlcnZpY2USmAEKFUdldFdvcmtzcGFjZUlhbVBvbGljeRIsLm1ldGF4aXNkYXRhLnYxLkdldFdvcmtzcGFjZUlhbVBvbGljeVJlcXVlc3QaHS5tZXRheGlzZGF0YS52MS5JYW1Qb2xpY3lWaWV3IjKK6jAZbWV0YXhpc2RhdGEuaWFtLmdldFBvbGljeYLT5JMCDxINL3YxL2lhbVBvbGljeRKfAQoVU2V0V29ya3NwYWNlSWFtUG9saWN5EiwubWV0YXhpc2RhdGEudjEuU2V0V29ya3NwYWNlSWFtUG9saWN5UmVxdWVzdBodLm1ldGF4aXNkYXRhLnYxLklhbVBvbGljeVZpZXciOYrqMBltZXRheGlzZGF0YS5pYW0uc2V0UG9saWN5mOowAYLT5JMCEjoBKhoNL3YxL2lhbVBvbGljeUI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM", [file_google_api_annotations, file_google_api_field_behavior, file_google_type_expr, file_v1_annotation]);
+  fileDesc("ChR2MS9pYW1fc2VydmljZS5wcm90bxIObWV0YXhpc2RhdGEudjEiTgoHQmluZGluZxIMCgRyb2xlGAEgASgJEg8KB21lbWJlcnMYAiADKAkSJAoJY29uZGl0aW9uGAMgASgLMhEuZ29vZ2xlLnR5cGUuRXhwciI2CglJYW1Qb2xpY3kSKQoIYmluZGluZ3MYASADKAsyFy5tZXRheGlzZGF0YS52MS5CaW5kaW5nIkgKDUlhbVBvbGljeVZpZXcSKQoGcG9saWN5GAEgASgLMhkubWV0YXhpc2RhdGEudjEuSWFtUG9saWN5EgwKBGV0YWcYAiABKAkizAEKCElhbUdyYW50EgwKBG5hbWUYASABKAkSFQoIcmVzb3VyY2UYAiABKAlCA+BBAhIRCgRyb2xlGAMgASgJQgPgQQISEwoGbWVtYmVyGAQgASgJQgPgQQISJAoJY29uZGl0aW9uGAUgASgLMhEuZ29vZ2xlLnR5cGUuRXhwchI0CgtjcmVhdGVfdGltZRgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCA+BBAxIXCgpjcmVhdGVkX2J5GAcgASgJQgPgQQMiTwoUTGlzdElhbUdyYW50c1JlcXVlc3QSEAoIcmVzb3VyY2UYASABKAkSEQoJcGFnZV9zaXplGAIgASgFEhIKCnBhZ2VfdG9rZW4YAyABKAkiWgoVTGlzdElhbUdyYW50c1Jlc3BvbnNlEigKBmdyYW50cxgBIAMoCzIYLm1ldGF4aXNkYXRhLnYxLklhbUdyYW50EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSJFChVDcmVhdGVJYW1HcmFudFJlcXVlc3QSLAoFZ3JhbnQYASABKAsyGC5tZXRheGlzZGF0YS52MS5JYW1HcmFudEID4EECIioKFURlbGV0ZUlhbUdyYW50UmVxdWVzdBIRCgRuYW1lGAEgASgJQgPgQQIiHgocR2V0V29ya3NwYWNlSWFtUG9saWN5UmVxdWVzdCJcChxTZXRXb3Jrc3BhY2VJYW1Qb2xpY3lSZXF1ZXN0Ei4KBnBvbGljeRgBIAEoCzIZLm1ldGF4aXNkYXRhLnYxLklhbVBvbGljeUID4EECEgwKBGV0YWcYAiABKAkyggYKCklhbVNlcnZpY2USmAEKFUdldFdvcmtzcGFjZUlhbVBvbGljeRIsLm1ldGF4aXNkYXRhLnYxLkdldFdvcmtzcGFjZUlhbVBvbGljeVJlcXVlc3QaHS5tZXRheGlzZGF0YS52MS5JYW1Qb2xpY3lWaWV3IjKK6jAZbWV0YXhpc2RhdGEuaWFtLmdldFBvbGljeYLT5JMCDxINL3YxL2lhbVBvbGljeRKfAQoVU2V0V29ya3NwYWNlSWFtUG9saWN5EiwubWV0YXhpc2RhdGEudjEuU2V0V29ya3NwYWNlSWFtUG9saWN5UmVxdWVzdBodLm1ldGF4aXNkYXRhLnYxLklhbVBvbGljeVZpZXciOYrqMBltZXRheGlzZGF0YS5pYW0uc2V0UG9saWN5mOowAYLT5JMCEjoBKhoNL3YxL2lhbVBvbGljeRKQAQoNTGlzdElhbUdyYW50cxIkLm1ldGF4aXNkYXRhLnYxLkxpc3RJYW1HcmFudHNSZXF1ZXN0GiUubWV0YXhpc2RhdGEudjEuTGlzdElhbUdyYW50c1Jlc3BvbnNlIjKK6jAZbWV0YXhpc2RhdGEuaWFtLmdldFBvbGljeYLT5JMCDxINL3YxL2lhbUdyYW50cxKQAQoOQ3JlYXRlSWFtR3JhbnQSJS5tZXRheGlzZGF0YS52MS5DcmVhdGVJYW1HcmFudFJlcXVlc3QaGC5tZXRheGlzZGF0YS52MS5JYW1HcmFudCI9iuowGW1ldGF4aXNkYXRhLmlhbS5zZXRQb2xpY3mY6jABgtPkkwIWOgVncmFudCINL3YxL2lhbUdyYW50cxKQAQoORGVsZXRlSWFtR3JhbnQSJS5tZXRheGlzZGF0YS52MS5EZWxldGVJYW1HcmFudFJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkiP4rqMBltZXRheGlzZGF0YS5pYW0uc2V0UG9saWN5mOowAYLT5JMCGCoWL3YxL3tuYW1lPWlhbUdyYW50cy8qfUI2WjRnaXRodWIuY29tL1Jhbnh5L21ldGF4aXNkYXRhL2JhY2tlbmQvZ2VuZXJhdGVkLWdvL3YxYgZwcm90bzM", [file_google_api_annotations, file_google_api_field_behavior, file_google_protobuf_empty, file_google_protobuf_timestamp, file_google_type_expr, file_v1_annotation]);
 
 /**
  * Describes the message metaxisdata.v1.Binding.
@@ -36,18 +37,53 @@ export const IamPolicyViewSchema = /*@__PURE__*/
   messageDesc(file_v1_iam_service, 2);
 
 /**
+ * Describes the message metaxisdata.v1.IamGrant.
+ * Use `create(IamGrantSchema)` to create a new message.
+ */
+export const IamGrantSchema = /*@__PURE__*/
+  messageDesc(file_v1_iam_service, 3);
+
+/**
+ * Describes the message metaxisdata.v1.ListIamGrantsRequest.
+ * Use `create(ListIamGrantsRequestSchema)` to create a new message.
+ */
+export const ListIamGrantsRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_iam_service, 4);
+
+/**
+ * Describes the message metaxisdata.v1.ListIamGrantsResponse.
+ * Use `create(ListIamGrantsResponseSchema)` to create a new message.
+ */
+export const ListIamGrantsResponseSchema = /*@__PURE__*/
+  messageDesc(file_v1_iam_service, 5);
+
+/**
+ * Describes the message metaxisdata.v1.CreateIamGrantRequest.
+ * Use `create(CreateIamGrantRequestSchema)` to create a new message.
+ */
+export const CreateIamGrantRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_iam_service, 6);
+
+/**
+ * Describes the message metaxisdata.v1.DeleteIamGrantRequest.
+ * Use `create(DeleteIamGrantRequestSchema)` to create a new message.
+ */
+export const DeleteIamGrantRequestSchema = /*@__PURE__*/
+  messageDesc(file_v1_iam_service, 7);
+
+/**
  * Describes the message metaxisdata.v1.GetWorkspaceIamPolicyRequest.
  * Use `create(GetWorkspaceIamPolicyRequestSchema)` to create a new message.
  */
 export const GetWorkspaceIamPolicyRequestSchema = /*@__PURE__*/
-  messageDesc(file_v1_iam_service, 3);
+  messageDesc(file_v1_iam_service, 8);
 
 /**
  * Describes the message metaxisdata.v1.SetWorkspaceIamPolicyRequest.
  * Use `create(SetWorkspaceIamPolicyRequestSchema)` to create a new message.
  */
 export const SetWorkspaceIamPolicyRequestSchema = /*@__PURE__*/
-  messageDesc(file_v1_iam_service, 4);
+  messageDesc(file_v1_iam_service, 9);
 
 /**
  * IamService exposes the workspace IAM policy for management. Get reads the
