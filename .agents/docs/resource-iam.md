@@ -91,7 +91,7 @@ Scopes(ctx, principal, permission) (ScopeSet, error)
 - **An in-process tool** (the quality agent) has no resource argument in its declaration. A target session binds each tool check to the session target, so the derived database scope is enforced on the target itself; a conversation session, which reads across the agent's scope, keeps the capability check (`Scopes` non-empty).
 - **The system** (background runners) is not a user principal and does not pass through the authorizer; its writes are internal. A process that must act as a user takes that user's principal.
 - **The ACL interceptor's scoped methods** are listed in `scopedMethods`. For those, it asks the authorizer for the caller's scopes and denies an empty set; the handler then checks the specific target. Every other method keeps the workspace-wide check. Adding a method without its handler check would let a grant on one target reach another.
-- **Compatibility.** `iam.WorkspaceAuthorizer` answers every `Check` from `iam.Manager.CheckPermission` and returns `All` for `Scopes`; `iam.ScopedAuthorizer` adds the grant and relation sources on top and is the production implementation.
+- **One production authorizer.** `iam.ScopedAuthorizer` answers every `Check`/`Scopes`: the workspace permission first, then the scoped grants and the derived agent relations. The workspace-only compatibility implementation has been removed.
 
 ## List authorization
 
@@ -107,7 +107,7 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything, `
 
 - `User.permissions` stays a **union summary** for navigation: a permission appears when the principal holds it on any scope. It is not evidence that an action is allowed on the page's target.
 - A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions.
-- `useResourcePermissions(ref, permissions)` is the page-facing composable; `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
+- `useResourcePermissions(ref, permissions)` is the page-facing composable; the target page and the issue detail page use it. `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
 - The client permission mirror is generated from `permission.json`, not hand-maintained, so a new permission cannot drift from the catalog.
 
 ## The data-quality slice
@@ -115,7 +115,7 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything, `
 The first scoped path is the data-quality surface, because it already has a target, a queue and a real ownership relationship:
 
 - A `qualityOwner` grant on a database covers every table in it; a rule create, update, run or delete on a table under that database passes, and the same action outside the scope is denied.
-- The quality-rule RPCs, the contract update/publish and the issue transitions are the scoped methods: each checks the target, and `ListQualityRules` applies the caller's scope set to the target GUID. The rule list also carries the caller's per-target `viewer_permissions` so a page can gate row actions. The execution, issue and suggestion lists follow the same pattern.
+- The quality-rule RPCs, the contract update/publish, the issue transitions, the target schema acknowledge and the suggest/profile/column-label writes are the scoped methods: each checks the table target. `ListQualityRules` applies the caller's scope set to the target GUID and carries the caller's per-target `viewer_permissions`. The execution, issue and suggestion lists follow the same pattern.
 - The quality agent's owner and its own service account are relationship sources: the owner receives `qualityOwner` on the agent's databases and the service account receives its agent role there, so adoption and drafting run through the same authorizer. The proposal attention keeps its product gate (only the agent's already-queued drafts), but the write itself is authorized rather than bypassing IAM.
 
 ## Decisions

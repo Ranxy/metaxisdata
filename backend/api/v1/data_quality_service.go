@@ -307,35 +307,14 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 		return nil, err
 	}
 
-	latest, err := s.latestQualityExecutions(ctx, rules)
+	converted, err := s.enrichQualityRules(ctx, workspaceID, rules)
 	if err != nil {
 		return nil, err
 	}
-	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	orphaned, err := s.targetOrphanReasons(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	viewer, err := s.qualityRuleViewerPermissions(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-
-	response := &v1pb.ListQualityRulesResponse{NextPageToken: nextPageToken}
-	for _, rule := range rules {
-		converted := convertQualityRule(workspaceID, rule)
-		converted.TargetSchemaChanged = schemaChanged[rule.ID]
-		converted.OrphanedReason = orphaned[rule.ID]
-		converted.ViewerPermissions = viewer[rule.ID]
-		if execution := latest[rule.ID]; execution != nil {
-			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
-		}
-		response.QualityRules = append(response.QualityRules, converted)
-	}
-	return connect.NewResponse(response), nil
+	return connect.NewResponse(&v1pb.ListQualityRulesResponse{
+		QualityRules:  converted,
+		NextPageToken: nextPageToken,
+	}), nil
 }
 
 // applyQualityRuleListFilters maps the request filters onto the store filter.
@@ -2629,6 +2608,9 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityLabelsUpdate, update.tableGUID); err != nil {
+		return nil, err
+	}
 	switch update.action {
 	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT:
 		now := time.Now()
@@ -2692,6 +2674,9 @@ func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Re
 	metaType := storepb.MetaType(req.Msg.GetMetaType())
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		return nil, connectErrorInvalid("meta_type is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityProfileRun, guid); err != nil {
+		return nil, err
 	}
 	settings, err := dataquality.LoadSettings(ctx, s.store)
 	if err != nil {

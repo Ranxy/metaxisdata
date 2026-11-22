@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -56,6 +57,9 @@ func (s *DataQualityService) SuggestQualityRule(ctx context.Context, req *connec
 	metaType := storepb.MetaType(req.Msg.GetMetaType())
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		return nil, connectErrorInvalid("meta_type is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualitySuggest, tableGUID); err != nil {
+		return nil, err
 	}
 	intent := strings.TrimSpace(req.Msg.GetIntent())
 	if intent == "" {

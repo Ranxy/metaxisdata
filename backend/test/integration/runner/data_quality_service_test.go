@@ -5463,4 +5463,21 @@ func TestQualityOwnerScopedContractRealServerIntegration(t *testing.T) {
 	err = publishContract(strangerToken, fixture.usersGUID)
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The label write is scoped on the same target: the owner may label a column
+	// in scope and is refused outside it.
+	labelUpdate := func(token, targetGUID string) error {
+		_, err := fixture.dataQuality.UpdateColumnLabel(fixture.ctx, withToken(token, &v1pb.UpdateColumnLabelRequest{
+			Parent:    "workspaces/-",
+			TableGuid: targetGUID,
+			MetaType:  v1pb.MetaType_TABLE,
+			Column:    "id",
+			Label:     v1pb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID,
+			Action:    v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT,
+		}))
+		return err
+	}
+	require.NoError(t, labelUpdate(ownerToken, fixture.usersGUID))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(ownerToken, otherTarget)))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(strangerToken, fixture.usersGUID)))
 }

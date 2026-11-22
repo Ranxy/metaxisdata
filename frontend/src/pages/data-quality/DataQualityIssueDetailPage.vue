@@ -471,6 +471,7 @@ import {
 } from "@/components/ui/select";
 import { useAsync } from "@/composables/useAsync";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useResourcePermissions } from "@/composables/useResourcePermissions";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -532,9 +533,6 @@ const resolveNote = ref("");
 const muteOpen = ref(false);
 const muteHours = ref("24");
 
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.issues.update")
-);
 const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
@@ -646,6 +644,38 @@ const {
       error.value = formatError(e, "dataQuality.fetchIssueError");
     },
   }
+);
+
+function resourceTypeForIssueTarget(metaType: MetaType): string {
+  switch (metaType) {
+    case MetaType.VIEW:
+      return "view";
+    case MetaType.EXTERNAL_TABLE:
+      return "external_table";
+    default:
+      return "table";
+  }
+}
+
+// The issue's own target decides whether the caller may resolve or mute it: a
+// scoped quality owner holds issues.update there without holding it workspace-wide.
+const targetResource = computed(() => {
+  const target = issue.value?.target;
+  if (!target?.metaGuid) {
+    return null;
+  }
+  return {
+    resourceType: resourceTypeForIssueTarget(target.metaType),
+    resourceId: target.metaGuid,
+  };
+});
+const { can: targetCan } = useResourcePermissions(targetResource, [
+  "metaxisdata.dataQuality.issues.update",
+] as const);
+const canUpdate = computed(
+  () =>
+    authStore.hasPermission("metaxisdata.dataQuality.issues.update") ||
+    targetCan("metaxisdata.dataQuality.issues.update")
 );
 
 function setResolveReason(value: unknown) {

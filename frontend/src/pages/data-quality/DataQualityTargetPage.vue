@@ -909,6 +909,8 @@ const { can: targetCan } = useResourcePermissions(targetResource, [
   "metaxisdata.dataQuality.rules.update",
   "metaxisdata.dataQuality.rules.run",
   "metaxisdata.dataQuality.contracts.publish",
+  "metaxisdata.dataQuality.suggest",
+  "metaxisdata.dataQuality.profile.run",
 ] as const);
 
 const canCreate = computed(

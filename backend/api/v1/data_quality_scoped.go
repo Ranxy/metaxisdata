@@ -31,6 +31,11 @@ var scopedMethods = map[string]bool{
 	"/metaxisdata.v1.DataQualityService/PublishQualityContract":         true,
 	"/metaxisdata.v1.DataQualityService/UpdateQualityIssue":             true,
 	"/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema": true,
+	"/metaxisdata.v1.DataQualityService/ProfileColumns":                 true,
+	"/metaxisdata.v1.DataQualityService/UpdateColumnLabel":              true,
+	"/metaxisdata.v1.DataQualityService/SuggestColumnLabels":            true,
+	"/metaxisdata.v1.DataQualityService/SuggestQualityRule":             true,
+	"/metaxisdata.v1.DataQualityService/RecommendQualityChecks":         true,
 }
 
 // qualityRuleTarget resolves the target a create writes to. A named suggestion
