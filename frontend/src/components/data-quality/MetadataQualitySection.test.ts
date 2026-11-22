@@ -398,6 +398,26 @@ describe("MetadataQualitySection", () => {
     wrapper.unmount();
   });
 
+  it("loads the proposal queue after the scoped suggest answer arrives", async () => {
+    // The suggest permission is the server's per-target answer, so the first
+    // load starts before it is known; the queue must be read once it arrives.
+    mocks.checkPermissions.mockResolvedValue([false, true, false]);
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [labelSuggestion()],
+      nextPageToken: "",
+    });
+
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(mocks.listQualitySuggestions).toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      label("dataQuality.asset.pendingSuggestionsTitle")
+    );
+    wrapper.unmount();
+  });
+
   it("offers the actions its permissions allow, but never a check creator", async () => {
     const wrapper = await mountSection(SUGGEST_PERMISSIONS);
 

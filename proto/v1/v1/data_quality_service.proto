@@ -2064,6 +2064,11 @@ message QualitySuggestion {
   // When a later generation pass refreshed this pending proposal's payload.
   // Unset when the proposal has not been refreshed.
   google.protobuf.Timestamp refresh_time = 14;
+
+  // The permissions the caller holds on this suggestion's target, e.g.
+  // "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
+  // the row's create-rule and decision actions without a second request.
+  repeated string viewer_permissions = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // QualitySuggestionQueueSummary is what one generation pass did to the review

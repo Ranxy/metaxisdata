@@ -8194,6 +8194,7 @@ normal rule or label path.
 | decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | decision_note | [string](#string) |  |  |
 | refresh_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When a later generation pass refreshed this pending proposal&#39;s payload. Unset when the proposal has not been refreshed. |
+| viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this suggestion&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.create&#34;. Output only; a page uses it to gate the row&#39;s create-rule and decision actions without a second request. |
 
 
 

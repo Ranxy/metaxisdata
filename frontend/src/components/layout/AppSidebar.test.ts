@@ -240,6 +240,19 @@ describe("AppSidebar", () => {
 
   // A custom role may hold only suggestions: the group must still appear, and
   // only the entry it can read.
+  it("shows a scoped-only entry through the navigation union", async () => {
+    // The workspace policy grants nothing; a scoped grant on some database is
+    // what makes the suggestion queue reachable, so the menu must still offer it.
+    useAuthStore().user = create(UserSchema, {
+      permissions: NO_PERMISSIONS,
+      scopedPermissions: ["metaxisdata.dataQuality.suggest"],
+    });
+    const { wrapper } = await mountSidebar();
+    await sectionTrigger(wrapper, "Data Quality").trigger("click");
+
+    expect(wrapper.text()).toContain("Suggestions");
+  });
+
   it("keeps the quality group for a suggestion-only role", async () => {
     useAuthStore().user = create(UserSchema, {
       permissions: ["metaxisdata.dataQuality.suggest"],

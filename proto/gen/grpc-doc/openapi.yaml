@@ -16482,6 +16482,15 @@ components:
                         When a later generation pass refreshed this pending proposal's payload.
                          Unset when the proposal has not been refreshed.
                     format: date-time
+                viewerPermissions:
+                    readOnly: true
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The permissions the caller holds on this suggestion's target, e.g.
+                         "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
+                         the row's create-rule and decision actions without a second request.
             description: |-
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the

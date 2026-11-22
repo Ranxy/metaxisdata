@@ -392,6 +392,37 @@ describe("clearSession", () => {
   });
 });
 
+describe("ensurePermissionsLoaded with scoped grants", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActivePinia(createPinia());
+  });
+
+  it("keeps the workspace and scoped lists apart after the profile loads", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, {
+        name: "users/1",
+        permissions: ["metaxisdata.dataQuality.rules.get"],
+        scopedPermissions: ["metaxisdata.dataQuality.rules.create"],
+      })
+    );
+
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
+    await store.ensurePermissionsLoaded();
+
+    expect(store.permissions).toEqual(["metaxisdata.dataQuality.rules.get"]);
+    expect(store.scopedPermissions).toEqual([
+      "metaxisdata.dataQuality.rules.create",
+    ]);
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.create")).toBe(
+      false
+    );
+    expect(store.canAccess("metaxisdata.dataQuality.rules.create")).toBe(true);
+  });
+});
+
 describe("canAccess", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -1004,4 +1004,13 @@ watch(
     void loadAll();
   }
 );
+
+// The suggest permission for a scoped owner arrives after the first load (it is
+// the server's per-resource answer), so read the queue again when it turns on;
+// otherwise the pending-proposals card stays empty.
+watch(canSuggest, (allowed, previous) => {
+  if (allowed && !previous) {
+    void loadSuggestions();
+  }
+});
 </script>

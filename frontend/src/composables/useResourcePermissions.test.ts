@@ -60,6 +60,23 @@ describe("useResourcePermissions", () => {
     scope.stop();
   });
 
+  it("reports when the current resource has an answer", async () => {
+    const pending = deferred<boolean[]>();
+    mockedCheck.mockReturnValue(pending.promise);
+    const { result, scope } = setup();
+
+    await flush();
+    // A page that gates a *load* on the answer must wait for it.
+    expect(result.resolved.value).toBe(false);
+    expect(result.can(PERMISSIONS[0])).toBe(false);
+
+    pending.resolve([true, true]);
+    await flush();
+    expect(result.resolved.value).toBe(true);
+    expect(result.can(PERMISSIONS[0])).toBe(true);
+    scope.stop();
+  });
+
   it("reloads when the resource changes", async () => {
     mockedCheck.mockResolvedValue([true, true]);
     const { result, resource, scope } = setup();
