@@ -669,6 +669,7 @@ import {
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
+  qualityRuleViewerCan,
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityStatusKey,
@@ -725,15 +726,31 @@ const { emailOf, load: loadUserDirectory } = useUserDirectory();
 
 const {
   canViewRule: canView,
-  canRun,
-  canUpdate,
-  canDelete,
+  canRun: canRunFlat,
+  canUpdate: canUpdateFlat,
+  canDelete: canDeleteFlat,
   canViewExecution,
   canListExecutions,
   canExplain,
 } = useDataQualityPermissions();
 
 const rule = ref<QualityRule>();
+
+// The server reports the caller's target-scoped actions on the rule: a scoped
+// grant can allow a delete or edit the workspace permission does not. The flat
+// permission stays the fallback while the rule has not loaded.
+function viewerCan(permission: string): boolean {
+  return rule.value ? qualityRuleViewerCan(rule.value, permission) : false;
+}
+const canRun = computed(
+  () => canRunFlat.value || viewerCan("metaxisdata.dataQuality.rules.run")
+);
+const canUpdate = computed(
+  () => canUpdateFlat.value || viewerCan("metaxisdata.dataQuality.rules.update")
+);
+const canDelete = computed(
+  () => canDeleteFlat.value || viewerCan("metaxisdata.dataQuality.rules.delete")
+);
 const executions = ref<QualityExecution[]>([]);
 const trend = ref<QualityRuleTrend>();
 const loading = ref(false);

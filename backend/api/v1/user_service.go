@@ -28,17 +28,19 @@ import (
 // UserService implements the user service.
 type UserService struct {
 	v1connect.UnimplementedUserServiceHandler
-	store   *store.Store
-	iam     *iam.Manager
-	profile *config.Profile
+	store      *store.Store
+	iam        *iam.Manager
+	authorizer *iam.ScopedAuthorizer
+	profile    *config.Profile
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(store *store.Store, iamManager *iam.Manager, profile *config.Profile) *UserService {
+func NewUserService(store *store.Store, iamManager *iam.Manager, authorizer *iam.ScopedAuthorizer, profile *config.Profile) *UserService {
 	return &UserService{
-		store:   store,
-		iam:     iamManager,
-		profile: profile,
+		store:      store,
+		iam:        iamManager,
+		authorizer: authorizer,
+		profile:    profile,
 	}
 }
 
@@ -100,6 +102,16 @@ func (s *UserService) GetCurrentUser(ctx context.Context, _ *connect.Request[emp
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve user permissions"))
 	}
 	response.Permissions = permissions
+	// The union includes what the caller holds through a scoped grant or the
+	// agent ownership derivation. The SPA gates navigation on it; a per-resource
+	// action still asks CheckPermissions for the concrete target.
+	if s.authorizer != nil {
+		scoped, err := s.authorizer.ScopedPermissions(ctx, user)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve scoped user permissions"))
+		}
+		response.Permissions = unionUserPermissions(permissions, scoped)
+	}
 	return connect.NewResponse(response), nil
 }
 
@@ -714,4 +726,22 @@ func isUserWorkspaceAdmin(ctx context.Context, stores *store.Store, user *store.
 	}
 	roles := utils.GetUserFormattedRolesMap(ctx, stores, user, workspacePolicy.Policy)
 	return roles[common.FormatRole(common.WorkspaceAdmin)], nil
+}
+
+// unionUserPermissions merges the workspace and scoped permission lists into one
+// sorted list without duplicates.
+func unionUserPermissions(base, scoped []permission.Permission) []permission.Permission {
+	seen := make(map[permission.Permission]bool, len(base)+len(scoped))
+	out := make([]permission.Permission, 0, len(base)+len(scoped))
+	for _, list := range [][]permission.Permission{base, scoped} {
+		for _, perm := range list {
+			if seen[perm] {
+				continue
+			}
+			seen[perm] = true
+			out = append(out, perm)
+		}
+	}
+	slices.Sort(out)
+	return out
 }

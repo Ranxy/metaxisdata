@@ -90,6 +90,11 @@ func (s *IamService) CreateIamGrant(ctx context.Context, req *connect.Request[v1
 	if role == nil {
 		return nil, connectErrorInvalid("unknown role %q", grant.GetRole())
 	}
+	switch roleID {
+	case store.WorkspaceAdminRole, store.WorkspaceMemberRole, store.QualityAgentRole:
+		return nil, connectErrorInvalid(
+			"role %q is workspace-scoped; grant qualityOwner or a custom role at a scope", grant.GetRole())
+	}
 	// allUsers is the workspace read baseline. A scoped write grant to every
 	// principal would turn the baseline into a write grant; bind a group instead.
 	if grant.GetMember() == common.AllUsers {

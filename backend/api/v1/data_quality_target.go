@@ -299,6 +299,9 @@ func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, re
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
 	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesUpdate, targetGUID); err != nil {
+		return nil, err
+	}
 	// The workspace's check time zone is the fallback a cron request may leave
 	// empty; the resolved zone is what gets stored, so reads never need it again.
 	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)

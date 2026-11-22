@@ -525,9 +525,11 @@ type resourcePermissionChecker interface {
 
 func (c sessionPermissionChecker) CheckPermission(ctx context.Context, perm permission.Permission, principal *store.UserMessage) (bool, error) {
 	if c.targetGUID != "" {
-		if targetChecker, ok := c.checker.(resourcePermissionChecker); ok {
-			return targetChecker.CheckResource(ctx, perm, principal, resource.NewRef(resource.TypeTable, c.targetGUID))
+		targetChecker, ok := c.checker.(resourcePermissionChecker)
+		if !ok {
+			return false, errors.New("the tool checker cannot check a target resource")
 		}
+		return targetChecker.CheckResource(ctx, perm, principal, resource.NewRef(resource.TypeTable, c.targetGUID))
 	}
 	return c.checker.CheckPermission(ctx, perm, principal)
 }

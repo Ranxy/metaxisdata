@@ -30925,15 +30925,19 @@ binding applies only while the condition evaluates to true. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The resource type name: &#34;instance&#34;, &#34;database&#34;, &#34;table&#34;, &#34;view&#34;,
-&#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. </p></td>
+&#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. A derived type
+(quality_rule, quality_issue, ...) has no scope resolver, so only an exact
+grant on that type can answer true. </p></td>
                 </tr>
               
                 <tr>
                   <td>resource_id</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The resource id: the resource name for instances/databases, the metadata GUID
-for metadata resources. </p></td>
+                  <td><p>The resource id. For metadata resources, the GUID. For an instance or a
+database, either the resource name (instances/{id},
+instances/{id}/databases/{name}) or the bare id / stored GUID; the handler
+normalizes both forms. </p></td>
                 </tr>
               
                 <tr>

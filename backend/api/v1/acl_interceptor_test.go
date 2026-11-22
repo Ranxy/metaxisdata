@@ -372,3 +372,61 @@ func methodPermission(method protoreflect.MethodDescriptor) string {
 	}
 	return declared
 }
+
+// targetScopedPermissions are the permissions whose RPCs must be checked per
+// target. A new method carrying one of them without a scopedMethods entry would
+// silently fall back to the workspace check.
+// workspaceScopedWithTargetPermission are the RPCs that carry a target-scoped
+// permission only because it is the nearest analogue; the method itself is a
+// workspace-level report and has no target to check.
+var workspaceScopedWithTargetPermission = map[string]bool{
+	"/metaxisdata.v1.DataQualityService/GetQualityLLMUsage": true,
+}
+
+var targetScopedPermissions = map[string]bool{
+	"metaxisdata.dataQuality.rules.create":      true,
+	"metaxisdata.dataQuality.rules.update":      true,
+	"metaxisdata.dataQuality.rules.delete":      true,
+	"metaxisdata.dataQuality.rules.run":         true,
+	"metaxisdata.dataQuality.issues.update":     true,
+	"metaxisdata.dataQuality.contracts.publish": true,
+	"metaxisdata.dataQuality.suggest":           true,
+	"metaxisdata.dataQuality.profile.run":       true,
+	"metaxisdata.dataQuality.labels.update":     true,
+}
+
+// TestEveryTargetScopedMethodIsInScopedMethods guards the hand-maintained map:
+// every DataQualityService method annotated with a target-scoped permission has
+// to be in scopedMethods (and therefore have its handler check the target).
+func TestEveryTargetScopedMethodIsInScopedMethods(t *testing.T) {
+	t.Parallel()
+
+	seen := 0
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if fd.Package() != "metaxisdata.v1" {
+			return true
+		}
+		for i := range fd.Services().Len() {
+			service := fd.Services().Get(i)
+			if string(service.FullName()) != "metaxisdata.v1.DataQualityService" {
+				continue
+			}
+			for j := range service.Methods().Len() {
+				method := service.Methods().Get(j)
+				declared := methodPermission(method)
+				if !targetScopedPermissions[declared] {
+					continue
+				}
+				procedure := "/" + string(service.FullName()) + "/" + string(method.Name())
+				if workspaceScopedWithTargetPermission[procedure] {
+					continue
+				}
+				seen++
+				require.Truef(t, scopedMethods[procedure],
+					"method %s declares target-scoped permission %q but is not in scopedMethods", procedure, declared)
+			}
+		}
+		return true
+	})
+	require.NotZero(t, seen)
+}

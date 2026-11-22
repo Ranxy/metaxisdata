@@ -26,12 +26,15 @@ export function useResourcePermissions(
   let request = 0;
 
   async function load() {
+    const current = ++request;
+    // A new check starts from "no permissions": navigating from target A to B
+    // must not render A's answer while B's is in flight.
+    allowed.value = new Set();
     const ref = resource.value;
     if (!ref || permissions.length === 0) {
-      allowed.value = new Set();
+      loading.value = false;
       return;
     }
-    const current = ++request;
     loading.value = true;
     try {
       const result = await checkPermissions({

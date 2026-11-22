@@ -784,6 +784,14 @@ func (s *DataQualityService) AdoptQualityAgentPendingSuggestions(ctx context.Con
 			if index >= qualityBatchRequestLimit {
 				break
 			}
+			inScope, scopeErr := s.adoptionTargetInScope(ctx, agent, draft.TargetGUID)
+			if scopeErr != nil {
+				return scopeErr
+			}
+			if !inScope {
+				response.Skipped++
+				continue
+			}
 			session := &store.QualityAgentSessionMessage{
 				WorkspaceID: workspaceID,
 				AgentID:     agent.ID,

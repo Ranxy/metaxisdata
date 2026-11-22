@@ -8,8 +8,8 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// PermissionChecker is the workspace-wide check the IAM manager implements. It is
-// the only decision the compatibility authorizer has until scoped grants land.
+// PermissionChecker is the workspace-wide check the IAM manager implements. The
+// scoped authorizer calls it first and adds grants and derived relations on top.
 type PermissionChecker interface {
 	CheckPermission(ctx context.Context, perm permission.Permission, user *store.UserMessage) (bool, error)
 }

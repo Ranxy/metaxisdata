@@ -2120,6 +2120,9 @@
   "iam": {
     "grants": {
       "add": "Add scoped grant",
+      "condition": "Condition (optional)",
+      "conditionHint": "Evaluated against request.time only; empty means unconditional.",
+      "conditionPlaceholder": "request.time < timestamp('2030-01-01T00:00:00Z')",
       "created": "Scoped grant added",
       "createdBy": "Created by {member}",
       "database": "Database",
@@ -2131,6 +2134,7 @@
       "description": "A scoped grant adds a role over one instance or database for the chosen member. It is additive to the workspace policy above: it adds access, it never removes it.",
       "empty": "No scoped grants",
       "instance": "Instance",
+      "instancesUnavailable": "Instances could not be loaded; reload the page and try again.",
       "scope": "Scope",
       "scopeType": "Scope type",
       "scopeTypeDatabase": "Database",

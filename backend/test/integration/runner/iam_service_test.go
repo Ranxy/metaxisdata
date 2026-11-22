@@ -400,6 +400,16 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 
 	require.Equal(t, []bool{true, true, true}, check(ownerToken, fixture.usersGUID),
 		"the scoped grant adds create and publish on the granted database")
+	// The database scope accepts the resource-name form of resource_id and maps it
+	// to the same GUID the grant stores.
+	byName, err := iamClient.CheckPermissions(fixture.ctx, withToken(ownerToken, &v1pb.CheckPermissionsRequest{
+		ResourceType: "database",
+		ResourceId:   resource,
+		Permissions:  []string{"metaxisdata.dataQuality.rules.create"},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, []bool{true}, byName.Msg.GetAllowed())
+
 	otherTarget := "another-instance;another_db;;users"
 	require.Equal(t, []bool{true, false, false}, check(ownerToken, otherTarget),
 		"the scoped grant does not reach another database")

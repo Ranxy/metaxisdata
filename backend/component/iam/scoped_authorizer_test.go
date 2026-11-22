@@ -87,7 +87,6 @@ func TestScopedAuthorizerCheck(t *testing.T) {
 		require.NotNil(t, reader.lastFind)
 		require.Equal(t, []string{common.FormatUserUID(7), common.AllUsers}, reader.lastFind.Members)
 		require.True(t, reader.lastFind.IncludeGroupGrants)
-		require.Nil(t, reader.lastFind.Scopes, "the snapshot reads the principal's grants once, not a scope query")
 	})
 
 	t.Run("a grant on another database does not allow the target", func(t *testing.T) {

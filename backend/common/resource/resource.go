@@ -105,7 +105,8 @@ func ParseType(name string) (Type, bool) {
 // metadata GUID.
 func IsMetadataType(t Type) bool {
 	switch t {
-	case TypeInstance, TypeDatabase, TypeSchema, TypeTable, TypeView, TypeExternalTable, TypeColumn:
+	case TypeInstance, TypeDatabase, TypeSchema, TypeTable, TypeView, TypeExternalTable, TypeColumn,
+		TypeManualSQL, TypeApplicationSQL:
 		return true
 	default:
 		return false
@@ -214,6 +215,21 @@ func MetadataAncestors(ref Ref) []Ref {
 			add(TypeInstance, 1)
 		case 5:
 			add(TypeTable, 4)
+			add(TypeSchema, 3)
+			add(TypeDatabase, 2)
+			add(TypeInstance, 1)
+		default:
+			return nil
+		}
+	case TypeManualSQL, TypeApplicationSQL:
+		// A stored statement is schema-scoped metadata: its GUID carries the
+		// schema segment (which may be empty) and its ancestors are the schema,
+		// database, instance and workspace.
+		switch len(segments) {
+		case 3:
+			add(TypeDatabase, 2)
+			add(TypeInstance, 1)
+		case 4:
 			add(TypeSchema, 3)
 			add(TypeDatabase, 2)
 			add(TypeInstance, 1)

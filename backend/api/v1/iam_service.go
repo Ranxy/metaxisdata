@@ -199,21 +199,49 @@ func (s *IamService) CheckPermissions(ctx context.Context, req *connect.Request[
 	if !ok {
 		return nil, connectErrorInvalid("invalid resource type %q", req.Msg.GetResourceType())
 	}
-	ref := resource.NewRef(resourceType, strings.TrimSpace(req.Msg.GetResourceId()))
+	if len(req.Msg.GetPermissions()) > maxCheckPermissions {
+		return nil, connectErrorInvalid("at most %d permissions may be checked at once", maxCheckPermissions)
+	}
+	ref := resource.NewRef(resourceType, normalizeCheckPermissionsID(resourceType, strings.TrimSpace(req.Msg.GetResourceId())))
 	if !ref.Valid() {
 		return nil, connectErrorInvalid("a valid resource id is required")
 	}
 	allowed := make([]bool, 0, len(req.Msg.GetPermissions()))
+	checked := make(map[permission.Permission]bool)
 	for _, raw := range req.Msg.GetPermissions() {
 		perm := permission.Permission(raw)
 		if !permission.Exist(perm) {
 			return nil, connectErrorInvalid("unknown permission %q", raw)
 		}
+		if ok, seen := checked[perm]; seen {
+			allowed = append(allowed, ok)
+			continue
+		}
 		ok, err := s.authorizer.Check(ctx, user, perm, ref)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission"))
 		}
+		checked[perm] = ok
 		allowed = append(allowed, ok)
 	}
 	return connect.NewResponse(&v1pb.CheckPermissionsResponse{Allowed: allowed}), nil
+}
+
+const maxCheckPermissions = 64
+
+// normalizeCheckPermissionsID accepts the resource name or the raw id for the
+// two name-addressed resource kinds. Metadata resources keep their GUID.
+func normalizeCheckPermissionsID(resourceType resource.Type, id string) string {
+	switch resourceType {
+	case resource.TypeInstance:
+		if parsed, err := common.GetInstanceID(id); err == nil {
+			return parsed
+		}
+	case resource.TypeDatabase:
+		if instance, database, err := common.GetInstanceDatabaseID(id); err == nil {
+			return common.BuildMetaGUID(instance, database)
+		}
+	default:
+	}
+	return id
 }

@@ -2120,6 +2120,9 @@
   "iam": {
     "grants": {
       "add": "添加作用域授权",
+      "condition": "条件（可选）",
+      "conditionHint": "仅对 request.time 求值；留空表示无条件。",
+      "conditionPlaceholder": "request.time < timestamp('2030-01-01T00:00:00Z')",
       "created": "作用域授权已添加",
       "createdBy": "由 {member} 创建",
       "database": "数据库",
@@ -2131,6 +2134,7 @@
       "description": "作用域授权在上方工作区策略的基础上，为指定成员在某个实例或数据库上追加角色。授权是叠加的：只会增加权限，不会收回。",
       "empty": "暂无作用域授权",
       "instance": "实例",
+      "instancesUnavailable": "实例加载失败，请重新加载页面后重试。",
       "scope": "作用域",
       "scopeType": "作用域类型",
       "scopeTypeDatabase": "数据库",

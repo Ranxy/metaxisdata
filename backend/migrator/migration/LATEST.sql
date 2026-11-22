@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS iam_grant (
     -- Format: roles/{role}
     role TEXT COLLATE "C" NOT NULL,
     -- Format: users/{id}, groups/{email}, or allUsers.
-    member TEXT COLLATE "C" NOT NULL,
+    member TEXT COLLATE "C" NOT NULL CHECK (member <> 'allUsers'),
     -- CEL over request.time; empty is unconditional.
     condition TEXT NOT NULL DEFAULT '',
     created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,

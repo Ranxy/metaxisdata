@@ -8,6 +8,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 )
 
 func TestAppendGUIDSubtreeConditionEscapesLikeWildcards(t *testing.T) {
@@ -17,6 +18,26 @@ func TestAppendGUIDSubtreeConditionEscapesLikeWildcards(t *testing.T) {
 	require.Len(t, args, 2)
 	require.Equal(t, `inst;db_1%prod`, args[0])
 	require.Equal(t, `inst;db\_1\%prod`+common.MetaGUIDSplit+`%`, args[1])
+}
+
+// The multi-scope variant ORs one subtree predicate per scope; every pattern's
+// LIKE metacharacters (including the escaped GUID separators) must stay literal.
+func TestAppendGUIDSubtreeConditionsEscapesLikeWildcards(t *testing.T) {
+	t.Parallel()
+
+	where, args := appendGUIDSubtreeConditions(nil, nil, []resource.Scope{
+		{Type: resource.TypeDatabase, ID: "i;db"},
+		{Type: resource.TypeDatabase, ID: "i;db;we%3Bird"},
+	})
+	require.Len(t, where, 1)
+	require.Contains(t, where[0], `(target_guid = $1 OR target_guid LIKE $2 ESCAPE E'\\')`)
+	require.Contains(t, where[0], `(target_guid = $3 OR target_guid LIKE $4 ESCAPE E'\\')`)
+	require.Contains(t, where[0], ") OR (")
+	require.Equal(t, []any{"i;db", "i;db;%", "i;db;we%3Bird", `i;db;we\%3Bird;%`}, args)
+
+	emptyWhere, emptyArgs := appendGUIDSubtreeConditions(nil, nil, nil)
+	require.Empty(t, emptyWhere)
+	require.Empty(t, emptyArgs)
 }
 
 // The batch GUID filter is what lets a caller resolve the object types of many

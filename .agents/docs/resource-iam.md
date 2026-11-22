@@ -1,6 +1,6 @@
 # Resource-scoped IAM — Reference
 
-> Maintenance reference for the resource-scoped authorization subsystem: the resource model, scoped grants, derived ownership, resource-aware lists and the frontend permission contract. Read it before adding a permission-gated RPC, a scoped grant, a resource resolver or a permission-aware list. The shipped workspace-wide model is in [iam-and-permissions.md](iam-and-permissions.md); this file is the target that model is being replaced by, and the compatibility contract between them.
+> Maintenance reference for the resource-scoped authorization subsystem: the resource model, scoped grants, derived ownership, resource-aware lists and the frontend permission contract. Read it before adding a permission-gated RPC, a scoped grant, a resource resolver or a permission-aware list. The shipped workspace-wide model is in [iam-and-permissions.md](iam-and-permissions.md); this file is the resource-scoped model that replaces it.
 
 ## The authorization question
 
@@ -21,27 +21,25 @@ workspace
 ├── instance
 │   └── database
 │       └── schema (optional)
-│           └── table / view / external_table
-│               ├── column
-│               ├── quality_rule ── quality_execution / quality_issue
-│               ├── quality_contract
-│               ├── quality_suggestion
-│               ├── column_profile / column_semantic_label
-│               └── manual_sql
-├── application ── application_sql / api_key
-├── quality_agent ── (scope edges: a set of databases)
-├── openlineage run / task / dataset
-├── llm_profile / notification_channel / notification_route / idp / role / group / user
-└── self (the caller's own notifications, connected apps and profile)
+│           ├── table / view / external_table
+│           │   ├── column
+│           │   ├── quality_rule ── quality_execution / quality_issue
+│           │   ├── quality_contract
+│           │   ├── quality_suggestion
+│           │   └── column_profile / column_semantic_label
+│           ├── manual_sql
+│           └── application_sql
+├── application ── api_key
+└── quality_agent ── (scope edges: a set of databases)
 ```
 
-**Metadata ancestors are encoded in the GUID.** `resource.MetadataAncestors` parses the GUID and returns the object, its parent and so on to the workspace ([resource.go](../../backend/common/resource/resource.go)). A table has three segments (`instance;database;object`, an engine without schemas) or four (`instance;database;schema;object`); a column has one more. A column's relation ancestor is reported as a table because the registry does not encode the relation kind in the column GUID; scope matching compares metadata ids, not kinds.
+**Metadata ancestors are encoded in the GUID.** `resource.MetadataAncestors` parses the GUID and returns the object, its parent and so on to the workspace ([resource.go](../../backend/common/resource/resource.go)). A table has three segments (`instance;database;object`, an engine without schemas) or four (`instance;database;schema;object`); a column has one more. Stored statements (manual SQL, application SQL) are schema-scoped metadata: their GUID carries the schema segment, so a schema or database scope covers them. A column's relation ancestor is reported as a table because the registry does not encode the relation kind in the column GUID; scope matching compares metadata ids, not kinds. Product resources without a canonical metadata id (OpenLineage run/task/dataset, LLM profiles, notification channels and routes, identity providers, roles, groups, users) are not grantable through the API yet; the type exists for a future resolver.
 
-**A derived resource resolves to its target.** A quality rule's parent is its target table; an execution or an issue resolves through its rule; a contract, a suggestion, a profile and a label resolve to their target. The parent is not in the resource id, so a resolver in the authorization layer supplies it. `application_sql` has two relations: its home scope is the application; a target-scoped check is an explicit second question only where the product asks it.
+**A derived resource resolves to its target.** A quality rule's parent is its target table; an execution or an issue resolves through its rule; a contract, a suggestion, a profile and a label resolve to their target. The parent is not in the resource id, so the handler resolves it explicitly before the check; there is no general resolver registry. A `quality_rule`/`quality_contract`/... grant therefore only matches an exact resource id the API cannot create; scoped grants are made at instance or database scope.
 
 **The quality agent's scope is a set of databases**, not a tree parent. It is expressed as one grant per database over the agent's `quality_agent_database` rows, derived from ownership (below) rather than stored as a tree edge.
 
-**Self is a scope kind**, not a resource: the caller's own notifications and connected apps are filtered by the caller's id and never by a grant.
+**Self is reserved**, not shipped: the `ScopeSet` carries a `Self` kind for a future self-scoped list (the caller's own notifications and connected apps are filtered by the caller's id and never by a grant), but no list produces it today.
 
 ## Grants
 
@@ -61,7 +59,7 @@ CREATE TABLE iam_grant (
 
 - **Inheritance is down the resource tree.** A permission is allowed when a grant on the resource, or on any ancestor, names a role that contains it. A database grant therefore covers every table under it; an instance grant covers every database.
 - **Grants are additive.** There is no deny in the first model: a scoped grant adds authority, it does not restrict a root grant. The root `workspaceMember` baseline stays the discovery read surface; a scoped `qualityOwner` grant adds write authority on the scope. Restricting a read surface needs a baseline decision or a deny model, and is not part of this design.
-- **Grants name users and groups.** The API accepts `users/{id}` and `groups/{email}`; `allUsers` is the workspace read baseline and is rejected as a scoped grant, so a grant cannot turn the every-principal baseline into a write role.
+- **Grants name users and groups.** The API accepts `users/{id}` and `groups/{email}`; `allUsers` is the workspace read baseline and is rejected as a scoped grant, so a grant cannot turn the every-principal baseline into a write role. The predefined workspace-wide roles (`workspaceAdmin`, `workspaceMember`, `qualityAgent`) are refused at a scope; bind `qualityOwner` or a custom role. The IAM page's scope picker offers that list and an optional time-only condition.
 - **The workspace policy stays the root.** The workspace IAM policy remains the editor and the decision for every principal it covers; `workspaceAdmin` and the implicit `workspaceMember` baseline keep their current meaning. An `iam_grant` row adds a role at a resource subtree; a workspace-typed row is accepted and treated as `All`, but the policy API is still the root editor.
 - **Conditions name time only.** A binding condition is validated at write time and evaluated against `request.time`; resource attributes in a condition are rejected because a list cannot push them into SQL and a check could not explain them. A condition that does not evaluate fails closed.
 - **Cache and invalidation.** The authorizer caches one snapshot per principal: the grants whose member names it, the derived agent relations and the resolved role permissions. The store keeps a process-local authorization generation that every grant, role, group and agent-scope write bumps; the snapshot is keyed on it, so a write invalidates the cache and a read does not. The cache is advisory: a miss re-reads, a failed read fails closed. The generation is per process, like the other store caches; a write from a second server is not seen here until that process restarts.
@@ -71,8 +69,8 @@ CREATE TABLE iam_grant (
 
 A derived source answers "which roles does this principal hold on this resource because of a relationship?" and is evaluated beside the explicit grants.
 
-- **The quality agent's owner** holds the `qualityOwner` role on every database in the agent's scope (`quality_agent.owner_principal_id` + `quality_agent_database`), for every agent that is not disabled. The role contains the data-quality surface: rule get/list/create/update/delete/run, execution get/list, issue get/list/update, suggest, labels.update, profile.run, contract publish, template and code-table reads. The owner is accountable for the agent's databases, so `contracts.publish` is part of the bundle.
-- **The quality agent's own service account** holds its role (`qualityAgent`) on the same databases while the agent is active. It holds no workspace policy binding: the derived relation is the only source, so the agent cannot act outside its scope even if its session were misconfigured. Its tools run as a capability check against the same authorizer instead of a product-gate bypass.
+- **The quality agent's owner** holds the `qualityOwner` role on every database in the agent's scope (`quality_agent.owner_principal_id` + `quality_agent_database`), for every agent that is not disabled. The role contains the data-quality surface: rule get/list/create/update/delete/run, execution get/list, issue get/list/update, suggest, labels.update, profile.run and contract publish. The owner is accountable for the agent's databases, so `contracts.publish` is part of the bundle.
+- **The quality agent's own service account** holds its role (`qualityAgent`) on the same databases while the agent is active. It holds no workspace policy binding: the write role comes only from the derived relation. The implicit `workspaceMember` baseline still applies to every principal, so its reads are workspace-wide like any member's; the derived scope bounds its writes and its target tools. Its tools run as a capability or target check against the same authorizer instead of a product-gate bypass.
 - **Derived, not materialized.** The owner and the agent principal are resolved from the agent tables and cached in the per-principal snapshot. A materialized copy would need a transaction on every agent create, edit, owner change, scope change and disable; the derived source cannot drift. Explicit administrator grants remain rows.
 - **A resource owner is not a general rule.** A rule's `owner_id` labels accountability today; it does not automatically grant edit rights. A future owner-derived source must name the permissions it grants, per resource type.
 
@@ -85,30 +83,30 @@ Check(ctx, principal, permission, ref) (bool, error)
 Scopes(ctx, principal, permission) (ScopeSet, error)
 ```
 
-- **A single-resource RPC** resolves the resource and calls `Check`. The shipped quality-rule handlers do this explicitly: the create path resolves the target (the draft's target when a suggestion is named), the update and delete paths check the stored rule's target, and the read path maps a denial to `NotFound`. A resolver registry remains the target for a derived resource the request does not name.
+- **A single-resource RPC** resolves the resource and calls `Check`. The shipped quality-rule handlers do this explicitly: the create path resolves the target (the draft's target when a suggestion is named), the update checks both the stored target and a moved destination, the delete checks the stored target, and the read path maps a denial to `NotFound`.
 - **A create RPC** checks the **target** the new resource will live under (the table for a rule), not the not-yet-existing resource.
 - **A batch RPC** checks each item and reports its own error; a denied item is not written.
-- **An in-process tool** (the quality agent) has no resource argument in its declaration. A target session binds each tool check to the session target, so the derived database scope is enforced on the target itself; a conversation session, which reads across the agent's scope, keeps the capability check (`Scopes` non-empty).
+- **An in-process tool** (the quality agent) has no resource argument in its declaration. A target session binds each tool check to the session target, so the derived database scope is enforced on the target itself; a conversation session, which reads across the agent's scope, keeps the capability check (`Scopes` non-empty). The engine requires the checker to support the resource check for a target session and fails the tool call otherwise.
 - **The system** (background runners) is not a user principal and does not pass through the authorizer; its writes are internal. A process that must act as a user takes that user's principal.
 - **The ACL interceptor's scoped methods** are listed in `scopedMethods`. For those, it asks the authorizer for the caller's scopes and denies an empty set; the handler then checks the specific target. Every other method keeps the workspace-wide check. Adding a method without its handler check would let a grant on one target reach another.
 - **One production authorizer.** `iam.ScopedAuthorizer` answers every `Check`/`Scopes`: the workspace permission first, then the scoped grants and the derived agent relations. The workspace-only compatibility implementation has been removed.
 
 ## List authorization
 
-A list is answered with `ScopeSet`: `All` when a root grant covers everything, `Self` for a self-scoped list, and otherwise the normalized set of scopes the principal holds the permission on ([scope.go](../../backend/common/resource/scope.go)).
+A list is answered with `ScopeSet`: `All` when a root grant covers everything (or the read baseline allows it), and otherwise the normalized set of scopes the principal holds the permission on ([scope.go](../../backend/common/resource/scope.go)). The `Self` kind is reserved for a future self-scoped list; no shipped list produces it.
 
 - **Filter in SQL, never after.** Each `Find*Message` that backs a list gains a scope field; the query builder ORs the subtree predicates (the metadata GUID prefix condition already exists in `appendGUIDSubtreeCondition`). Pagination, counts and exports then see only authorized rows.
 - **An empty scope set is `WHERE FALSE`**, not an unfiltered scan, and returns an empty page. `All` adds no predicate.
 - **A narrow request resolves the target directly.** A request that names one target checks that resource and does not compute a full scope set.
-- **Self lists** filter by the caller's id regardless of grants; a self row and a granted row are a union only where the product says so.
+- **Self lists** (not shipped yet) would filter by the caller's id regardless of grants; a self row and a granted row are a union only where the product says so.
 - **Aggregates and exports use the same predicate** as the matching list. A dashboard count that ignores the scope set is an authorization bug.
 
 ## Frontend contract
 
 - `User.permissions` stays a **union summary** for navigation: a permission appears when the principal holds it on any scope. It is not evidence that an action is allowed on the page's target.
-- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions.
+- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions. `CheckPermissions` is not audited: it answers only about the caller's own permissions and writes nothing.
 - `useResourcePermissions(ref, permissions)` is the page-facing composable; the target page and the issue detail page use it. `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
-- The client permission mirror is generated from `permission.json`, not hand-maintained, so a new permission cannot drift from the catalog.
+- The client permission mirror is hand-maintained (`frontend/src/lib/permissions.ts`) and guarded by a drift test; the catalog is the source of the permission strings.
 
 ## The data-quality slice
 
@@ -123,7 +121,7 @@ The first scoped path is the data-quality surface, because it already has a targ
 - **Additive only.** No deny and no baseline change in the first model; a scoped grant adds authority on a subtree.
 - **Derived ownership, cached.** The agent owner and the agent principal come from the agent tables; explicit administrator grants are rows.
 - **Metadata ancestors from the GUID; everything else through a resolver.** No global closure table for metadata.
-- **The catalog carries the resource.** A permission declares the resource type it is checked against; the frontend mirror is generated from the same source.
+- **The catalog is flat.** A permission is a name (`metaxisdata.<resource>.<verb>`); the resource kind is not part of it, so the ACL annotation and the scoped-method set say which RPCs are resource-scoped. A scoped grant of a role applies that role's permissions on the resource, which is why a scope should bind a role whose permissions are meaningful there.
 - **List authorization is part of the permission, not a post-filter.** An endpoint that cannot filter at the query is not ready for a scoped grant.
 - **Conditions stay time-only.** Resource-attribute conditions need a query planner and an explanation model; neither is in this design.
 - **No general ReBAC engine.** The product's resources are a tree with a few derived relations; a scoped RBAC over that tree is smaller and easier to explain than a tuple store.
@@ -133,7 +131,7 @@ The first scoped path is the data-quality surface, because it already has a targ
 
 | Rule | Breakage |
 | --- | --- |
-| Every protected RPC resolves a resource or declares itself workspace-scoped | A handler that forgets `Check` is an unguarded write; a boot-time resolver completeness check is the guard. |
+| Every protected RPC resolves a resource or declares itself workspace-scoped | A handler that forgets `Check` is an unguarded write; the descriptor-driven test in `acl_interceptor_test.go` keeps every target-scoped permission in `scopedMethods`. |
 | A list applies the scope set in SQL before pagination | Post-filtering leaks counts, breaks page sizes and can return unauthorized rows. |
 | An empty scope set matches nothing | An empty scope must not degrade into "no predicate". |
 | A read of an unauthorized resource is `NotFound`; a write is `PermissionDenied` | The read path must not reveal existence; the write path names the missing permission. |

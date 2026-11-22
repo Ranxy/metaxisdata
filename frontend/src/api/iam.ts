@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { ExprSchema } from "@/types/proto-es/google/type/expr_pb";
 import type { IamGrant, IamPolicy } from "@/types/proto-es/v1/iam_service_pb";
 import {
   CheckPermissionsRequestSchema,
@@ -52,12 +53,17 @@ export async function createIamGrant(input: {
   resource: string;
   role: string;
   member: string;
+  /** CEL over request.time; empty is unconditional. */
+  condition?: string;
 }) {
   const request = create(CreateIamGrantRequestSchema, {
     grant: create(IamGrantSchema, {
       resource: input.resource,
       role: input.role,
       member: input.member,
+      condition: input.condition
+        ? create(ExprSchema, { expression: input.condition })
+        : undefined,
     }),
   });
   return await iamClient.createIamGrant(request);

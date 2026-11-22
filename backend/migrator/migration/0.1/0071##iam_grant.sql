@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS iam_grant (
     resource_type TEXT COLLATE "C" NOT NULL,
     resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     role TEXT COLLATE "C" NOT NULL,
-    member TEXT COLLATE "C" NOT NULL,
+    member TEXT COLLATE "C" NOT NULL CHECK (member <> 'allUsers'),
     condition TEXT NOT NULL DEFAULT '',
     created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

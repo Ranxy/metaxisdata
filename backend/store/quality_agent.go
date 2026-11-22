@@ -103,9 +103,10 @@ const qualityAgentColumns = `id, resource_id, principal_id, display_name, descri
 	wakes_per_hour, max_concurrent_sessions, max_new_sessions_per_hour,
 	max_active_sessions, created_by, created_at, updated_at`
 
-// CreateQualityAgent creates the agent principal, its row with the default
-// runtime configuration and its workspace role binding. The principal is a
-// SERVICE_ACCOUNT that exists only as the agent's IAM and audit actor.
+// CreateQualityAgent creates the agent principal and its row with the default
+// runtime configuration. The principal holds no workspace policy binding; the
+// scoped authorizer derives the qualityAgent role on the agent's databases. It
+// is a SERVICE_ACCOUNT that exists only as the agent's IAM and audit actor.
 func (s *Store) CreateQualityAgent(ctx context.Context, resourceID, displayName, description string, createdBy *int32) (*QualityAgentMessage, error) {
 	displayName = strings.TrimSpace(displayName)
 	if resourceID == "" || displayName == "" {
@@ -345,6 +346,7 @@ func (s *Store) DisableQualityAgent(ctx context.Context, resourceID string) (*Qu
 		return nil, errors.Wrap(err, "failed to commit the agent deactivation")
 	}
 	s.invalidatePrincipalCache(principalID)
+	s.bumpAuthorizationGeneration()
 	return message, nil
 }
 

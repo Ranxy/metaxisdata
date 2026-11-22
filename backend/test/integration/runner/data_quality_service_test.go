@@ -5287,6 +5287,76 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	require.Contains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.get")
 	require.NotContains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
 
+	// A scoped owner cannot move the rule onto a target outside the grant: the
+	// destination is checked before the store writes, and the schedule must not be
+	// seeded for the foreign target.
+	_, err = fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityRuleRequest{
+		Rule: &v1pb.QualityRule{
+			Name:     created.Msg.GetName(),
+			Target:   &v1pb.QualityTarget{MetaGuid: "another-instance;another_db;;users", MetaType: v1pb.MetaType_TABLE},
+			Revision: created.Msg.GetRevision(),
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"target"}},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// A scoped author cannot define a check that reads outside the target: custom
+	// SQL runs on the target's connection, and a cross-table reference may name
+	// another database or instance.
+	customSQL := &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "custom sql",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_CustomSql{
+				CustomSql: &v1pb.CustomSQLConfig{Sql: "SELECT 1"},
+			}},
+			Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+	}
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(ownerToken, customSQL))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	crossTable := &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "cross table",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_CrossTable{
+				CrossTable: &v1pb.CrossTableConfig{
+					Reference: &v1pb.CrossTableReference{MetaGuid: "another-instance;another_db;;users", MetaType: v1pb.MetaType_TABLE},
+				},
+			}},
+			Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+	}
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(ownerToken, crossTable))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The target schedule is writable inside the grant and refused outside it.
+	_, err = fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityTargetScheduleRequest{
+		Parent:           "workspaces/-",
+		TargetGuid:       fixture.usersGUID,
+		MetaType:         v1pb.MetaType_TABLE,
+		ScheduleInterval: durationpb.New(time.Hour),
+	}))
+	require.NoError(t, err)
+	_, err = fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityTargetScheduleRequest{
+		Parent:           "workspaces/-",
+		TargetGuid:       "another-instance;another_db;;users",
+		MetaType:         v1pb.MetaType_TABLE,
+		ScheduleInterval: durationpb.New(time.Hour),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
 	// The granted member can read, update, run and archive its rule.
 	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx,
 		withToken(ownerToken, &v1pb.GetQualityRuleRequest{Name: created.Msg.GetName()}))
@@ -5381,6 +5451,16 @@ func TestQualityAgentOwnerDerivedGrantRealServerIntegration(t *testing.T) {
 
 	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
 		withToken(ownerToken, ruleRequest("another-instance;another_db;;users")))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// Disabling the agent revokes the derived grant immediately: the store bumps
+	// the authorization generation, so the owner's cached snapshot is rebuilt.
+	_, err = fixture.dataQuality.DisableQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: createdAgent.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }

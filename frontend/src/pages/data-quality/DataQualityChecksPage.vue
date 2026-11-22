@@ -538,7 +538,7 @@
     </Card>
 
     <BatchEditChecksDialog
-      v-if="canEdit"
+      v-if="canEditAny"
       v-model:open="batchEditOpen"
       :rules="selectedRules"
       :users="canListUsers ? userDirectory : undefined"
@@ -612,6 +612,7 @@ import {
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
+  qualityRuleViewerCan,
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityStatusKey,
@@ -653,7 +654,7 @@ const canRun = computed(() =>
 function canRunRule(rule: QualityRule): boolean {
   return (
     canRun.value ||
-    rule.viewerPermissions.includes("metaxisdata.dataQuality.rules.run")
+    qualityRuleViewerCan(rule, "metaxisdata.dataQuality.rules.run")
   );
 }
 const canViewExecution = computed(() =>
@@ -942,9 +943,7 @@ const RULE_UPDATE_PERMISSION = "metaxisdata.dataQuality.rules.update";
 // A scoped grant can allow an edit the workspace permission does not; the rule
 // carries the caller's target permissions, so the selection follows it.
 function canEditRule(rule: QualityRule): boolean {
-  return (
-    canEdit.value || rule.viewerPermissions.includes(RULE_UPDATE_PERMISSION)
-  );
+  return canEdit.value || qualityRuleViewerCan(rule, RULE_UPDATE_PERMISSION);
 }
 
 const canEditAny = computed(
