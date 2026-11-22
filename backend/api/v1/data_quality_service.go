@@ -319,12 +319,17 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
+	viewer, err := s.qualityRuleViewerPermissions(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
 
 	response := &v1pb.ListQualityRulesResponse{NextPageToken: nextPageToken}
 	for _, rule := range rules {
 		converted := convertQualityRule(workspaceID, rule)
 		converted.TargetSchemaChanged = schemaChanged[rule.ID]
 		converted.OrphanedReason = orphaned[rule.ID]
+		converted.ViewerPermissions = viewer[rule.ID]
 		if execution := latest[rule.ID]; execution != nil {
 			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
 		}
@@ -439,12 +444,17 @@ func (s *DataQualityService) enrichQualityRules(ctx context.Context, workspaceID
 	if err != nil {
 		return nil, err
 	}
+	viewer, err := s.qualityRuleViewerPermissions(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
 	for i, rule := range rules {
 		if execution := latest[rule.ID]; execution != nil {
 			converted[i].LastResult = convertQualityExecutionSummary(workspaceID, execution)
 		}
 		converted[i].TargetSchemaChanged = schemaChanged[rule.ID]
 		converted[i].OrphanedReason = orphaned[rule.ID]
+		converted[i].ViewerPermissions = viewer[rule.ID]
 	}
 	return converted, nil
 }
@@ -2208,6 +2218,9 @@ func (s *DataQualityService) UpdateQualityIssue(ctx context.Context, req *connec
 	}
 	issue, err := s.fetchQualityIssue(ctx, resourceID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityIssuesUpdate, issue.TargetGUID); err != nil {
 		return nil, err
 	}
 	update, err := parseQualityIssueUpdate(req.Msg.GetIssue(), req.Msg.GetAcknowledged(), req.Msg.GetUpdateMask().GetPaths())

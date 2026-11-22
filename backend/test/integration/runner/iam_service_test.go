@@ -356,3 +356,65 @@ func TestIamGrantApiRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, listed.Msg.GetGrants())
 }
+
+// TestCheckPermissionsRealServerIntegration covers the self-service check: the
+// caller's own permissions on one resource, unannotated so a scoped member can
+// ask without holding an admin permission.
+func TestCheckPermissionsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "check-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "check-stranger")
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+
+	check := func(token, targetGUID string) []bool {
+		t.Helper()
+		response, err := iamClient.CheckPermissions(fixture.ctx, withToken(token, &v1pb.CheckPermissionsRequest{
+			ResourceType: "table",
+			ResourceId:   targetGUID,
+			Permissions: []string{
+				"metaxisdata.dataQuality.rules.get",
+				"metaxisdata.dataQuality.rules.create",
+				"metaxisdata.dataQuality.contracts.publish",
+			},
+		}))
+		require.NoError(t, err)
+		require.Len(t, response.Msg.GetAllowed(), 3)
+		return response.Msg.GetAllowed()
+	}
+
+	require.Equal(t, []bool{true, true, true}, check(adminToken, fixture.usersGUID),
+		"an administrator holds every target permission")
+	require.Equal(t, []bool{true, false, false}, check(ownerToken, fixture.usersGUID),
+		"a member holds the read baseline only")
+	require.Equal(t, []bool{true, false, false}, check(strangerToken, fixture.usersGUID))
+
+	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
+	_, err := iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.NoError(t, err)
+
+	require.Equal(t, []bool{true, true, true}, check(ownerToken, fixture.usersGUID),
+		"the scoped grant adds create and publish on the granted database")
+	otherTarget := "another-instance;another_db;;users"
+	require.Equal(t, []bool{true, false, false}, check(ownerToken, otherTarget),
+		"the scoped grant does not reach another database")
+
+	_, err = iamClient.CheckPermissions(fixture.ctx, withToken(adminToken, &v1pb.CheckPermissionsRequest{
+		ResourceType: "not-a-type",
+		ResourceId:   "x",
+		Permissions:  []string{"metaxisdata.dataQuality.rules.get"},
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = iamClient.CheckPermissions(fixture.ctx, withToken(adminToken, &v1pb.CheckPermissionsRequest{
+		ResourceType: "table",
+		ResourceId:   fixture.usersGUID,
+		Permissions:  []string{"metaxisdata.notARealPermission"},
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

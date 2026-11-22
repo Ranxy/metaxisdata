@@ -106,8 +106,8 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything, `
 ## Frontend contract
 
 - `User.permissions` stays a **union summary** for navigation: a permission appears when the principal holds it on any scope. It is not evidence that an action is allowed on the page's target.
-- A page that acts on a resource asks the server: a batch `CheckPermissions` keyed by resource, or a `viewer_permissions` field on the resource read. A list may carry a per-row summary when the page renders actions inline.
-- `useResourcePermissions(ref)` is the page-facing composable; `hasPermission(permission)` remains for workspace-level settings and navigation.
+- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions.
+- `useResourcePermissions(ref, permissions)` is the page-facing composable; `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
 - The client permission mirror is generated from `permission.json`, not hand-maintained, so a new permission cannot drift from the catalog.
 
 ## The data-quality slice
@@ -115,7 +115,7 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything, `
 The first scoped path is the data-quality surface, because it already has a target, a queue and a real ownership relationship:
 
 - A `qualityOwner` grant on a database covers every table in it; a rule create, update, run or delete on a table under that database passes, and the same action outside the scope is denied.
-- The quality-rule RPCs are the first scoped methods: they check the target, and `ListQualityRules` applies the caller's scope set to the target GUID. The rule, contract, suggestion, execution and issue lists follow the same pattern.
+- The quality-rule RPCs, the contract update/publish and the issue transitions are the scoped methods: each checks the target, and `ListQualityRules` applies the caller's scope set to the target GUID. The rule list also carries the caller's per-target `viewer_permissions` so a page can gate row actions. The execution, issue and suggestion lists follow the same pattern.
 - The quality agent's owner and its own service account are relationship sources: the owner receives `qualityOwner` on the agent's databases and the service account receives its agent role there, so adoption and drafting run through the same authorizer. The proposal attention keeps its product gate (only the agent's already-queued drafts), but the write itself is authorized rather than bypassing IAM.
 
 ## Decisions
@@ -147,11 +147,11 @@ The first scoped path is the data-quality surface, because it already has a targ
 ## Where things live
 
 - Types, ancestors, scopes: `backend/common/resource/` ([resource.go](../../backend/common/resource/resource.go), [scope.go](../../backend/common/resource/scope.go)).
-- Authorizer and compatibility: `backend/component/iam/authorizer.go` and `backend/component/iam/scoped_authorizer.go`; the workspace engine stays in `backend/component/iam/manager.go`; the ACL interceptor and its scoped-method set are `backend/api/v1/acl_interceptor.go` and `backend/api/v1/data_quality_scoped.go`.
+- Authorizer and compatibility: `backend/component/iam/authorizer.go` and `backend/component/iam/scoped_authorizer.go`; the workspace engine stays in `backend/component/iam/manager.go`; the ACL interceptor and its scoped-method set are `backend/api/v1/acl_interceptor.go` and `backend/api/v1/data_quality_scoped.go`; the self-service check is `IamService.CheckPermissions` in `backend/api/v1/iam_service.go`.
 - Catalog: `backend/common/permission/permission.json` and its generator; the frontend mirror is generated from it.
 - Grants: `backend/store/iam_grant.go`, `backend/api/v1/iam_grant_service.go` and `backend/migrator/migration/LATEST.sql`; the workspace policy remains `backend/store/policy.go`. The derived agent relations are in `backend/store/agent_grant.go`; the generation is `backend/store/authorization_generation.go`. The `qualityOwner` bundle is in `backend/store/predefined_roles.go`; the IAM page is `frontend/src/pages/settings/IamPage.vue`.
 - Resource-aware lists: the `Find*Message` scope fields and the store query builders, starting with `backend/store/quality_rule.go`.
 - The quality slice: `backend/api/v1/data_quality_*.go`, `backend/store/quality_agent*.go`, `backend/store/quality_suggestion.go`.
-- Frontend: `frontend/src/store/modules/auth.ts`, `frontend/src/lib/permissions.ts`, `frontend/src/composables/`, the target and data-quality pages.
+- Frontend: `frontend/src/store/modules/auth.ts`, `frontend/src/lib/permissions.ts`, `frontend/src/composables/useResourcePermissions.ts`, the target and data-quality pages (`DataQualityTargetPage.vue`, `DataQualityChecksPage.vue`).
 - Tests: `backend/common/resource/*_test.go`, `backend/component/iam/{authorizer,scoped_authorizer}_test.go`, the store query-shape guards, and the scoped-grant integration scenario under `backend/test/integration/`.
 - Gates: `go test ./backend/...`, `golangci-lint run --allow-parallel-runners`, `make check-docs`, and the frontend gate (`biome:check`, `lint`, `i18n`, `type-check`, `test run`).

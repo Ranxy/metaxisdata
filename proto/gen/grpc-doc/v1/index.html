@@ -2356,6 +2356,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CheckPermissionsRequest"><span class="badge">M</span>CheckPermissionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CheckPermissionsResponse"><span class="badge">M</span>CheckPermissionsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateIamGrantRequest"><span class="badge">M</span>CreateIamGrantRequest</a>
                 </li>
               
@@ -23100,6 +23108,15 @@ and results are still recorded. </p></td>
                 </tr>
               
                 <tr>
+                  <td>viewer_permissions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The permissions the caller holds on this rule&#39;s target, e.g.
+&#34;metaxisdata.dataQuality.rules.update&#34;. Output only; a page uses it to gate
+row actions without a second request. </p></td>
+                </tr>
+              
+                <tr>
                   <td>frequency_tier</td>
                   <td><a href="#metaxisdata.v1.QualityFrequencyTier">QualityFrequencyTier</a></td>
                   <td></td>
@@ -30893,6 +30910,70 @@ binding applies only while the condition evaluates to true. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CheckPermissionsRequest">CheckPermissionsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>resource_type</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource type name: &#34;instance&#34;, &#34;database&#34;, &#34;table&#34;, &#34;view&#34;,
+&#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource id: the resource name for instances/databases, the metadata GUID
+for metadata resources. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>permissions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CheckPermissionsResponse">CheckPermissionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>allowed</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>repeated</td>
+                  <td><p>Parallel to the request&#39;s permissions. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateIamGrantRequest">CreateIamGrantRequest</h3>
         <p></p>
 
@@ -31222,6 +31303,15 @@ only while the condition evaluates to true; only request.time is bound. </p></td
                 <td><p>Delete one scoped grant.</p></td>
               </tr>
             
+              <tr>
+                <td>CheckPermissions</td>
+                <td><a href="#metaxisdata.v1.CheckPermissionsRequest">CheckPermissionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.CheckPermissionsResponse">CheckPermissionsResponse</a></td>
+                <td><p>Check the caller&#39;s own permissions on one resource. Unannotated: it is a
+self-service query, the caller&#39;s identity is the only input, and the handler
+authenticates before answering.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -31287,6 +31377,16 @@ only while the condition evaluates to true; only request.time is bound. </p></td
                 <td>DELETE</td>
                 <td>/v1/{name=iamGrants/*}</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CheckPermissions</td>
+                <td>POST</td>
+                <td>/v1/iam:checkPermissions</td>
+                <td>*</td>
               </tr>
               
             

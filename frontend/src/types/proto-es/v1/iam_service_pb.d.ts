@@ -249,6 +249,56 @@ export declare type DeleteIamGrantRequest = Message<"metaxisdata.v1.DeleteIamGra
 export declare const DeleteIamGrantRequestSchema: GenMessage<DeleteIamGrantRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.CheckPermissionsRequest
+ */
+export declare type CheckPermissionsRequest = Message<"metaxisdata.v1.CheckPermissionsRequest"> & {
+  /**
+   * The resource type name: "instance", "database", "table", "view",
+   * "external_table", "schema", or another resource.Type name.
+   *
+   * @generated from field: string resource_type = 1;
+   */
+  resourceType: string;
+
+  /**
+   * The resource id: the resource name for instances/databases, the metadata GUID
+   * for metadata resources.
+   *
+   * @generated from field: string resource_id = 2;
+   */
+  resourceId: string;
+
+  /**
+   * @generated from field: repeated string permissions = 3;
+   */
+  permissions: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.CheckPermissionsRequest.
+ * Use `create(CheckPermissionsRequestSchema)` to create a new message.
+ */
+export declare const CheckPermissionsRequestSchema: GenMessage<CheckPermissionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CheckPermissionsResponse
+ */
+export declare type CheckPermissionsResponse = Message<"metaxisdata.v1.CheckPermissionsResponse"> & {
+  /**
+   * Parallel to the request's permissions.
+   *
+   * @generated from field: repeated bool allowed = 1;
+   */
+  allowed: boolean[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.CheckPermissionsResponse.
+ * Use `create(CheckPermissionsResponseSchema)` to create a new message.
+ */
+export declare const CheckPermissionsResponseSchema: GenMessage<CheckPermissionsResponse>;
+
+/**
  * @generated from message metaxisdata.v1.GetWorkspaceIamPolicyRequest
  */
 export declare type GetWorkspaceIamPolicyRequest = Message<"metaxisdata.v1.GetWorkspaceIamPolicyRequest"> & {
@@ -340,6 +390,18 @@ export declare const IamService: GenService<{
     methodKind: "unary";
     input: typeof DeleteIamGrantRequestSchema;
     output: typeof EmptySchema;
+  },
+  /**
+   * Check the caller's own permissions on one resource. Unannotated: it is a
+   * self-service query, the caller's identity is the only input, and the handler
+   * authenticates before answering.
+   *
+   * @generated from rpc metaxisdata.v1.IamService.CheckPermissions
+   */
+  checkPermissions: {
+    methodKind: "unary";
+    input: typeof CheckPermissionsRequestSchema;
+    output: typeof CheckPermissionsResponseSchema;
   },
 }>;
 

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -51,6 +52,9 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesUpdate, targetGUID); err != nil {
+		return nil, err
 	}
 	if req.Msg.GetSettings() == nil {
 		return nil, connectErrorInvalid("settings is required")
@@ -172,6 +176,9 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityContractsPublish, targetGUID); err != nil {
+		return nil, err
 	}
 	metaType := storepb.MetaType(req.Msg.GetMetaType())
 	rules, contract, resolution, err := s.qualityContractContext(ctx, targetGUID, metaType)

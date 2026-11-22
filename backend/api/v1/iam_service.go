@@ -9,25 +9,32 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// IamService exposes the workspace IAM policy. Get reads the whole policy; Set
-// replaces it whole, guarded by the etag returned by Get. Both RPCs are gated
-// by the ACL interceptor with metaxisdata.iam.getPolicy / setPolicy. Set
-// validates every binding before writing and refuses a policy that would leave
-// the workspace without an active admin.
+// IamService exposes the workspace IAM policy, the scoped grants, and the
+// self-service permission check. Get/Set are gated by metaxisdata.iam.getPolicy
+// / setPolicy; Set validates every binding before writing and refuses a policy
+// that would leave the workspace without an active admin. CheckPermissions is
+// unannotated: the caller's identity is the only input and the handler
+// authenticates before answering.
 type IamService struct {
 	v1connect.UnimplementedIamServiceHandler
-	store *store.Store
+	store      *store.Store
+	authorizer iam.Authorizer
 }
 
-// NewIamService creates a new IamService.
-func NewIamService(stores *store.Store) *IamService {
-	return &IamService{store: stores}
+// NewIamService creates a new IamService. The authorizer answers the
+// self-service permission check; nil keeps the policy management RPCs usable in
+// focused tests while CheckPermissions fails closed.
+func NewIamService(stores *store.Store, authorizer iam.Authorizer) *IamService {
+	return &IamService{store: stores, authorizer: authorizer}
 }
 
 func (s *IamService) GetWorkspaceIamPolicy(ctx context.Context, _ *connect.Request[v1pb.GetWorkspaceIamPolicyRequest]) (*connect.Response[v1pb.IamPolicyView], error) {
@@ -174,4 +181,39 @@ func validateIamMember(ctx context.Context, stores *store.Store, member string) 
 		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid member %q (want users/{uid}, groups/{email}, or allUsers)", member))
 	}
 	return nil
+}
+
+// CheckPermissions answers the caller's own permissions on one resource. It is
+// self-service: the handler authenticates, so the request can name a resource
+// the caller is not allowed to read, and the answer is still only about the
+// caller.
+func (s *IamService) CheckPermissions(ctx context.Context, req *connect.Request[v1pb.CheckPermissionsRequest]) (*connect.Response[v1pb.CheckPermissionsResponse], error) {
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+	if s.authorizer == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("the resource authorizer is not configured"))
+	}
+	resourceType, ok := resource.ParseType(strings.TrimSpace(req.Msg.GetResourceType()))
+	if !ok {
+		return nil, connectErrorInvalid("invalid resource type %q", req.Msg.GetResourceType())
+	}
+	ref := resource.NewRef(resourceType, strings.TrimSpace(req.Msg.GetResourceId()))
+	if !ref.Valid() {
+		return nil, connectErrorInvalid("a valid resource id is required")
+	}
+	allowed := make([]bool, 0, len(req.Msg.GetPermissions()))
+	for _, raw := range req.Msg.GetPermissions() {
+		perm := permission.Permission(raw)
+		if !permission.Exist(perm) {
+			return nil, connectErrorInvalid("unknown permission %q", raw)
+		}
+		ok, err := s.authorizer.Check(ctx, user, perm, ref)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission"))
+		}
+		allowed = append(allowed, ok)
+	}
+	return connect.NewResponse(&v1pb.CheckPermissionsResponse{Allowed: allowed}), nil
 }

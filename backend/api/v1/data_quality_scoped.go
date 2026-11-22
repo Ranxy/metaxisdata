@@ -10,6 +10,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // scopedMethods are the RPCs whose permission is decided per resource rather
@@ -18,14 +19,18 @@ import (
 // specific target. Adding a method here without a handler check would let a
 // caller with a grant on one target reach another.
 var scopedMethods = map[string]bool{
-	"/metaxisdata.v1.DataQualityService/GetQualityRule":          true,
-	"/metaxisdata.v1.DataQualityService/ListQualityRules":        true,
-	"/metaxisdata.v1.DataQualityService/CreateQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/UpdateQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/DeleteQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/RunQualityRules":         true,
-	"/metaxisdata.v1.DataQualityService/BatchCreateQualityRules": true,
-	"/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules": true,
+	"/metaxisdata.v1.DataQualityService/GetQualityRule":                 true,
+	"/metaxisdata.v1.DataQualityService/ListQualityRules":               true,
+	"/metaxisdata.v1.DataQualityService/CreateQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/DeleteQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/RunQualityRules":                true,
+	"/metaxisdata.v1.DataQualityService/BatchCreateQualityRules":        true,
+	"/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules":        true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityContract":          true,
+	"/metaxisdata.v1.DataQualityService/PublishQualityContract":         true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityIssue":             true,
+	"/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema": true,
 }
 
 // qualityRuleTarget resolves the target a create writes to. A named suggestion
@@ -92,4 +97,45 @@ func (s *DataQualityService) qualityRuleListScopes(ctx context.Context, perm per
 		return resource.ScopeSet{}, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission scopes"))
 	}
 	return scopes.Normalize(), nil
+}
+
+// qualityRuleViewerChecks are the row actions a rule list or read reports.
+var qualityRuleViewerChecks = []permission.Permission{
+	permission.DataQualityRulesGet,
+	permission.DataQualityRulesCreate,
+	permission.DataQualityRulesUpdate,
+	permission.DataQualityRulesDelete,
+	permission.DataQualityRulesRun,
+}
+
+// qualityRuleViewerPermissions reports, per rule, which row actions the caller
+// holds on the rule's target. The scope set is computed once per permission and
+// each rule target is tested against it, so a list stays a fixed number of
+// authorization reads instead of one per rule.
+func (s *DataQualityService) qualityRuleViewerPermissions(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64][]string, error) {
+	if s.authorizer == nil || len(rules) == 0 {
+		return nil, nil
+	}
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return nil, nil
+	}
+	scopeSets := make([]resource.ScopeSet, len(qualityRuleViewerChecks))
+	for i, perm := range qualityRuleViewerChecks {
+		scopes, err := s.authorizer.Scopes(ctx, user, perm)
+		if err != nil {
+			return nil, err
+		}
+		scopeSets[i] = scopes
+	}
+	viewer := make(map[int64][]string, len(rules))
+	for _, rule := range rules {
+		ref := resource.NewRef(resource.TypeTable, rule.TargetGUID)
+		for i, perm := range qualityRuleViewerChecks {
+			if scopeSets[i].Contains(ref) {
+				viewer[rule.ID] = append(viewer[rule.ID], string(perm))
+			}
+		}
+	}
+	return viewer, nil
 }

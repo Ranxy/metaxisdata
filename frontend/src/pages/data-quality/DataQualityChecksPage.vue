@@ -488,7 +488,7 @@
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
                     <Button
-                      v-if="canRun"
+                      v-if="canRunRule(rule)"
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
@@ -644,6 +644,15 @@ const canSuggest = computed(() =>
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
+
+// A scoped grant can allow a run the workspace permission does not; the rule
+// carries the caller's target permissions, so the row action follows it.
+function canRunRule(rule: QualityRule): boolean {
+  return (
+    canRun.value ||
+    rule.viewerPermissions.includes("metaxisdata.dataQuality.rules.run")
+  );
+}
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
 );

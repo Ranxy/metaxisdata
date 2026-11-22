@@ -187,9 +187,12 @@ func TestACLInterceptorScopedMethod(t *testing.T) {
 // cannot be expressed as one permission. Every other method must be gated,
 // reads included, so this allowlist is the only way to add an unguarded RPC.
 var unannotatedMethods = map[string]bool{
-	"metaxisdata.v1.AuthService.Login":   true,
-	"metaxisdata.v1.AuthService.Logout":  true,
-	"metaxisdata.v1.AuthService.Refresh": true,
+	// The self-service permission check names no workspace action: the handler
+	// authenticates and answers only about the caller's own permissions.
+	"metaxisdata.v1.IamService.CheckPermissions": true,
+	"metaxisdata.v1.AuthService.Login":           true,
+	"metaxisdata.v1.AuthService.Logout":          true,
+	"metaxisdata.v1.AuthService.Refresh":         true,
 	// The CLI's refresh path is anonymous like Refresh: the opaque refresh token in
 	// the body is the credential, and the handler scopes everything to the session
 	// that token names. A permission cannot express that.

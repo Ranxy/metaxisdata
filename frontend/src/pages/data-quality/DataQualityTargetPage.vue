@@ -774,6 +774,7 @@ import {
 } from "@/components/ui/select";
 import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useResourcePermissions } from "@/composables/useResourcePermissions";
 import { useTargetScheduleEditor } from "@/composables/useTargetScheduleEditor";
 import { useTargetWorkspaceDialogs } from "@/composables/useTargetWorkspaceDialogs";
 import { notify } from "@/lib/notify";
@@ -840,14 +841,14 @@ const { formatError } = useErrorMessage();
 const targetGuid = computed(() => routeParamToGuid(route.params.targetGuid));
 
 const {
-  canRun,
-  canCreate,
-  canUpdate,
-  canSuggest,
-  canProfile,
+  canRun: canRunFlat,
+  canCreate: canCreateFlat,
+  canUpdate: canUpdateFlat,
+  canSuggest: canSuggestFlat,
+  canProfile: canProfileFlat,
   canListIssues,
   canViewIssue,
-  canPublish,
+  canPublish: canPublishFlat,
 } = useDataQualityPermissions();
 
 const rules = ref<QualityRule[]>([]);
@@ -858,6 +859,77 @@ const issues = ref<QualityIssue[]>([]);
 /** The server's health summary; adjusted in place by local draft decisions. */
 const summary = ref<QualityTargetSummary>(
   create(QualityTargetSummarySchema, {})
+);
+
+/**
+ * The metadata type the target is read as: the query wins, then the summary the
+ * server resolved, then the rules it returned, then the table default.
+ */
+const effectiveMetaType = computed<MetaType>(() => {
+  const fromQuery = parseMetaType(route.query.metaType);
+  if (fromQuery !== null) {
+    return fromQuery;
+  }
+  const fromSummary = summary.value.target?.metaType;
+  if (fromSummary !== undefined && fromSummary !== MetaType.UNSPECIFIED) {
+    return fromSummary;
+  }
+  const fromRule = rules.value[0]?.target?.metaType;
+  return fromRule !== undefined && fromRule !== MetaType.UNSPECIFIED
+    ? fromRule
+    : MetaType.TABLE;
+});
+
+function resourceTypeForMetaType(metaType: MetaType): string {
+  switch (metaType) {
+    case MetaType.VIEW:
+      return "view";
+    case MetaType.EXTERNAL_TABLE:
+      return "external_table";
+    default:
+      return "table";
+  }
+}
+
+// The target-scoped actions are decided by the server: a scoped grant can allow
+// a rule edit or run that the workspace-level permission does not, and a page
+// must not show an action the server will refuse. The flat permission stays the
+// immediate fallback, so an administrator is not blocked waiting for the check.
+const targetResource = computed(() => {
+  if (!targetGuid.value) {
+    return null;
+  }
+  return {
+    resourceType: resourceTypeForMetaType(effectiveMetaType.value),
+    resourceId: targetGuid.value,
+  };
+});
+const { can: targetCan } = useResourcePermissions(targetResource, [
+  "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.rules.update",
+  "metaxisdata.dataQuality.rules.run",
+  "metaxisdata.dataQuality.contracts.publish",
+] as const);
+
+const canCreate = computed(
+  () => canCreateFlat.value || targetCan("metaxisdata.dataQuality.rules.create")
+);
+const canUpdate = computed(
+  () => canUpdateFlat.value || targetCan("metaxisdata.dataQuality.rules.update")
+);
+const canRun = computed(
+  () => canRunFlat.value || targetCan("metaxisdata.dataQuality.rules.run")
+);
+const canPublish = computed(
+  () =>
+    canPublishFlat.value ||
+    targetCan("metaxisdata.dataQuality.contracts.publish")
+);
+const canSuggest = computed(
+  () => canSuggestFlat.value || targetCan("metaxisdata.dataQuality.suggest")
+);
+const canProfile = computed(
+  () => canProfileFlat.value || targetCan("metaxisdata.dataQuality.profile.run")
 );
 /**
  * The target's columns as the aggregate read resolved them. They come from the
@@ -911,25 +983,6 @@ const {
   closeCheck,
   onCheckOpenChange,
 } = useTargetWorkspaceDialogs({ rules, loading, canCreate });
-
-/**
- * The metadata type the target is read as: the query wins, then the summary the
- * server resolved, then the rules it returned, then the table default.
- */
-const effectiveMetaType = computed<MetaType>(() => {
-  const fromQuery = parseMetaType(route.query.metaType);
-  if (fromQuery !== null) {
-    return fromQuery;
-  }
-  const fromSummary = summary.value.target?.metaType;
-  if (fromSummary !== undefined && fromSummary !== MetaType.UNSPECIFIED) {
-    return fromSummary;
-  }
-  const fromRule = rules.value[0]?.target?.metaType;
-  return fromRule !== undefined && fromRule !== MetaType.UNSPECIFIED
-    ? fromRule
-    : MetaType.TABLE;
-});
 
 const {
   targetSchedule,

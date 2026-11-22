@@ -561,6 +561,8 @@
   
 - [v1/iam_service.proto](#v1_iam_service-proto)
     - [Binding](#metaxisdata-v1-Binding)
+    - [CheckPermissionsRequest](#metaxisdata-v1-CheckPermissionsRequest)
+    - [CheckPermissionsResponse](#metaxisdata-v1-CheckPermissionsResponse)
     - [CreateIamGrantRequest](#metaxisdata-v1-CreateIamGrantRequest)
     - [DeleteIamGrantRequest](#metaxisdata-v1-DeleteIamGrantRequest)
     - [GetWorkspaceIamPolicyRequest](#metaxisdata-v1-GetWorkspaceIamPolicyRequest)
@@ -7937,6 +7939,7 @@ QualityRule is one data quality check.
 | orphaned_reason | [string](#string) |  | Why the target can no longer be resolved, e.g. because the table was dropped. Empty while the target is healthy. |
 | mute_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Rule-level mute. It only silences issue notifications; executions still run and results are still recorded. |
 | tags | [string](#string) | repeated |  |
+| viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this rule&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.update&#34;. Output only; a page uses it to gate row actions without a second request. |
 | frequency_tier | [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier) |  | How often this check needs to run inside the target&#39;s schedule. The target tick is the floor, so a tier denser than the target is a no-op; a manual run is not affected. It is scheduling metadata, not part of the rule definition: editing it does not append a revision. |
 
 
@@ -10424,6 +10427,38 @@ IamService.SetWorkspaceIamPolicy.
 
 
 
+<a name="metaxisdata-v1-CheckPermissionsRequest"></a>
+
+### CheckPermissionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| resource_type | [string](#string) |  | The resource type name: &#34;instance&#34;, &#34;database&#34;, &#34;table&#34;, &#34;view&#34;, &#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. |
+| resource_id | [string](#string) |  | The resource id: the resource name for instances/databases, the metadata GUID for metadata resources. |
+| permissions | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CheckPermissionsResponse"></a>
+
+### CheckPermissionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| allowed | [bool](#bool) | repeated | Parallel to the request&#39;s permissions. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateIamGrantRequest"></a>
 
 ### CreateIamGrantRequest
@@ -10590,6 +10625,7 @@ by metaxisdata.iam.getPolicy / metaxisdata.iam.setPolicy.
 | ListIamGrants | [ListIamGrantsRequest](#metaxisdata-v1-ListIamGrantsRequest) | [ListIamGrantsResponse](#metaxisdata-v1-ListIamGrantsResponse) | List the scoped grants, optionally narrowed to one resource. |
 | CreateIamGrant | [CreateIamGrantRequest](#metaxisdata-v1-CreateIamGrantRequest) | [IamGrant](#metaxisdata-v1-IamGrant) | Add one scoped grant. Additive to the workspace policy. |
 | DeleteIamGrant | [DeleteIamGrantRequest](#metaxisdata-v1-DeleteIamGrantRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one scoped grant. |
+| CheckPermissions | [CheckPermissionsRequest](#metaxisdata-v1-CheckPermissionsRequest) | [CheckPermissionsResponse](#metaxisdata-v1-CheckPermissionsResponse) | Check the caller&#39;s own permissions on one resource. Unannotated: it is a self-service query, the caller&#39;s identity is the only input, and the handler authenticates before answering. |
 
  
 

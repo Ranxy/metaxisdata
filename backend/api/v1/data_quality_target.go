@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -821,6 +822,9 @@ func (s *DataQualityService) AcknowledgeQualityTargetSchema(ctx context.Context,
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesUpdate, targetGUID); err != nil {
+		return nil, err
 	}
 	metaType, err := s.resolveQualityTargetMetaType(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
 	if err != nil {

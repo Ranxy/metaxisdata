@@ -1185,6 +1185,11 @@ message QualityRule {
 
   repeated string tags = 19;
 
+  // The permissions the caller holds on this rule's target, e.g.
+  // "metaxisdata.dataQuality.rules.update". Output only; a page uses it to gate
+  // row actions without a second request.
+  repeated string viewer_permissions = 21 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // How often this check needs to run inside the target's schedule. The target
   // tick is the floor, so a tier denser than the target is a no-op; a manual run
   // is not affected. It is scheduling metadata, not part of the rule definition:

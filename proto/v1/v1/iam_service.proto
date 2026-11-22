@@ -97,6 +97,23 @@ message DeleteIamGrantRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message CheckPermissionsRequest {
+  // The resource type name: "instance", "database", "table", "view",
+  // "external_table", "schema", or another resource.Type name.
+  string resource_type = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The resource id: the resource name for instances/databases, the metadata GUID
+  // for metadata resources.
+  string resource_id = 2 [(google.api.field_behavior) = REQUIRED];
+
+  repeated string permissions = 3;
+}
+
+message CheckPermissionsResponse {
+  // Parallel to the request's permissions.
+  repeated bool allowed = 1;
+}
+
 message GetWorkspaceIamPolicyRequest {}
 
 message SetWorkspaceIamPolicyRequest {
@@ -147,5 +164,15 @@ service IamService {
     option (google.api.http) = {delete: "/v1/{name=iamGrants/*}"};
     option (metaxisdata.v1.permission) = "metaxisdata.iam.setPolicy";
     option (metaxisdata.v1.audit) = true;
+  }
+
+  // Check the caller's own permissions on one resource. Unannotated: it is a
+  // self-service query, the caller's identity is the only input, and the handler
+  // authenticates before answering.
+  rpc CheckPermissions(CheckPermissionsRequest) returns (CheckPermissionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/iam:checkPermissions"
+      body: "*"
+    };
   }
 }
