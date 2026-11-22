@@ -134,6 +134,7 @@ func (s *Store) CreateQualityAgent(ctx context.Context, resourceID, displayName,
 	if err := s.bindQualityAgentRole(ctx, principal.ID); err != nil {
 		return nil, err
 	}
+	s.bumpAuthorizationGeneration()
 	return message, nil
 }
 
@@ -322,6 +323,7 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		}
 		return nil, errors.Wrap(err, "failed to update the quality agent config")
 	}
+	s.bumpAuthorizationGeneration()
 	return updated, nil
 }
 
@@ -353,6 +355,7 @@ func (s *Store) UpdateQualityAgentState(ctx context.Context, agentID int64, stat
 		}
 		return nil, errors.Wrap(err, "failed to update the quality agent state")
 	}
+	s.bumpAuthorizationGeneration()
 	return updated, nil
 }
 
@@ -428,6 +431,7 @@ func (s *Store) ReplaceQualityAgentDatabases(ctx context.Context, agentID int64,
 	if err := tx.Commit(); err != nil {
 		return errors.Wrap(err, "failed to commit the agent database scope")
 	}
+	s.bumpAuthorizationGeneration()
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
@@ -43,6 +44,13 @@ type Store struct {
 	policyCache           *lru.Cache[string, *PolicyMessage]
 	rolesCache            *lru.Cache[string, *RoleMessage]
 	settingCache          *lru.Cache[storepb.SettingName, *SettingMessage]
+
+	// authorizationGeneration bumps on every write that can change an effective
+	// authorization decision (grants, roles, groups, agents). The scoped
+	// authorizer keys its per-principal snapshot on it. It is process-local, like
+	// the other caches: a write from a second server process is not seen here
+	// until a restart.
+	authorizationGeneration atomic.Uint64
 }
 
 // Option customises a Store.

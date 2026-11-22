@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -12,29 +13,46 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// GrantReader is the scoped-grant, role and group subset the authorizer reads.
-// *store.Store is the production implementation; the interface keeps the
-// engine testable without a database.
+// GrantReader is the IAM state the authorizer reads: scoped grants, the derived
+// agent relations, role snapshots, groups, and the process-local generation that
+// invalidates the per-principal snapshot.
 type GrantReader interface {
 	ListIamGrants(ctx context.Context, find *store.FindIamGrantMessage) ([]*store.IamGrantMessage, error)
 	GetRoleSnapshot(ctx context.Context, resourceID string) (*store.RoleMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
+	ListAgentGrantRelations(ctx context.Context, principalID int) ([]*store.AgentGrantRelation, error)
+	AuthorizationGeneration() uint64
+}
+
+// principalSnapshot is the cached IAM state for one principal: the grants whose
+// member names it (directly, through allUsers, or through a group), the derived
+// agent relations, and the resolved role permissions. It is keyed on the store's
+// authorization generation, so a grant/role/group/agent write rebuilds it.
+type principalSnapshot struct {
+	generation      uint64
+	grants          []*store.IamGrantMessage
+	relations       []*store.AgentGrantRelation
+	rolePermissions map[string]map[permission.Permission]bool
 }
 
 // ScopedAuthorizer answers a resource check from the workspace policy first and
-// then from scoped grants. The workspace permission is the fast path and keeps
-// the current behavior; a grant at the resource or one of its ancestors adds
-// authority for a principal the workspace policy does not cover.
+// then from scoped grants and the agent ownership relations. The workspace
+// permission is the fast path and keeps the current behavior; the snapshot cache
+// makes the second path cheap.
 type ScopedAuthorizer struct {
 	workspace PermissionChecker
 	grants    GrantReader
+
+	mu       sync.RWMutex
+	cache    map[int]*principalSnapshot
+	cacheGen uint64
 }
 
 // NewScopedAuthorizer builds the grant-backed authorizer over the workspace
 // checker. The workspace policy is the root: a principal it allows needs no
-// grant lookup.
+// relationship lookup.
 func NewScopedAuthorizer(workspace PermissionChecker, grants GrantReader) *ScopedAuthorizer {
-	return &ScopedAuthorizer{workspace: workspace, grants: grants}
+	return &ScopedAuthorizer{workspace: workspace, grants: grants, cache: make(map[int]*principalSnapshot)}
 }
 
 // Check reports whether the principal holds perm on ref or one of its ancestors.
@@ -49,22 +67,42 @@ func (a *ScopedAuthorizer) Check(ctx context.Context, principal *store.UserMessa
 	if allowed {
 		return true, nil
 	}
-	chain := chainFor(ref)
-	grants, err := a.grants.ListIamGrants(ctx, &store.FindIamGrantMessage{
-		Scopes:             scopePairs(chain),
-		Members:            directMembers(principal),
-		IncludeGroupGrants: true,
-	})
+	snapshot, err := a.snapshot(ctx, principal)
 	if err != nil {
 		return false, err
 	}
-	return a.anyGrantAllows(ctx, principal, grants, perm)
+	chain := chainKeys(ref)
+	now := time.Now()
+	for _, grant := range snapshot.grants {
+		if !grantConditionHolds(grant, now) {
+			continue
+		}
+		if !chain[grantScopeKey(grant.ResourceType, grant.ResourceID)] {
+			continue
+		}
+		if snapshot.rolePermissions[grant.Role][perm] {
+			return true, nil
+		}
+	}
+	for _, relation := range snapshot.relations {
+		scope, ok := relationScope(relation.DatabaseRef)
+		if !ok {
+			continue
+		}
+		if !chain[grantScopeKey(scope.Type.String(), scope.ID)] {
+			continue
+		}
+		if snapshot.rolePermissions[relation.Role][perm] {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Scopes returns every scope the principal holds perm in. A workspace-wide
-// permission is All; otherwise the grants whose role contains perm contribute
-// their scopes. An empty set means the principal cannot perform the action
-// anywhere and a list must return nothing.
+// permission is All; otherwise the applicable grants and derived relations
+// contribute their scopes. An empty set means the principal cannot perform the
+// action anywhere and a list must return nothing.
 func (a *ScopedAuthorizer) Scopes(ctx context.Context, principal *store.UserMessage, perm permission.Permission) (resource.ScopeSet, error) {
 	if principal == nil {
 		return resource.ScopeSet{}, nil
@@ -76,20 +114,17 @@ func (a *ScopedAuthorizer) Scopes(ctx context.Context, principal *store.UserMess
 	if allowed {
 		return resource.ScopeSet{All: true}, nil
 	}
-	grants, err := a.grants.ListIamGrants(ctx, &store.FindIamGrantMessage{
-		Members:            directMembers(principal),
-		IncludeGroupGrants: true,
-	})
+	snapshot, err := a.snapshot(ctx, principal)
 	if err != nil {
 		return resource.ScopeSet{}, err
 	}
 	var set resource.ScopeSet
-	for _, grant := range grants {
-		applies, err := a.grantApplies(ctx, principal, grant, perm)
-		if err != nil {
-			return resource.ScopeSet{}, err
+	now := time.Now()
+	for _, grant := range snapshot.grants {
+		if !grantConditionHolds(grant, now) {
+			continue
 		}
-		if !applies {
+		if !snapshot.rolePermissions[grant.Role][perm] {
 			continue
 		}
 		resourceType, ok := resource.ParseType(grant.ResourceType)
@@ -98,50 +133,91 @@ func (a *ScopedAuthorizer) Scopes(ctx context.Context, principal *store.UserMess
 		}
 		set.Add(resource.NewScope(resourceType, grant.ResourceID))
 	}
+	for _, relation := range snapshot.relations {
+		if !snapshot.rolePermissions[relation.Role][perm] {
+			continue
+		}
+		scope, ok := relationScope(relation.DatabaseRef)
+		if !ok {
+			continue
+		}
+		set.Add(scope)
+	}
 	return set.Normalize(), nil
 }
 
-// anyGrantAllows reports whether one grant applies to the principal and grants
-// the permission.
-func (a *ScopedAuthorizer) anyGrantAllows(ctx context.Context, principal *store.UserMessage, grants []*store.IamGrantMessage, perm permission.Permission) (bool, error) {
+// snapshot returns the principal's cached IAM snapshot, rebuilding it when the
+// store's generation has moved.
+func (a *ScopedAuthorizer) snapshot(ctx context.Context, principal *store.UserMessage) (*principalSnapshot, error) {
+	generation := a.grants.AuthorizationGeneration()
+	a.mu.RLock()
+	cached := a.cache[principal.ID]
+	a.mu.RUnlock()
+	if cached != nil && cached.generation == generation {
+		return cached, nil
+	}
+	grants, err := a.grants.ListIamGrants(ctx, &store.FindIamGrantMessage{
+		Members:            directMembers(principal),
+		IncludeGroupGrants: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &principalSnapshot{
+		generation:      generation,
+		rolePermissions: make(map[string]map[permission.Permission]bool),
+	}
 	for _, grant := range grants {
-		applies, err := a.grantApplies(ctx, principal, grant, perm)
+		member, err := a.grantMemberMatches(ctx, principal, grant.Member)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		if applies {
-			return true, nil
+		if !member {
+			continue
+		}
+		snapshot.grants = append(snapshot.grants, grant)
+		if err := a.resolveRole(ctx, snapshot, grant.Role); err != nil {
+			return nil, err
 		}
 	}
-	return false, nil
+	relations, err := a.grants.ListAgentGrantRelations(ctx, principal.ID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.relations = relations
+	for _, relation := range relations {
+		if err := a.resolveRole(ctx, snapshot, relation.Role); err != nil {
+			return nil, err
+		}
+	}
+	a.mu.Lock()
+	if a.cacheGen != generation {
+		a.cache = make(map[int]*principalSnapshot)
+		a.cacheGen = generation
+	}
+	a.cache[principal.ID] = snapshot
+	a.mu.Unlock()
+	return snapshot, nil
 }
 
-// grantApplies evaluates one grant: its condition holds, its member names the
-// principal (directly, through allUsers, or through a group), and its role
-// contains the permission. An unevaluable condition fails closed.
-func (a *ScopedAuthorizer) grantApplies(ctx context.Context, principal *store.UserMessage, grant *store.IamGrantMessage, perm permission.Permission) (bool, error) {
-	if grant == nil {
-		return false, nil
+// resolveRole stores a role's permission set in the snapshot once. An unknown or
+// malformed role grants nothing; an unreadable snapshot fails closed.
+func (a *ScopedAuthorizer) resolveRole(ctx context.Context, snapshot *principalSnapshot, role string) error {
+	if _, ok := snapshot.rolePermissions[role]; ok {
+		return nil
 	}
-	if strings.TrimSpace(grant.Condition) != "" {
-		holds, err := common.EvalBindingCondition(grant.Condition, time.Now())
-		if err != nil {
-			slog.Warn("failed to evaluate a scoped grant condition",
-				slog.String("role", grant.Role), slog.Any("error", err))
-			return false, nil //nolint:nilerr // an unevaluable condition fails closed
-		}
-		if !holds {
-			return false, nil
-		}
-	}
-	member, err := a.grantMemberMatches(ctx, principal, grant.Member)
+	resourceID, err := common.GetRoleID(role)
 	if err != nil {
-		return false, err
+		return nil //nolint:nilerr // a malformed role name fails closed
 	}
-	if !member {
-		return false, nil
+	roleSnapshot, err := a.grants.GetRoleSnapshot(ctx, resourceID)
+	if err != nil {
+		return err
 	}
-	return a.roleHasPermission(ctx, grant.Role, perm)
+	if roleSnapshot != nil {
+		snapshot.rolePermissions[role] = roleSnapshot.Permissions
+	}
+	return nil
 }
 
 // grantMemberMatches expands the three member forms a grant can name. Groups are
@@ -177,21 +253,19 @@ func (a *ScopedAuthorizer) grantMemberMatches(ctx context.Context, principal *st
 	}
 }
 
-// roleHasPermission resolves a role id to its permission set. An unknown role or
-// an unreadable snapshot fails closed.
-func (a *ScopedAuthorizer) roleHasPermission(ctx context.Context, role string, perm permission.Permission) (bool, error) {
-	resourceID, err := common.GetRoleID(role)
+// grantConditionHolds evaluates a grant's time condition. An unevaluable
+// condition fails closed.
+func grantConditionHolds(grant *store.IamGrantMessage, now time.Time) bool {
+	if strings.TrimSpace(grant.Condition) == "" {
+		return true
+	}
+	holds, err := common.EvalBindingCondition(grant.Condition, now)
 	if err != nil {
-		return false, nil //nolint:nilerr // a malformed role name fails closed
+		slog.Warn("failed to evaluate a scoped grant condition",
+			slog.String("role", grant.Role), slog.Any("error", err))
+		return false
 	}
-	snapshot, err := a.grants.GetRoleSnapshot(ctx, resourceID)
-	if err != nil {
-		return false, err
-	}
-	if snapshot == nil {
-		return false, nil
-	}
-	return snapshot.Permissions[perm], nil
+	return holds
 }
 
 // chainFor returns the resource and its ancestors. A metadata GUID carries its
@@ -206,13 +280,29 @@ func chainFor(ref resource.Ref) []resource.Ref {
 	return []resource.Ref{ref}
 }
 
-// scopePairs renders a chain as grant scopes.
-func scopePairs(chain []resource.Ref) []store.IamGrantScope {
-	scopes := make([]store.IamGrantScope, 0, len(chain))
-	for _, ref := range chain {
-		scopes = append(scopes, store.IamGrantScope{ResourceType: ref.Type.String(), ResourceID: ref.ID})
+// chainKeys renders a resource chain as lookup keys for grant scopes.
+func chainKeys(ref resource.Ref) map[string]bool {
+	chain := chainFor(ref)
+	keys := make(map[string]bool, len(chain))
+	for _, item := range chain {
+		keys[grantScopeKey(item.Type.String(), item.ID)] = true
 	}
-	return scopes
+	return keys
+}
+
+// grantScopeKey is the lookup key shared by grants, relations and the chain.
+func grantScopeKey(resourceType, resourceID string) string {
+	return resourceType + "\x00" + resourceID
+}
+
+// relationScope maps an agent database reference to the database scope a grant
+// would use.
+func relationScope(databaseRef string) (resource.Scope, bool) {
+	instanceID, databaseName, err := common.GetInstanceDatabaseID(databaseRef)
+	if err != nil {
+		return resource.Scope{}, false
+	}
+	return resource.NewScope(resource.TypeDatabase, common.BuildMetaGUID(instanceID, databaseName)), true
 }
 
 // directMembers is the member set that names the principal without group

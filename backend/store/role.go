@@ -141,6 +141,7 @@ func (s *Store) CreateRole(ctx context.Context, create *RoleMessage) (*RoleMessa
 		return nil, err
 	}
 	s.rolesCache.Add(create.ResourceID, create)
+	s.bumpAuthorizationGeneration()
 	return create, nil
 }
 
@@ -268,6 +269,7 @@ func (s *Store) UpdateRole(ctx context.Context, patch *UpdateRoleMessage) (*Role
 		role.Permissions[v] = true
 	}
 	s.rolesCache.Add(role.ResourceID, role)
+	s.bumpAuthorizationGeneration()
 	return role, nil
 }
 
@@ -277,6 +279,7 @@ func (s *Store) DeleteRole(ctx context.Context, resourceID string) error {
 		return err
 	}
 	s.rolesCache.Remove(resourceID)
+	s.bumpAuthorizationGeneration()
 	return nil
 }
 
