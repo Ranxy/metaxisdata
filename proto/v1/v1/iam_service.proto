@@ -58,7 +58,9 @@ message IamGrant {
   // resource type and id the ledger stores.
   string resource = 2 [(google.api.field_behavior) = REQUIRED];
 
-  // Format: roles/{role}
+  // Format: roles/{role}. The role's permissions must all be satisfiable at a
+  // resource scope: a role carrying a workspace-checked permission (settings,
+  // users, IAM, ...) is refused rather than stored as a grant that cannot work.
   string role = 3 [(google.api.field_behavior) = REQUIRED];
 
   // Format: users/{id} or groups/{email}. allUsers is the workspace read
@@ -110,6 +112,9 @@ message CheckPermissionsRequest {
   // normalizes both forms.
   string resource_id = 2 [(google.api.field_behavior) = REQUIRED];
 
+  // The permissions to answer. A permission the server always checks at the
+  // workspace (settings, users, IAM, catalog administration, ...) answers
+  // false: a scoped grant cannot satisfy it.
   repeated string permissions = 3;
 }
 

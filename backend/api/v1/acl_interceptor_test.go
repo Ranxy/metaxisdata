@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -371,6 +372,27 @@ func methodPermission(method protoreflect.MethodDescriptor) string {
 		return ""
 	}
 	return declared
+}
+
+// TestScopedMethodsDeclareScopeablePermissions keeps the scoped-method gate
+// and the catalog in step: the gate computes a scope set for the annotated
+// permission, so a permission a scope cannot satisfy would make the gate deny
+// every caller (or, if it were non-scopeable, never narrow).
+func TestScopedMethodsDeclareScopeablePermissions(t *testing.T) {
+	t.Parallel()
+
+	require.NotEmpty(t, scopedMethods)
+	for procedure := range scopedMethods {
+		fullName := strings.Replace(strings.TrimPrefix(procedure, "/"), "/", ".", 1)
+		declared := permissionForMethod(t, fullName)
+		require.NotEmptyf(t, declared, "scoped method %s declares no permission", procedure)
+		require.Truef(t, permission.Scopeable(declared),
+			"scoped method %s declares permission %q, which a scope cannot satisfy", procedure, declared)
+	}
+	for perm := range targetScopedPermissions {
+		require.Truef(t, permission.Scopeable(perm),
+			"target-scoped permission %q is not scopeable", perm)
+	}
 }
 
 // targetScopedPermissions are the permissions whose RPCs must be checked per

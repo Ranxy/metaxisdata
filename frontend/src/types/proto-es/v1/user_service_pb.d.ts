@@ -342,7 +342,9 @@ export declare type User = Message<"metaxisdata.v1.User"> & {
 
   /**
    * The permissions the caller holds on some scope through a scoped grant or an
-   * agent ownership derivation, which the workspace policy does not grant.
+   * agent ownership derivation, which the workspace policy does not grant. Only
+   * permissions a scope can satisfy are listed; a workspace-checked permission
+   * never appears here even if a stored role names it.
    * Populated by GetCurrentUser only. Navigation may combine it with
    * `permissions`, but it is not evidence that an action is allowed somewhere:
    * a resource action asks CheckPermissions or reads the resource's

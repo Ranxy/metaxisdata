@@ -31,10 +31,18 @@ type GrantReader interface {
 // authorization generation, so a grant/role/group/agent write rebuilds it.
 type principalSnapshot struct {
 	generation      uint64
+	expiresAt       time.Time
 	grants          []*store.IamGrantMessage
 	relations       []*store.AgentGrantRelation
 	rolePermissions map[string]map[permission.Permission]bool
 }
+
+// snapshotTTL bounds how long a snapshot may outlive a write made by another
+// replica (or any write this process did not observe). A local write still
+// invalidates through the generation immediately; the TTL is the cross-process
+// bound, like the revoked-token cache's 30 seconds. The documented topology is a
+// single replica, where the generation alone is exact.
+const snapshotTTL = 30 * time.Second
 
 // ScopedAuthorizer answers a resource check from the workspace policy first and
 // then from scoped grants and the agent ownership relations. The workspace
@@ -47,13 +55,23 @@ type ScopedAuthorizer struct {
 	mu       sync.RWMutex
 	cache    map[int]*principalSnapshot
 	cacheGen uint64
+
+	// ttl and now are the cache's clock; tests shrink them to prove the bound.
+	ttl time.Duration
+	now func() time.Time
 }
 
 // NewScopedAuthorizer builds the grant-backed authorizer over the workspace
 // checker. The workspace policy is the root: a principal it allows needs no
 // relationship lookup.
 func NewScopedAuthorizer(workspace PermissionChecker, grants GrantReader) *ScopedAuthorizer {
-	return &ScopedAuthorizer{workspace: workspace, grants: grants, cache: make(map[int]*principalSnapshot)}
+	return &ScopedAuthorizer{
+		workspace: workspace,
+		grants:    grants,
+		cache:     make(map[int]*principalSnapshot),
+		ttl:       snapshotTTL,
+		now:       time.Now,
+	}
 }
 
 // Check reports whether the principal holds perm on ref or one of its ancestors.
@@ -67,6 +85,11 @@ func (a *ScopedAuthorizer) Check(ctx context.Context, principal *store.UserMessa
 	}
 	if allowed {
 		return true, nil
+	}
+	// A permission the workspace checks cannot be satisfied on a resource: a
+	// stored grant naming it must not widen access through this path.
+	if !permission.Scopeable(perm) {
+		return false, nil
 	}
 	snapshot, err := a.snapshot(ctx, principal)
 	if err != nil {
@@ -115,6 +138,9 @@ func (a *ScopedAuthorizer) Scopes(ctx context.Context, principal *store.UserMess
 	if allowed {
 		return resource.ScopeSet{All: true}, nil
 	}
+	if !permission.Scopeable(perm) {
+		return resource.ScopeSet{}, nil
+	}
 	snapshot, err := a.snapshot(ctx, principal)
 	if err != nil {
 		return resource.ScopeSet{}, err
@@ -151,10 +177,11 @@ func (a *ScopedAuthorizer) Scopes(ctx context.Context, principal *store.UserMess
 // store's generation has moved.
 func (a *ScopedAuthorizer) snapshot(ctx context.Context, principal *store.UserMessage) (*principalSnapshot, error) {
 	generation := a.grants.AuthorizationGeneration()
+	now := a.now()
 	a.mu.RLock()
 	cached := a.cache[principal.ID]
 	a.mu.RUnlock()
-	if cached != nil && cached.generation == generation {
+	if cached != nil && cached.generation == generation && now.Before(cached.expiresAt) {
 		return cached, nil
 	}
 	grants, err := a.grants.ListIamGrants(ctx, &store.FindIamGrantMessage{
@@ -166,6 +193,7 @@ func (a *ScopedAuthorizer) snapshot(ctx context.Context, principal *store.UserMe
 	}
 	snapshot := &principalSnapshot{
 		generation:      generation,
+		expiresAt:       now.Add(a.ttl),
 		rolePermissions: make(map[string]map[permission.Permission]bool),
 	}
 	for _, grant := range grants {
@@ -333,6 +361,9 @@ func (a *ScopedAuthorizer) ScopedPermissions(ctx context.Context, principal *sto
 			continue
 		}
 		for perm := range snapshot.rolePermissions[grant.Role] {
+			if !permission.Scopeable(perm) {
+				continue
+			}
 			set[perm] = true
 		}
 	}

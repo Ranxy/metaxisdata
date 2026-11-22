@@ -341,6 +341,25 @@ func TestIamGrantApiRealServerIntegration(t *testing.T) {
 	}))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
+	// A role carrying a workspace-checked permission cannot be granted at a
+	// scope: the resource authorizer would have to report access it cannot give.
+	roleClient := v1connect.NewRoleServiceClient(httpClient, fixture.env.BaseURL)
+	suffix, err := common.RandomString(6)
+	require.NoError(t, err)
+	workspaceRole := common.FormatRole("ws-only-" + suffix)
+	_, err = roleClient.CreateRole(fixture.ctx, withToken(adminToken, &v1pb.CreateRoleRequest{
+		Role: &v1pb.Role{
+			Name:        workspaceRole,
+			Title:       "Workspace-only role",
+			Permissions: []string{"metaxisdata.dataQuality.rules.create", "metaxisdata.settings.get"},
+		},
+	}))
+	require.NoError(t, err)
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: workspaceRole, Member: ownerName},
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
 	_, err = iamClient.ListIamGrants(fixture.ctx, withToken(ownerToken, &v1pb.ListIamGrantsRequest{}))
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 
@@ -355,6 +374,36 @@ func TestIamGrantApiRealServerIntegration(t *testing.T) {
 	listed, err = iamClient.ListIamGrants(fixture.ctx, withToken(adminToken, &v1pb.ListIamGrantsRequest{Resource: resource}))
 	require.NoError(t, err)
 	require.Empty(t, listed.Msg.GetGrants())
+
+	// Deleting a grant is audited with the removed row, not just its id: the row is
+	// the only place the scope, role and member lived.
+	auditClient := v1connect.NewAuditLogServiceClient(httpClient, fixture.env.BaseURL)
+	logs, err := auditClient.ListAuditLogs(fixture.ctx, withToken(adminToken, &v1pb.ListAuditLogsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 100,
+	}))
+	require.NoError(t, err)
+	var deleted *v1pb.AuditLog
+	for _, log := range logs.Msg.GetAuditLogs() {
+		if log.GetMethod() != "/metaxisdata.v1.IamService/DeleteIamGrant" {
+			continue
+		}
+		grant := log.GetRequest().GetFields()["auditDetail"].GetStructValue().
+			GetFields()["deletedGrant"].GetStructValue()
+		if grant.GetFields()["name"].GetStringValue() == created.Msg.GetName() {
+			deleted = log
+			break
+		}
+	}
+	require.NotNil(t, deleted, "no audit row recorded the deleted grant %q", created.Msg.GetName())
+	grantDetail := deleted.GetRequest().GetFields()["auditDetail"].GetStructValue()
+	require.NotNil(t, grantDetail, "the delete audit row must carry the removed grant")
+	removed := grantDetail.GetFields()["deletedGrant"].GetStructValue()
+	require.NotNil(t, removed)
+	require.Equal(t, created.Msg.GetName(), removed.GetFields()["name"].GetStringValue())
+	require.Equal(t, resource, removed.GetFields()["resource"].GetStringValue())
+	require.Equal(t, "roles/qualityOwner", removed.GetFields()["role"].GetStringValue())
+	require.Equal(t, ownerName, removed.GetFields()["member"].GetStringValue())
 }
 
 // TestGrantReferenceGuardsRealServerIntegration pins the delete guards against
@@ -484,6 +533,16 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 	otherTarget := "another-instance;another_db;;users"
 	require.Equal(t, []bool{true, false, false}, check(ownerToken, otherTarget),
 		"the scoped grant does not reach another database")
+
+	// A permission the RPC path always checks at the workspace has no resource
+	// answer, so the self-service check must not promise it either.
+	workspaceOnly, err := iamClient.CheckPermissions(fixture.ctx, withToken(ownerToken, &v1pb.CheckPermissionsRequest{
+		ResourceType: "table",
+		ResourceId:   fixture.usersGUID,
+		Permissions:  []string{"metaxisdata.settings.update", "metaxisdata.iam.setPolicy"},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, []bool{false, false}, workspaceOnly.Msg.GetAllowed())
 
 	_, err = iamClient.CheckPermissions(fixture.ctx, withToken(adminToken, &v1pb.CheckPermissionsRequest{
 		ResourceType: "not-a-type",

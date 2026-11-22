@@ -5,6 +5,8 @@ import (
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestCatalogMatchesSource guards the single-source invariant: the generated
@@ -57,4 +59,29 @@ func TestPermissionShape(t *testing.T) {
 			t.Errorf("permission %q must have the form metaxisdata.<resource>[.<subResource>].<verb>", p)
 		}
 	}
+}
+
+// The scopeable set is the shipped scoped surface: every entry is a catalog
+// permission, and workspace-checked administration is not in it.
+func TestScopeablePermissions(t *testing.T) {
+	t.Parallel()
+
+	for _, perm := range ScopeablePermissions() {
+		require.Truef(t, Exist(perm), "scopeable permission %q is not in the catalog", perm)
+	}
+	require.True(t, Scopeable(DataQualityRulesCreate))
+	require.True(t, Scopeable(DataQualityIssuesUpdate))
+	require.False(t, Scopeable(SettingsUpdate))
+	require.False(t, Scopeable(UsersUpdate))
+	require.False(t, Scopeable(IAMSetPolicy))
+	require.False(t, Scopeable(DataQualityAgentsManage))
+	require.False(t, Scopeable("not.a.permission"))
+
+	blocked := NonScopeable(map[Permission]bool{
+		DataQualityRulesCreate: true,
+		SettingsUpdate:         true,
+		UsersUpdate:            true,
+	})
+	require.Equal(t, []Permission{SettingsUpdate, UsersUpdate}, blocked)
+	require.Empty(t, NonScopeable(map[Permission]bool{DataQualityRulesCreate: true}))
 }

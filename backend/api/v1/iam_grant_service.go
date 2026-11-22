@@ -13,7 +13,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
+	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -90,6 +92,11 @@ func (s *IamService) CreateIamGrant(ctx context.Context, req *connect.Request[v1
 	if role == nil {
 		return nil, connectErrorInvalid("unknown role %q", grant.GetRole())
 	}
+	if blocked := permission.NonScopeable(role.Permissions); len(blocked) > 0 {
+		return nil, connectErrorInvalid(
+			"role %q carries permissions that only apply workspace-wide (%s); bind a role whose permissions are meaningful at a scope",
+			grant.GetRole(), strings.Join(blocked, ", "))
+	}
 	switch roleID {
 	case store.WorkspaceAdminRole, store.WorkspaceMemberRole, store.QualityAgentRole:
 		return nil, connectErrorInvalid(
@@ -134,6 +141,14 @@ func (s *IamService) DeleteIamGrant(ctx context.Context, req *connect.Request[v1
 	if err != nil || id <= 0 {
 		return nil, connectErrorInvalid("invalid grant name %q", req.Msg.GetName())
 	}
+	grant, err := s.store.GetIamGrant(ctx, id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the iam grant"))
+	}
+	if grant == nil {
+		return nil, connect.NewError(connect.CodeNotFound,
+			errors.Errorf("the iam grant %q does not exist", req.Msg.GetName()))
+	}
 	deleted, err := s.store.DeleteIamGrant(ctx, id)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to delete the iam grant")
@@ -142,6 +157,22 @@ func (s *IamService) DeleteIamGrant(ctx context.Context, req *connect.Request[v1
 		return nil, connect.NewError(connect.CodeNotFound,
 			errors.Errorf("the iam grant %q does not exist", req.Msg.GetName()))
 	}
+	// The row is gone after this call, and the request names it only by id: record
+	// the snapshot so the audit ledger can still answer who had which role where.
+	recorded := map[string]any{
+		"name":     req.Msg.GetName(),
+		"resource": formatIamGrantResource(grant),
+		"role":     grant.Role,
+		"member":   grant.Member,
+	}
+	if grant.Condition != "" {
+		recorded["condition"] = grant.Condition
+	}
+	if grant.CreatedBy != nil {
+		recorded["createdBy"] = common.FormatUserUID(int(*grant.CreatedBy))
+	}
+	recorded["createTime"] = grant.CreatedAt.UTC().Format(time.RFC3339)
+	audit.RecordDetail(ctx, "deletedGrant", recorded)
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
