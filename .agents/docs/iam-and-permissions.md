@@ -1,6 +1,6 @@
 # IAM and permissions — Reference
 
-> Maintenance reference for `backend/common/permission/`, `backend/component/iam/`, `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service}.go`, and the IAM store. Related: [docs/security-posture.md](../../docs/security-posture.md) (workspace-scoped authorization, the `allUsers` invariant).
+> Maintenance reference for `backend/common/permission/`, `backend/component/iam/`, `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service}.go`, and the IAM store. Related: [resource-iam.md](resource-iam.md) (the resource-scoped target), [docs/security-posture.md](../../docs/security-posture.md) (the `allUsers` invariant).
 
 ## What it is
 
@@ -8,7 +8,8 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 
 ## Decisions
 
-- **Workspace-scoped only** — `CheckPermission` resolves against the workspace policy; per-resource lookup and `ResourceRef` plumbing would be dead weight in a single-workspace product.
+- **Workspace-scoped today** — `CheckPermission` resolves against the workspace policy. The resource-scoped target, its grant model and the compatibility contract are in [resource-iam.md](resource-iam.md); new authorization paths are written against that model.
+- **Scoped grants are additive and managed beside the policy** — `IamService.{List,Create,Delete}IamGrant` write the `iam_grant` ledger, and the IAM page's scope picker names an instance or one of its databases. A grant adds a role over that subtree; the workspace policy remains the root editor, and no grant can deny or narrow it.
 - **`workspaceMember` is an implicit `allUsers` binding resolved in memory** before any policy read, so a fresh install with an empty policy is usable; **`workspaceAdmin` holds the whole catalog**, so admin falls out of normal role→permission resolution instead of being a special case.
 - **Custom roles are real** — an operator can grant "sync instances but not touch users" without a code change.
 - **Groups are IAM principals** — a binding can name `groups/{email}`; the last-admin guard expands groups with the departing member excluded, so a group containing only the departing admin does not count as a survivor.
@@ -27,6 +28,7 @@ Predefined roles (`backend/store/predefined_roles.go`) are read-only over `RoleS
 - **`workspaceAdmin`** holds the whole catalog.
 - **`workspaceMember`** is the authenticated-principal baseline of 29 entries (`memberBaselinePermissions`): the read/discovery surface plus the manual-SQL writes and `users.list`. It deliberately omits instance and data-source writes, user writes, group/role/IAM administration, `settings.get`/`settings.update`, audit logs, OpenLineage writes, LLM profiles, `applications.apiKeys.*` (issuing a key is a credential that writes data), and `connectedApps.*` — a member still manages their own connections because the handler forces self-scoping, while seeing the workspace or revoking someone else's needs the permission.
 - **`qualityAgent`** is the built-in quality agent's IAM actor: quality-rule reads plus `dataQuality.suggest` and `dataQuality.plans.update`; its permission set is unchanged, and it still cannot publish, approve, edit rules or touch settings. The owner-requested adoption tool reuses the adoption RPC's `dataQuality.agents.get`, but its real gate is the product path — the owner's request in the current wake, adoption enabled, database scope, the daily cap and rule validation — not IAM, and every adoption is ledgered and audited. The adoption RPC (`AdoptQualityAgentPendingSuggestions`) carries the same `agents.get` annotation and an owner-or-administrator handler gate; it is how a member owner, who holds no `rules.create`, approves drafts. The approval runs through the internal create path, which does not check the caller's rule permissions because its only input is the agent's already-queued drafts; the check's created-by and the draft decision are the caller's, the check is owned by the agent's owner (or the approver), it does not spend the daily cap, and the audit row names the person.
+- **`qualityOwner`** is the data-quality manager bundle a scoped grant gives the owner of a database: rule get/list/create/update/delete/run, execution get/list, issue get/list/update, explain, suggest, contract publish, plan update, profile run and label update. It is a role, not a baseline: it takes effect only where an `iam_grant` names it, and a grant is additive to the workspace policy.
 
 ## Invariants
 
@@ -53,12 +55,12 @@ Predefined roles (`backend/store/predefined_roles.go`) are read-only over `RoleS
 
 ## Open items
 
-None tracked here. Per-resource IAM is a deliberate non-goal ([docs/security-posture.md](../../docs/security-posture.md)); `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog, guarded by a drift test rather than generated.
+Per-resource IAM is the target and is tracked in [resource-iam.md](resource-iam.md). `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog today, guarded by a drift test; the resource model makes it generated from the same source.
 
 ## Where things live
 
 - Catalog: `backend/common/permission/permission.json`, generator `backend/common/permission/gen/main.go`, generated `backend/common/permission/permission_gen.go`; engine `backend/component/iam/manager.go` (`CheckPermission`, `EffectivePermissions`), with principal and group expansion in `backend/utils/member.go`.
-- Store: `backend/store/predefined_roles.go`, `backend/store/role.go`, `backend/store/policy.go` (etag and `allUsers` guards), `backend/store/group.go`; schema `backend/migrator/migration/0.1/0006##iam_role.sql` and `backend/migrator/migration/LATEST.sql`.
-- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service,user_service}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage,ConnectedAppsSettingsPage}.vue`, `frontend/src/pages/ConnectedAppsPage.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam,connected-app}.ts`.
+- Store: `backend/store/predefined_roles.go`, `backend/store/role.go`, `backend/store/policy.go` (etag and `allUsers` guards), `backend/store/group.go`, `backend/store/iam_grant.go`; schema `backend/migrator/migration/0.1/0006##iam_role.sql` and `backend/migrator/migration/LATEST.sql`.
+- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,iam_grant_service,scoped_authorizer,role_service,group_service,connected_app_service,user_service}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage,ConnectedAppsSettingsPage}.vue`, `frontend/src/pages/ConnectedAppsPage.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam,connected-app}.ts`.
 - Tests: `backend/common/permission/permission_test.go`, `backend/component/iam/manager_test.go`, `backend/api/v1/acl_interceptor_test.go`, `backend/api/v1/connected_app_test.go`, `backend/store/{predefined_roles,role,policy,policy_all_users}_test.go`, `frontend/src/lib/permissions.test.ts`, end-to-end `backend/test/integration/runner/iam_service_test.go`.
 - Gates: `go test ./backend/...` plus `golangci-lint run --allow-parallel-runners`; `make test-integration` for the end-to-end file; inside `frontend/` the order is `pnpm biome:check`, `pnpm lint`, `pnpm i18n` (`pnpm i18n:sort` after locale edits), `pnpm type-check`, `pnpm test run`.

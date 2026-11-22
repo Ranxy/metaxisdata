@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 )
@@ -293,4 +294,65 @@ func allUsersBaselineBinding(policy *v1pb.IamPolicy) *v1pb.Binding {
 		}
 	}
 	return nil
+}
+
+// TestIamGrantApiRealServerIntegration covers the scoped-grant management API:
+// an admin creates a grant on one database, lists it, gets a conflict on a
+// duplicate, and deletes it. A member cannot manage grants, allUsers is refused
+// as a scoped grant, and a scope that names no live database is refused.
+func TestIamGrantApiRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "grant-api-owner")
+	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
+
+	created, err := iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.NoError(t, err)
+	require.NotEmpty(t, created.Msg.GetName())
+	require.Equal(t, resource, created.Msg.GetResource())
+
+	listed, err := iamClient.ListIamGrants(fixture.ctx, withToken(adminToken, &v1pb.ListIamGrantsRequest{Resource: resource}))
+	require.NoError(t, err)
+	require.Len(t, listed.Msg.GetGrants(), 1)
+	require.Equal(t, created.Msg.GetName(), listed.Msg.GetGrants()[0].GetName())
+
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.Equal(t, connect.CodeAlreadyExists, connect.CodeOf(err))
+
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: common.AllUsers},
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{
+			Resource: "instances/does-not-exist/databases/x",
+			Role:     "roles/qualityOwner",
+			Member:   ownerName,
+		},
+	}))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = iamClient.ListIamGrants(fixture.ctx, withToken(ownerToken, &v1pb.ListIamGrantsRequest{}))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(ownerToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	_, err = iamClient.DeleteIamGrant(fixture.ctx, withToken(adminToken, &v1pb.DeleteIamGrantRequest{Name: created.Msg.GetName()}))
+	require.NoError(t, err)
+
+	listed, err = iamClient.ListIamGrants(fixture.ctx, withToken(adminToken, &v1pb.ListIamGrantsRequest{Resource: resource}))
+	require.NoError(t, err)
+	require.Empty(t, listed.Msg.GetGrants())
 }

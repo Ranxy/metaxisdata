@@ -133,6 +133,32 @@ CREATE TABLE role (
     permissions jsonb NOT NULL DEFAULT '{}'
 );
 
+-- Scoped IAM grants: a role bound to one principal at one resource subtree. The
+-- workspace IAM policy remains the root; a grant here is additive and covers the
+-- resource plus every descendant. Only time-only conditions are stored.
+CREATE TABLE IF NOT EXISTS iam_grant (
+    id BIGSERIAL PRIMARY KEY,
+    -- workspace/instance/database/table/quality_rule/... (resource.Type name).
+    resource_type TEXT COLLATE "C" NOT NULL,
+    -- Empty for the workspace, a metadata GUID prefix for metadata, the resource id otherwise.
+    resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
+    -- Format: roles/{role}
+    role TEXT COLLATE "C" NOT NULL,
+    -- Format: users/{id}, groups/{email}, or allUsers.
+    member TEXT COLLATE "C" NOT NULL,
+    -- CEL over request.time; empty is unconditional.
+    condition TEXT NOT NULL DEFAULT '',
+    created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iam_grant_unique
+    ON iam_grant(resource_type, resource_id, role, member, condition);
+CREATE INDEX IF NOT EXISTS idx_iam_grant_member_resource
+    ON iam_grant(member, resource_type);
+CREATE INDEX IF NOT EXISTS idx_iam_grant_resource
+    ON iam_grant(resource_type, resource_id);
+COMMENT ON TABLE iam_grant IS 'Resource-scoped IAM grant: a role bound to a member at one resource subtree; additive to the workspace policy';
+
 
 
 -- Default system account id is 1.

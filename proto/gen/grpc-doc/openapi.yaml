@@ -1037,6 +1037,87 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/iamGrants:
+        get:
+            tags:
+                - IamService
+            description: List the scoped grants, optionally narrowed to one resource.
+            operationId: IamService_ListIamGrants
+            parameters:
+                - name: resource
+                  in: query
+                  description: Restrict to one scope; empty lists every scoped grant.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListIamGrantsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - IamService
+            description: Add one scoped grant. Additive to the workspace policy.
+            operationId: IamService_CreateIamGrant
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IamGrant'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IamGrant'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/iamGrants/{iamGrant}:
+        delete:
+            tags:
+                - IamService
+            description: Delete one scoped grant.
+            operationId: IamService_DeleteIamGrant
+            parameters:
+                - name: iamGrant
+                  in: path
+                  description: The iamGrant id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/iamPolicy:
         get:
             tags:
@@ -11477,6 +11558,47 @@ components:
                         - MEMBER
                     type: string
                     format: enum
+        IamGrant:
+            required:
+                - resource
+                - role
+                - member
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: iamGrants/{iam_grant}'
+                resource:
+                    type: string
+                    description: |-
+                        The scoped resource: instances/{instance} or
+                         instances/{instance}/databases/{database}. The server maps it to the
+                         resource type and id the ledger stores.
+                role:
+                    type: string
+                    description: 'Format: roles/{role}'
+                member:
+                    type: string
+                    description: |-
+                        Format: users/{id} or groups/{email}. allUsers is the workspace read
+                         baseline and is not accepted as a scoped grant member.
+                condition:
+                    allOf:
+                        - $ref: '#/components/schemas/Expr'
+                    description: |-
+                        The condition associated with this grant. When present the grant applies
+                         only while the condition evaluates to true; only request.time is bound.
+                createTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                createdBy:
+                    readOnly: true
+                    type: string
+                    description: 'Format: users/{user}. Empty when the creator is no longer resolvable.'
+            description: |-
+                IamGrant binds one role to one member at one resource scope. The workspace
+                 policy remains the root; a grant is additive over the resource subtree.
         IamPolicy:
             type: object
             properties:
@@ -12030,6 +12152,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/Group'
+                nextPageToken:
+                    type: string
+        ListIamGrantsResponse:
+            type: object
+            properties:
+                grants:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IamGrant'
                 nextPageToken:
                     type: string
         ListIdentityProviderBindingsResponse:

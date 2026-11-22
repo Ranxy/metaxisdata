@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -104,6 +105,10 @@ type FindQualityRuleMessage struct {
 	// TargetGUID is a GUID prefix: the rule's target_guid must equal it or live
 	// under it. That is what makes a table filter also match its columns.
 	TargetGUID *string
+	// Scopes restricts the list to the target subtrees an authorization scope set
+	// allows. A nil slice means no scope filter; an empty non-nil slice matches
+	// nothing, so a caller that computed no scope cannot read every rule.
+	Scopes []resource.Scope
 	// Instance, Database, Schema and TablePrefix narrow the target by path. They
 	// are object names (Instance is the instance resource id, the first GUID
 	// segment), not substrings; the deepest one set decides how many segments the
@@ -408,6 +413,13 @@ func buildQualityRuleWhere(find *FindQualityRuleMessage) (string, []any, error) 
 	}
 	if prefix != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", prefix)
+	}
+	if find.Scopes != nil {
+		if len(find.Scopes) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = appendGUIDSubtreeConditions(where, args, "target_guid", find.Scopes)
+		}
 	}
 
 	if find.Dimension != storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED {

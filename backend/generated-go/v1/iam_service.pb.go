@@ -11,6 +11,8 @@ import (
 	expr "google.golang.org/genproto/googleapis/type/expr"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -198,6 +200,312 @@ func (x *IamPolicyView) GetEtag() string {
 	return ""
 }
 
+// IamGrant binds one role to one member at one resource scope. The workspace
+// policy remains the root; a grant is additive over the resource subtree.
+type IamGrant struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: iamGrants/{iam_grant}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The scoped resource: instances/{instance} or
+	// instances/{instance}/databases/{database}. The server maps it to the
+	// resource type and id the ledger stores.
+	Resource string `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
+	// Format: roles/{role}
+	Role string `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
+	// Format: users/{id} or groups/{email}. allUsers is the workspace read
+	// baseline and is not accepted as a scoped grant member.
+	Member string `protobuf:"bytes,4,opt,name=member,proto3" json:"member,omitempty"`
+	// The condition associated with this grant. When present the grant applies
+	// only while the condition evaluates to true; only request.time is bound.
+	Condition  *expr.Expr             `protobuf:"bytes,5,opt,name=condition,proto3" json:"condition,omitempty"`
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// Format: users/{user}. Empty when the creator is no longer resolvable.
+	CreatedBy     string `protobuf:"bytes,7,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IamGrant) Reset() {
+	*x = IamGrant{}
+	mi := &file_v1_iam_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IamGrant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IamGrant) ProtoMessage() {}
+
+func (x *IamGrant) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_iam_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IamGrant.ProtoReflect.Descriptor instead.
+func (*IamGrant) Descriptor() ([]byte, []int) {
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *IamGrant) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *IamGrant) GetResource() string {
+	if x != nil {
+		return x.Resource
+	}
+	return ""
+}
+
+func (x *IamGrant) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *IamGrant) GetMember() string {
+	if x != nil {
+		return x.Member
+	}
+	return ""
+}
+
+func (x *IamGrant) GetCondition() *expr.Expr {
+	if x != nil {
+		return x.Condition
+	}
+	return nil
+}
+
+func (x *IamGrant) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *IamGrant) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+type ListIamGrantsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Restrict to one scope; empty lists every scoped grant.
+	Resource      string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
+	PageSize      int32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListIamGrantsRequest) Reset() {
+	*x = ListIamGrantsRequest{}
+	mi := &file_v1_iam_service_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListIamGrantsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListIamGrantsRequest) ProtoMessage() {}
+
+func (x *ListIamGrantsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_iam_service_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListIamGrantsRequest.ProtoReflect.Descriptor instead.
+func (*ListIamGrantsRequest) Descriptor() ([]byte, []int) {
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListIamGrantsRequest) GetResource() string {
+	if x != nil {
+		return x.Resource
+	}
+	return ""
+}
+
+func (x *ListIamGrantsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListIamGrantsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListIamGrantsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Grants        []*IamGrant            `protobuf:"bytes,1,rep,name=grants,proto3" json:"grants,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListIamGrantsResponse) Reset() {
+	*x = ListIamGrantsResponse{}
+	mi := &file_v1_iam_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListIamGrantsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListIamGrantsResponse) ProtoMessage() {}
+
+func (x *ListIamGrantsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_iam_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListIamGrantsResponse.ProtoReflect.Descriptor instead.
+func (*ListIamGrantsResponse) Descriptor() ([]byte, []int) {
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListIamGrantsResponse) GetGrants() []*IamGrant {
+	if x != nil {
+		return x.Grants
+	}
+	return nil
+}
+
+func (x *ListIamGrantsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type CreateIamGrantRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Grant         *IamGrant              `protobuf:"bytes,1,opt,name=grant,proto3" json:"grant,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateIamGrantRequest) Reset() {
+	*x = CreateIamGrantRequest{}
+	mi := &file_v1_iam_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateIamGrantRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateIamGrantRequest) ProtoMessage() {}
+
+func (x *CreateIamGrantRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_iam_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateIamGrantRequest.ProtoReflect.Descriptor instead.
+func (*CreateIamGrantRequest) Descriptor() ([]byte, []int) {
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CreateIamGrantRequest) GetGrant() *IamGrant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
+type DeleteIamGrantRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: iamGrants/{iam_grant}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteIamGrantRequest) Reset() {
+	*x = DeleteIamGrantRequest{}
+	mi := &file_v1_iam_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteIamGrantRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteIamGrantRequest) ProtoMessage() {}
+
+func (x *DeleteIamGrantRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_iam_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteIamGrantRequest.ProtoReflect.Descriptor instead.
+func (*DeleteIamGrantRequest) Descriptor() ([]byte, []int) {
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DeleteIamGrantRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type GetWorkspaceIamPolicyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -206,7 +514,7 @@ type GetWorkspaceIamPolicyRequest struct {
 
 func (x *GetWorkspaceIamPolicyRequest) Reset() {
 	*x = GetWorkspaceIamPolicyRequest{}
-	mi := &file_v1_iam_service_proto_msgTypes[3]
+	mi := &file_v1_iam_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +526,7 @@ func (x *GetWorkspaceIamPolicyRequest) String() string {
 func (*GetWorkspaceIamPolicyRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceIamPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_iam_service_proto_msgTypes[3]
+	mi := &file_v1_iam_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +539,7 @@ func (x *GetWorkspaceIamPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceIamPolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceIamPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_iam_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{8}
 }
 
 type SetWorkspaceIamPolicyRequest struct {
@@ -245,7 +553,7 @@ type SetWorkspaceIamPolicyRequest struct {
 
 func (x *SetWorkspaceIamPolicyRequest) Reset() {
 	*x = SetWorkspaceIamPolicyRequest{}
-	mi := &file_v1_iam_service_proto_msgTypes[4]
+	mi := &file_v1_iam_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -257,7 +565,7 @@ func (x *SetWorkspaceIamPolicyRequest) String() string {
 func (*SetWorkspaceIamPolicyRequest) ProtoMessage() {}
 
 func (x *SetWorkspaceIamPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_iam_service_proto_msgTypes[4]
+	mi := &file_v1_iam_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -270,7 +578,7 @@ func (x *SetWorkspaceIamPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWorkspaceIamPolicyRequest.ProtoReflect.Descriptor instead.
 func (*SetWorkspaceIamPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_iam_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_iam_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SetWorkspaceIamPolicyRequest) GetPolicy() *IamPolicy {
@@ -291,7 +599,7 @@ var File_v1_iam_service_proto protoreflect.FileDescriptor
 
 const file_v1_iam_service_proto_rawDesc = "" +
 	"\n" +
-	"\x14v1/iam_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x16google/type/expr.proto\x1a\x13v1/annotation.proto\"h\n" +
+	"\x14v1/iam_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16google/type/expr.proto\x1a\x13v1/annotation.proto\"h\n" +
 	"\aBinding\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
 	"\amembers\x18\x02 \x03(\tR\amembers\x12/\n" +
@@ -300,15 +608,40 @@ const file_v1_iam_service_proto_rawDesc = "" +
 	"\bbindings\x18\x01 \x03(\v2\x17.metaxisdata.v1.BindingR\bbindings\"V\n" +
 	"\rIamPolicyView\x121\n" +
 	"\x06policy\x18\x01 \x01(\v2\x19.metaxisdata.v1.IamPolicyR\x06policy\x12\x12\n" +
-	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x1e\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x8c\x02\n" +
+	"\bIamGrant\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
+	"\bresource\x18\x02 \x01(\tB\x03\xe0A\x02R\bresource\x12\x17\n" +
+	"\x04role\x18\x03 \x01(\tB\x03\xe0A\x02R\x04role\x12\x1b\n" +
+	"\x06member\x18\x04 \x01(\tB\x03\xe0A\x02R\x06member\x12/\n" +
+	"\tcondition\x18\x05 \x01(\v2\x11.google.type.ExprR\tcondition\x12@\n" +
+	"\vcreate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"createTime\x12\"\n" +
+	"\n" +
+	"created_by\x18\a \x01(\tB\x03\xe0A\x03R\tcreatedBy\"n\n" +
+	"\x14ListIamGrantsRequest\x12\x1a\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"q\n" +
+	"\x15ListIamGrantsResponse\x120\n" +
+	"\x06grants\x18\x01 \x03(\v2\x18.metaxisdata.v1.IamGrantR\x06grants\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"L\n" +
+	"\x15CreateIamGrantRequest\x123\n" +
+	"\x05grant\x18\x01 \x01(\v2\x18.metaxisdata.v1.IamGrantB\x03\xe0A\x02R\x05grant\"0\n" +
+	"\x15DeleteIamGrantRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\x1e\n" +
 	"\x1cGetWorkspaceIamPolicyRequest\"j\n" +
 	"\x1cSetWorkspaceIamPolicyRequest\x126\n" +
 	"\x06policy\x18\x01 \x01(\v2\x19.metaxisdata.v1.IamPolicyB\x03\xe0A\x02R\x06policy\x12\x12\n" +
-	"\x04etag\x18\x02 \x01(\tR\x04etag2\xc9\x02\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag2\x82\x06\n" +
 	"\n" +
 	"IamService\x12\x98\x01\n" +
 	"\x15GetWorkspaceIamPolicy\x12,.metaxisdata.v1.GetWorkspaceIamPolicyRequest\x1a\x1d.metaxisdata.v1.IamPolicyView\"2\x8a\xea0\x19metaxisdata.iam.getPolicy\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/iamPolicy\x12\x9f\x01\n" +
-	"\x15SetWorkspaceIamPolicy\x12,.metaxisdata.v1.SetWorkspaceIamPolicyRequest\x1a\x1d.metaxisdata.v1.IamPolicyView\"9\x8a\xea0\x19metaxisdata.iam.setPolicy\x98\xea0\x01\x82\xd3\xe4\x93\x02\x12:\x01*\x1a\r/v1/iamPolicyB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x15SetWorkspaceIamPolicy\x12,.metaxisdata.v1.SetWorkspaceIamPolicyRequest\x1a\x1d.metaxisdata.v1.IamPolicyView\"9\x8a\xea0\x19metaxisdata.iam.setPolicy\x98\xea0\x01\x82\xd3\xe4\x93\x02\x12:\x01*\x1a\r/v1/iamPolicy\x12\x90\x01\n" +
+	"\rListIamGrants\x12$.metaxisdata.v1.ListIamGrantsRequest\x1a%.metaxisdata.v1.ListIamGrantsResponse\"2\x8a\xea0\x19metaxisdata.iam.getPolicy\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/iamGrants\x12\x90\x01\n" +
+	"\x0eCreateIamGrant\x12%.metaxisdata.v1.CreateIamGrantRequest\x1a\x18.metaxisdata.v1.IamGrant\"=\x8a\xea0\x19metaxisdata.iam.setPolicy\x98\xea0\x01\x82\xd3\xe4\x93\x02\x16:\x05grant\"\r/v1/iamGrants\x12\x90\x01\n" +
+	"\x0eDeleteIamGrant\x12%.metaxisdata.v1.DeleteIamGrantRequest\x1a\x16.google.protobuf.Empty\"?\x8a\xea0\x19metaxisdata.iam.setPolicy\x98\xea0\x01\x82\xd3\xe4\x93\x02\x18*\x16/v1/{name=iamGrants/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_iam_service_proto_rawDescOnce sync.Once
@@ -322,29 +655,46 @@ func file_v1_iam_service_proto_rawDescGZIP() []byte {
 	return file_v1_iam_service_proto_rawDescData
 }
 
-var file_v1_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_v1_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_v1_iam_service_proto_goTypes = []any{
 	(*Binding)(nil),                      // 0: metaxisdata.v1.Binding
 	(*IamPolicy)(nil),                    // 1: metaxisdata.v1.IamPolicy
 	(*IamPolicyView)(nil),                // 2: metaxisdata.v1.IamPolicyView
-	(*GetWorkspaceIamPolicyRequest)(nil), // 3: metaxisdata.v1.GetWorkspaceIamPolicyRequest
-	(*SetWorkspaceIamPolicyRequest)(nil), // 4: metaxisdata.v1.SetWorkspaceIamPolicyRequest
-	(*expr.Expr)(nil),                    // 5: google.type.Expr
+	(*IamGrant)(nil),                     // 3: metaxisdata.v1.IamGrant
+	(*ListIamGrantsRequest)(nil),         // 4: metaxisdata.v1.ListIamGrantsRequest
+	(*ListIamGrantsResponse)(nil),        // 5: metaxisdata.v1.ListIamGrantsResponse
+	(*CreateIamGrantRequest)(nil),        // 6: metaxisdata.v1.CreateIamGrantRequest
+	(*DeleteIamGrantRequest)(nil),        // 7: metaxisdata.v1.DeleteIamGrantRequest
+	(*GetWorkspaceIamPolicyRequest)(nil), // 8: metaxisdata.v1.GetWorkspaceIamPolicyRequest
+	(*SetWorkspaceIamPolicyRequest)(nil), // 9: metaxisdata.v1.SetWorkspaceIamPolicyRequest
+	(*expr.Expr)(nil),                    // 10: google.type.Expr
+	(*timestamppb.Timestamp)(nil),        // 11: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                // 12: google.protobuf.Empty
 }
 var file_v1_iam_service_proto_depIdxs = []int32{
-	5, // 0: metaxisdata.v1.Binding.condition:type_name -> google.type.Expr
-	0, // 1: metaxisdata.v1.IamPolicy.bindings:type_name -> metaxisdata.v1.Binding
-	1, // 2: metaxisdata.v1.IamPolicyView.policy:type_name -> metaxisdata.v1.IamPolicy
-	1, // 3: metaxisdata.v1.SetWorkspaceIamPolicyRequest.policy:type_name -> metaxisdata.v1.IamPolicy
-	3, // 4: metaxisdata.v1.IamService.GetWorkspaceIamPolicy:input_type -> metaxisdata.v1.GetWorkspaceIamPolicyRequest
-	4, // 5: metaxisdata.v1.IamService.SetWorkspaceIamPolicy:input_type -> metaxisdata.v1.SetWorkspaceIamPolicyRequest
-	2, // 6: metaxisdata.v1.IamService.GetWorkspaceIamPolicy:output_type -> metaxisdata.v1.IamPolicyView
-	2, // 7: metaxisdata.v1.IamService.SetWorkspaceIamPolicy:output_type -> metaxisdata.v1.IamPolicyView
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	10, // 0: metaxisdata.v1.Binding.condition:type_name -> google.type.Expr
+	0,  // 1: metaxisdata.v1.IamPolicy.bindings:type_name -> metaxisdata.v1.Binding
+	1,  // 2: metaxisdata.v1.IamPolicyView.policy:type_name -> metaxisdata.v1.IamPolicy
+	10, // 3: metaxisdata.v1.IamGrant.condition:type_name -> google.type.Expr
+	11, // 4: metaxisdata.v1.IamGrant.create_time:type_name -> google.protobuf.Timestamp
+	3,  // 5: metaxisdata.v1.ListIamGrantsResponse.grants:type_name -> metaxisdata.v1.IamGrant
+	3,  // 6: metaxisdata.v1.CreateIamGrantRequest.grant:type_name -> metaxisdata.v1.IamGrant
+	1,  // 7: metaxisdata.v1.SetWorkspaceIamPolicyRequest.policy:type_name -> metaxisdata.v1.IamPolicy
+	8,  // 8: metaxisdata.v1.IamService.GetWorkspaceIamPolicy:input_type -> metaxisdata.v1.GetWorkspaceIamPolicyRequest
+	9,  // 9: metaxisdata.v1.IamService.SetWorkspaceIamPolicy:input_type -> metaxisdata.v1.SetWorkspaceIamPolicyRequest
+	4,  // 10: metaxisdata.v1.IamService.ListIamGrants:input_type -> metaxisdata.v1.ListIamGrantsRequest
+	6,  // 11: metaxisdata.v1.IamService.CreateIamGrant:input_type -> metaxisdata.v1.CreateIamGrantRequest
+	7,  // 12: metaxisdata.v1.IamService.DeleteIamGrant:input_type -> metaxisdata.v1.DeleteIamGrantRequest
+	2,  // 13: metaxisdata.v1.IamService.GetWorkspaceIamPolicy:output_type -> metaxisdata.v1.IamPolicyView
+	2,  // 14: metaxisdata.v1.IamService.SetWorkspaceIamPolicy:output_type -> metaxisdata.v1.IamPolicyView
+	5,  // 15: metaxisdata.v1.IamService.ListIamGrants:output_type -> metaxisdata.v1.ListIamGrantsResponse
+	3,  // 16: metaxisdata.v1.IamService.CreateIamGrant:output_type -> metaxisdata.v1.IamGrant
+	12, // 17: metaxisdata.v1.IamService.DeleteIamGrant:output_type -> google.protobuf.Empty
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_v1_iam_service_proto_init() }
@@ -359,7 +709,7 @@ func file_v1_iam_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_iam_service_proto_rawDesc), len(file_v1_iam_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

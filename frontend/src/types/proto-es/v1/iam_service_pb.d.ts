@@ -5,6 +5,7 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Expr } from "../google/type/expr_pb";
+import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file v1/iam_service.proto.
@@ -100,6 +101,154 @@ export declare type IamPolicyView = Message<"metaxisdata.v1.IamPolicyView"> & {
 export declare const IamPolicyViewSchema: GenMessage<IamPolicyView>;
 
 /**
+ * IamGrant binds one role to one member at one resource scope. The workspace
+ * policy remains the root; a grant is additive over the resource subtree.
+ *
+ * @generated from message metaxisdata.v1.IamGrant
+ */
+export declare type IamGrant = Message<"metaxisdata.v1.IamGrant"> & {
+  /**
+   * Format: iamGrants/{iam_grant}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The scoped resource: instances/{instance} or
+   * instances/{instance}/databases/{database}. The server maps it to the
+   * resource type and id the ledger stores.
+   *
+   * @generated from field: string resource = 2;
+   */
+  resource: string;
+
+  /**
+   * Format: roles/{role}
+   *
+   * @generated from field: string role = 3;
+   */
+  role: string;
+
+  /**
+   * Format: users/{id} or groups/{email}. allUsers is the workspace read
+   * baseline and is not accepted as a scoped grant member.
+   *
+   * @generated from field: string member = 4;
+   */
+  member: string;
+
+  /**
+   * The condition associated with this grant. When present the grant applies
+   * only while the condition evaluates to true; only request.time is bound.
+   *
+   * @generated from field: google.type.Expr condition = 5;
+   */
+  condition?: Expr;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 6;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * Format: users/{user}. Empty when the creator is no longer resolvable.
+   *
+   * @generated from field: string created_by = 7;
+   */
+  createdBy: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.IamGrant.
+ * Use `create(IamGrantSchema)` to create a new message.
+ */
+export declare const IamGrantSchema: GenMessage<IamGrant>;
+
+/**
+ * @generated from message metaxisdata.v1.ListIamGrantsRequest
+ */
+export declare type ListIamGrantsRequest = Message<"metaxisdata.v1.ListIamGrantsRequest"> & {
+  /**
+   * Restrict to one scope; empty lists every scoped grant.
+   *
+   * @generated from field: string resource = 1;
+   */
+  resource: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListIamGrantsRequest.
+ * Use `create(ListIamGrantsRequestSchema)` to create a new message.
+ */
+export declare const ListIamGrantsRequestSchema: GenMessage<ListIamGrantsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListIamGrantsResponse
+ */
+export declare type ListIamGrantsResponse = Message<"metaxisdata.v1.ListIamGrantsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.IamGrant grants = 1;
+   */
+  grants: IamGrant[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListIamGrantsResponse.
+ * Use `create(ListIamGrantsResponseSchema)` to create a new message.
+ */
+export declare const ListIamGrantsResponseSchema: GenMessage<ListIamGrantsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateIamGrantRequest
+ */
+export declare type CreateIamGrantRequest = Message<"metaxisdata.v1.CreateIamGrantRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.IamGrant grant = 1;
+   */
+  grant?: IamGrant;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateIamGrantRequest.
+ * Use `create(CreateIamGrantRequestSchema)` to create a new message.
+ */
+export declare const CreateIamGrantRequestSchema: GenMessage<CreateIamGrantRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteIamGrantRequest
+ */
+export declare type DeleteIamGrantRequest = Message<"metaxisdata.v1.DeleteIamGrantRequest"> & {
+  /**
+   * Format: iamGrants/{iam_grant}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteIamGrantRequest.
+ * Use `create(DeleteIamGrantRequestSchema)` to create a new message.
+ */
+export declare const DeleteIamGrantRequestSchema: GenMessage<DeleteIamGrantRequest>;
+
+/**
  * @generated from message metaxisdata.v1.GetWorkspaceIamPolicyRequest
  */
 export declare type GetWorkspaceIamPolicyRequest = Message<"metaxisdata.v1.GetWorkspaceIamPolicyRequest"> & {
@@ -161,6 +310,36 @@ export declare const IamService: GenService<{
     methodKind: "unary";
     input: typeof SetWorkspaceIamPolicyRequestSchema;
     output: typeof IamPolicyViewSchema;
+  },
+  /**
+   * List the scoped grants, optionally narrowed to one resource.
+   *
+   * @generated from rpc metaxisdata.v1.IamService.ListIamGrants
+   */
+  listIamGrants: {
+    methodKind: "unary";
+    input: typeof ListIamGrantsRequestSchema;
+    output: typeof ListIamGrantsResponseSchema;
+  },
+  /**
+   * Add one scoped grant. Additive to the workspace policy.
+   *
+   * @generated from rpc metaxisdata.v1.IamService.CreateIamGrant
+   */
+  createIamGrant: {
+    methodKind: "unary";
+    input: typeof CreateIamGrantRequestSchema;
+    output: typeof IamGrantSchema;
+  },
+  /**
+   * Delete one scoped grant.
+   *
+   * @generated from rpc metaxisdata.v1.IamService.DeleteIamGrant
+   */
+  deleteIamGrant: {
+    methodKind: "unary";
+    input: typeof DeleteIamGrantRequestSchema;
+    output: typeof EmptySchema;
   },
 }>;
 

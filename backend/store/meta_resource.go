@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -108,6 +109,31 @@ func appendGUIDSubtreeCondition(where []string, args []any, column string, guidP
 	args = append(args, descendantPattern)
 
 	where = append(where, fmt.Sprintf(`(%s = $%d OR %s LIKE $%d ESCAPE E'\\')`, column, exactArgIndex, column, descendantArgIndex))
+	return where, args
+}
+
+// appendGUIDSubtreeConditions ORs the subtree predicate of every scope into one
+// condition. The caller owns the empty-set decision: an empty slice produces an
+// empty OR, so callers pass a non-empty set or add FALSE themselves.
+func appendGUIDSubtreeConditions(where []string, args []any, column string, scopes []resource.Scope) ([]string, []any) {
+	if len(scopes) == 0 {
+		return where, args
+	}
+	if len(scopes) == 1 {
+		return appendGUIDSubtreeCondition(where, args, column, scopes[0].ID)
+	}
+	conditions := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		exactArgIndex := len(args) + 1
+		args = append(args, scope.ID)
+
+		descendantArgIndex := len(args) + 1
+		descendantPattern := likePatternEscaper.Replace(scope.ID+common.MetaGUIDSplit) + "%"
+		args = append(args, descendantPattern)
+
+		conditions = append(conditions, fmt.Sprintf(`(%s = $%d OR %s LIKE $%d ESCAPE E'\\')`, column, exactArgIndex, column, descendantArgIndex))
+	}
+	where = append(where, "("+strings.Join(conditions, " OR ")+")")
 	return where, args
 }
 

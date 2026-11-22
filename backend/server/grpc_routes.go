@@ -108,6 +108,7 @@ func configureGrpcRouters(
 	)
 
 	iamManager := iam.NewManager(stores)
+	scopedAuthorizer := iam.NewScopedAuthorizer(iamManager, stores)
 	userService := apiv1.NewUserService(stores, iamManager, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
@@ -120,6 +121,7 @@ func configureGrpcRouters(
 	// Manual executions are planned by the API and queued to the quality runner;
 	// when it is absent they are still planned PENDING rather than dropped.
 	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, iamManager, notifier)
+	dataQualityService.SetAuthorizer(scopedAuthorizer)
 	if sessionEngine != nil {
 		sessionEngine.SetAdoption(dataQualityService.AdoptQualitySuggestions)
 		sessionEngine.SetOwnerAdoption(dataQualityService.AdoptQualitySuggestionsForOwner)
@@ -168,7 +170,7 @@ func configureGrpcRouters(
 			// the ledger records the DeadlineExceeded the caller actually received,
 			// and outside ACL so a rejected call still runs under the bound.
 			apiv1.NewDeadlineInterceptor(connectUnaryTimeout, connectLongUnaryMethods),
-			apiv1.NewACLInterceptor(iamManager),
+			apiv1.NewACLInterceptor(iamManager, scopedAuthorizer),
 			// Innermost, so the audit interceptor records the status the client
 			// actually received.
 			apiv1.NewErrorMappingInterceptor(),

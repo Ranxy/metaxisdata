@@ -9,6 +9,7 @@ import (
 	context "context"
 	errors "errors"
 	v1 "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
 	strings "strings"
 )
@@ -39,6 +40,15 @@ const (
 	// IamServiceSetWorkspaceIamPolicyProcedure is the fully-qualified name of the IamService's
 	// SetWorkspaceIamPolicy RPC.
 	IamServiceSetWorkspaceIamPolicyProcedure = "/metaxisdata.v1.IamService/SetWorkspaceIamPolicy"
+	// IamServiceListIamGrantsProcedure is the fully-qualified name of the IamService's ListIamGrants
+	// RPC.
+	IamServiceListIamGrantsProcedure = "/metaxisdata.v1.IamService/ListIamGrants"
+	// IamServiceCreateIamGrantProcedure is the fully-qualified name of the IamService's CreateIamGrant
+	// RPC.
+	IamServiceCreateIamGrantProcedure = "/metaxisdata.v1.IamService/CreateIamGrant"
+	// IamServiceDeleteIamGrantProcedure is the fully-qualified name of the IamService's DeleteIamGrant
+	// RPC.
+	IamServiceDeleteIamGrantProcedure = "/metaxisdata.v1.IamService/DeleteIamGrant"
 )
 
 // IamServiceClient is a client for the metaxisdata.v1.IamService service.
@@ -47,6 +57,12 @@ type IamServiceClient interface {
 	GetWorkspaceIamPolicy(context.Context, *connect.Request[v1.GetWorkspaceIamPolicyRequest]) (*connect.Response[v1.IamPolicyView], error)
 	// Set the workspace IAM policy (full replace, etag-guarded).
 	SetWorkspaceIamPolicy(context.Context, *connect.Request[v1.SetWorkspaceIamPolicyRequest]) (*connect.Response[v1.IamPolicyView], error)
+	// List the scoped grants, optionally narrowed to one resource.
+	ListIamGrants(context.Context, *connect.Request[v1.ListIamGrantsRequest]) (*connect.Response[v1.ListIamGrantsResponse], error)
+	// Add one scoped grant. Additive to the workspace policy.
+	CreateIamGrant(context.Context, *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error)
+	// Delete one scoped grant.
+	DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewIamServiceClient constructs a client for the metaxisdata.v1.IamService service. By default, it
@@ -72,6 +88,24 @@ func NewIamServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(iamServiceMethods.ByName("SetWorkspaceIamPolicy")),
 			connect.WithClientOptions(opts...),
 		),
+		listIamGrants: connect.NewClient[v1.ListIamGrantsRequest, v1.ListIamGrantsResponse](
+			httpClient,
+			baseURL+IamServiceListIamGrantsProcedure,
+			connect.WithSchema(iamServiceMethods.ByName("ListIamGrants")),
+			connect.WithClientOptions(opts...),
+		),
+		createIamGrant: connect.NewClient[v1.CreateIamGrantRequest, v1.IamGrant](
+			httpClient,
+			baseURL+IamServiceCreateIamGrantProcedure,
+			connect.WithSchema(iamServiceMethods.ByName("CreateIamGrant")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteIamGrant: connect.NewClient[v1.DeleteIamGrantRequest, emptypb.Empty](
+			httpClient,
+			baseURL+IamServiceDeleteIamGrantProcedure,
+			connect.WithSchema(iamServiceMethods.ByName("DeleteIamGrant")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -79,6 +113,9 @@ func NewIamServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 type iamServiceClient struct {
 	getWorkspaceIamPolicy *connect.Client[v1.GetWorkspaceIamPolicyRequest, v1.IamPolicyView]
 	setWorkspaceIamPolicy *connect.Client[v1.SetWorkspaceIamPolicyRequest, v1.IamPolicyView]
+	listIamGrants         *connect.Client[v1.ListIamGrantsRequest, v1.ListIamGrantsResponse]
+	createIamGrant        *connect.Client[v1.CreateIamGrantRequest, v1.IamGrant]
+	deleteIamGrant        *connect.Client[v1.DeleteIamGrantRequest, emptypb.Empty]
 }
 
 // GetWorkspaceIamPolicy calls metaxisdata.v1.IamService.GetWorkspaceIamPolicy.
@@ -91,12 +128,33 @@ func (c *iamServiceClient) SetWorkspaceIamPolicy(ctx context.Context, req *conne
 	return c.setWorkspaceIamPolicy.CallUnary(ctx, req)
 }
 
+// ListIamGrants calls metaxisdata.v1.IamService.ListIamGrants.
+func (c *iamServiceClient) ListIamGrants(ctx context.Context, req *connect.Request[v1.ListIamGrantsRequest]) (*connect.Response[v1.ListIamGrantsResponse], error) {
+	return c.listIamGrants.CallUnary(ctx, req)
+}
+
+// CreateIamGrant calls metaxisdata.v1.IamService.CreateIamGrant.
+func (c *iamServiceClient) CreateIamGrant(ctx context.Context, req *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error) {
+	return c.createIamGrant.CallUnary(ctx, req)
+}
+
+// DeleteIamGrant calls metaxisdata.v1.IamService.DeleteIamGrant.
+func (c *iamServiceClient) DeleteIamGrant(ctx context.Context, req *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteIamGrant.CallUnary(ctx, req)
+}
+
 // IamServiceHandler is an implementation of the metaxisdata.v1.IamService service.
 type IamServiceHandler interface {
 	// Get the workspace IAM policy.
 	GetWorkspaceIamPolicy(context.Context, *connect.Request[v1.GetWorkspaceIamPolicyRequest]) (*connect.Response[v1.IamPolicyView], error)
 	// Set the workspace IAM policy (full replace, etag-guarded).
 	SetWorkspaceIamPolicy(context.Context, *connect.Request[v1.SetWorkspaceIamPolicyRequest]) (*connect.Response[v1.IamPolicyView], error)
+	// List the scoped grants, optionally narrowed to one resource.
+	ListIamGrants(context.Context, *connect.Request[v1.ListIamGrantsRequest]) (*connect.Response[v1.ListIamGrantsResponse], error)
+	// Add one scoped grant. Additive to the workspace policy.
+	CreateIamGrant(context.Context, *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error)
+	// Delete one scoped grant.
+	DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewIamServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -118,12 +176,36 @@ func NewIamServiceHandler(svc IamServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(iamServiceMethods.ByName("SetWorkspaceIamPolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
+	iamServiceListIamGrantsHandler := connect.NewUnaryHandler(
+		IamServiceListIamGrantsProcedure,
+		svc.ListIamGrants,
+		connect.WithSchema(iamServiceMethods.ByName("ListIamGrants")),
+		connect.WithHandlerOptions(opts...),
+	)
+	iamServiceCreateIamGrantHandler := connect.NewUnaryHandler(
+		IamServiceCreateIamGrantProcedure,
+		svc.CreateIamGrant,
+		connect.WithSchema(iamServiceMethods.ByName("CreateIamGrant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	iamServiceDeleteIamGrantHandler := connect.NewUnaryHandler(
+		IamServiceDeleteIamGrantProcedure,
+		svc.DeleteIamGrant,
+		connect.WithSchema(iamServiceMethods.ByName("DeleteIamGrant")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.IamService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IamServiceGetWorkspaceIamPolicyProcedure:
 			iamServiceGetWorkspaceIamPolicyHandler.ServeHTTP(w, r)
 		case IamServiceSetWorkspaceIamPolicyProcedure:
 			iamServiceSetWorkspaceIamPolicyHandler.ServeHTTP(w, r)
+		case IamServiceListIamGrantsProcedure:
+			iamServiceListIamGrantsHandler.ServeHTTP(w, r)
+		case IamServiceCreateIamGrantProcedure:
+			iamServiceCreateIamGrantHandler.ServeHTTP(w, r)
+		case IamServiceDeleteIamGrantProcedure:
+			iamServiceDeleteIamGrantHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -139,4 +221,16 @@ func (UnimplementedIamServiceHandler) GetWorkspaceIamPolicy(context.Context, *co
 
 func (UnimplementedIamServiceHandler) SetWorkspaceIamPolicy(context.Context, *connect.Request[v1.SetWorkspaceIamPolicyRequest]) (*connect.Response[v1.IamPolicyView], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.SetWorkspaceIamPolicy is not implemented"))
+}
+
+func (UnimplementedIamServiceHandler) ListIamGrants(context.Context, *connect.Request[v1.ListIamGrantsRequest]) (*connect.Response[v1.ListIamGrantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.ListIamGrants is not implemented"))
+}
+
+func (UnimplementedIamServiceHandler) CreateIamGrant(context.Context, *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.CreateIamGrant is not implemented"))
+}
+
+func (UnimplementedIamServiceHandler) DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.DeleteIamGrant is not implemented"))
 }

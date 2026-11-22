@@ -4,6 +4,8 @@ package metaxisdata.v1;
 
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 import "google/type/expr.proto";
 import "v1/annotation.proto";
 
@@ -45,6 +47,56 @@ message IamPolicyView {
   string etag = 2;
 }
 
+// IamGrant binds one role to one member at one resource scope. The workspace
+// policy remains the root; a grant is additive over the resource subtree.
+message IamGrant {
+  // Format: iamGrants/{iam_grant}
+  string name = 1;
+
+  // The scoped resource: instances/{instance} or
+  // instances/{instance}/databases/{database}. The server maps it to the
+  // resource type and id the ledger stores.
+  string resource = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Format: roles/{role}
+  string role = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // Format: users/{id} or groups/{email}. allUsers is the workspace read
+  // baseline and is not accepted as a scoped grant member.
+  string member = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // The condition associated with this grant. When present the grant applies
+  // only while the condition evaluates to true; only request.time is bound.
+  google.type.Expr condition = 5;
+
+  google.protobuf.Timestamp create_time = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Format: users/{user}. Empty when the creator is no longer resolvable.
+  string created_by = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListIamGrantsRequest {
+  // Restrict to one scope; empty lists every scoped grant.
+  string resource = 1;
+
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListIamGrantsResponse {
+  repeated IamGrant grants = 1;
+  string next_page_token = 2;
+}
+
+message CreateIamGrantRequest {
+  IamGrant grant = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteIamGrantRequest {
+  // Format: iamGrants/{iam_grant}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message GetWorkspaceIamPolicyRequest {}
 
 message SetWorkspaceIamPolicyRequest {
@@ -70,6 +122,29 @@ service IamService {
       put: "/v1/iamPolicy"
       body: "*"
     };
+    option (metaxisdata.v1.permission) = "metaxisdata.iam.setPolicy";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // List the scoped grants, optionally narrowed to one resource.
+  rpc ListIamGrants(ListIamGrantsRequest) returns (ListIamGrantsResponse) {
+    option (google.api.http) = {get: "/v1/iamGrants"};
+    option (metaxisdata.v1.permission) = "metaxisdata.iam.getPolicy";
+  }
+
+  // Add one scoped grant. Additive to the workspace policy.
+  rpc CreateIamGrant(CreateIamGrantRequest) returns (IamGrant) {
+    option (google.api.http) = {
+      post: "/v1/iamGrants"
+      body: "grant"
+    };
+    option (metaxisdata.v1.permission) = "metaxisdata.iam.setPolicy";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Delete one scoped grant.
+  rpc DeleteIamGrant(DeleteIamGrantRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=iamGrants/*}"};
     option (metaxisdata.v1.permission) = "metaxisdata.iam.setPolicy";
     option (metaxisdata.v1.audit) = true;
   }

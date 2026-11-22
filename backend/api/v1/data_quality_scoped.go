@@ -1,0 +1,95 @@
+package v1
+
+import (
+	"context"
+	"strings"
+
+	"connectrpc.com/connect"
+	"github.com/pkg/errors"
+
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+)
+
+// scopedMethods are the RPCs whose permission is decided per resource rather
+// than workspace-wide. The ACL interceptor asks the resource authorizer for the
+// caller's scopes and refuses when there are none; the handler then checks the
+// specific target. Adding a method here without a handler check would let a
+// caller with a grant on one target reach another.
+var scopedMethods = map[string]bool{
+	"/metaxisdata.v1.DataQualityService/GetQualityRule":          true,
+	"/metaxisdata.v1.DataQualityService/ListQualityRules":        true,
+	"/metaxisdata.v1.DataQualityService/CreateQualityRule":       true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityRule":       true,
+	"/metaxisdata.v1.DataQualityService/DeleteQualityRule":       true,
+	"/metaxisdata.v1.DataQualityService/RunQualityRules":         true,
+	"/metaxisdata.v1.DataQualityService/BatchCreateQualityRules": true,
+	"/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules": true,
+}
+
+// qualityRuleTarget resolves the target a create writes to. A named suggestion
+// supplies the target; otherwise the request's rule target does. The pre-read
+// duplicates one lookup so the scoped check runs before the write.
+func (s *DataQualityService) qualityRuleTarget(ctx context.Context, suggestionName string, rule *v1pb.QualityRule) (string, error) {
+	if name := strings.TrimSpace(suggestionName); name != "" {
+		suggestion, err := s.pendingRuleDraftSuggestion(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		return suggestion.TargetGUID, nil
+	}
+	if rule == nil || rule.GetTarget() == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(rule.GetTarget().GetMetaGuid()), nil
+}
+
+// requireQualityTargetPermission checks one resource-scoped permission on the
+// target a quality rule lives on. A nil authorizer means the service was built
+// without the scoped path (focused unit tests and internal callers); the ACL
+// interceptor fails closed for scoped methods in production.
+func (s *DataQualityService) requireQualityTargetPermission(ctx context.Context, perm permission.Permission, targetGUID string) error {
+	if s.authorizer == nil || strings.TrimSpace(targetGUID) == "" {
+		return nil
+	}
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+	allowed, err := s.authorizer.Check(ctx, user, perm, resource.NewRef(resource.TypeTable, targetGUID))
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the target permission"))
+	}
+	if !allowed {
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("permission %q denied", perm))
+	}
+	return nil
+}
+
+// requireQualityRuleRead maps a denied read to NotFound so the reader cannot
+// learn that a rule exists outside its scope.
+func (s *DataQualityService) requireQualityRuleRead(ctx context.Context, targetGUID string) error {
+	err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesGet, targetGUID)
+	if err != nil && connect.CodeOf(err) == connect.CodePermissionDenied {
+		return connect.NewError(connect.CodeNotFound, errors.New("the quality rule is not found"))
+	}
+	return err
+}
+
+// qualityRuleListScopes returns the caller's scope set for the rule list. A nil
+// authorizer keeps the legacy unfiltered behavior for focused unit tests.
+func (s *DataQualityService) qualityRuleListScopes(ctx context.Context, perm permission.Permission) (resource.ScopeSet, error) {
+	if s.authorizer == nil {
+		return resource.ScopeSet{All: true}, nil
+	}
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return resource.ScopeSet{}, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+	scopes, err := s.authorizer.Scopes(ctx, user, perm)
+	if err != nil {
+		return resource.ScopeSet{}, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission scopes"))
+	}
+	return scopes.Normalize(), nil
+}
