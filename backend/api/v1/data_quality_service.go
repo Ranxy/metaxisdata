@@ -17,9 +17,11 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -110,6 +112,9 @@ type DataQualityService struct {
 	// iam checks the permission of a caller when a handler must decide between
 	// owner/admin access, which a proto annotation cannot express.
 	iam PermissionChecker
+	// authorizer decides resource-scoped quality actions. The server wires it;
+	// nil keeps the legacy workspace check for internal callers and focused tests.
+	authorizer iam.Authorizer
 	// notifier sends the owner's inbox row when an agent escalates. Nil disables
 	// notification while keeping the attention to-do (tests).
 	notifier *notification.Service
@@ -137,6 +142,13 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, execu
 		iam:                iamChecker,
 		notifier:           notifier,
 	}
+}
+
+// SetAuthorizer wires the resource-scoped authorizer. The server calls it after
+// construction; the ACL interceptor fails closed for scoped methods when it is
+// missing, so a nil value only affects internal callers and focused tests.
+func (s *DataQualityService) SetAuthorizer(authorizer iam.Authorizer) {
+	s.authorizer = authorizer
 }
 
 // qualityExportConcurrency is how many exports may stream at once per process.
@@ -275,6 +287,17 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	if err := applyQualityRuleListFilters(find, req.Msg); err != nil {
 		return nil, err
 	}
+	scopes, err := s.qualityRuleListScopes(ctx, permission.DataQualityRulesList)
+	if err != nil {
+		return nil, err
+	}
+	if !scopes.All {
+		metadata := scopes.MetadataScopes()
+		if len(metadata) == 0 {
+			return connect.NewResponse(&v1pb.ListQualityRulesResponse{}), nil
+		}
+		find.Scopes = metadata
+	}
 	rules, err := s.store.ListQualityRules(ctx, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality rules")
@@ -375,6 +398,9 @@ func (s *DataQualityService) GetQualityRule(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualityRuleRead(ctx, rule.TargetGUID); err != nil {
+		return nil, err
+	}
 	converted, err := s.enrichQualityRule(ctx, workspaceID, rule)
 	if err != nil {
 		return nil, err
@@ -427,6 +453,13 @@ func (s *DataQualityService) enrichQualityRules(ctx context.Context, workspaceID
 func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect.Request[v1pb.CreateQualityRuleRequest]) (*connect.Response[v1pb.QualityRule], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
+		return nil, err
+	}
+	targetGUID, err := s.qualityRuleTarget(ctx, req.Msg.GetSuggestion(), req.Msg.GetRule())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesCreate, targetGUID); err != nil {
 		return nil, err
 	}
 	created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
@@ -692,6 +725,9 @@ func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1
 	}
 	current, err := s.fetchQualityRule(ctx, resourceID)
 	if err != nil {
+		return "", nil, err
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesUpdate, current.TargetGUID); err != nil {
 		return "", nil, err
 	}
 	update, err := parseQualityRuleUpdate(msg.GetRule(), msg.GetUpdateMask().GetPaths())
@@ -964,6 +1000,13 @@ func (s *DataQualityService) DeleteQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
+	current, err := s.fetchQualityRule(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesDelete, current.TargetGUID); err != nil {
+		return nil, err
+	}
 	archived, err := s.store.ArchiveQualityRule(ctx, resourceID, int32(currentUserID(ctx)))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to archive the quality rule")
@@ -1202,6 +1245,11 @@ func (s *DataQualityService) RunQualityRules(ctx context.Context, req *connect.R
 	}
 	if len(rules) == 0 {
 		return nil, connectErrorInvalid("no enabled quality rules match the selection")
+	}
+	for _, rule := range rules {
+		if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesRun, rule.TargetGUID); err != nil {
+			return nil, err
+		}
 	}
 
 	groups := groupQualityRulesForManualRun(rules)

@@ -29,12 +29,19 @@ type PermissionChecker interface {
 // its access control), and neither is a method declared
 // allow_without_credential: those must stay reachable before login.
 type ACLInterceptor struct {
-	iam PermissionChecker
+	iam        PermissionChecker
+	authorizer iam.Authorizer
+	// scoped declares the methods whose permission is decided per resource
+	// instead of workspace-wide. The interceptor then asks the resource authorizer
+	// for the caller's scopes; the handler checks the specific target.
+	scoped map[string]bool
 }
 
-// NewACLInterceptor returns a new ACL interceptor backed by the IAM manager.
-func NewACLInterceptor(iamManager *iam.Manager) *ACLInterceptor {
-	return &ACLInterceptor{iam: iamManager}
+// NewACLInterceptor returns a new ACL interceptor backed by the IAM manager and
+// the resource authorizer. The authorizer is used only for the methods in
+// scopedMethods; every other method keeps the workspace check.
+func NewACLInterceptor(iamManager *iam.Manager, authorizer iam.Authorizer) *ACLInterceptor {
+	return &ACLInterceptor{iam: iamManager, authorizer: authorizer, scoped: scopedMethods}
 }
 
 // newACLInterceptorWithChecker builds an interceptor backed by a fake checker.
@@ -42,9 +49,15 @@ func newACLInterceptorWithChecker(checker PermissionChecker) *ACLInterceptor {
 	return &ACLInterceptor{iam: checker}
 }
 
+// newACLInterceptorWithScoped builds an interceptor with a fake workspace checker
+// and a fake resource authorizer, for the scoped-method tests.
+func newACLInterceptorWithScoped(checker PermissionChecker, authorizer iam.Authorizer, scoped map[string]bool) *ACLInterceptor {
+	return &ACLInterceptor{iam: checker, authorizer: authorizer, scoped: scoped}
+}
+
 func (in *ACLInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		if err := in.authorize(ctx); err != nil {
+		if err := in.authorize(ctx, req.Spec().Procedure); err != nil {
 			return nil, err
 		}
 		return next(ctx, req)
@@ -59,14 +72,14 @@ func (*ACLInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) con
 
 func (in *ACLInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		if err := in.authorize(ctx); err != nil {
+		if err := in.authorize(ctx, conn.Spec().Procedure); err != nil {
 			return err
 		}
 		return next(ctx, conn)
 	}
 }
 
-func (in *ACLInterceptor) authorize(ctx context.Context) error {
+func (in *ACLInterceptor) authorize(ctx context.Context, procedure string) error {
 	authCtx, ok := common.GetAuthContextFromContext(ctx)
 	if !ok {
 		return connect.NewError(connect.CodeInternal, errors.New("auth context not found"))
@@ -78,6 +91,19 @@ func (in *ACLInterceptor) authorize(ctx context.Context) error {
 	user, ok := GetUserFromContext(ctx)
 	if !ok || user == nil {
 		return connect.NewError(connect.CodeUnauthenticated, errors.Errorf("authentication required for permission %q", authCtx.Permission))
+	}
+	if in.scoped[procedure] {
+		if in.authorizer == nil {
+			return connect.NewError(connect.CodeInternal, errors.New("the resource authorizer is not configured"))
+		}
+		scopes, err := in.authorizer.Scopes(ctx, user, permission.Permission(authCtx.Permission))
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission scopes"))
+		}
+		if scopes.IsEmpty() {
+			return connect.NewError(connect.CodePermissionDenied, errors.Errorf("permission %q denied", authCtx.Permission))
+		}
+		return nil
 	}
 	ok, err := in.iam.CheckPermission(ctx, permission.Permission(authCtx.Permission), user)
 	if err != nil {

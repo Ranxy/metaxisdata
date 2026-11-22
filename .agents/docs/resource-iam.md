@@ -45,7 +45,7 @@ workspace
 
 ## Grants
 
-A grant binds one role to one member at one resource scope. The scoped-grant store adds an `iam_grant` table:
+A grant binds one role to one member at one resource scope. The scoped-grant store owns an `iam_grant` table ([LATEST.sql](../../backend/migrator/migration/LATEST.sql)):
 
 ```sql
 CREATE TABLE iam_grant (
@@ -61,7 +61,7 @@ CREATE TABLE iam_grant (
 
 - **Inheritance is down the resource tree.** A permission is allowed when a grant on the resource, or on any ancestor, names a role that contains it. A database grant therefore covers every table under it; an instance grant covers every database.
 - **Grants are additive.** There is no deny in the first model: a scoped grant adds authority, it does not restrict a root grant. The root `workspaceMember` baseline stays the discovery read surface; a scoped `qualityOwner` grant adds write authority on the scope. Restricting a read surface needs a baseline decision or a deny model, and is not part of this design.
-- **The root is a grant too.** The workspace IAM policy is the set of grants whose `resource_type` is `workspace`; `workspaceAdmin` and the implicit `workspaceMember` baseline keep their current meaning. The existing workspace policy API remains the editor for the root.
+- **The workspace policy stays the root.** The workspace IAM policy remains the editor and the decision for every principal it covers; `workspaceAdmin` and the implicit `workspaceMember` baseline keep their current meaning. An `iam_grant` row adds a role at a resource subtree; a workspace-typed row is accepted and treated as `All`, but the policy API is still the root editor.
 - **Conditions name time only.** A binding condition is validated at write time and evaluated against `request.time`; resource attributes in a condition are rejected because a list cannot push them into SQL and a check could not explain them. A condition that does not evaluate fails closed.
 - **Cache and invalidation.** A grant read is cached with the role snapshot, keyed by principal and resource, and invalidated by a grant-generation bump on every grant/role write. The cache is advisory: a miss re-reads, a failed read fails closed.
 - **Explicit grants are rows; ownership is derived.** An administrator creating a grant writes a row. Ownership (below) is computed at check time and cached, so changing an agent's owner or scope takes effect without a second source of truth.
@@ -84,12 +84,13 @@ Check(ctx, principal, permission, ref) (bool, error)
 Scopes(ctx, principal, permission) (ScopeSet, error)
 ```
 
-- **A single-resource RPC** resolves the resource and calls `Check`. A `ResourceResolver` registered per method extracts the reference from the request and may read the store (a rule's target, a suggestion's target). The ACL interceptor can own the check so a handler cannot forget it; the handler reuses the resolved reference from the context.
+- **A single-resource RPC** resolves the resource and calls `Check`. The shipped quality-rule handlers do this explicitly: the create path resolves the target (the draft's target when a suggestion is named), the update and delete paths check the stored rule's target, and the read path maps a denial to `NotFound`. A resolver registry remains the target for a derived resource the request does not name.
 - **A create RPC** checks the **target** the new resource will live under (the table for a rule), not the not-yet-existing resource.
-- **A batch RPC** resolves the scope set once and checks each item; a denied item reports its own error.
+- **A batch RPC** checks each item and reports its own error; a denied item is not written.
 - **An in-process tool** (the quality agent) carries the same reference in its `Invocation` and uses the same authorizer; the pipeline's permission check is the scoped one.
 - **The system** (background runners) is not a user principal and does not pass through the authorizer; its writes are internal. A process that must act as a user takes that user's principal.
-- **Compatibility.** `iam.WorkspaceAuthorizer` answers every `Check` from `iam.Manager.CheckPermission` and returns `All` for `Scopes`, so the resource-aware call sites can be introduced without changing a decision. Replacing it with the grant-backed authorizer is the point at which scoped grants take effect.
+- **The ACL interceptor's scoped methods** are listed in `scopedMethods`. For those, it asks the authorizer for the caller's scopes and denies an empty set; the handler then checks the specific target. Every other method keeps the workspace-wide check. Adding a method without its handler check would let a grant on one target reach another.
+- **Compatibility.** `iam.WorkspaceAuthorizer` answers every `Check` from `iam.Manager.CheckPermission` and returns `All` for `Scopes`; `iam.ScopedAuthorizer` adds the grant and relation sources on top and is the production implementation.
 
 ## List authorization
 
@@ -112,10 +113,9 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything, `
 
 The first scoped path is the data-quality surface, because it already has a target, a queue and a real ownership relationship:
 
-- A `qualityOwner` grant on a database covers every table in it; a rule create/update/run on a table under that database passes, and the same action outside the scope is denied.
-- The rule, contract, suggestion, execution and issue lists filter by the target GUID against the scope set.
-- The quality agent's owner and its own service account get their derived grants on the same databases, so the agent's adoption and drafting run through the same authorizer.
-- The proposal attention keeps its product gate (only the agent's already-queued drafts), but the write itself is now authorized rather than bypassing IAM.
+- A `qualityOwner` grant on a database covers every table in it; a rule create, update, run or delete on a table under that database passes, and the same action outside the scope is denied.
+- The quality-rule RPCs are the first scoped methods: they check the target, and `ListQualityRules` applies the caller's scope set to the target GUID. The rule, contract, suggestion, execution and issue lists follow the same pattern.
+- The quality agent's owner and its own service account are the next relation sources: the owner receives `qualityOwner` on the agent's databases and the service account receives its agent role there, so adoption and drafting run through the same authorizer. The proposal attention keeps its product gate (only the agent's already-queued drafts), but the write itself is authorized rather than bypassing IAM.
 
 ## Decisions
 
@@ -146,11 +146,11 @@ The first scoped path is the data-quality surface, because it already has a targ
 ## Where things live
 
 - Types, ancestors, scopes: `backend/common/resource/` ([resource.go](../../backend/common/resource/resource.go), [scope.go](../../backend/common/resource/scope.go)).
-- Authorizer and compatibility: `backend/component/iam/authorizer.go`; the workspace engine stays in `backend/component/iam/manager.go`; the ACL interceptor is `backend/api/v1/acl_interceptor.go`.
+- Authorizer and compatibility: `backend/component/iam/authorizer.go` and `backend/component/iam/scoped_authorizer.go`; the workspace engine stays in `backend/component/iam/manager.go`; the ACL interceptor and its scoped-method set are `backend/api/v1/acl_interceptor.go` and `backend/api/v1/data_quality_scoped.go`.
 - Catalog: `backend/common/permission/permission.json` and its generator; the frontend mirror is generated from it.
-- Grants: the scoped-grant store and its `iam_grant` schema; the workspace policy remains `backend/store/policy.go` and `backend/migrator/migration/LATEST.sql`.
+- Grants: `backend/store/iam_grant.go` and `backend/migrator/migration/LATEST.sql`; the workspace policy remains `backend/store/policy.go`. The `qualityOwner` bundle is in `backend/store/predefined_roles.go`.
 - Resource-aware lists: the `Find*Message` scope fields and the store query builders, starting with `backend/store/quality_rule.go`.
 - The quality slice: `backend/api/v1/data_quality_*.go`, `backend/store/quality_agent*.go`, `backend/store/quality_suggestion.go`.
 - Frontend: `frontend/src/store/modules/auth.ts`, `frontend/src/lib/permissions.ts`, `frontend/src/composables/`, the target and data-quality pages.
-- Tests: `backend/common/resource/*_test.go`, `backend/component/iam/authorizer_test.go`, the store query-shape guards, and the integration cross-scope scenarios under `backend/test/integration/`.
+- Tests: `backend/common/resource/*_test.go`, `backend/component/iam/{authorizer,scoped_authorizer}_test.go`, the store query-shape guards, and the scoped-grant integration scenario under `backend/test/integration/`.
 - Gates: `go test ./backend/...`, `golangci-lint run --allow-parallel-runners`, `make check-docs`, and the frontend gate (`biome:check`, `lint`, `i18n`, `type-check`, `test run`).

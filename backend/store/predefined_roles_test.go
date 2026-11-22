@@ -77,11 +77,52 @@ func TestWorkspaceMemberBaselineExcludesAdministration(t *testing.T) {
 	}
 }
 
+// TestQualityOwnerRoleBundle pins the scoped quality manager's matrix: it may
+// author, run and archive checks and publish the target contract, but it cannot
+// administer agents or the workspace.
+func TestQualityOwnerRoleBundle(t *testing.T) {
+	t.Parallel()
+
+	owner := GetPredefinedRole(QualityOwnerRole)
+	require.NotNil(t, owner)
+	for _, p := range []permission.Permission{
+		permission.DataQualityRulesGet,
+		permission.DataQualityRulesList,
+		permission.DataQualityRulesCreate,
+		permission.DataQualityRulesUpdate,
+		permission.DataQualityRulesDelete,
+		permission.DataQualityRulesRun,
+		permission.DataQualityExecutionsGet,
+		permission.DataQualityExecutionsList,
+		permission.DataQualityIssuesGet,
+		permission.DataQualityIssuesList,
+		permission.DataQualityIssuesUpdate,
+		permission.DataQualityContractsPublish,
+		permission.DataQualitySuggest,
+		permission.DataQualityExplain,
+		permission.DataQualityProfileRun,
+		permission.DataQualityLabelsUpdate,
+	} {
+		require.Truef(t, owner.Permissions[p], "qualityOwner should grant %q", p)
+	}
+	for _, p := range []permission.Permission{
+		permission.DataQualityAgentsManage,
+		permission.DataQualityTemplatesCreate,
+		permission.DataQualityCodeTablesCreate,
+		permission.SettingsUpdate,
+		permission.UsersCreate,
+		permission.IAMSetPolicy,
+	} {
+		require.Falsef(t, owner.Permissions[p], "qualityOwner must not grant %q", p)
+	}
+}
+
 func TestIsPredefinedRole(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, IsPredefinedRole(WorkspaceAdminRole))
 	require.True(t, IsPredefinedRole(WorkspaceMemberRole))
+	require.True(t, IsPredefinedRole(QualityOwnerRole))
 	require.False(t, IsPredefinedRole("syncer"))
 	require.False(t, IsPredefinedRole(""))
 }

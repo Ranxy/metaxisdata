@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -69,6 +70,17 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 			continue
 		}
 		result.Suggestion = strings.TrimSpace(item.GetSuggestion())
+		targetGUID, targetErr := s.qualityRuleTarget(ctx, item.GetSuggestion(), item.GetRule())
+		if targetErr != nil {
+			result.Error = targetErr.Error()
+			results = append(results, result)
+			continue
+		}
+		if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesCreate, targetGUID); err != nil {
+			result.Error = err.Error()
+			results = append(results, result)
+			continue
+		}
 		created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, item.GetRule(), item.GetSuggestion())
 		if err != nil {
 			result.Error = err.Error()

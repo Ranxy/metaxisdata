@@ -13,6 +13,11 @@ const (
 	// and write the suggestions and plan declarations the agent proposes. It
 	// deliberately cannot publish, approve, edit rules or touch settings.
 	QualityAgentRole = "qualityAgent"
+	// QualityOwnerRole is the data-quality management bundle a scoped grant gives
+	// the owner of a quality agent's databases: author, run and archive checks,
+	// review issues, publish the target contract, and use the analyses. It is a
+	// role, not a baseline: it takes effect only where a grant names it.
+	QualityOwnerRole = "qualityOwner"
 )
 
 func permissionSet(perms ...permission.Permission) map[permission.Permission]bool {
@@ -108,6 +113,12 @@ var PredefinedRoles = []*RoleMessage{
 		Description: "The built-in quality agent's internal IAM actor: read quality plans and checks, write suggested checks and plan declarations. It cannot publish, approve or edit rules.",
 		Permissions: qualityAgentPermissions,
 	},
+	{
+		ResourceID:  QualityOwnerRole,
+		Name:        "Quality owner",
+		Description: "The data-quality manager of a scope: author, run and archive checks, review issues, publish the target contract, and use the analyses. Granted at an instance or database.",
+		Permissions: qualityOwnerPermissions,
+	},
 }
 
 // qualityAgentPermissions is the agent role's minimum. It stays a subset of the
@@ -119,6 +130,30 @@ var qualityAgentPermissions = permissionSet(
 	permission.DataQualityRulesList,
 	permission.DataQualitySuggest,
 	permission.DataQualityPlansUpdate,
+)
+
+// qualityOwnerPermissions is the data-quality management surface a scoped grant
+// gives the owner of a database. It excludes agent administration and the
+// workspace-level template and code-table writes: those are not properties of a
+// database scope.
+var qualityOwnerPermissions = permissionSet(
+	permission.DataQualityRulesGet,
+	permission.DataQualityRulesList,
+	permission.DataQualityRulesCreate,
+	permission.DataQualityRulesUpdate,
+	permission.DataQualityRulesDelete,
+	permission.DataQualityRulesRun,
+	permission.DataQualityExecutionsGet,
+	permission.DataQualityExecutionsList,
+	permission.DataQualityIssuesGet,
+	permission.DataQualityIssuesList,
+	permission.DataQualityIssuesUpdate,
+	permission.DataQualityExplain,
+	permission.DataQualitySuggest,
+	permission.DataQualityContractsPublish,
+	permission.DataQualityPlansUpdate,
+	permission.DataQualityProfileRun,
+	permission.DataQualityLabelsUpdate,
 )
 
 var predefinedRolesMap = func() map[string]*RoleMessage {

@@ -5201,3 +5201,104 @@ func TestQualityAgentSupersedeResolvesTheOtherAgentsAttention(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, attention, "the other agent's drained proposal item closes too")
 }
+
+// TestQualityOwnerScopedGrantRealServerIntegration guards the scoped grant: a
+// member with a qualityOwner grant at one database can create, read, update, run
+// and delete checks on that database's tables and is denied on another; a member
+// without a grant is refused before any write. The member baseline keeps reads
+// workspace-wide, so the grant is additive.
+func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "scoped-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "scoped-stranger")
+
+	grant, err := fixture.env.Store.CreateIamGrant(fixture.ctx, &store.IamGrantMessage{
+		ResourceType: "database",
+		ResourceID:   common.BuildMetaGUID(fixture.instanceID, fixture.sourceDatabase),
+		Role:         common.FormatRole(store.QualityOwnerRole),
+		Member:       ownerName,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, grant)
+
+	ruleRequest := func(targetGUID string) *v1pb.CreateQualityRuleRequest {
+		return &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-",
+			Rule: &v1pb.QualityRule{
+				Title:     "scoped row count",
+				Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+				RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				Target:    &v1pb.QualityTarget{MetaGuid: targetGUID, MetaType: v1pb.MetaType_TABLE},
+				Config:    qualityRowCountConfig(1),
+				Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			},
+		}
+	}
+
+	// A member without a grant is refused by the interceptor's scoped gate.
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(strangerToken, ruleRequest(fixture.usersGUID)))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The granted member can create on a table in the database.
+	created, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
+	require.NoError(t, err)
+	require.NotEmpty(t, created.Msg.GetName())
+
+	// The grant does not reach another database.
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest("another-instance;another_db;;users")))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The granted member can read, update, run and archive its rule.
+	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityRuleRequest{Name: created.Msg.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, created.Msg.GetName(), read.Msg.GetName())
+
+	updated, err := fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityRuleRequest{
+		Rule: &v1pb.QualityRule{
+			Name:     created.Msg.GetName(),
+			Title:    "scoped row count updated",
+			Revision: created.Msg.GetRevision(),
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"title"}},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, "scoped row count updated", updated.Msg.GetTitle())
+
+	run, err := fixture.dataQuality.RunQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.RunQualityRulesRequest{
+		Parent: "workspaces/-",
+		Rules:  []string{created.Msg.GetName()},
+	}))
+	require.NoError(t, err)
+	require.Len(t, run.Msg.GetExecutions(), 1)
+
+	// The list is not narrowed by an additive grant: the member baseline can read
+	// every rule, and the scope filter still returns the target's rules.
+	list, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.ListQualityRulesRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: fixture.usersGUID,
+		PageSize:   100,
+	}))
+	require.NoError(t, err)
+	require.NotEmpty(t, list.Msg.GetQualityRules())
+
+	// A stranger cannot update or delete the granted member's rule; the scoped
+	// interceptor refuses before the handler.
+	_, err = fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(strangerToken, &v1pb.UpdateQualityRuleRequest{
+		Rule:       &v1pb.QualityRule{Name: created.Msg.GetName(), Title: "stranger", Revision: created.Msg.GetRevision()},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"title"}},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	_, err = fixture.dataQuality.DeleteQualityRule(fixture.ctx,
+		withToken(ownerToken, &v1pb.DeleteQualityRuleRequest{Name: created.Msg.GetName()}))
+	require.NoError(t, err)
+}

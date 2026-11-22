@@ -14,6 +14,8 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -96,7 +98,7 @@ func TestACLInterceptorAuthorize(t *testing.T) {
 				ctx = context.WithValue(ctx, common.UserContextKey, user)
 			}
 
-			err := newACLInterceptorWithChecker(tc.checker).authorize(ctx)
+			err := newACLInterceptorWithChecker(tc.checker).authorize(ctx, "")
 			if tc.wantCode == 0 {
 				require.NoError(t, err)
 				return
@@ -106,6 +108,78 @@ func TestACLInterceptorAuthorize(t *testing.T) {
 			require.Equal(t, tc.wantCode, connectErr.Code())
 		})
 	}
+}
+
+type fakeScopedAuthorizer struct {
+	scopes resource.ScopeSet
+	err    error
+	calls  int
+}
+
+func (f *fakeScopedAuthorizer) Check(context.Context, *store.UserMessage, permission.Permission, resource.Ref) (bool, error) {
+	f.calls++
+	return !f.scopes.IsEmpty(), f.err
+}
+
+func (f *fakeScopedAuthorizer) Scopes(context.Context, *store.UserMessage, permission.Permission) (resource.ScopeSet, error) {
+	f.calls++
+	return f.scopes, f.err
+}
+
+var _ iam.Authorizer = (*fakeScopedAuthorizer)(nil)
+
+// A scoped method asks the resource authorizer for the caller's scopes: an empty
+// set is a denial, a non-empty set passes the coarse gate, and the handler then
+// checks the specific target.
+func TestACLInterceptorScopedMethod(t *testing.T) {
+	t.Parallel()
+
+	const procedure = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	user := &store.UserMessage{ID: 101}
+	ctx := context.WithValue(context.Background(), common.AuthContextKey,
+		&common.AuthContext{Permission: permission.DataQualityRulesCreate})
+	ctx = context.WithValue(ctx, common.UserContextKey, user)
+
+	scoped := map[string]bool{procedure: true}
+
+	t.Run("an empty scope set is denied", func(t *testing.T) {
+		t.Parallel()
+		authorizer := &fakeScopedAuthorizer{}
+		err := newACLInterceptorWithScoped(&fakeChecker{}, authorizer, scoped).authorize(ctx, procedure)
+		require.Error(t, err)
+		require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	})
+
+	t.Run("a scoped grant passes even when the workspace denies", func(t *testing.T) {
+		t.Parallel()
+		authorizer := &fakeScopedAuthorizer{scopes: resource.ScopeSet{
+			Scopes: []resource.Scope{resource.NewScope(resource.TypeDatabase, "i;db")},
+		}}
+		err := newACLInterceptorWithScoped(&fakeChecker{}, authorizer, scoped).authorize(ctx, procedure)
+		require.NoError(t, err)
+		require.Equal(t, 1, authorizer.calls)
+	})
+
+	t.Run("a missing authorizer is internal", func(t *testing.T) {
+		t.Parallel()
+		err := newACLInterceptorWithScoped(&fakeChecker{}, nil, scoped).authorize(ctx, procedure)
+		require.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	})
+
+	t.Run("an authorizer error is internal", func(t *testing.T) {
+		t.Parallel()
+		authorizer := &fakeScopedAuthorizer{err: errors.New("grant read failed")}
+		err := newACLInterceptorWithScoped(&fakeChecker{}, authorizer, scoped).authorize(ctx, procedure)
+		require.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	})
+
+	t.Run("a method outside the scoped set keeps the workspace check", func(t *testing.T) {
+		t.Parallel()
+		authorizer := &fakeScopedAuthorizer{scopes: resource.ScopeSet{All: true}}
+		err := newACLInterceptorWithScoped(&fakeChecker{}, authorizer, scoped).authorize(ctx, "/other")
+		require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err), "the workspace checker denied")
+		require.Zero(t, authorizer.calls)
+	})
 }
 
 // unannotatedMethods are the RPCs that intentionally carry no permission: the

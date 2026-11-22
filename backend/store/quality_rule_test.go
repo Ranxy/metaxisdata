@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -389,6 +390,27 @@ func TestBuildQualityRuleWhereAppliesEveryFilter(t *testing.T) {
 
 // The unassigned filter is the "no owner" complement of the owner filter: it
 // renders owner_id IS NULL and binds no argument.
+// A scope set restricts the target subtrees; an empty non-nil set matches
+// nothing so a caller with no authorized scope cannot list every rule.
+func TestBuildQualityRuleWhereFiltersByScopes(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := buildQualityRuleWhere(&FindQualityRuleMessage{
+		Scopes: []resource.Scope{
+			{Type: resource.TypeDatabase, ID: "i;db"},
+			{Type: resource.TypeTable, ID: "i;db;public;orders"},
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, where, "target_guid")
+	require.Contains(t, where, "LIKE")
+	require.Len(t, args, 5, "four scope parameters plus the default archived-state filter")
+
+	where, _, err = buildQualityRuleWhere(&FindQualityRuleMessage{Scopes: []resource.Scope{}})
+	require.NoError(t, err)
+	require.Contains(t, where, "FALSE")
+}
+
 func TestBuildQualityRuleWhereOwnerUnassigned(t *testing.T) {
 	t.Parallel()
 
