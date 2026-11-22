@@ -369,6 +369,7 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 	_, strangerToken := createQualityAgentTestMember(t, fixture, "check-stranger")
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	userClient := v1connect.NewUserServiceClient(httpClient, fixture.env.BaseURL)
 
 	check := func(token, targetGUID string) []bool {
 		t.Helper()
@@ -400,6 +401,18 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 
 	require.Equal(t, []bool{true, true, true}, check(ownerToken, fixture.usersGUID),
 		"the scoped grant adds create and publish on the granted database")
+
+	// GetCurrentUser separates the workspace policy from the scoped grants: the
+	// workspace list is what an action fallback may read, the scoped list only
+	// says the caller can reach a page on some scope.
+	me, err := userClient.GetCurrentUser(fixture.ctx, withToken(ownerToken, &emptypb.Empty{}))
+	require.NoError(t, err)
+	require.Contains(t, me.Msg.GetPermissions(), "metaxisdata.dataQuality.rules.get",
+		"the read baseline stays on the workspace list")
+	require.NotContains(t, me.Msg.GetPermissions(), "metaxisdata.dataQuality.rules.create",
+		"a scoped grant must not look like a workspace permission")
+	require.Contains(t, me.Msg.GetScopedPermissions(), "metaxisdata.dataQuality.rules.create")
+	require.Contains(t, me.Msg.GetScopedPermissions(), "metaxisdata.dataQuality.contracts.publish")
 	// The database scope accepts the resource-name form of resource_id and maps it
 	// to the same GUID the grant stores.
 	byName, err := iamClient.CheckPermissions(fixture.ctx, withToken(ownerToken, &v1pb.CheckPermissionsRequest{

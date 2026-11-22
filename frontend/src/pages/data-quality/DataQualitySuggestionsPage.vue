@@ -579,11 +579,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { notify } from "@/lib/notify";
+import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
   QualitySeverity,
@@ -648,7 +648,16 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const instanceStore = useInstanceStore();
-const { canCreate: canCreateRule, canSuggest } = useDataQualityPermissions();
+const authStore = useAuthStore();
+// The queue is already filtered to the caller's suggest scope server-side, so a
+// visible draft is one they may decide; deciding or turning it into a rule still
+// asks the target workspace for the concrete resource.
+const canSuggest = computed(() =>
+  authStore.canAccess("metaxisdata.dataQuality.suggest")
+);
+const canCreateRule = computed(() =>
+  authStore.canAccess("metaxisdata.dataQuality.rules.create")
+);
 /** Deciding a suggestion is the same permission as drafting one. */
 const canDecide = canSuggest;
 

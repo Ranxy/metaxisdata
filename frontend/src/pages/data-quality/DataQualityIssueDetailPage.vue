@@ -489,6 +489,7 @@ import {
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityTargetMetadataRoute,
+  resourceTypeForMetaType,
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -646,17 +647,6 @@ const {
   }
 );
 
-function resourceTypeForIssueTarget(metaType: MetaType): string {
-  switch (metaType) {
-    case MetaType.VIEW:
-      return "view";
-    case MetaType.EXTERNAL_TABLE:
-      return "external_table";
-    default:
-      return "table";
-  }
-}
-
 // The issue's own target decides whether the caller may resolve or mute it: a
 // scoped quality owner holds issues.update there without holding it workspace-wide.
 const targetResource = computed(() => {
@@ -665,7 +655,7 @@ const targetResource = computed(() => {
     return null;
   }
   return {
-    resourceType: resourceTypeForIssueTarget(target.metaType),
+    resourceType: resourceTypeForMetaType(target.metaType),
     resourceId: target.metaGuid,
   };
 });

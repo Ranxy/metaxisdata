@@ -610,7 +610,16 @@ type User struct {
 	// The effective workspace permissions of the caller, as a list of
 	// `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
 	// so the frontend can gate navigation and actions without probing each RPC.
+	// It holds only what the workspace policy grants: a permission that comes
+	// from a scoped grant or an agent ownership derivation is not here.
 	Permissions []string `protobuf:"bytes,15,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// The permissions the caller holds on some scope through a scoped grant or an
+	// agent ownership derivation, which the workspace policy does not grant.
+	// Populated by GetCurrentUser only. Navigation may combine it with
+	// `permissions`, but it is not evidence that an action is allowed somewhere:
+	// a resource action asks CheckPermissions or reads the resource's
+	// viewer_permissions instead.
+	ScopedPermissions []string `protobuf:"bytes,17,rep,name=scoped_permissions,json=scopedPermissions,proto3" json:"scoped_permissions,omitempty"`
 	// The BCP-47 tag of the language the user reads the UI in, so server-side
 	// prose — the Explain SQL answer — is written in the language the user
 	// selected. The SPA records it when the user switches language; empty means
@@ -727,6 +736,13 @@ func (x *User) GetPermissions() []string {
 	return nil
 }
 
+func (x *User) GetScopedPermissions() []string {
+	if x != nil {
+		return x.ScopedPermissions
+	}
+	return nil
+}
+
 func (x *User) GetLanguage() string {
 	if x != nil {
 		return x.Language
@@ -821,7 +837,7 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x10metaxisdata/UserR\x04name\"C\n" +
 	"\x13UndeleteUserRequest\x12,\n" +
 	"\x04name\x18\x01 \x01(\tB\x18\xe0A\x02\xfaA\x12\n" +
-	"\x10metaxisdata/UserR\x04name\"\xde\x03\n" +
+	"\x10metaxisdata/UserR\x04name\"\x92\x04\n" +
 	"\x04User\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12+\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x15.metaxisdata.v1.StateR\x05state\x12\x14\n" +
@@ -834,7 +850,8 @@ const file_v1_user_service_proto_rawDesc = "" +
 	"\x05phone\x18\f \x01(\tR\x05phone\x125\n" +
 	"\aprofile\x18\r \x01(\v2\x1b.metaxisdata.v1.UserProfileR\aprofile\x12\x1b\n" +
 	"\x06groups\x18\x0e \x03(\tB\x03\xe0A\x03R\x06groups\x12%\n" +
-	"\vpermissions\x18\x0f \x03(\tB\x03\xe0A\x03R\vpermissions\x12\x1a\n" +
+	"\vpermissions\x18\x0f \x03(\tB\x03\xe0A\x03R\vpermissions\x122\n" +
+	"\x12scoped_permissions\x18\x11 \x03(\tB\x03\xe0A\x03R\x11scopedPermissions\x12\x1a\n" +
 	"\blanguage\x18\x10 \x01(\tR\blanguage:#\xeaA \n" +
 	"\x10metaxisdata/User\x12\fusers/{user}J\x04\b\v\x10\fR\x0erecovery_codes\"\xb6\x01\n" +
 	"\vUserProfile\x12B\n" +

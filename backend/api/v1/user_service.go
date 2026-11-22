@@ -95,22 +95,22 @@ func (s *UserService) GetCurrentUser(ctx context.Context, _ *connect.Request[emp
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("authenticated user not found"))
 	}
 	response := convertToUser(user)
-	// The effective permissions are what the SPA gates navigation and actions
-	// on; only GetCurrentUser populates them.
+	// The workspace permissions are what an action fallback may use: they say
+	// nothing about a scoped grant. Only GetCurrentUser populates them.
 	permissions, err := s.iam.EffectivePermissions(ctx, user)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve user permissions"))
 	}
 	response.Permissions = permissions
-	// The union includes what the caller holds through a scoped grant or the
-	// agent ownership derivation. The SPA gates navigation on it; a per-resource
-	// action still asks CheckPermissions for the concrete target.
+	// The scoped permissions are a navigation hint: they let the SPA show a page
+	// the caller can reach on some scope. A resource action still asks
+	// CheckPermissions for the concrete target, because this list is not scoped.
 	if s.authorizer != nil {
 		scoped, err := s.authorizer.ScopedPermissions(ctx, user)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve scoped user permissions"))
 		}
-		response.Permissions = unionUserPermissions(permissions, scoped)
+		response.ScopedPermissions = sortedPermissions(scoped)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -728,19 +728,17 @@ func isUserWorkspaceAdmin(ctx context.Context, stores *store.Store, user *store.
 	return roles[common.FormatRole(common.WorkspaceAdmin)], nil
 }
 
-// unionUserPermissions merges the workspace and scoped permission lists into one
-// sorted list without duplicates.
-func unionUserPermissions(base, scoped []permission.Permission) []permission.Permission {
-	seen := make(map[permission.Permission]bool, len(base)+len(scoped))
-	out := make([]permission.Permission, 0, len(base)+len(scoped))
-	for _, list := range [][]permission.Permission{base, scoped} {
-		for _, perm := range list {
-			if seen[perm] {
-				continue
-			}
-			seen[perm] = true
-			out = append(out, perm)
+// sortedPermissions sorts and deduplicates a permission list from the
+// authorizer, whose grant and relation iteration order is not stable.
+func sortedPermissions(perms []permission.Permission) []permission.Permission {
+	seen := make(map[permission.Permission]bool, len(perms))
+	out := make([]permission.Permission, 0, len(perms))
+	for _, perm := range perms {
+		if seen[perm] {
+			continue
 		}
+		seen[perm] = true
+		out = append(out, perm)
 	}
 	slices.Sort(out)
 	return out

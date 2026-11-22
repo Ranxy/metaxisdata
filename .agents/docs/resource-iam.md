@@ -103,9 +103,10 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything (o
 
 ## Frontend contract
 
-- `User.permissions` stays a **union summary** for navigation: a permission appears when the principal holds it on any scope. It is not evidence that an action is allowed on the page's target.
-- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions. `CheckPermissions` is not audited: it answers only about the caller's own permissions and writes nothing.
-- `useResourcePermissions(ref, permissions)` is the page-facing composable; the target page and the issue detail page use it. `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
+- `User.permissions` is the **workspace** set: what the workspace policy grants. `User.scoped_permissions` is what a scoped grant or an agent ownership derivation adds outside that policy; it is a navigation hint, not evidence that an action is allowed on a page's target.
+- `useAuthStore().canAccess(permission)` is the navigation answer (the union of the two lists): the router guard, the sidebar, the settings navigation and the home shortcuts use it, so a page a scoped grant reaches stays reachable. `hasPermission(permission)` is the workspace answer and stays the fallback for an action before the server answers about the resource.
+- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the check directory and the drawer read it, while the target page, the issue detail page and the metadata quality tab ask `CheckPermissions` for their resource-level actions. `CheckPermissions` is not audited: it answers only about the caller's own permissions and writes nothing.
+- `useResourcePermissions(ref, permissions)` is the page-facing composable. A failed check hides the action; the server still enforces it. A page that acts on a resource never derives the action from `canAccess`: that would show an action the server refuses outside the scope.
 - The client permission mirror is hand-maintained (`frontend/src/lib/permissions.ts`) and guarded by a drift test; the catalog is the source of the permission strings.
 
 ## The data-quality slice

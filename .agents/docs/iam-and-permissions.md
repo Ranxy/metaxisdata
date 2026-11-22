@@ -4,7 +4,7 @@
 
 ## What it is
 
-One permission catalog, roles as named permission bundles (predefined in Go, custom in the `role` table), and a single workspace IAM policy binding principals (`users/{id}`, `groups/{email}`, `allUsers`) to roles. `iam.Manager` resolves a caller's effective set; `ACLInterceptor` enforces the `metaxisdata.v1.permission` annotation on every RPC, reads included; `IamService`/`RoleService`/`GroupService` manage the model over ConnectRPC; `GetCurrentUser` returns `User.permissions` so the SPA can gate navigation without probing each RPC.
+One permission catalog, roles as named permission bundles (predefined in Go, custom in the `role` table), and a single workspace IAM policy binding principals (`users/{id}`, `groups/{email}`, `allUsers`) to roles. `iam.Manager` resolves a caller's effective set; `ACLInterceptor` enforces the `metaxisdata.v1.permission` annotation on every RPC, reads included; `IamService`/`RoleService`/`GroupService` manage the model over ConnectRPC; `GetCurrentUser` returns `User.permissions` (what the workspace policy grants) and `User.scoped_permissions` (what a scoped grant adds outside it), so the SPA can gate navigation without probing each RPC.
 
 ## Decisions
 

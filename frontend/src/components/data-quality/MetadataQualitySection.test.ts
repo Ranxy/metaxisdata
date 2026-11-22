@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
   updateColumnLabel: vi.fn(),
   updateQualitySuggestion: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
+  checkPermissions: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -69,6 +70,10 @@ vi.mock("@/api/data-quality", () => ({
 
 vi.mock("@/api/setting", () => ({
   getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
+}));
+
+vi.mock("@/api/iam", () => ({
+  checkPermissions: mocks.checkPermissions,
 }));
 
 const TABLE = "inst1;db1;public;orders";
@@ -255,6 +260,7 @@ describe("MetadataQualitySection", () => {
     localStorage.clear();
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    mocks.checkPermissions.mockResolvedValue([]);
     mocks.listQualityRules.mockResolvedValue({
       items: [
         create(QualityRuleSchema, {
@@ -354,6 +360,42 @@ describe("MetadataQualitySection", () => {
     // The queue endpoint needs the suggest permission, so a read-only caller
     // never asks for it.
     expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
+  });
+
+  it("takes the actions from the server's answer for this table", async () => {
+    // The workspace policy grants only the read baseline; the scope decides the
+    // writes, so the tab asks CheckPermissions about the table it is on.
+    mocks.checkPermissions.mockResolvedValue([true, true, true]);
+
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    expect(mocks.checkPermissions).toHaveBeenCalledWith({
+      resourceType: "table",
+      resourceId: TABLE,
+      permissions: [
+        "metaxisdata.dataQuality.profile.run",
+        "metaxisdata.dataQuality.suggest",
+        "metaxisdata.dataQuality.labels.update",
+      ],
+    });
+    expect(wrapper.text()).toContain(label("dataQuality.asset.analyzeColumns"));
+    expect(wrapper.text()).toContain(label("dataQuality.suggest.labels"));
+    wrapper.unmount();
+  });
+
+  it("hides the actions a scoped caller may not use on this table", async () => {
+    mocks.checkPermissions.mockResolvedValue([false, false, false]);
+
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    expect(
+      wrapper.text().includes(label("dataQuality.asset.analyzeColumns"))
+    ).toBe(false);
+    expect(wrapper.text().includes(label("dataQuality.suggest.labels"))).toBe(
+      false
+    );
+    expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("offers the actions its permissions allow, but never a check creator", async () => {

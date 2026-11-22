@@ -642,8 +642,10 @@ const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
 
+// Drafting opens the suggestion queue, which is scoped on its own; a scoped
+// grant may allow it on its targets even though the workspace policy does not.
 const canSuggest = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
+  authStore.canAccess("metaxisdata.dataQuality.suggest")
 );
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")

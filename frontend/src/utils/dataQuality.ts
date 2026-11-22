@@ -951,3 +951,19 @@ export function qualityRuleViewerCan(
 ): boolean {
   return rule.viewerPermissions.includes(permission);
 }
+
+/**
+ * The resource type a metadata target reports to CheckPermissions. The three
+ * table-like kinds are the only ones a quality target can be; an unknown kind
+ * asks about a table, which the server answers from the same GUID chain.
+ */
+export function resourceTypeForMetaType(metaType: MetaType): string {
+  switch (metaType) {
+    case MetaType.VIEW:
+      return "view";
+    case MetaType.EXTERNAL_TABLE:
+      return "external_table";
+    default:
+      return "table";
+  }
+}

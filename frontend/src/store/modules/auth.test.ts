@@ -391,3 +391,29 @@ describe("clearSession", () => {
     expect(store.user).toBeNull();
   });
 });
+
+describe("canAccess", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActivePinia(createPinia());
+  });
+
+  it("keeps the workspace and the scoped permission sets apart", () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, {
+      name: "users/1",
+      permissions: ["metaxisdata.dataQuality.rules.get"],
+      scopedPermissions: ["metaxisdata.dataQuality.rules.create"],
+    });
+
+    // The workspace answer is the one an action fallback may read.
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.get")).toBe(true);
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.create")).toBe(
+      false
+    );
+    // Navigation follows the union, so the page the scoped grant reaches opens.
+    expect(store.canAccess("metaxisdata.dataQuality.rules.get")).toBe(true);
+    expect(store.canAccess("metaxisdata.dataQuality.rules.create")).toBe(true);
+    expect(store.canAccess("metaxisdata.settings.update")).toBe(false);
+  });
+});

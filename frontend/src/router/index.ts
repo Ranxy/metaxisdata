@@ -711,7 +711,7 @@ export const authGuard: NavigationGuard = async (to) => {
   if (
     typeof to.meta.permission === "string" &&
     authStore.isAuthenticated &&
-    !authStore.hasPermission(to.meta.permission)
+    !authStore.canAccess(to.meta.permission)
   ) {
     // The server enforces the same permission on every RPC; this only keeps a
     // caller from landing on a page whose every request would be denied.

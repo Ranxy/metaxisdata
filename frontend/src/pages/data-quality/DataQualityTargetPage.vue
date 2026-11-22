@@ -803,6 +803,7 @@ import {
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualityTargetMetadataRoute,
+  resourceTypeForMetaType,
 } from "@/utils/dataQuality";
 import { type TargetColumnDetail } from "@/utils/dataQualityForm";
 import { formatQualityScore } from "@/utils/dataQualityOverview";
@@ -882,17 +883,6 @@ const effectiveMetaType = computed<MetaType>(() => {
     ? fromRule
     : MetaType.TABLE;
 });
-
-function resourceTypeForMetaType(metaType: MetaType): string {
-  switch (metaType) {
-    case MetaType.VIEW:
-      return "view";
-    case MetaType.EXTERNAL_TABLE:
-      return "external_table";
-    default:
-      return "table";
-  }
-}
 
 // The target-scoped actions are decided by the server: a scoped grant can allow
 // a rule edit or run that the workspace-level permission does not, and a page

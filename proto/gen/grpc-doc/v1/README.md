@@ -1523,7 +1523,8 @@ The user&#39;s `name` field is used to identify the user to update. Format: user
 | phone | [string](#string) |  | Should be a valid E.164 compliant phone number. Could be empty. |
 | profile | [UserProfile](#metaxisdata-v1-UserProfile) |  |  |
 | groups | [string](#string) | repeated | The groups for the user. Format: groups/{email} |
-| permissions | [string](#string) | repeated | The effective workspace permissions of the caller, as a list of `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` strings. Populated by GetCurrentUser only, so the frontend can gate navigation and actions without probing each RPC. |
+| permissions | [string](#string) | repeated | The effective workspace permissions of the caller, as a list of `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` strings. Populated by GetCurrentUser only, so the frontend can gate navigation and actions without probing each RPC. It holds only what the workspace policy grants: a permission that comes from a scoped grant or an agent ownership derivation is not here. |
+| scoped_permissions | [string](#string) | repeated | The permissions the caller holds on some scope through a scoped grant or an agent ownership derivation, which the workspace policy does not grant. Populated by GetCurrentUser only. Navigation may combine it with `permissions`, but it is not evidence that an action is allowed somewhere: a resource action asks CheckPermissions or reads the resource&#39;s viewer_permissions instead. |
 | language | [string](#string) |  | The BCP-47 tag of the language the user reads the UI in, so server-side prose — the Explain SQL answer — is written in the language the user selected. The SPA records it when the user switches language; empty means never chosen, and server-side prose then falls back to en-US. |
 
 
