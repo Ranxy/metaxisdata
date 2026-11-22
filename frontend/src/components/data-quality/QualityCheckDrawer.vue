@@ -669,6 +669,7 @@ import {
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,
+  qualityRuleViewerCan,
   qualitySeverityKey,
   qualitySeverityVariant,
   qualityStatusKey,
@@ -739,7 +740,7 @@ const rule = ref<QualityRule>();
 // grant can allow a delete or edit the workspace permission does not. The flat
 // permission stays the fallback while the rule has not loaded.
 function viewerCan(permission: string): boolean {
-  return rule.value?.viewerPermissions.includes(permission) ?? false;
+  return rule.value ? qualityRuleViewerCan(rule.value, permission) : false;
 }
 const canRun = computed(
   () => canRunFlat.value || viewerCan("metaxisdata.dataQuality.rules.run")

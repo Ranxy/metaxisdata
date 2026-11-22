@@ -8,7 +8,7 @@
         <Button
           variant="outline"
           :disabled="isLoading || isSaving"
-          @click="loadPolicy"
+          @click="reloadAll"
         >
           {{ t("iam.policy.reload") }}
         </Button>
@@ -189,8 +189,11 @@
               :key="grant.name"
             >
               <TableCell>
-                <div class="font-mono text-xs">
-                  {{ grant.resource }}
+                <div
+                  class="font-mono text-xs"
+                  :title="grant.resource"
+                >
+                  {{ grantResourceLabel(grant.resource) }}
                 </div>
                 <div
                   v-if="grant.createdBy"
@@ -400,6 +403,12 @@
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p
+              v-if="instancesError || instances.length === 0"
+              class="text-xs text-muted-foreground"
+            >
+              {{ t("iam.grants.instancesUnavailable") }}
+            </p>
           </div>
 
           <div
@@ -431,7 +440,7 @@
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
-                  v-for="role in grantableRoles"
+                  v-for="role in grantScopedRoles"
                   :key="role.name"
                   :value="role.name"
                 >
@@ -498,6 +507,17 @@
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div class="grid gap-1">
+            <Label>{{ t("iam.grants.condition") }}</Label>
+            <Input
+              v-model="grantCondition"
+              :placeholder="t('iam.grants.conditionPlaceholder')"
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ t("iam.grants.conditionHint") }}
+            </p>
           </div>
 
           <p
@@ -593,6 +613,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -670,6 +691,8 @@ const grantScopeType = ref<"instance" | "database">("database");
 const grantInstance = ref("");
 const grantDatabase = ref("");
 const grantRole = ref("");
+const grantCondition = ref("");
+const instancesError = ref("");
 
 const grantResource = computed(() =>
   grantScopeType.value === "instance"
@@ -706,6 +729,19 @@ const roleTitles = computed(() => {
 // server only accepts it on that baseline binding, which is server-managed.
 const grantableRoles = computed(() =>
   roles.value.filter((role) => role.name !== "roles/workspaceMember")
+);
+
+// Workspace-wide roles are not meaningful at a resource scope; a scoped grant
+// binds qualityOwner or a custom role.
+const SCOPED_GRANT_EXCLUDED_ROLES = new Set([
+  "roles/workspaceAdmin",
+  "roles/workspaceMember",
+  "roles/qualityAgent",
+]);
+const grantScopedRoles = computed(() =>
+  grantableRoles.value.filter(
+    (role) => !SCOPED_GRANT_EXCLUDED_ROLES.has(role.name)
+  )
 );
 
 const selectedMember = computed(() => {
@@ -873,7 +909,14 @@ async function resolveUserMembers() {
   }
   try {
     const response = await batchGetUsers([...unresolved]);
-    users.value = [...users.value, ...response.users];
+    const knownNames = new Set(users.value.map((user) => user.name));
+    for (const user of response.users) {
+      if (knownNames.has(user.name)) {
+        continue;
+      }
+      users.value.push(user);
+      knownNames.add(user.name);
+    }
   } catch {
     // Keep the raw resource name as the label; the policy and grants are unaffected.
   }
@@ -893,12 +936,19 @@ async function loadGrants() {
 }
 
 async function loadInstances() {
+  instancesError.value = "";
   try {
     instances.value = await listAllInstances();
-  } catch {
-    // The picker stays empty; the operator can still read the current grants.
+  } catch (err) {
+    // The picker stays empty; the hint explains why the Create button is disabled.
     instances.value = [];
+    instancesError.value = formatError(err);
   }
+}
+
+async function reloadAll() {
+  void loadInstances();
+  await Promise.all([loadPolicy(), loadGrants()]);
 }
 
 async function loadDatabases(instance: string) {
@@ -923,6 +973,18 @@ async function loadDatabases(instance: string) {
   }
 }
 
+function grantResourceLabel(resource: string): string {
+  const database = /^instances\/([^/]+)\/databases\/(.*)$/.exec(resource);
+  if (database) {
+    return `${database[1]} / ${database[2]}`;
+  }
+  const instance = /^instances\/([^/]+)$/.exec(resource);
+  if (instance) {
+    return instance[1] ?? resource;
+  }
+  return resource;
+}
+
 function databaseLabel(name: string): string {
   const parts = name.split("/");
   return parts[parts.length - 1] ?? name;
@@ -934,6 +996,7 @@ function openAddGrant() {
   grantInstance.value = instances.value[0]?.name ?? "";
   grantDatabase.value = "";
   grantRole.value = "";
+  grantCondition.value = "";
   memberType.value = "user";
   selectedUser.value = "";
   selectedGroup.value = "";
@@ -959,6 +1022,7 @@ async function handleCreateGrant() {
       resource: grantResource.value,
       role: grantRole.value,
       member: selectedMember.value,
+      condition: grantCondition.value.trim() || undefined,
     });
     showAddGrant.value = false;
     showSuccess(t("iam.grants.created"));

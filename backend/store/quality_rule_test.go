@@ -402,9 +402,14 @@ func TestBuildQualityRuleWhereFiltersByScopes(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Contains(t, where, "target_guid")
-	require.Contains(t, where, "LIKE")
-	require.Len(t, args, 5, "four scope parameters plus the default archived-state filter")
+	require.Contains(t, where, "(target_guid = $1 OR target_guid LIKE $2")
+	require.Contains(t, where, " OR (target_guid = $3 OR target_guid LIKE $4")
+	require.Contains(t, where, "state <> $5")
+	require.Equal(t, []any{
+		"i;db", "i;db;%",
+		"i;db;public;orders", "i;db;public;orders;%",
+		storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED,
+	}, args)
 
 	where, _, err = buildQualityRuleWhere(&FindQualityRuleMessage{Scopes: []resource.Scope{}})
 	require.NoError(t, err)

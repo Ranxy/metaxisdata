@@ -943,3 +943,11 @@ function timestampSeconds(
   }
   return seconds + (timestamp.nanos ?? 0) / 1_000_000_000;
 }
+
+/** Whether the server reports one target-scoped action on a rule. */
+export function qualityRuleViewerCan(
+  rule: { viewerPermissions: string[] },
+  permission: string
+): boolean {
+  return rule.viewerPermissions.includes(permission);
+}

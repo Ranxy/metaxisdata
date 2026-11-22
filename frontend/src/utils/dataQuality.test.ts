@@ -29,6 +29,7 @@ import {
   QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityRuleViewerCan } from "@/utils/dataQuality";
 import {
   describeThreshold,
   executionDurationSeconds,
@@ -1241,5 +1242,17 @@ describe("qualityCoveragePropertyKey", () => {
     for (const key of keys) {
       expect(key.startsWith("dataQuality.workspace.planProperty")).toBe(true);
     }
+  });
+});
+
+describe("qualityRuleViewerCan", () => {
+  it("reads the server's per-rule target permissions", () => {
+    expect(
+      qualityRuleViewerCan(
+        { viewerPermissions: ["metaxisdata.dataQuality.rules.update"] },
+        "metaxisdata.dataQuality.rules.update"
+      )
+    ).toBe(true);
+    expect(qualityRuleViewerCan({ viewerPermissions: [] }, "any")).toBe(false);
   });
 });

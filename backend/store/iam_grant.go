@@ -27,20 +27,12 @@ type IamGrantMessage struct {
 	CreatedAt    time.Time
 }
 
-// IamGrantScope is one (resource type, resource id) pair a grant lookup may
-// match. The authorizer passes a resource and its ancestors.
-type IamGrantScope struct {
-	ResourceType string
-	ResourceID   string
-}
-
 // FindIamGrantMessage filters grants. An empty but non-nil Scopes or Members
 // slice matches nothing, so a caller that collected no scope cannot read every
 // grant by accident.
 type FindIamGrantMessage struct {
 	ResourceType *string
 	ResourceID   *string
-	Scopes       []IamGrantScope
 	Members      []string
 	// IncludeGroupGrants also matches group members. The store does not expand a
 	// group; the caller checks the user's membership, because group expansion is
@@ -105,9 +97,9 @@ func (s *Store) DeleteIamGrant(ctx context.Context, id int64) (bool, error) {
 	return rows > 0, nil
 }
 
-// ListIamGrants reads the grants matching a filter. The authorizer uses two
-// shapes: a resource chain for a check, and the member set for a list's scope
-// set.
+// ListIamGrants reads the grants matching a filter. The authorizer lists the
+// member's grants once per principal snapshot and matches the resource chain in
+// memory, so no resource-chain query is needed.
 func (s *Store) ListIamGrants(ctx context.Context, find *FindIamGrantMessage) ([]*IamGrantMessage, error) {
 	if find == nil {
 		find = &FindIamGrantMessage{}
@@ -167,22 +159,6 @@ func buildIamGrantWhere(find *FindIamGrantMessage) ([]string, []any) {
 	if v := find.ResourceID; v != nil {
 		args = append(args, *v)
 		where = append(where, fmt.Sprintf("resource_id = $%d", len(args)))
-	}
-	if find.Scopes != nil {
-		if len(find.Scopes) == 0 {
-			where = append(where, "FALSE")
-		} else {
-			conditions := make([]string, 0, len(find.Scopes))
-			for _, scope := range find.Scopes {
-				typeIndex := len(args) + 1
-				args = append(args, scope.ResourceType)
-				idIndex := len(args) + 1
-				args = append(args, scope.ResourceID)
-				conditions = append(conditions, fmt.Sprintf(
-					"(resource_type = $%d AND resource_id = $%d)", typeIndex, idIndex))
-			}
-			where = append(where, "("+strings.Join(conditions, " OR ")+")")
-		}
 	}
 	if find.Members != nil || find.IncludeGroupGrants {
 		conditions := make([]string, 0, 2)

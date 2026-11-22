@@ -118,6 +118,28 @@ func TestMetadataAncestors(t *testing.T) {
 			},
 		},
 		{
+			name: "manual SQL under a schema",
+			ref:  NewRef(TypeManualSQL, common.BuildMetaGUID("i", "db", "public", "manualSQL:1")),
+			want: []Ref{
+				NewRef(TypeManualSQL, common.BuildMetaGUID("i", "db", "public", "manualSQL:1")),
+				NewRef(TypeSchema, common.BuildMetaGUID("i", "db", "public")),
+				NewRef(TypeDatabase, "i;db"),
+				NewRef(TypeInstance, "i"),
+				workspace,
+			},
+		},
+		{
+			name: "application SQL with an empty schema",
+			ref:  NewRef(TypeApplicationSQL, common.BuildMetaGUID("i", "db", "", "applicationSQL:1")),
+			want: []Ref{
+				NewRef(TypeApplicationSQL, common.BuildMetaGUID("i", "db", "", "applicationSQL:1")),
+				NewRef(TypeSchema, common.BuildMetaGUID("i", "db", "")),
+				NewRef(TypeDatabase, "i;db"),
+				NewRef(TypeInstance, "i"),
+				workspace,
+			},
+		},
+		{
 			name: "names containing the separator keep their escaped prefixes",
 			ref:  NewRef(TypeColumn, common.BuildMetaGUID("i", "db", "public", "we;ird", "id")),
 			want: []Ref{
@@ -145,4 +167,6 @@ func TestMetadataAncestorsRejectsMalformedInput(t *testing.T) {
 	require.Nil(t, MetadataAncestors(NewRef(TypeTable, "i;db")))
 	require.Nil(t, MetadataAncestors(NewRef(TypeDatabase, "i")))
 	require.Nil(t, MetadataAncestors(NewRef(TypeColumn, "i;db;orders")))
+	require.Nil(t, MetadataAncestors(NewRef(TypeManualSQL, "i;db")))
+	require.Nil(t, MetadataAncestors(NewRef(TypeApplicationSQL, "i;db;public;table;extra")))
 }
