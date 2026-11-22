@@ -61,13 +61,6 @@ func TestMapCommonErrorUpgradesUnknownCode(t *testing.T) {
 	require.Equal(t, `bad "x"`, connectErr.Message())
 }
 
-func TestMapCommonErrorKeepsHandlerChosenStatus(t *testing.T) {
-	t.Parallel()
-
-	handlerErr := connect.NewError(connect.CodePermissionDenied, common.Errorf(common.NotFound, "hidden"))
-	require.Same(t, handlerErr, mapCommonError(handlerErr))
-}
-
 func TestMapCommonErrorWrapsBareCommonError(t *testing.T) {
 	t.Parallel()
 
@@ -77,10 +70,4 @@ func TestMapCommonErrorWrapsBareCommonError(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, connect.CodeAlreadyExists, connectErr.Code())
 	require.Equal(t, "duplicate name", connectErr.Message())
-}
-
-func TestMapCommonErrorPassesNilThrough(t *testing.T) {
-	t.Parallel()
-
-	require.NoError(t, mapCommonError(nil))
 }

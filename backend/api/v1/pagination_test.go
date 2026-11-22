@@ -44,13 +44,6 @@ func TestParseLimitAndOffset(t *testing.T) {
 		require.Equal(t, 50, offset.limit, "a list whose proto documents 50 must not return the shared fallback")
 	})
 
-	t.Run("token size wins over the documented default", func(t *testing.T) {
-		t.Parallel()
-		offset, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, 50), maximum: 1000, defaultLimit: 50})
-		require.NoError(t, err)
-		require.Equal(t, 25, offset.limit, "a follow-up page keeps the size its token was issued with")
-	})
-
 	t.Run("size above the maximum is clamped", func(t *testing.T) {
 		t.Parallel()
 		offset, err := parseLimitAndOffset(&pageSize{limit: 5000, maximum: 1000})
@@ -60,9 +53,9 @@ func TestParseLimitAndOffset(t *testing.T) {
 
 	t.Run("token keeps the original size when page_size is omitted", func(t *testing.T) {
 		t.Parallel()
-		offset, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, 50), maximum: 1000})
+		offset, err := parseLimitAndOffset(&pageSize{token: tokenWithLimit(25, 50), maximum: 1000, defaultLimit: 50})
 		require.NoError(t, err)
-		require.Equal(t, 25, offset.limit)
+		require.Equal(t, 25, offset.limit, "a follow-up page keeps the size its token was issued with, not the documented default")
 		require.Equal(t, 50, offset.offset)
 	})
 

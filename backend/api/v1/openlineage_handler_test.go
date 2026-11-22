@@ -70,25 +70,30 @@ func TestProcessBatchEventsEnforcesEventLimit(t *testing.T) {
 }
 
 // An oversized body is refused explicitly instead of being truncated into a
-// confusing JSON parse error.
-func TestReadBodyLimited(t *testing.T) {
+// confusing JSON parse error, and the boundary is not off by one: a body exactly
+// at the limit is read and fails as the invalid event it is.
+func TestHandleIngestionEnforcesTheBodyLimit(t *testing.T) {
 	t.Parallel()
 
-	small := strings.Repeat("a", 16)
-	body, tooLarge, err := readBodyLimited(strings.NewReader(small))
-	require.NoError(t, err)
-	require.False(t, tooLarge)
-	require.Equal(t, small, string(body))
+	handler := &OpenLineageHandler{}
+	read := func(body string) (echo.Context, *httptest.ResponseRecorder) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/lineage", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		return echo.New().NewContext(req, rec), rec
+	}
 
 	exact := strings.Repeat("a", maxOpenLineageBodySize)
-	body, tooLarge, err = readBodyLimited(strings.NewReader(exact))
-	require.NoError(t, err)
-	require.False(t, tooLarge)
-	require.Len(t, body, maxOpenLineageBodySize)
+	ctx, rec := read(exact)
+	require.NoError(t, handler.handleIngestion(ctx, ingestionKey("")))
+	require.Equal(t, http.StatusBadRequest, rec.Code, "a body exactly at the limit is read, not size-rejected")
 
-	_, tooLarge, err = readBodyLimited(strings.NewReader(exact + "a"))
-	require.NoError(t, err)
-	require.True(t, tooLarge)
+	ctx, rec = read(exact + "a")
+	require.NoError(t, handler.handleIngestion(ctx, ingestionKey("")))
+	require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, float64(maxOpenLineageBodySize), body["limit"])
 }
 
 // Every run state is written into the run's one row, because a row is the run's
@@ -125,70 +130,53 @@ func TestRunMessageForEvent(t *testing.T) {
 	require.Equal(t, startGUID, run.GUID)
 }
 
-// Producers sometimes omit the timezone offset. Dropping such a timestamp stores
-// NULL, which sorts last and is exempt from retention, so it is assumed UTC.
-func TestParseEventTime(t *testing.T) {
-	t.Parallel()
-
-	withOffset, err := parseEventTime("2024-01-02T03:04:05+08:00")
-	require.NoError(t, err)
-	require.Equal(t, "2024-01-01T19:04:05Z", withOffset.Format(time.RFC3339))
-
-	withoutOffset, err := parseEventTime("2024-01-02T03:04:05")
-	require.NoError(t, err)
-	require.Equal(t, "2024-01-02T03:04:05Z", withoutOffset.Format(time.RFC3339))
-
-	fractional, err := parseEventTime("2024-01-02T03:04:05.123")
-	require.NoError(t, err)
-	require.Equal(t, "2024-01-02T03:04:05.123Z", fractional.Format(time.RFC3339Nano))
-
-	_, err = parseEventTime("not-a-time")
-	require.Error(t, err)
-}
-
 // A run row must never carry an empty event time: the retention prune skips NULL
 // (`event_time IS NOT NULL AND event_time < $1`), so a producer that omits the
 // field — or sends one that does not parse — would make its events immortal and
 // silently break the deployment's retention setting. The receipt time is the
-// fallback, which keeps the event and ages it normally.
-func TestEventTimeForEventIsNeverZero(t *testing.T) {
-	t.Parallel()
-
-	exact := eventTimeForEvent("2024-01-02T03:04:05+08:00")
-	require.Equal(t, "2024-01-01T19:04:05Z", exact.Format(time.RFC3339))
-
-	for _, raw := range []string{"", "   ", "not-a-time"} {
-		got := eventTimeForEvent(raw)
-		require.False(t, got.IsZero(), "input %q must still produce a time", raw)
-		require.WithinDuration(t, time.Now(), got, time.Minute,
-			"input %q must fall back to the receipt time, not to the epoch", raw)
-	}
-}
-
-// The row the handler writes is what the prune reads, so pin the fallback at that
-// level too: a run row with no event time is what the retention policy cannot see.
+// fallback, which keeps the event and ages it normally. A parseable timestamp
+// keeps its instant; a producer that omitted the timezone offset the spec
+// requires is assumed UTC rather than refused.
 func TestRunMessageForEventAlwaysCarriesAnEventTime(t *testing.T) {
 	t.Parallel()
 
 	handler := &OpenLineageHandler{}
-	event := func(eventTime string) *openlineage.RunEvent {
-		return &openlineage.RunEvent{
-			EventTime: eventTime,
+	eventTime := func(raw string) *time.Time {
+		return handler.runMessageForEvent(&openlineage.RunEvent{
+			EventTime: raw,
 			EventType: "START",
 			Run:       openlineage.Run{RunID: "run-1"},
 			Job:       openlineage.Job{Namespace: "ns", Name: "job"},
-		}
+		}).EventTime
 	}
 
-	for _, raw := range []string{"", "not-a-time"} {
-		message := handler.runMessageForEvent(event(raw))
-		require.NotNil(t, message.EventTime, "input %q must not store a NULL event time", raw)
-		require.False(t, message.EventTime.IsZero())
+	tests := []struct {
+		name string
+		raw  string
+		want string // RFC3339Nano; empty means the receipt-time fallback
+	}{
+		{name: "an offset timestamp is stored in UTC", raw: "2024-01-02T03:04:05+08:00", want: "2024-01-01T19:04:05Z"},
+		{name: "a missing offset is assumed UTC", raw: "2024-01-02T03:04:05", want: "2024-01-02T03:04:05Z"},
+		{name: "fractional seconds are kept", raw: "2024-01-02T03:04:05.123", want: "2024-01-02T03:04:05.123Z"},
+		{name: "an empty event time falls back to the receipt time", raw: ""},
+		{name: "a whitespace event time falls back to the receipt time", raw: "   "},
+		{name: "an unparseable event time falls back to the receipt time", raw: "not-a-time"},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	message := handler.runMessageForEvent(event("2024-01-02T03:04:05Z"))
-	require.NotNil(t, message.EventTime)
-	require.Equal(t, "2024-01-02T03:04:05Z", message.EventTime.Format(time.RFC3339))
+			got := eventTime(tc.raw)
+			require.NotNil(t, got, "a run row must never store a NULL event time")
+			require.False(t, got.IsZero())
+			if tc.want != "" {
+				require.Equal(t, tc.want, got.Format(time.RFC3339Nano))
+				return
+			}
+			require.WithinDuration(t, time.Now(), *got, time.Minute,
+				"the fallback is the receipt time, not the epoch")
+		})
+	}
 }
 
 // Ingestion audit rows reuse the Connect audit mapping, so the HTTP status has
@@ -340,14 +328,6 @@ func TestRunMessageForEventDropsAnOverlongAirflowLink(t *testing.T) {
 
 	h := &OpenLineageHandler{}
 	require.Empty(t, h.runMessageForEvent(overlong).AirflowRunLogURL)
-
-	withinCap, err := openlineage.ParseRunEvent([]byte(`{
-		"eventType":"COMPLETE",
-		"run":{"runId":"run-2","facets":{"airflow":{"taskInstance":{"log_url":"https://airflow.example.com/dags/x/runs/1"}}}},
-		"job":{"namespace":"ns","name":"job"}
-	}`))
-	require.NoError(t, err)
-	require.Equal(t, "https://airflow.example.com/dags/x/runs/1", h.runMessageForEvent(withinCap).AirflowRunLogURL)
 }
 
 // The schema and column-lineage facets are stored so the dataset detail does not

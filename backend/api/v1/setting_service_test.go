@@ -209,39 +209,48 @@ func TestApplyWorkspaceProfileUpdateDataQualityAndAllowlistTogether(t *testing.T
 	}
 }
 
-// Dropping the allowlist check leaves the resource-name shape as the only
-// write-time rule, and a rejected update is still not applied.
-func TestApplyWorkspaceProfileUpdateDataQualityRejectsMalformedProvider(t *testing.T) {
+// A rejected pair is never applied: dropping the allowlist check leaves the
+// resource-name shape as the only write-time rule, and half a pair is refused too
+// because the model is never inferred.
+func TestApplyWorkspaceProfileUpdateDataQualityRejectsAnInvalidPair(t *testing.T) {
 	t.Parallel()
 
-	update := &v1pb.WorkspaceProfileSetting{
-		DataQuality: &v1pb.DataQualitySetting{
-			LlmProviderProfile: "openai",
-			LlmProviderModel:   "fast",
+	tests := []struct {
+		name        string
+		stored      *storepb.WorkspaceProfileSetting
+		dataQuality *v1pb.DataQualitySetting
+	}{
+		{
+			name:        "bare provider id",
+			stored:      &storepb.WorkspaceProfileSetting{},
+			dataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "openai", LlmProviderModel: "fast"},
+		},
+		{
+			name: "bare provider id with an allowlist",
+			stored: &storepb.WorkspaceProfileSetting{
+				AllowedLlmProviderModels: []*storepb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/openai", Model: "fast"}},
+			},
+			dataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "openai", LlmProviderModel: "fast"},
+		},
+		{
+			name:        "provider without a model",
+			stored:      &storepb.WorkspaceProfileSetting{},
+			dataQuality: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/fast"},
+		},
+		{
+			name:        "model without a provider",
+			stored:      &storepb.WorkspaceProfileSetting{},
+			dataQuality: &v1pb.DataQualitySetting{LlmProviderModel: "fast"},
 		},
 	}
-	for _, setting := range []*storepb.WorkspaceProfileSetting{
-		{},
-		{AllowedLlmProviderModels: []*storepb.LlmProviderModelRef{{ProviderProfile: "llm-provider-profiles/openai", Model: "fast"}}},
-	} {
-		err := applyWorkspaceProfileUpdate(setting, update, []string{"data_quality"})
-		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-		require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
-	}
-}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-// The model is never inferred, so half a pair is refused on write too.
-func TestApplyWorkspaceProfileUpdateDataQualityRequiresBothHalves(t *testing.T) {
-	t.Parallel()
-
-	for _, dataQuality := range []*v1pb.DataQualitySetting{
-		{LlmProviderProfile: "llm-provider-profiles/fast"},
-		{LlmProviderModel: "fast"},
-	} {
-		setting := &storepb.WorkspaceProfileSetting{}
-		err := applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{DataQuality: dataQuality}, []string{"data_quality"})
-		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-		require.Nil(t, setting.DataQuality, "a rejected update must not be applied")
+			err := applyWorkspaceProfileUpdate(test.stored, &v1pb.WorkspaceProfileSetting{DataQuality: test.dataQuality}, []string{"data_quality"})
+			require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			require.Nil(t, test.stored.DataQuality, "a rejected update must not be applied")
+		})
 	}
 }
 

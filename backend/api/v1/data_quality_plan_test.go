@@ -55,7 +55,8 @@ func TestQualityPlanMatchesScope(t *testing.T) {
 }
 
 // A contract-only target is a plan: declared requirements with no checks are the
-// state where gaps matter most.
+// state where gaps matter most, so the join must not drop it, and the plan renders
+// as planned with nothing implementing the declaration yet.
 func TestQualityPlanEntriesIncludesContractOnlyTarget(t *testing.T) {
 	t.Parallel()
 
@@ -70,12 +71,19 @@ func TestQualityPlanEntriesIncludesContractOnlyTarget(t *testing.T) {
 		},
 	}
 	entries := qualityPlanEntries([]*store.QualityRuleMessage{rule}, []*store.QualityContractMessage{contractOnly})
-	require.Len(t, entries, 2)
-	require.Equal(t, rule.TargetGUID, entries[0].guid)
-	require.Nil(t, entries[0].contract)
-	require.Equal(t, contractOnly.TargetGUID, entries[1].guid)
-	require.NotNil(t, entries[1].contract)
-	require.Empty(t, entries[1].rules)
+	require.Len(t, entries, 2, "the rule-only and the contract-only target are both plans")
+
+	plans := make(map[string]*v1pb.QualityPlan, len(entries))
+	for _, entry := range entries {
+		plans[entry.guid] = qualityPlanView(entry.guid, entry.metaType, entry.rules, entry.contract)
+	}
+	contracted, ok := plans[contractOnly.TargetGUID]
+	require.True(t, ok)
+	require.Equal(t, v1pb.QualityPlanState_QUALITY_PLAN_STATE_PLANNED, contracted.GetState(),
+		"a contract alone declares the plan")
+	require.Equal(t, v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL, contracted.GetCriticality())
+	require.Zero(t, contracted.GetCheckCount(), "nothing implements the declaration yet")
+	require.NotZero(t, contracted.GetGapCount())
 }
 
 // A paused check does not satisfy the requirement it would otherwise cover.

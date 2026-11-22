@@ -152,11 +152,14 @@ func TestParseQualityAgentConfigValidation(t *testing.T) {
 func TestApplyQualityAgentUpdateKeepsUnmaskedFields(t *testing.T) {
 	t.Parallel()
 
+	// A stored auto-adoption guardrail outlives the capability it was set with; an
+	// unrelated edit must not re-validate it into a failure.
 	current := &store.QualityAgentMessage{
 		ID:                          5,
 		OwnerPrincipalID:            int32Pointer(7),
 		State:                       store.QualityAgentStatePaused,
 		Capabilities:                []string{"suggest"},
+		AdoptionMode:                store.QualityAgentAdoptionModePaused,
 		Language:                    "zh-CN",
 		ProviderProfile:             "llm-provider-profiles/main",
 		ProviderModel:               "reasoner",
@@ -206,6 +209,7 @@ func TestConvertQualityAgentToV1(t *testing.T) {
 		State:                       store.QualityAgentStateActive,
 		OwnerPrincipalID:            &owner,
 		Capabilities:                []string{"suggest"},
+		AdoptionMode:                store.QualityAgentAdoptionModeActive,
 		AdoptionConfidenceThreshold: 0.7,
 		AdoptionMaxPerDay:           10,
 		ConversationMessagesPerHour: 60,

@@ -7,7 +7,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -239,69 +238,6 @@ func TestQualityRuleConfigRoundTrip(t *testing.T) {
 	}
 }
 
-func TestConvertQualityRuleConfigNil(t *testing.T) {
-	t.Parallel()
-
-	require.Nil(t, convertQualityRuleConfigToV1(nil))
-	require.Nil(t, convertQualityRuleConfigFromV1(nil))
-}
-
-func TestConvertQualityFilterRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	filter := &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
-		{Column: "a", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"1"}},
-		{Column: "b", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_NOT_IN, Values: []string{"x", "y"}},
-	}}
-	require.True(t, proto.Equal(filter, convertQualityFilterFromV1(convertQualityFilterToV1(filter))))
-	require.Nil(t, convertQualityFilterToV1(nil))
-	require.Nil(t, convertQualityFilterFromV1(nil))
-}
-
-// A reconciliation's reference relation crosses the API boundary as its registry
-// identity plus a display path, and its reference-side filter is a cross-table
-// field rather than the rule's own filter.
-func TestConvertCrossTableReferenceRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	stored := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-		LeftColumn:  "id",
-		RightColumn: "total",
-		Reference: &storepb.CrossTableReference{
-			MetaGuid: "instance_2;billing;public;invoices",
-			MetaType: storepb.MetaType_TABLE,
-			Path: &storepb.QualityTargetPath{
-				Instance: "instances/ins2",
-				Database: "billing",
-				Schema:   "public",
-				Object:   "invoices",
-			},
-		},
-		RightFilter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
-			{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
-		}},
-	}}}
-
-	public := convertQualityRuleConfigToV1(stored)
-	crossTable := public.GetCrossTable()
-	require.NotNil(t, crossTable)
-	require.Equal(t, "instance_2;billing;public;invoices", crossTable.GetReference().GetMetaGuid())
-	require.Equal(t, v1pb.MetaType_TABLE, crossTable.GetReference().GetMetaType())
-	require.Equal(t, "billing", crossTable.GetReference().GetPath().GetDatabase())
-	require.Equal(t, "invoices", crossTable.GetReference().GetPath().GetObject())
-	require.Len(t, crossTable.GetRightFilter().GetClauses(), 1)
-	require.Equal(t, "status", crossTable.GetRightFilter().GetClauses()[0].GetColumn())
-	require.Nil(t, public.GetFilter(), "the reference filter must not become the rule's own filter")
-
-	roundTripped := convertQualityRuleConfigFromV1(public)
-	require.True(t, proto.Equal(stored, roundTripped))
-	require.True(t, proto.Equal(stored.GetCrossTable().GetRightFilter(),
-		roundTripped.GetCrossTable().GetRightFilter()), "the reference-side filter survives the round trip")
-
-	require.Nil(t, convertCrossTableReferenceToV1(nil))
-	require.Nil(t, convertCrossTableReferenceFromV1(nil))
-}
-
 func TestConvertQualityRule(t *testing.T) {
 	t.Parallel()
 
@@ -369,6 +305,7 @@ func TestConvertQualityRuleWithoutOptionalFields(t *testing.T) {
 	rule := &store.QualityRuleMessage{ResourceID: "rule1"}
 	converted := convertQualityRule("ws1", rule)
 	require.Empty(t, converted.GetOwner())
+	require.Nil(t, converted.GetConfig(), "a rule without config carries none")
 	require.Nil(t, converted.GetMuteUntil())
 	require.Nil(t, converted.GetTarget().GetPath())
 	require.Empty(t, converted.GetTarget().GetColumns())
@@ -494,6 +431,7 @@ func TestConvertQualityExecution(t *testing.T) {
 	// difference between "zero" and "not measured".
 	require.Equal(t, 0.0, pending.GetObservedValue())
 	require.Empty(t, pending.GetSamples())
+	require.Nil(t, pending.GetSegmentEvidence(), "a check that observed no segments carries no segment evidence")
 	require.Nil(t, pending.BaselineValue, "a first observation has no baseline to show")
 	require.Nil(t, pending.GetBaselineTime())
 	require.Nil(t, convertQualityExecution("ws1", nil, ""))
@@ -566,14 +504,6 @@ func TestQualityResourceNameParsing(t *testing.T) {
 	}
 }
 
-func TestQualityResourceNameFormatting(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "workspaces/ws1/qualityRules/rule123", formatQualityRuleName("ws1", "rule123"))
-	require.Equal(t, "workspaces/ws1/qualityExecutions/42", formatQualityExecutionName("ws1", 42))
-	require.Equal(t, "workspaces/ws1/qualityIssues/issue123", formatQualityIssueName("ws1", "issue123"))
-}
-
 func TestIsCurrentWorkspace(t *testing.T) {
 	t.Parallel()
 
@@ -636,22 +566,17 @@ func TestFormatQueryParameter(t *testing.T) {
 	require.Equal(t, "bytes", formatQueryParameter([]byte("bytes")))
 }
 
-func TestConvertQualityThresholdsNil(t *testing.T) {
+// An absent optional message converts to nil rather than to an empty message a
+// client would render as measured: zero counts, an empty filter, or a reference
+// with no identity.
+func TestConvertQualityNilMessages(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, convertQualityThresholdsToV1(nil))
 	require.Nil(t, convertQualityStatusCountsToV1(nil))
-	require.Nil(t, convertQualitySamplesToV1(nil))
-	require.Nil(t, convertSegmentObservationToV1(nil))
-	require.Nil(t, convertQualityTargetPathToV1(nil))
-}
-
-func TestDurationFromMilliseconds(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 1500*time.Millisecond, durationFromMilliseconds(1500).AsDuration())
-	require.Equal(t, time.Duration(0), durationFromMilliseconds(0).AsDuration())
-	require.Equal(t, durationpb.New(2*time.Second).AsDuration(), durationFromMilliseconds(2000).AsDuration())
+	require.Nil(t, convertQualityFilterToV1(nil))
+	require.Nil(t, convertQualityFilterFromV1(nil))
+	require.Nil(t, convertCrossTableReferenceToV1(nil))
+	require.Nil(t, convertCrossTableReferenceFromV1(nil))
 }
 
 func TestConvertQualityIssue(t *testing.T) {

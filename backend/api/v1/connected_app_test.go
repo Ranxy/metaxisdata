@@ -9,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -243,7 +242,6 @@ func TestConvertConnectedApp(t *testing.T) {
 	hidden := convertConnectedApp(grant, now, grant.Resource, false)
 	require.Empty(t, hidden.GetUserEmail(), "reading connected apps does not grant reading accounts")
 	require.Equal(t, "users/7", hidden.GetUser())
-	require.Equal(t, common.FormatUserUID(7), hidden.GetUser())
 }
 
 func TestConvertCLIConnectedApp(t *testing.T) {

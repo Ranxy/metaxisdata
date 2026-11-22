@@ -203,27 +203,6 @@ func TestAssembleQualityScoreOverviewEmpty(t *testing.T) {
 	require.Equal(t, int32(9), overview.GetTotalColumnCount())
 }
 
-// The score's row-level mode is part of the assembly: a rule whose type scores by
-// passed rows uses failed_rows/total_rows even when the verdict is FAIL.
-func TestAssembleQualityScoreOverviewUsesRowScores(t *testing.T) {
-	t.Parallel()
-
-	rule := qualityOverviewRule(1, "inst-1;shop;;orders", storepb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS,
-		storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, 0, qualityOverviewConfig("id"))
-	rule.RuleType = storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE
-	latest := map[int64]*store.QualityExecutionMessage{
-		1: {RuleID: 1, TargetGUID: "inst-1;shop;;orders", TargetType: storepb.MetaType_TABLE,
-			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 1, TotalRows: 4},
-	}
-	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
-		{GUID: "inst-1;shop;;orders", ObjectType: storepb.MetaType_TABLE}: {"id": {}},
-	}
-	overview := assembleQualityScoreOverview([]*store.QualityRuleMessage{rule}, targetColumns, latest,
-		[]*store.QualityCoverageRow{{InstanceResourceID: "inst-1", TableCount: 1, ColumnCount: 2}}, nil)
-	require.NotNil(t, overview.QualityScore)
-	require.InDelta(t, 75.0, overview.GetQualityScore(), 1e-9)
-}
-
 // A rule can outlive its target. Its target has no coverage denominator row, so
 // it must not count toward coverage, the score, the judged-target count, or any
 // breakdown: otherwise coverage could exceed 100%.

@@ -127,14 +127,16 @@ func TestBuildLineageGraphStopsAtTheRequestedDepth(t *testing.T) {
 	require.Len(t, edges, 2)
 }
 
-// A cycle must terminate, and the same edge must not be listed twice just
-// because both of its ends were expanded.
+// A cycle must terminate, and the same relation must not be listed twice just
+// because both of its ends were expanded or because it is stored as two rows.
 func TestBuildLineageGraphTerminatesOnCyclesAndDeduplicatesEdges(t *testing.T) {
 	t.Parallel()
 
 	graph := &fakeGraph{edges: []*store.ColumnLineage{
 		edge(1, "a", "b"),
 		edge(2, "b", "a"),
+		// The same relation stored once per analyzed object.
+		edge(3, "a", "b"),
 	}}
 
 	nodes, edges, _, truncated, err := buildLineageGraph(context.Background(), "a", 10,
@@ -178,36 +180,38 @@ func TestBuildLineageGraphDropsSelfEdges(t *testing.T) {
 	require.Equal(t, "b", edges[0].TargetGUID)
 }
 
-func TestBuildLineageGraphTruncatesOnTheNodeCeiling(t *testing.T) {
+// A response is bounded in both dimensions, and a ceiling that cut the walk is
+// reported as truncation rather than silently dropping the rest of the graph.
+func TestBuildLineageGraphTruncatesAtItsCeilings(t *testing.T) {
 	t.Parallel()
 
-	graph := &fakeGraph{edges: []*store.ColumnLineage{
-		edge(1, "a", "b"),
-		edge(2, "a", "c"),
-		edge(3, "a", "d"),
-	}}
+	for _, tt := range []struct {
+		name      string
+		limits    lineageGraphLimits
+		wantNodes int
+		wantEdges int
+	}{
+		{name: "the node ceiling", limits: lineageGraphLimits{nodes: 2, edges: 100}, wantNodes: 2, wantEdges: 2},
+		{name: "the edge ceiling", limits: lineageGraphLimits{nodes: 100, edges: 2}, wantNodes: 3, wantEdges: 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	nodes, _, _, truncated, err := buildLineageGraph(context.Background(), "a", 5,
-		lineageGraphLimits{nodes: 2, edges: 100}, graph.fetcher(false, true))
-	require.NoError(t, err)
-	require.True(t, truncated)
-	require.Len(t, nodes, 2, "the ceiling is not exceeded")
-}
+			// One hub with three neighbours, so either ceiling cuts the same walk short.
+			graph := &fakeGraph{edges: []*store.ColumnLineage{
+				edge(1, "a", "b"),
+				edge(2, "a", "c"),
+				edge(3, "a", "d"),
+			}}
 
-func TestBuildLineageGraphTruncatesOnTheEdgeCeiling(t *testing.T) {
-	t.Parallel()
-
-	graph := &fakeGraph{edges: []*store.ColumnLineage{
-		edge(1, "a", "b"),
-		edge(2, "a", "c"),
-		edge(3, "a", "d"),
-	}}
-
-	_, edges, _, truncated, err := buildLineageGraph(context.Background(), "a", 5,
-		lineageGraphLimits{nodes: 100, edges: 2}, graph.fetcher(false, true))
-	require.NoError(t, err)
-	require.True(t, truncated)
-	require.Len(t, edges, 2)
+			nodes, edges, _, truncated, err := buildLineageGraph(context.Background(), "a", 5,
+				tt.limits, graph.fetcher(false, true))
+			require.NoError(t, err)
+			require.True(t, truncated)
+			require.Len(t, nodes, tt.wantNodes, "the ceiling is not exceeded")
+			require.Len(t, edges, tt.wantEdges, "the ceiling is not exceeded")
+		})
+	}
 }
 
 // A slow expansion is reported as a partial graph rather than as a failure: the
@@ -239,19 +243,6 @@ func TestBuildLineageGraphSurfacesARealFetchFailure(t *testing.T) {
 	_, _, _, _, err := buildLineageGraph(context.Background(), "a", 5,
 		lineageGraphLimits{nodes: 100, edges: 100}, graph.fetcher(true, true))
 	require.ErrorContains(t, err, "connection reset")
-}
-
-func TestColumnLineageKeyIgnoresTheRowIdentity(t *testing.T) {
-	t.Parallel()
-
-	first := &store.ColumnLineage{ID: 1, SourceGUID: "a", SourceColumn: "x", TargetGUID: "b", TargetColumn: "y"}
-	second := &store.ColumnLineage{ID: 99, SourceGUID: "a", SourceColumn: "x", TargetGUID: "b", TargetColumn: "y"}
-	require.Equal(t, columnLineageKey(first), columnLineageKey(second))
-
-	other := &store.ColumnLineage{ID: 1, SourceGUID: "a", SourceColumn: "x", TargetGUID: "b", TargetColumn: "z"}
-	require.NotEqual(t, columnLineageKey(first), columnLineageKey(other))
-
-	require.Empty(t, columnLineageKey(&store.ColumnLineage{}), "an edge without endpoints has no identity")
 }
 
 func TestConvertLineageGraphNodeDescribesUnsynchronisedObjects(t *testing.T) {

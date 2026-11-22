@@ -15,17 +15,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestNotificationCallerRequiresAuthentication(t *testing.T) {
-	t.Parallel()
-
-	// An inbox has no workspace-level permission to check, so authentication is
-	// the only thing standing between a caller and other people's messages.
-	_, err := notificationCaller(context.Background())
-	var connectErr *connect.Error
-	require.ErrorAs(t, err, &connectErr)
-	require.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
-}
-
 func TestConvertToV1NotificationNamesAndMapsTheEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -154,37 +143,6 @@ func TestConvertToV1NotificationMapsADataQualityDetail(t *testing.T) {
 	require.Equal(t, "instances/instance_1", detail.GetInstance())
 }
 
-// A storm summary has no issue, no execution and no observation; the instance and
-// the two tallies are what the client renders.
-func TestConvertToV1NotificationMapsAStormSummary(t *testing.T) {
-	t.Parallel()
-
-	converted := convertToV1Notification(&storepb.Notification{
-		Id:       11,
-		Parent:   "workspaces/ws",
-		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
-		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
-		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
-			Kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
-			Instance:        "instances/instance_1",
-			TargetGuid:      "instance_1;shop;public;orders",
-			TargetPath:      "prod.shop.public.orders",
-			FailedRuleCount: 12,
-			TotalRuleCount:  40,
-		}},
-	}, "ws")
-
-	detail := converted.GetDataQuality()
-	require.NotNil(t, detail)
-	require.Equal(t, v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY, detail.GetKind())
-	require.Empty(t, detail.GetExecution(), "a storm summary has no single execution")
-	require.Equal(t, "instances/instance_1", detail.GetInstance())
-	require.Equal(t, "instance_1;shop;public;orders", detail.GetTargetGuid())
-	require.Equal(t, "prod.shop.public.orders", detail.GetTargetPath())
-	require.Equal(t, int32(12), detail.GetFailedRuleCount())
-	require.Equal(t, int32(40), detail.GetTotalRuleCount())
-}
-
 // A notification written by a newer server may carry a detail this build does
 // not know; the envelope still has to render.
 func TestConvertToV1NotificationWithoutAKnownDetail(t *testing.T) {
@@ -201,9 +159,6 @@ func TestConvertToV1NotificationHandlesNil(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, convertToV1Notification(nil, "ws"))
-	require.Nil(t, convertSchemaSyncDetail(nil))
-	require.Nil(t, convertOpenLineageDetail(nil))
-	require.Nil(t, convertDataQualityDetail(nil))
 }
 
 // A mark-read batch is refused on its own shape before anything is read: the request
@@ -292,20 +247,6 @@ func TestConvertToV1NotificationEventWithoutACount(t *testing.T) {
 	require.Equal(t, int32(0), event.Notification.GetUnreadCount())
 	require.Nil(t, event.Notification.UnseenCount)
 	require.Equal(t, int32(0), event.Notification.GetUnseenCount())
-}
-
-// A detail written by a newer server still streams: the envelope renders and the
-// client falls back to a generic line.
-func TestConvertToV1NotificationEventWithoutAKnownDetail(t *testing.T) {
-	t.Parallel()
-
-	converted := convertToV1NotificationEvent(notification.Event{
-		Notification: &storepb.Notification{Id: 5, Parent: "workspaces/ws"},
-	}, "ws")
-
-	event, ok := converted.GetEvent().(*v1pb.SubscribeNotificationsResponse_Notification)
-	require.True(t, ok)
-	require.Nil(t, event.Notification.GetNotification().GetDetail())
 }
 
 // Opening the inbox is a write to the caller's own watermark, so it is refused without

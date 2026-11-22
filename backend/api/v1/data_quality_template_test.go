@@ -56,18 +56,6 @@ func TestParseQualityRuleTemplateName(t *testing.T) {
 	}
 }
 
-func TestFormatQualityRuleTemplateNameRoundTrips(t *testing.T) {
-	t.Parallel()
-
-	name := formatQualityRuleTemplateName("ws-1", "template-1")
-	require.Equal(t, "workspaces/ws-1/qualityRuleTemplates/template-1", name)
-
-	workspace, resourceID, err := parseQualityRuleTemplateName(name)
-	require.NoError(t, err)
-	require.Equal(t, "ws-1", workspace)
-	require.Equal(t, "template-1", resourceID)
-}
-
 // validQualityTemplateRequest builds a create request carrying every kind of
 // target scope a user's editor state can include.
 func validQualityTemplateRequest() *v1pb.QualityRuleTemplate {

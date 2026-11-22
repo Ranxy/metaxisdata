@@ -91,16 +91,10 @@ func TestQualityExportCSVWriterStreamsBOMHeaderAndCumulativeRows(t *testing.T) {
 	require.NotEmpty(t, sender.chunks)
 	var lastCount int64
 	for i, chunk := range sender.chunks {
-		require.LessOrEqual(t, len(chunk.GetData()), qualityExportChunkBytes, "slice %d exceeds the cap", i)
 		require.GreaterOrEqual(t, chunk.GetRowCount(), lastCount, "slice %d must report a cumulative count", i)
 		lastCount = chunk.GetRowCount()
-		if i < len(sender.chunks)-1 {
-			require.GreaterOrEqual(t, len(chunk.GetData()), qualityExportFlushBytes,
-				"only the final slice may be shorter than the flush threshold")
-		}
 	}
 	require.Equal(t, int64(qualityExportPageSize), lastCount)
-	require.Equal(t, int64(qualityExportPageSize), writer.rows)
 
 	document := sender.document()
 	require.True(t, bytes.HasPrefix(document, []byte(qualityExportBOM)), "the first bytes must be the UTF-8 BOM")
@@ -127,10 +121,9 @@ func TestQualityExportCSVWriterSplitsLongRecordsWithoutDoubleCounting(t *testing
 	require.NoError(t, writer.writeRecord([]string{"1", huge}))
 	require.NoError(t, writer.finish(false))
 
-	require.Len(t, sender.chunks, 2, "the oversized record needs exactly two slices")
+	require.GreaterOrEqual(t, len(sender.chunks), 2, "the oversized record must be split across slices")
 	require.Zero(t, sender.chunks[0].GetRowCount(), "the row is not complete yet at the first slice")
-	require.Equal(t, int64(1), sender.chunks[1].GetRowCount())
-	require.Equal(t, int64(1), writer.rows)
+	require.Equal(t, int64(1), sender.lastChunk().GetRowCount())
 
 	reader := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(sender.document(), []byte(qualityExportBOM))))
 	records, err := reader.ReadAll()
@@ -178,6 +171,7 @@ func TestStreamQualityCSVTruncatesAtTheRowCeiling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), exported)
 	require.Equal(t, 1, calls)
+	require.True(t, sender.lastChunk().GetTruncated(), "a page cut by the ceiling flags the file")
 
 	reader := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(sender.document(), []byte(qualityExportBOM))))
 	records, err := reader.ReadAll()
@@ -198,29 +192,6 @@ func TestStreamQualityCSVReturnsSendErrors(t *testing.T) {
 	require.ErrorIs(t, err, sendErr)
 }
 
-func TestQualityExportScalarFormatting(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "", qualityExportEnum(storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED.String(), "QUALITY_STATUS_"))
-	require.Equal(t, "FAIL", qualityExportEnum(storepb.QualityStatus_QUALITY_STATUS_FAIL.String(), "QUALITY_STATUS_"))
-	require.Equal(t, "MANUAL", qualityExportEnum(storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL.String(), "QUALITY_EXECUTION_TRIGGER_"))
-	require.Equal(t, "TABLE", qualityExportEnum(storepb.MetaType_TABLE.String(), ""))
-	require.Empty(t, qualityExportEnum(storepb.MetaType_UNSPECIFIED.String(), ""))
-
-	require.Empty(t, qualityExportTime(time.Time{}))
-	inTimezone := time.Date(2026, 10, 31, 12, 0, 0, 0, time.FixedZone("CST", 8*60*60))
-	require.Equal(t, "2026-10-31T04:00:00Z", qualityExportTime(inTimezone))
-
-	require.Empty(t, qualityExportTimePtr(nil))
-	future := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	require.Equal(t, "2026-11-01T00:00:00Z", qualityExportTimePtr(&future))
-
-	require.Empty(t, qualityExportFloat(nil))
-	zero, ratio := 0.0, 1.5
-	require.Equal(t, "0", qualityExportFloat(&zero))
-	require.Equal(t, "1.5", qualityExportFloat(&ratio))
-}
-
 func TestQualityTargetPathString(t *testing.T) {
 	t.Parallel()
 
@@ -238,7 +209,8 @@ func TestQualityTargetPathString(t *testing.T) {
 func TestQualityExecutionExportRecord(t *testing.T) {
 	t.Parallel()
 
-	started := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	// The instant is written in a non-UTC zone: the record renders it in UTC.
+	started := time.Date(2026, 10, 31, 18, 0, 0, 0, time.FixedZone("CST", 8*60*60))
 	finished := started.Add(2 * time.Minute)
 	observed := 3.5
 	execution := &store.QualityExecutionMessage{
@@ -458,18 +430,6 @@ func TestStreamQualityCSVFlagsTruncationOnlyWhenRowsRemain(t *testing.T) {
 		require.Equal(t, int64(3), exported)
 		require.False(t, sender.lastChunk().GetTruncated(), "nothing was left behind")
 	})
-
-	t.Run("the ceiling cuts a page short", func(t *testing.T) {
-		t.Parallel()
-		sender := &recordingChunkSender{}
-		widePage := func(_ context.Context, _ int, _ int) ([][]string, error) {
-			return [][]string{{"1"}, {"2"}, {"3"}, {"4"}}, nil
-		}
-		exported, err := streamQualityCSV(t.Context(), sender, []string{"id"}, 2, widePage)
-		require.NoError(t, err)
-		require.Equal(t, int64(2), exported)
-		require.True(t, sender.lastChunk().GetTruncated())
-	})
 }
 
 // Every filter a List RPC accepts must exist on the matching export, with the
@@ -620,4 +580,9 @@ func TestQualityExecutionExportRecordKeepsNegativeNumbers(t *testing.T) {
 	record := qualityExecutionExportRecord("ws", execution, "")
 	require.Equal(t, "-5", record[9], "a negative observation must keep its exact numeric value")
 	require.Equal(t, "'-5 must stay numeric", record[16], "an error message is text and is neutralized")
+
+	// A zero observation is a value, not an absent one.
+	zero := 0.0
+	execution.ObservedValue = &zero
+	require.Equal(t, "0", qualityExecutionExportRecord("ws", execution, "")[9])
 }

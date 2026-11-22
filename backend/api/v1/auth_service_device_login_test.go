@@ -34,43 +34,6 @@ func mustState(t *testing.T) *state.State {
 // the pending read path. The approve and exchange paths reach the user store,
 // so they are exercised by the integration suite instead.
 
-func TestNormalizeDeviceUserCodeAcceptsWhatAPersonTypes(t *testing.T) {
-	t.Parallel()
-
-	for _, input := range []string{
-		"7Q2X-9M4K",
-		"7q2x-9m4k",
-		"7Q2X9M4K",
-		" 7q2x 9m4k ",
-		"7Q2X_9M4K",
-	} {
-		require.Equal(t, "7Q2X-9M4K", state.NormalizeUserCode(input), "input %q", input)
-	}
-
-	// Crockford decodes the confusables to a digit, so a canonical code never
-	// contains O, I or L.
-	require.Equal(t, "0011-1100", state.NormalizeUserCode("OOII-LIOO"))
-	require.Equal(t, "0000-0000", state.NormalizeUserCode("OOOO-OOOO"))
-	require.Equal(t, "1111-1111", state.NormalizeUserCode("IIII-IIII"))
-
-	for _, input := range []string{"", "7Q2X-9M4", "7Q2X-9M4KK", "7Q2X-9M4!", "UUUU-UUUU", "7Q2X=9M4K"} {
-		require.Empty(t, state.NormalizeUserCode(input), "input %q must be rejected", input)
-	}
-}
-
-func TestParseDeviceLoginName(t *testing.T) {
-	t.Parallel()
-
-	userCode, err := parseDeviceLoginName("deviceLogins/7q2x-9m4k")
-	require.NoError(t, err)
-	require.Equal(t, "7Q2X-9M4K", userCode)
-
-	for _, name := range []string{"", "7Q2X-9M4K", "deviceLogins/", "deviceLogins/short", "users/7Q2X-9M4K"} {
-		_, err := parseDeviceLoginName(name)
-		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "name %q", name)
-	}
-}
-
 func TestConvertDeviceLoginState(t *testing.T) {
 	t.Parallel()
 
@@ -134,6 +97,41 @@ func TestGetDeviceLoginReturnsAPendingRequest(t *testing.T) {
 	require.Equal(t, created.ExpireTime.UTC(), msg.GetExpireTime().AsTime().UTC())
 }
 
+// The confirmation page receives the user code as a person types it off the
+// screen: any case, with or without the dash and separators, and with the
+// characters Crockford base32 decodes to a digit. The response reports the
+// canonical form the request is stored under.
+func TestGetDeviceLoginReadsTheUserCodeAsAPersonTypesIt(t *testing.T) {
+	t.Parallel()
+
+	stateCfg := mustState(t)
+	svc := &AuthService{stateCfg: stateCfg, profile: &config.Profile{}}
+
+	for _, test := range []struct {
+		canonical string
+		typed     []string
+	}{
+		{canonical: "7Q2X-9M4K", typed: []string{"7Q2X-9M4K", "7q2x-9m4k", "7Q2X9M4K", " 7q2x 9m4k ", "7Q2X_9M4K"}},
+		{canonical: "0011-1100", typed: []string{"OOII-LIOO"}},
+		{canonical: "0000-0000", typed: []string{"OOOO-OOOO"}},
+		{canonical: "1111-1111", typed: []string{"IIII-IIII", "LLLL-LLLL"}},
+	} {
+		_, err := stateCfg.DeviceLoginStore.Create(state.DeviceLogin{
+			DeviceCode: "device-secret-" + test.canonical,
+			UserCode:   test.canonical,
+		}, time.Now())
+		require.NoError(t, err)
+
+		for _, typed := range test.typed {
+			resp, err := svc.GetDeviceLogin(context.Background(), connect.NewRequest(&v1pb.GetDeviceLoginRequest{
+				Name: "deviceLogins/" + typed,
+			}))
+			require.NoError(t, err, "typed %q", typed)
+			require.Equal(t, "deviceLogins/"+test.canonical, resp.Msg.GetName(), "typed %q", typed)
+		}
+	}
+}
+
 func TestGetDeviceLoginRejectsUnknownCodes(t *testing.T) {
 	t.Parallel()
 
@@ -148,9 +146,18 @@ func TestGetDeviceLoginRejectsUnknownCodes(t *testing.T) {
 	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 
 	// A well-formed but unknown code is not found; a malformed one is rejected
-	// before the store is consulted. "UUUU-UUUU" uses a character outside the
-	// Crockford alphabet, and "123" is too short.
-	for _, name := range []string{"deviceLogins/UUUU-UUUU", "deviceLogins/123"} {
+	// before the store is consulted.
+	for _, name := range []string{
+		"deviceLogins/UUUU-UUUU",  // a character outside the Crockford alphabet
+		"deviceLogins/123",        // too short
+		"deviceLogins/7Q2X-9M4",   // too short
+		"deviceLogins/7Q2X-9M4KK", // too long
+		"deviceLogins/7Q2X-9M4!",  // not a code character
+		"deviceLogins/7Q2X=9M4K",
+		"deviceLogins/",   // no code at all
+		"7Q2X-9M4K",       // no resource prefix
+		"users/7Q2X-9M4K", // another resource type
+	} {
 		_, err = svc.GetDeviceLogin(ctx, connect.NewRequest(&v1pb.GetDeviceLoginRequest{Name: name}))
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "name %q", name)
 	}
@@ -274,9 +281,21 @@ func TestValidateDeviceLoginClientField(t *testing.T) {
 func TestDeviceLoginCallerKeyPrefersTheUser(t *testing.T) {
 	t.Parallel()
 
-	signedIn := context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: 42})
-	require.Equal(t, "user:42", deviceLoginCallerKey(signedIn, http.Header{}, "203.0.113.7:1234", nil))
+	signedIn := func(userID int) context.Context {
+		return context.WithValue(context.Background(), common.UserContextKey, &store.UserMessage{ID: userID})
+	}
+	header := http.Header{}
 
+	// One account keeps a single bucket whichever address it calls from, and
+	// another account never shares it.
+	here := deviceLoginCallerKey(signedIn(42), header, "203.0.113.7:1234", nil)
+	require.Equal(t, here, deviceLoginCallerKey(signedIn(42), header, "198.51.100.9:5678", nil))
+	require.NotEqual(t, here, deviceLoginCallerKey(signedIn(7), header, "203.0.113.7:1234", nil))
+
+	// A request without a user falls back to the source address.
 	anonymous := context.WithValue(context.Background(), common.AuthContextKey, &common.AuthContext{})
-	require.Equal(t, "ip:203.0.113.7", deviceLoginCallerKey(anonymous, http.Header{}, "203.0.113.7:1234", nil))
+	fromPeer := deviceLoginCallerKey(anonymous, header, "203.0.113.7:1234", nil)
+	require.Equal(t, fromPeer, deviceLoginCallerKey(anonymous, header, "203.0.113.7:1234", nil))
+	require.NotEqual(t, fromPeer, deviceLoginCallerKey(anonymous, header, "198.51.100.9:5678", nil))
+	require.NotEqual(t, here, fromPeer)
 }

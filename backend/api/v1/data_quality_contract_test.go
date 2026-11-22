@@ -147,16 +147,6 @@ func TestConvertQualityContractSettings(t *testing.T) {
 	require.Equal(t, stored.GetDefaultSeverity(), back.GetDefaultSeverity())
 }
 
-// The publisher id renders as a user resource name; an absent publisher stays
-// empty rather than becoming users/0.
-func TestFormatQualityContractPublisher(t *testing.T) {
-	t.Parallel()
-
-	require.Empty(t, formatQualityContractPublisher(nil))
-	id := int32(7)
-	require.Equal(t, "users/7", formatQualityContractPublisher(&id))
-}
-
 // The publish note has a bounded size; the handler rejects rather than truncating.
 func TestQualityContractNote(t *testing.T) {
 	t.Parallel()
@@ -309,6 +299,7 @@ func TestValidateQualityContractIntentShape(t *testing.T) {
 	for name, intent := range map[string]*v1pb.QualityContractIntent{
 		"unknown criticality": {Criticality: v1pb.QualityAssetCriticality(99)},
 		"unknown property":    {Statements: []*v1pb.QualityContractIntentStatement{{Property: v1pb.QualityCoverageProperty(99)}}},
+		"unknown source":      {Source: v1pb.QualityContractIntentSource(99)},
 		"too many statements": {Statements: make([]*v1pb.QualityContractIntentStatement, maxContractIntentStatements+1)},
 		"empty dependent":     {Dependents: []string{" "}},
 		"to many dependents":  {Dependents: make([]string, maxContractIntentDependents+1)},
@@ -376,6 +367,7 @@ func TestConvertQualityContractRevisionIntent(t *testing.T) {
 
 	legacy := convertQualityContractRevisionToV1(&store.QualityContractRevisionMessage{Version: 1})
 	require.Nil(t, legacy.GetIntent())
+	require.Empty(t, legacy.GetPublishedBy(), "an absent publisher stays empty rather than users/0")
 }
 
 // The intent participates in the v2 fingerprint: an intent-only edit must produce a
@@ -428,15 +420,6 @@ func TestCoverageEnumNumberingMatches(t *testing.T) {
 	for source := storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN; source <= storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED; source++ {
 		require.Equal(t, int32(source), int32(v1pb.QualityContractIntentSource(source)))
 	}
-}
-
-// An unknown source must be rejected rather than stored as a meaningless number.
-func TestValidateQualityContractIntentShapeRejectsUnknownSource(t *testing.T) {
-	t.Parallel()
-
-	require.Error(t, validateQualityContractIntentShape(&v1pb.QualityContractIntent{
-		Source: v1pb.QualityContractIntentSource(99),
-	}))
 }
 
 // The v3 fingerprint covers the plan payload: a cadence-only change must produce a
@@ -511,8 +494,9 @@ func TestConvertQualityContractRevisionChangeKindAndPlan(t *testing.T) {
 	t.Parallel()
 
 	revision := &store.QualityContractRevisionMessage{
-		Version:    2,
-		ChangeKind: storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN,
+		Version:     2,
+		ChangeKind:  storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN,
+		PublishedBy: qualityTestPtr(int32(7)),
 		Snapshot: &storepb.QualityContractSnapshot{
 			Plan: &storepb.QualityContractPlan{
 				Coverage: []*storepb.QualityContractPlanCoverage{{
@@ -525,6 +509,7 @@ func TestConvertQualityContractRevisionChangeKindAndPlan(t *testing.T) {
 	}
 	converted := convertQualityContractRevisionToV1(revision)
 	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN, converted.GetChangeKind())
+	require.Equal(t, "users/7", converted.GetPublishedBy())
 	require.Len(t, converted.GetPlan().GetCoverage(), 1)
 }
 

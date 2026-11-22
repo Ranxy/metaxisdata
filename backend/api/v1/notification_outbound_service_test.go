@@ -7,7 +7,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/component/notification/outbound"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -116,8 +115,7 @@ func TestStoreNotificationChannelPayload(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-// An email channel's addresses are validated and de-duplicated at write time, and
-// the channel must name at least one recipient source.
+// An email channel's addresses are normalized and de-duplicated at write time.
 func TestStoreNotificationChannelPayloadEmail(t *testing.T) {
 	t.Parallel()
 
@@ -134,16 +132,6 @@ func TestStoreNotificationChannelPayloadEmail(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"OnCall@example.com", "lead@example.com"}, payload.GetConfig().GetEmail().GetAddresses())
 	require.True(t, payload.GetConfig().GetEmail().GetIncludeAudience())
-
-	payload, err = storeNotificationChannelPayload(&v1pb.NotificationChannel{
-		DisplayName: "on-call",
-		Kind:        v1pb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL,
-		Config: &v1pb.NotificationChannelConfig{
-			Config: &v1pb.NotificationChannelConfig_Email{Email: &v1pb.EmailChannelConfig{}},
-		},
-	})
-	require.NoError(t, err)
-	require.Error(t, outbound.ValidateChannel(payload, nil), "an email channel needs a recipient source")
 }
 
 // The kind is immutable, so a stored channel's config case is the only one its

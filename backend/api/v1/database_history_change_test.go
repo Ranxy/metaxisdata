@@ -10,16 +10,51 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestPluralize(t *testing.T) {
+// The timeline summary is user-facing copy: the section counts are joined in the
+// fixed section order and each label is pluralized, including the irregular
+// "index"/"property" forms and the multi-word labels, which pluralize only their
+// last word.
+func TestBuildMetadataHistorySummaryPluralizesSectionLabels(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "column", pluralize("column", 1))
-	require.Equal(t, "columns", pluralize("column", 2))
-	require.Equal(t, "indexes", pluralize("index", 2))
-	require.Equal(t, "properties", pluralize("property", 3))
-	require.Equal(t, "foreign keys", pluralize("foreign key", 2))
-	require.Equal(t, "check constraints", pluralize("check constraint", 0))
-	require.Equal(t, "changes", pluralize("change", 2))
+	sections := []v1pb.MetadataHistorySection{
+		v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_COLUMN,
+		v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_INDEX,
+		v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_FOREIGN_KEY,
+		v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_CHECK_CONSTRAINT,
+		v1pb.MetadataHistorySection_METADATA_HISTORY_SECTION_SELF,
+	}
+	changes := func(count int, operation v1pb.MetadataHistoryOperation) []*v1pb.MetadataHistoryChangeItem {
+		items := make([]*v1pb.MetadataHistoryChangeItem, 0, count)
+		for range count {
+			items = append(items, &v1pb.MetadataHistoryChangeItem{Operation: operation})
+		}
+		return items
+	}
+	group := func(section v1pb.MetadataHistorySection, items []*v1pb.MetadataHistoryChangeItem) *v1pb.MetadataHistoryChangeGroup {
+		return &v1pb.MetadataHistoryChangeGroup{Section: section, Changes: items}
+	}
+	created, updated := v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_CREATED, v1pb.MetadataHistoryOperation_METADATA_HISTORY_OPERATION_UPDATED
+
+	require.Equal(t,
+		"+2 columns, +2 indexes, +2 foreign keys, +2 check constraints, ~2 properties",
+		buildMetadataHistorySummary(updated, []*v1pb.MetadataHistoryChangeGroup{
+			group(sections[0], changes(2, created)),
+			group(sections[1], changes(2, created)),
+			group(sections[2], changes(2, created)),
+			group(sections[3], changes(2, created)),
+			group(sections[4], changes(2, updated)),
+		}))
+
+	require.Equal(t,
+		"+1 column, +1 index, +1 foreign key, +1 check constraint, +1 property",
+		buildMetadataHistorySummary(updated, []*v1pb.MetadataHistoryChangeGroup{
+			group(sections[0], changes(1, created)),
+			group(sections[1], changes(1, created)),
+			group(sections[2], changes(1, created)),
+			group(sections[3], changes(1, created)),
+			group(sections[4], changes(1, created)),
+		}))
 }
 
 // A foreign table keeps its columns inside its own metadata, so its history has
