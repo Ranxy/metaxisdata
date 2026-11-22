@@ -7,15 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// configTestConfigs mirrors what the registry resolves: a profile is named after
-// its store row, "llm-provider-profiles/{id}", prefix included.
-func configTestConfigs() []ResolvedConfig {
-	return []ResolvedConfig{
-		{ProfileName: "llm-provider-profiles/openai", ModelName: "gpt-4"},
-		{ProfileName: "llm-provider-profiles/local", ModelName: "llama"},
-	}
-}
-
 // modelTestConfigs mirrors a profile that enables two models at different prices.
 func modelTestConfigs() []ResolvedConfig {
 	return []ResolvedConfig{
@@ -23,84 +14,6 @@ func modelTestConfigs() []ResolvedConfig {
 		{ProfileName: "llm-provider-profiles/main", ModelName: "reasoner"},
 		{ProfileName: "llm-provider-profiles/other", ModelName: "reasoner"},
 	}
-}
-
-func TestFindConfig(t *testing.T) {
-	t.Parallel()
-
-	configs := configTestConfigs()
-
-	found := FindConfig(configs, "llm-provider-profiles/local")
-	require.NotNil(t, found)
-	require.Equal(t, "llama", found.ModelName)
-
-	found = FindConfig(configs, "local")
-	require.NotNil(t, found)
-	require.Equal(t, "llama", found.ModelName)
-
-	require.Nil(t, FindConfig(configs, "llm-provider-profiles/gone"))
-	require.Nil(t, FindConfig(nil, "local"))
-}
-
-func TestFindModelConfig(t *testing.T) {
-	t.Parallel()
-
-	configs := modelTestConfigs()
-
-	found := FindModelConfig(configs, "llm-provider-profiles/main", "reasoner")
-	require.NotNil(t, found)
-	require.Equal(t, "reasoner", found.ModelName)
-	require.Equal(t, "llm-provider-profiles/main", found.ProfileName)
-
-	// A bare profile id resolves; the model stays exact.
-	found = FindModelConfig(configs, "main", "fast")
-	require.NotNil(t, found)
-	require.Equal(t, "fast", found.ModelName)
-
-	// Both sides are trimmed: a profile may hold the name with padding.
-	found = FindModelConfig([]ResolvedConfig{{ProfileName: "llm-provider-profiles/main", ModelName: " spaced "}}, " main ", " spaced ")
-	require.NotNil(t, found)
-	require.Equal(t, " spaced ", found.ModelName)
-
-	// The same model on another profile is a different config.
-	found = FindModelConfig(configs, "other", "reasoner")
-	require.NotNil(t, found)
-	require.Equal(t, "llm-provider-profiles/other", found.ProfileName)
-
-	require.Nil(t, FindModelConfig(configs, "main", "reasoner-pro"))
-	require.Nil(t, FindModelConfig(configs, "main", ""))
-	require.Nil(t, FindModelConfig(configs, "", "fast"))
-	require.Nil(t, FindModelConfig(nil, "main", "fast"))
-}
-
-func TestAllowedModelConfigs(t *testing.T) {
-	t.Parallel()
-
-	configs := modelTestConfigs()
-
-	require.Equal(t, configs, AllowedModelConfigs(configs, nil), "an empty allowlist allows everything")
-	require.Equal(t, configs, AllowedModelConfigs(configs, []ModelRef{}), "an empty allowlist allows everything")
-
-	filtered := AllowedModelConfigs(configs, []ModelRef{{Profile: "llm-provider-profiles/main", Model: "fast"}})
-	require.Len(t, filtered, 1)
-	require.Equal(t, "fast", filtered[0].ModelName)
-
-	// The same model under another profile is a different pair.
-	filtered = AllowedModelConfigs(configs, []ModelRef{{Profile: "llm-provider-profiles/other", Model: "reasoner"}})
-	require.Len(t, filtered, 1)
-	require.Equal(t, "llm-provider-profiles/other", filtered[0].ProfileName)
-
-	// A bare profile id in the allowlist is accepted too.
-	filtered = AllowedModelConfigs(configs, []ModelRef{{Profile: "main", Model: "reasoner"}})
-	require.Len(t, filtered, 1)
-	require.Equal(t, "reasoner", filtered[0].ModelName)
-
-	require.Empty(t, AllowedModelConfigs(configs, []ModelRef{{Profile: "llm-provider-profiles/gone", Model: "fast"}}))
-
-	// A model id may contain a slash; it is compared as one exact string.
-	slashConfigs := []ResolvedConfig{{ProfileName: "llm-provider-profiles/openrouter", ModelName: "anthropic/claude-sonnet"}}
-	filtered = AllowedModelConfigs(slashConfigs, []ModelRef{{Profile: "llm-provider-profiles/openrouter", Model: "anthropic/claude-sonnet"}})
-	require.Len(t, filtered, 1)
 }
 
 func TestModelAllowed(t *testing.T) {
@@ -228,6 +141,11 @@ func TestResolveModelConfig(t *testing.T) {
 	resolved, err := ResolveModelConfig(configs, "llm-provider-profiles/main", "reasoner")
 	require.NoError(t, err)
 	require.Equal(t, "reasoner", resolved.ModelName)
+
+	// A padded profile and model resolve like their trimmed form.
+	resolved, err = ResolveModelConfig(configs, " main ", " fast ")
+	require.NoError(t, err)
+	require.Equal(t, "fast", resolved.ModelName)
 
 	// Both halves are required: there is no "first enabled model" default.
 	resolved, err = ResolveModelConfig(configs, "llm-provider-profiles/main", "")

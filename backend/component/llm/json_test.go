@@ -2,7 +2,6 @@ package llm
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,6 +75,12 @@ func TestParseJSONStripsCodeFences(t *testing.T) {
 			name: "byte order mark",
 			text: "\ufeff{\"type\":\"UNIQUE\"}",
 		},
+		{
+			// An unterminated fence keeps its body: the decoder reports the real
+			// problem rather than the stripper swallowing the answer.
+			name: "unterminated fence",
+			text: "```json\n{\"type\":\"UNIQUE\"}",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -138,6 +143,7 @@ func TestParseJSONRejectsMalformedResponses(t *testing.T) {
 		{name: "null", text: "null", want: "null"},
 		{name: "truncated", text: `{"type":"UNIQUE"`, want: "unexpected EOF"},
 		{name: "two documents", text: `{"type":"UNIQUE"}{"type":"RANGE"}`, want: "more than one JSON document"},
+		{name: "trailing content after the document", text: `{"type":"UNIQUE"} and that is my answer`, want: "invalid character"},
 		{
 			name: "type mismatch",
 			text: `{"type":42}`,
@@ -173,27 +179,4 @@ func TestParseJSONErrorsDoNotEchoTheResponse(t *testing.T) {
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "UNIQUE")
 	require.Contains(t, err.Error(), "not acceptable")
-}
-
-// A fence whose body has trailing prose inside it still fails: the fence is
-// framing, not a license to append text to the document.
-func TestParseJSONRejectsTrailingContentInsideAFence(t *testing.T) {
-	t.Parallel()
-
-	_, err := ParseJSON[jsonTestRule](`{"type":"UNIQUE"} and that is my answer`, nil)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInvalidJSON)
-}
-
-func TestStripCodeFence(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, `{"a":1}`, stripCodeFence("```json\n{\"a\":1}\n```"))
-	require.Equal(t, `{"a":1}`, stripCodeFence("Here you go:\n```\n{\"a\":1}\n```\nDone."))
-	require.Equal(t, `{"a":1}`, stripCodeFence(`{"a":1}`))
-	require.Equal(t, `{"a":1}`, stripCodeFence("  ```  \n{\"a\":1}\n```  "))
-	// An unterminated fence keeps its body: the decoder reports the real problem
-	// rather than the stripper swallowing the answer.
-	require.Equal(t, `{"a":1}`, stripCodeFence("```json\n{\"a\":1}"))
-	require.True(t, strings.Contains(stripCodeFence("no fence here"), "no fence"))
 }

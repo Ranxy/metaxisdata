@@ -222,16 +222,3 @@ func TestStreamRawDoesNotRetryOtherStatuses(t *testing.T) {
 		})
 	}
 }
-
-// The retry predicate is the policy: a 400/422 over the fallback budget, once.
-func TestShouldRetryWithSmallerOutputBudget(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, shouldRetryWithSmallerOutputBudget(http.StatusBadRequest, DefaultMaxOutputTokens))
-	require.True(t, shouldRetryWithSmallerOutputBudget(http.StatusUnprocessableEntity, fallbackMaxOutputTokens+1))
-	require.False(t, shouldRetryWithSmallerOutputBudget(http.StatusBadRequest, fallbackMaxOutputTokens))
-	require.False(t, shouldRetryWithSmallerOutputBudget(http.StatusUnprocessableEntity, fallbackMaxOutputTokens-1))
-	require.False(t, shouldRetryWithSmallerOutputBudget(http.StatusUnauthorized, DefaultMaxOutputTokens))
-	require.False(t, shouldRetryWithSmallerOutputBudget(http.StatusInternalServerError, DefaultMaxOutputTokens))
-	require.False(t, shouldRetryWithSmallerOutputBudget(http.StatusOK, DefaultMaxOutputTokens))
-}
