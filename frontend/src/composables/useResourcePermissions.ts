@@ -23,6 +23,10 @@ export function useResourcePermissions(
 ) {
   const allowed = ref<ReadonlySet<string>>(new Set());
   const loading = ref(false);
+  // Whether the current resource has an answer. A caller that needs a
+  // resource-scoped permission to decide whether to *load* something waits for
+  // this instead of reading `can` while the first request is still in flight.
+  const resolved = ref(false);
   let request = 0;
 
   async function load() {
@@ -33,9 +37,11 @@ export function useResourcePermissions(
     const ref = resource.value;
     if (!ref || permissions.length === 0) {
       loading.value = false;
+      resolved.value = true;
       return;
     }
     loading.value = true;
+    resolved.value = false;
     try {
       const result = await checkPermissions({
         resourceType: ref.resourceType,
@@ -56,6 +62,7 @@ export function useResourcePermissions(
     } finally {
       if (current === request) {
         loading.value = false;
+        resolved.value = true;
       }
     }
   }
@@ -66,5 +73,5 @@ export function useResourcePermissions(
     return allowed.value.has(permission);
   }
 
-  return { allowed, loading, can, reload: load };
+  return { allowed, loading, resolved, can, reload: load };
 }

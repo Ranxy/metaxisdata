@@ -169,6 +169,44 @@ func (s *DataQualityService) qualityListScopeFilter(ctx context.Context, perm pe
 	return scopes.MetadataScopes(), nil
 }
 
+// qualitySuggestionViewerChecks are the row actions a suggestion read reports
+// for its target: the review decision and turning a draft into a rule.
+var qualitySuggestionViewerChecks = []permission.Permission{
+	permission.DataQualityRulesCreate,
+	permission.DataQualitySuggest,
+}
+
+// qualitySuggestionViewerPermissions reports, per suggestion, which target
+// actions the caller holds, so the queue gates "create rule" and "decide" per
+// row instead of assuming the page-wide navigation grant applies to every row.
+func (s *DataQualityService) qualitySuggestionViewerPermissions(ctx context.Context, suggestions []*store.QualitySuggestionMessage) (map[int64][]string, error) {
+	if s.authorizer == nil || len(suggestions) == 0 {
+		return nil, nil
+	}
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return nil, nil
+	}
+	scopeSets := make([]resource.ScopeSet, len(qualitySuggestionViewerChecks))
+	for i, perm := range qualitySuggestionViewerChecks {
+		scopes, err := s.authorizer.Scopes(ctx, user, perm)
+		if err != nil {
+			return nil, err
+		}
+		scopeSets[i] = scopes
+	}
+	viewer := make(map[int64][]string, len(suggestions))
+	for _, suggestion := range suggestions {
+		ref := resource.NewRef(resource.TypeTable, suggestion.TargetGUID)
+		for i, perm := range qualitySuggestionViewerChecks {
+			if scopeSets[i].Contains(ref) {
+				viewer[suggestion.ID] = append(viewer[suggestion.ID], string(perm))
+			}
+		}
+	}
+	return viewer, nil
+}
+
 // requireQualitySuggestionRead maps a denied suggestion read to NotFound so a
 // reader cannot learn that a draft exists outside its scope.
 func (s *DataQualityService) requireQualitySuggestionRead(ctx context.Context, suggestion *store.QualitySuggestionMessage) error {

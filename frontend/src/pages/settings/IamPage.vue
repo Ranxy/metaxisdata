@@ -273,7 +273,7 @@
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
-                  v-for="user in users"
+                  v-for="user in assignableUsers"
                   :key="user.name"
                   :value="user.name"
                 >
@@ -478,7 +478,7 @@
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
-                  v-for="user in users"
+                  v-for="user in assignableUsers"
                   :key="user.name"
                   :value="user.name"
                 >
@@ -632,6 +632,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
+import { State } from "@/types/proto-es/v1/common_pb";
 import type { Database } from "@/types/proto-es/v1/database_service_pb";
 import type { Group } from "@/types/proto-es/v1/group_service_pb";
 import {
@@ -664,6 +665,13 @@ const bindings = ref<BindingForm[]>([]);
 const etag = ref("");
 const roles = ref<Role[]>([]);
 const users = ref<User[]>([]);
+
+// A resolved member from an existing policy binding or grant may be a deleted
+// account: the label still needs its row, but it must not be offered again as a
+// new assignment.
+const assignableUsers = computed(() =>
+  users.value.filter((user) => user.state !== State.DELETED)
+);
 const groups = ref<Group[]>([]);
 const isLoading = ref(false);
 const isSaving = ref(false);

@@ -33,6 +33,26 @@ func TestBuildIamGrantWhere(t *testing.T) {
 		require.Contains(t, strings.Join(where, " AND "), "FALSE")
 	})
 
+	t.Run("an empty member set matches nothing even with group grants", func(t *testing.T) {
+		t.Parallel()
+		// The group arm used to survive and match every group grant; an empty
+		// member set is "nobody" whatever the caller's other flags say.
+		where, _ := buildIamGrantWhere(&FindIamGrantMessage{
+			Members:            []string{},
+			IncludeGroupGrants: true,
+		})
+		joined := strings.Join(where, " AND ")
+		require.Contains(t, joined, "FALSE")
+		require.NotContains(t, joined, "groups/%")
+	})
+
+	t.Run("a scope renders like the grant API names it", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "instances/inst1", FormatIamGrantScope("instance", "inst1"))
+		require.Equal(t, "instances/inst1/databases/db1", FormatIamGrantScope("database", "inst1;db1"))
+		require.Equal(t, "x", FormatIamGrantScope("unknown", "x"))
+	})
+
 	t.Run("exact resource filters", func(t *testing.T) {
 		t.Parallel()
 		resourceType, resourceID := "database", "i;db"

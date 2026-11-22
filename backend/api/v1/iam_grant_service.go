@@ -204,18 +204,7 @@ func (s *IamService) validateIamGrantResource(ctx context.Context, resourceType,
 
 // formatIamGrantResource renders a stored scope as the API's resource name.
 func formatIamGrantResource(grant *store.IamGrantMessage) string {
-	switch grant.ResourceType {
-	case resource.TypeInstance.String():
-		return common.FormatInstance(grant.ResourceID)
-	case resource.TypeDatabase.String():
-		parts := common.SplitMetaGUID(grant.ResourceID)
-		if len(parts) == 2 {
-			return common.FormatDatabase(parts[0], parts[1])
-		}
-		return grant.ResourceID
-	default:
-		return grant.ResourceID
-	}
+	return store.FormatIamGrantScope(grant.ResourceType, grant.ResourceID)
 }
 
 // convertIamGrant renders one stored grant.

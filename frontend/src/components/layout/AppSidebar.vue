@@ -446,12 +446,12 @@ function buildMenuItems(): MenuItem[] {
 // The settings sub-navigation labels, kept next to the sidebar so the two
 // cannot drift apart.
 const menuItems = computed<MenuItem[]>(() => {
+  // Navigation follows the permission union: a page a scoped grant can reach
+  // must stay in the menu even though the workspace policy does not grant it.
   const allowed = (item: MenuItem) =>
-    (!item.permission || authStore.hasPermission(item.permission)) &&
+    (!item.permission || authStore.canAccess(item.permission)) &&
     (!item.anyPermission ||
-      item.anyPermission.some((permission) =>
-        authStore.hasPermission(permission)
-      ));
+      item.anyPermission.some((permission) => authStore.canAccess(permission)));
   return buildMenuItems()
     .filter(allowed)
     .map((item) =>

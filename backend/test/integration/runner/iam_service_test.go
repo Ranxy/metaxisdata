@@ -357,6 +357,64 @@ func TestIamGrantApiRealServerIntegration(t *testing.T) {
 	require.Empty(t, listed.Msg.GetGrants())
 }
 
+// TestGrantReferenceGuardsRealServerIntegration pins the delete guards against
+// the grant ledger: the workspace policy is not the only binding surface, so a
+// role or group a scoped grant still names must be refused until the grant is
+// removed, or the grant silently becomes a no-op.
+func TestGrantReferenceGuardsRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	roleClient := v1connect.NewRoleServiceClient(httpClient, fixture.env.BaseURL)
+	groupClient := v1connect.NewGroupServiceClient(httpClient, fixture.env.BaseURL)
+	adminToken := fixture.env.AdminToken()
+	ownerName, _ := createQualityAgentTestMember(t, fixture, "grant-guard-owner")
+	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
+
+	suffix, err := common.RandomString(6)
+	require.NoError(t, err)
+	roleName := common.FormatRole("guard-" + suffix)
+	groupName := fmt.Sprintf("groups/guard-%s@example.com", suffix)
+
+	_, err = roleClient.CreateRole(fixture.ctx, withToken(adminToken, &v1pb.CreateRoleRequest{
+		Role: &v1pb.Role{
+			Name:        roleName,
+			Title:       "Grant guard",
+			Permissions: []string{"metaxisdata.dataQuality.rules.create"},
+		},
+	}))
+	require.NoError(t, err)
+	_, err = groupClient.CreateGroup(fixture.ctx, withToken(adminToken, &v1pb.CreateGroupRequest{
+		Group: &v1pb.Group{
+			Name:    groupName,
+			Title:   "Grant guard",
+			Members: []*v1pb.GroupMember{{Member: ownerName, Role: v1pb.GroupMember_MEMBER}},
+		},
+	}))
+	require.NoError(t, err)
+
+	created, err := iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: roleName, Member: groupName},
+	}))
+	require.NoError(t, err)
+
+	_, err = roleClient.DeleteRole(fixture.ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: roleName}))
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err),
+		"a role still named by a scoped grant must not be deletable")
+	_, err = groupClient.DeleteGroup(fixture.ctx, withToken(adminToken, &v1pb.DeleteGroupRequest{Name: groupName}))
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err),
+		"a group still named by a scoped grant must not be deletable")
+
+	_, err = iamClient.DeleteIamGrant(fixture.ctx, withToken(adminToken, &v1pb.DeleteIamGrantRequest{Name: created.Msg.GetName()}))
+	require.NoError(t, err)
+	_, err = roleClient.DeleteRole(fixture.ctx, withToken(adminToken, &v1pb.DeleteRoleRequest{Name: roleName}))
+	require.NoError(t, err)
+	_, err = groupClient.DeleteGroup(fixture.ctx, withToken(adminToken, &v1pb.DeleteGroupRequest{Name: groupName}))
+	require.NoError(t, err)
+}
+
 // TestCheckPermissionsRealServerIntegration covers the self-service check: the
 // caller's own permissions on one resource, unannotated so a scoped member can
 // ask without holding an admin permission.
@@ -369,6 +427,7 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 	_, strangerToken := createQualityAgentTestMember(t, fixture, "check-stranger")
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	userClient := v1connect.NewUserServiceClient(httpClient, fixture.env.BaseURL)
 
 	check := func(token, targetGUID string) []bool {
 		t.Helper()
@@ -400,6 +459,18 @@ func TestCheckPermissionsRealServerIntegration(t *testing.T) {
 
 	require.Equal(t, []bool{true, true, true}, check(ownerToken, fixture.usersGUID),
 		"the scoped grant adds create and publish on the granted database")
+
+	// GetCurrentUser separates the workspace policy from the scoped grants: the
+	// workspace list is what an action fallback may read, the scoped list only
+	// says the caller can reach a page on some scope.
+	me, err := userClient.GetCurrentUser(fixture.ctx, withToken(ownerToken, &emptypb.Empty{}))
+	require.NoError(t, err)
+	require.Contains(t, me.Msg.GetPermissions(), "metaxisdata.dataQuality.rules.get",
+		"the read baseline stays on the workspace list")
+	require.NotContains(t, me.Msg.GetPermissions(), "metaxisdata.dataQuality.rules.create",
+		"a scoped grant must not look like a workspace permission")
+	require.Contains(t, me.Msg.GetScopedPermissions(), "metaxisdata.dataQuality.rules.create")
+	require.Contains(t, me.Msg.GetScopedPermissions(), "metaxisdata.dataQuality.contracts.publish")
 	// The database scope accepts the resource-name form of resource_id and maps it
 	// to the same GUID the grant stores.
 	byName, err := iamClient.CheckPermissions(fixture.ctx, withToken(ownerToken, &v1pb.CheckPermissionsRequest{

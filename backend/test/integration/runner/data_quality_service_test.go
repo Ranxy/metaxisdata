@@ -5287,6 +5287,29 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	require.Contains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.get")
 	require.NotContains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
 
+	// The queue carries the per-target answer too, so "create rule from draft" is
+	// gated by the draft's target rather than by the page-wide navigation grant.
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	seeded := fixture.seedSuggestion(t,
+		storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload("scoped draft"))
+	ownerSuggestions, err := fixture.dataQuality.ListQualitySuggestions(fixture.ctx, withToken(ownerToken, &v1pb.ListQualitySuggestionsRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: fixture.usersGUID,
+		PageSize:   100,
+	}))
+	require.NoError(t, err)
+	var seededView *v1pb.QualitySuggestion
+	for _, suggestion := range ownerSuggestions.Msg.GetQualitySuggestions() {
+		if suggestion.GetName() == common.FormatWorkspace(workspaceID)+"/qualitySuggestions/"+seeded.ResourceID {
+			seededView = suggestion
+		}
+	}
+	require.NotNil(t, seededView)
+	require.Contains(t, seededView.GetViewerPermissions(), "metaxisdata.dataQuality.rules.create")
+	require.Contains(t, seededView.GetViewerPermissions(), "metaxisdata.dataQuality.suggest")
+
 	// A scoped owner cannot move the rule onto a target outside the grant: the
 	// destination is checked before the store writes, and the schedule must not be
 	// seeded for the foreign target.
@@ -5321,6 +5344,21 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 
+	// The dry run compiles and probes the definition, so it must honor the same
+	// boundary: a scoped owner may preview a check inside its scope...
+	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   ruleRequest(fixture.usersGUID).GetRule(),
+	}))
+	require.NoError(t, err)
+	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   customSQL.GetRule(),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err),
+		"the dry run must not compile a custom SQL definition a scoped grant cannot author")
+
 	crossTable := &v1pb.CreateQualityRuleRequest{
 		Parent: "workspaces/-",
 		Rule: &v1pb.QualityRule{
@@ -5339,6 +5377,13 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(ownerToken, crossTable))
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   crossTable.GetRule(),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err),
+		"the dry run must not reach a reference outside the scope")
 
 	// The target schedule is writable inside the grant and refused outside it.
 	_, err = fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityTargetScheduleRequest{

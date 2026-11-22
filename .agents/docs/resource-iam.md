@@ -47,22 +47,28 @@ A grant binds one role to one member at one resource scope. The scoped-grant sto
 
 ```sql
 CREATE TABLE iam_grant (
+    id            BIGSERIAL PRIMARY KEY,
     resource_type TEXT NOT NULL,      -- workspace/instance/database/…/application/quality_agent
-    resource_id   TEXT NOT NULL,      -- empty for the workspace; the GUID or resource id otherwise
+    resource_id   TEXT NOT NULL DEFAULT '',  -- empty for the workspace; the GUID or resource id otherwise
     role          TEXT NOT NULL,      -- roles/{id}
-    member        TEXT NOT NULL,      -- users/{id}, groups/{email}, allUsers, the agent's service account
+    member        TEXT NOT NULL CHECK (member <> 'allUsers'),  -- users/{id} or groups/{email}
     condition     TEXT NOT NULL DEFAULT '',
-    created_by    INT4,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_by    INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (resource_type, resource_id, role, member, condition)
 );
+CREATE INDEX idx_iam_grant_member_resource ON iam_grant(member, resource_type);
+CREATE INDEX idx_iam_grant_resource ON iam_grant(resource_type, resource_id);
 ```
+
+The grant API writes only instance and database scopes; the type/id pair for any other kind exists for future scope kinds and cannot be created through the API today.
 
 - **Inheritance is down the resource tree.** A permission is allowed when a grant on the resource, or on any ancestor, names a role that contains it. A database grant therefore covers every table under it; an instance grant covers every database.
 - **Grants are additive.** There is no deny in the first model: a scoped grant adds authority, it does not restrict a root grant. The root `workspaceMember` baseline stays the discovery read surface; a scoped `qualityOwner` grant adds write authority on the scope. Restricting a read surface needs a baseline decision or a deny model, and is not part of this design.
 - **Grants name users and groups.** The API accepts `users/{id}` and `groups/{email}`; `allUsers` is the workspace read baseline and is rejected as a scoped grant, so a grant cannot turn the every-principal baseline into a write role. The predefined workspace-wide roles (`workspaceAdmin`, `workspaceMember`, `qualityAgent`) are refused at a scope; bind `qualityOwner` or a custom role. The IAM page's scope picker offers that list and an optional time-only condition.
 - **The workspace policy stays the root.** The workspace IAM policy remains the editor and the decision for every principal it covers; `workspaceAdmin` and the implicit `workspaceMember` baseline keep their current meaning. An `iam_grant` row adds a role at a resource subtree; a workspace-typed row is accepted and treated as `All`, but the policy API is still the root editor.
 - **Conditions name time only.** A binding condition is validated at write time and evaluated against `request.time`; resource attributes in a condition are rejected because a list cannot push them into SQL and a check could not explain them. A condition that does not evaluate fails closed.
-- **Cache and invalidation.** The authorizer caches one snapshot per principal: the grants whose member names it, the derived agent relations and the resolved role permissions. The store keeps a process-local authorization generation that every grant, role, group and agent-scope write bumps; the snapshot is keyed on it, so a write invalidates the cache and a read does not. The cache is advisory: a miss re-reads, a failed read fails closed. The generation is per process, like the other store caches; a write from a second server is not seen here until that process restarts.
+- **Cache and invalidation.** The authorizer caches one snapshot per principal: the grants whose member names it, the derived agent relations and the resolved role permissions. The store keeps a process-local authorization generation that every grant, role, group and agent-scope write bumps; the snapshot is keyed on it, so a write invalidates the cache and a read does not. The cache is advisory: a miss re-reads, a failed read fails closed. The generation is per process, like the other store caches, and the snapshot has no TTL: a write made by another replica is not seen here until this process bumps its own generation or restarts. A single-replica deployment is the documented topology; a multi-replica deployment needs a shared generation.
 - **Explicit grants are rows; ownership is derived.** An administrator creating a grant writes a row through `IamService.{List,Create,Delete}IamGrant`; the IAM page's scope picker names an instance or one of its databases. Ownership (below) is computed at check time, so changing an agent's owner or scope takes effect without a second source of truth.
 
 ## Derived ownership
@@ -103,9 +109,10 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything (o
 
 ## Frontend contract
 
-- `User.permissions` stays a **union summary** for navigation: a permission appears when the principal holds it on any scope. It is not evidence that an action is allowed on the page's target.
-- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` is the shipped per-row summary; the target page uses `CheckPermissions` for its target-level actions. `CheckPermissions` is not audited: it answers only about the caller's own permissions and writes nothing.
-- `useResourcePermissions(ref, permissions)` is the page-facing composable; the target page and the issue detail page use it. `hasPermission(permission)` remains for workspace-level settings and navigation and as the immediate fallback before the resource check resolves. A failed check hides the action; the server still enforces it.
+- `User.permissions` is the **workspace** set: what the workspace policy grants. `User.scoped_permissions` is the set those scoped grants and agent derivations make reachable; it may overlap the workspace set (a scoped `qualityOwner` also names baseline reads), so treat it as a navigation hint rather than as a delta or as evidence that an action is allowed on a page's target.
+- `useAuthStore().canAccess(permission)` is the navigation answer (the union of the two lists): the router guard, the sidebar, the settings navigation and the home shortcuts use it, so a page a scoped grant reaches stays reachable. `hasPermission(permission)` is the workspace answer and stays the fallback for an action before the server answers about the resource.
+- A page that acts on a resource asks the server: `CheckPermissions` (a self-service RPC taking a resource type/id and returning a parallel boolean list), or a `viewer_permissions` field on the resource read. `QualityRule.viewer_permissions` and `QualitySuggestion.viewer_permissions` are the shipped per-row summaries; the check directory, the drawer and the suggestion queue read them, while the target page, the issue detail page and the metadata quality tab ask `CheckPermissions` for their resource-level actions. `CheckPermissions` is not audited: it answers only about the caller's own permissions and writes nothing.
+- `useResourcePermissions(ref, permissions)` is the page-facing composable. A failed check hides the action; the server still enforces it. A page that acts on a resource never derives the action from `canAccess`: that would show an action the server refuses outside the scope.
 - The client permission mirror is hand-maintained (`frontend/src/lib/permissions.ts`) and guarded by a drift test; the catalog is the source of the permission strings.
 
 ## The data-quality slice
@@ -113,7 +120,7 @@ A list is answered with `ScopeSet`: `All` when a root grant covers everything (o
 The first scoped path is the data-quality surface, because it already has a target, a queue and a real ownership relationship:
 
 - A `qualityOwner` grant on a database covers every table in it; a rule create, update, run or delete on a table under that database passes, and the same action outside the scope is denied.
-- The quality-rule RPCs, the contract update/publish, the issue transitions, the target schema acknowledge and the suggest/profile/column-label writes are the scoped methods: each checks the table target. `ListQualityRules` applies the caller's scope set to the target GUID and carries the caller's per-target `viewer_permissions`. The execution, issue and suggestion lists follow the same pattern.
+- The quality-rule RPCs, the contract update/publish, the issue transitions, the target schema acknowledge and the suggest/profile/column-label writes are the scoped methods: each checks the table target. `ListQualityRules` applies the caller's scope set to the target GUID and carries the caller's per-target `viewer_permissions`. The execution, issue and suggestion lists pass the same filter, but only the suggestion queue can actually narrow: its permission is not in the `workspaceMember` baseline, whereas the rule, execution and issue read permissions always resolve to `All` for an authenticated principal under the read baseline.
 - The quality agent's owner and its own service account are relationship sources: the owner receives `qualityOwner` on the agent's databases and the service account receives its agent role there, so adoption and drafting run through the same authorizer. The proposal attention keeps its product gate (only the agent's already-queued drafts), but the write itself is authorized rather than bypassing IAM.
 
 ## Decisions
@@ -121,7 +128,7 @@ The first scoped path is the data-quality surface, because it already has a targ
 - **Additive only.** No deny and no baseline change in the first model; a scoped grant adds authority on a subtree.
 - **Derived ownership, cached.** The agent owner and the agent principal come from the agent tables; explicit administrator grants are rows.
 - **Metadata ancestors from the GUID; everything else through a resolver.** No global closure table for metadata.
-- **The catalog is flat.** A permission is a name (`metaxisdata.<resource>.<verb>`); the resource kind is not part of it, so the ACL annotation and the scoped-method set say which RPCs are resource-scoped. A scoped grant of a role applies that role's permissions on the resource, which is why a scope should bind a role whose permissions are meaningful there.
+- **The catalog is flat.** A permission is a name (`metaxisdata.<resource>.<verb>`); the resource kind is not part of it, so the ACL annotation and the scoped-method set say which RPCs are resource-scoped. A scoped grant of a role applies that role's permissions on the resource, which is why a scope should bind a role whose permissions are meaningful there. Nothing enforces that yet: a custom role carrying a workspace-checked permission can be granted at a scope, and `CheckPermissions`/`scoped_permissions` will report it and open the page while the RPC path denies. Before leaning on custom roles, define scope-ability per permission (or restrict grantable roles).
 - **List authorization is part of the permission, not a post-filter.** An endpoint that cannot filter at the query is not ready for a scoped grant.
 - **Conditions stay time-only.** Resource-attribute conditions need a query planner and an explanation model; neither is in this design.
 - **No general ReBAC engine.** The product's resources are a tree with a few derived relations; a scoped RBAC over that tree is smaller and easier to explain than a tuple store.

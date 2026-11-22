@@ -750,7 +750,7 @@ const quickActions = computed(() => {
     to: RouteLocationRaw;
   }[] = [];
 
-  if (authStore.hasPermission("metaxisdata.databases.read")) {
+  if (authStore.canAccess("metaxisdata.databases.read")) {
     items.push({
       key: "metadata",
       label: t("menu.metadata"),
@@ -759,7 +759,7 @@ const quickActions = computed(() => {
       to: { name: "MetadataBrowser" },
     });
   }
-  if (authStore.hasPermission("metaxisdata.explainSql.explain")) {
+  if (authStore.canAccess("metaxisdata.explainSql.explain")) {
     items.push({
       key: "explain",
       label: t("menu.explainSQL"),
@@ -768,7 +768,7 @@ const quickActions = computed(() => {
       to: { name: "ExplainSQL" },
     });
   }
-  if (authStore.hasPermission("metaxisdata.manualSqls.list")) {
+  if (authStore.canAccess("metaxisdata.manualSqls.list")) {
     items.push({
       key: "manualSql",
       label: t("menu.manualSql"),
@@ -777,9 +777,7 @@ const quickActions = computed(() => {
       to: { name: "ManualSQLManagement" },
     });
   }
-  if (
-    authStore.hasPermission("metaxisdata.openlineage.namespaceMappings.list")
-  ) {
+  if (authStore.canAccess("metaxisdata.openlineage.namespaceMappings.list")) {
     items.push({
       key: "openlineage",
       label: t("openlineage.ingestionSettings"),
@@ -788,7 +786,7 @@ const quickActions = computed(() => {
       to: { name: "OpenLineageSettings" },
     });
   }
-  if (authStore.hasPermission("metaxisdata.llm.profiles.list")) {
+  if (authStore.canAccess("metaxisdata.llm.profiles.list")) {
     items.push({
       key: "llm",
       label: t("llmProvider.sidebar"),
@@ -797,7 +795,7 @@ const quickActions = computed(() => {
       to: { name: "LLMProviderManagement" },
     });
   }
-  if (authStore.hasPermission("metaxisdata.users.list")) {
+  if (authStore.canAccess("metaxisdata.users.list")) {
     items.push({
       key: "users",
       label: t("menu.users"),
@@ -806,7 +804,7 @@ const quickActions = computed(() => {
       to: { name: "UserManagement" },
     });
   }
-  if (authStore.hasPermission("metaxisdata.auditLogs.search")) {
+  if (authStore.canAccess("metaxisdata.auditLogs.search")) {
     items.push({
       key: "auditLogs",
       label: t("menu.auditLogs"),

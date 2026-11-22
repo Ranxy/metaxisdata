@@ -7392,9 +7392,13 @@ type QualitySuggestion struct {
 	DecisionNote string                 `protobuf:"bytes,13,opt,name=decision_note,json=decisionNote,proto3" json:"decision_note,omitempty"`
 	// When a later generation pass refreshed this pending proposal's payload.
 	// Unset when the proposal has not been refreshed.
-	RefreshTime   *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=refresh_time,json=refreshTime,proto3" json:"refresh_time,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RefreshTime *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=refresh_time,json=refreshTime,proto3" json:"refresh_time,omitempty"`
+	// The permissions the caller holds on this suggestion's target, e.g.
+	// "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
+	// the row's create-rule and decision actions without a second request.
+	ViewerPermissions []string `protobuf:"bytes,15,rep,name=viewer_permissions,json=viewerPermissions,proto3" json:"viewer_permissions,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *QualitySuggestion) Reset() {
@@ -7521,6 +7525,13 @@ func (x *QualitySuggestion) GetDecisionNote() string {
 func (x *QualitySuggestion) GetRefreshTime() *timestamppb.Timestamp {
 	if x != nil {
 		return x.RefreshTime
+	}
+	return nil
+}
+
+func (x *QualitySuggestion) GetViewerPermissions() []string {
+	if x != nil {
+		return x.ViewerPermissions
 	}
 	return nil
 }
@@ -21496,7 +21507,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x18QualitySuggestionPayload\x12<\n" +
 	"\x04rule\x18\x01 \x01(\v2&.metaxisdata.v1.QualityRuleDraftConfigH\x00R\x04rule\x12?\n" +
 	"\x05label\x18\x02 \x01(\v2'.metaxisdata.v1.SemanticLabelSuggestionH\x00R\x05labelB\t\n" +
-	"\apayload\"\xb0\x06\n" +
+	"\apayload\"\xe4\x06\n" +
 	"\x11QualitySuggestion\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x129\n" +
 	"\x04kind\x18\x02 \x01(\x0e2%.metaxisdata.v1.QualitySuggestionKindR\x04kind\x12?\n" +
@@ -21516,7 +21527,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vdecide_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"decideTime\x12#\n" +
 	"\rdecision_note\x18\r \x01(\tR\fdecisionNote\x12=\n" +
-	"\frefresh_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vrefreshTime:b\xeaA_\n" +
+	"\frefresh_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vrefreshTime\x122\n" +
+	"\x12viewer_permissions\x18\x0f \x03(\tB\x03\xe0A\x03R\x11viewerPermissions:b\xeaA_\n" +
 	"\x1dmetaxisdata/QualitySuggestion\x12>workspaces/{workspace}/qualitySuggestions/{quality_suggestion}\"\xfb\x02\n" +
 	"\x1dQualitySuggestionQueueSummary\x12\x18\n" +
 	"\acreated\x18\x01 \x01(\x05R\acreated\x12\x1c\n" +

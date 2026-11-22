@@ -70,6 +70,7 @@ Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
+  checkPermissions: vi.fn(),
   getQualityTarget: vi.fn(),
   getQualityExecution: vi.fn(),
   getQualityTargetSchedule: vi.fn(),
@@ -138,6 +139,10 @@ vi.mock("@/api/database", async (importOriginal) => ({
 // The page reads only the workspace model switch, to gate field labeling.
 vi.mock("@/api/setting", () => ({
   getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
+}));
+
+vi.mock("@/api/iam", () => ({
+  checkPermissions: mocks.checkPermissions,
 }));
 
 const TARGET = "inst1;db1;public;orders";
@@ -653,6 +658,7 @@ describe("DataQualityTargetPage", () => {
     document.body.innerHTML = "";
     i18n.global.locale.value = "en-US";
     Element.prototype.scrollIntoView = scrollSpy;
+    mocks.checkPermissions.mockResolvedValue([]);
     mocks.getQualityTarget.mockResolvedValue(response());
     mocks.getQualityTargetSchedule.mockResolvedValue(
       targetScheduleFixture({ nextRunInMinutes: 30 })
@@ -1126,6 +1132,44 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.suggest.profileRequired")
     );
+    wrapper.unmount();
+  });
+
+  it("loads the draft queue once the resource answer arrives", async () => {
+    // A scoped member's suggest permission is the server's per-target answer,
+    // which arrives after the workspace load starts; the drafts must still load.
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
+    );
+    mocks.listQualitySuggestions.mockResolvedValue(
+      draftPage([
+        draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
+      ])
+    );
+    mocks.checkPermissions.mockResolvedValue([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+
+    const { wrapper } = await mountPage(undefined, [
+      "metaxisdata.dataQuality.rules.list",
+      "metaxisdata.dataQuality.rules.get",
+    ]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(mocks.checkPermissions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceType: "table",
+        resourceId: TARGET,
+      })
+    );
+    expect(mocks.listQualitySuggestions).toHaveBeenCalled();
+    expect(wrapper.findAllComponents(TargetDraftCard)).toHaveLength(1);
     wrapper.unmount();
   });
 

@@ -143,12 +143,17 @@ func (s *GroupService) DeleteGroup(ctx context.Context, request *connect.Request
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check group references"))
 	}
-	if len(used) > 0 {
-		names := make([]string, 0, len(used))
+	scopes, err := s.store.GetGrantScopesUsingMember(ctx, common.FormatGroupEmail(email))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check scoped grant references"))
+	}
+	if len(used) > 0 || len(scopes) > 0 {
+		names := make([]string, 0, len(used)+len(scopes))
 		for _, u := range used {
 			names = append(names, u.Resource)
 		}
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("group %q is still bound in the IAM policy of: %s", email, strings.Join(names, ", ")))
+		names = append(names, scopes...)
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("group %q is still bound in: %s", email, strings.Join(names, ", ")))
 	}
 	deleted, err := s.store.DeleteGroup(ctx, email)
 	if err != nil {

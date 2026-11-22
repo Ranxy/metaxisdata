@@ -188,7 +188,7 @@ const ALL_ITEMS = computed<SettingsNavItem[]>(() => [
 
 const items = computed(() =>
   ALL_ITEMS.value.filter(
-    (item) => !item.permission || authStore.hasPermission(item.permission)
+    (item) => !item.permission || authStore.canAccess(item.permission)
   )
 );
 

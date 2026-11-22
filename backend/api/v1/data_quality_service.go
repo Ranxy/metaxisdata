@@ -450,11 +450,6 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesCreate, targetGUID); err != nil {
 		return nil, err
 	}
-	if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesCreate,
-		storepb.QualityRuleType(req.Msg.GetRule().GetRuleType()),
-		convertQualityRuleConfigFromV1(req.Msg.GetRule().GetConfig())); err != nil {
-		return nil, err
-	}
 	created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
 	if err != nil {
 		return nil, err
@@ -515,6 +510,11 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	target := ruleTargetForSuggestion(rule, suggestion)
 	if target == nil {
 		return nil, nil, connectErrorInvalid("target is required")
+	}
+	// Every create path — the API, a batch item and the agent adoption path that
+	// the caller cannot reach directly — passes this boundary.
+	if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesCreate, ruleType, config); err != nil {
+		return nil, nil, err
 	}
 	validated, _, err := s.validateRuleInput(ctx, workspaceID, ruleType,
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
@@ -1049,6 +1049,12 @@ func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connec
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
 	ruleType := storepb.QualityRuleType(rule.GetRuleType())
+	// The dry run compiles and probes a definition the caller supplies, so the
+	// scoped-author boundary applies here too: a grant must not preview a custom
+	// SQL statement or a reference the authoring path would refuse.
+	if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesRun, ruleType, config); err != nil {
+		return nil, err
+	}
 	validated, _, err := s.validateRuleInput(ctx, workspaceID, ruleType,
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
@@ -2342,7 +2348,13 @@ func (s *DataQualityService) GetQualitySuggestion(ctx context.Context, req *conn
 	if err := s.requireQualitySuggestionRead(ctx, suggestion); err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(convertQualitySuggestion(workspaceID, suggestion)), nil
+	viewer, err := s.qualitySuggestionViewerPermissions(ctx, []*store.QualitySuggestionMessage{suggestion})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the suggestion permissions"))
+	}
+	converted := convertQualitySuggestion(workspaceID, suggestion)
+	converted.ViewerPermissions = viewer[suggestion.ID]
+	return connect.NewResponse(converted), nil
 }
 
 // ListQualitySuggestions lists the review queue, newest first.
@@ -2385,9 +2397,15 @@ func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *co
 		return nil, err
 	}
 
+	viewer, err := s.qualitySuggestionViewerPermissions(ctx, suggestions)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the suggestion permissions"))
+	}
 	response := &v1pb.ListQualitySuggestionsResponse{NextPageToken: nextPageToken}
 	for _, suggestion := range suggestions {
-		response.QualitySuggestions = append(response.QualitySuggestions, convertQualitySuggestion(workspaceID, suggestion))
+		converted := convertQualitySuggestion(workspaceID, suggestion)
+		converted.ViewerPermissions = viewer[suggestion.ID]
+		response.QualitySuggestions = append(response.QualitySuggestions, converted)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -2504,7 +2522,11 @@ func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name s
 	// Accepting a rule draft only records the decision: the reviewer creates the
 	// rule through the normal rule path (optionally in the same request, see
 	// CreateQualityRuleRequest.suggestion).
-	return convertQualitySuggestion(workspaceID, updated), updated, nil
+	converted := convertQualitySuggestion(workspaceID, updated)
+	if viewer, err := s.qualitySuggestionViewerPermissions(ctx, []*store.QualitySuggestionMessage{updated}); err == nil {
+		converted.ViewerPermissions = viewer[updated.ID]
+	}
+	return converted, updated, nil
 }
 
 // qualitySuggestionDecision validates the decision enum: a suggestion is only

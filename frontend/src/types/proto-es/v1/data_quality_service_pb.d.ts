@@ -2627,6 +2627,15 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
    * @generated from field: google.protobuf.Timestamp refresh_time = 14;
    */
   refreshTime?: Timestamp;
+
+  /**
+   * The permissions the caller holds on this suggestion's target, e.g.
+   * "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
+   * the row's create-rule and decision actions without a second request.
+   *
+   * @generated from field: repeated string viewer_permissions = 15;
+   */
+  viewerPermissions: string[];
 };
 
 /**

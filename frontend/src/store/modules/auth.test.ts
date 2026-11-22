@@ -391,3 +391,60 @@ describe("clearSession", () => {
     expect(store.user).toBeNull();
   });
 });
+
+describe("ensurePermissionsLoaded with scoped grants", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActivePinia(createPinia());
+  });
+
+  it("keeps the workspace and scoped lists apart after the profile loads", async () => {
+    mocks.login.mockResolvedValue(loginResponse(false));
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, {
+        name: "users/1",
+        permissions: ["metaxisdata.dataQuality.rules.get"],
+        scopedPermissions: ["metaxisdata.dataQuality.rules.create"],
+      })
+    );
+
+    const store = useAuthStore();
+    await store.login("dev@example.com", "pw");
+    await store.ensurePermissionsLoaded();
+
+    expect(store.permissions).toEqual(["metaxisdata.dataQuality.rules.get"]);
+    expect(store.scopedPermissions).toEqual([
+      "metaxisdata.dataQuality.rules.create",
+    ]);
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.create")).toBe(
+      false
+    );
+    expect(store.canAccess("metaxisdata.dataQuality.rules.create")).toBe(true);
+  });
+});
+
+describe("canAccess", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setActivePinia(createPinia());
+  });
+
+  it("keeps the workspace and the scoped permission sets apart", () => {
+    const store = useAuthStore();
+    store.user = create(UserSchema, {
+      name: "users/1",
+      permissions: ["metaxisdata.dataQuality.rules.get"],
+      scopedPermissions: ["metaxisdata.dataQuality.rules.create"],
+    });
+
+    // The workspace answer is the one an action fallback may read.
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.get")).toBe(true);
+    expect(store.hasPermission("metaxisdata.dataQuality.rules.create")).toBe(
+      false
+    );
+    // Navigation follows the union, so the page the scoped grant reaches opens.
+    expect(store.canAccess("metaxisdata.dataQuality.rules.get")).toBe(true);
+    expect(store.canAccess("metaxisdata.dataQuality.rules.create")).toBe(true);
+    expect(store.canAccess("metaxisdata.settings.update")).toBe(false);
+  });
+});

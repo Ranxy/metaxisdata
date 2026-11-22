@@ -117,6 +117,23 @@ describe("router auth guard", () => {
     expect(router.currentRoute.value.name).toBe("DatabaseManagement");
   });
 
+  it("opens a page a scoped grant can reach without a workspace binding", async () => {
+    // The workspace policy grants reads only; the scoped grant is what makes the
+    // suggestion queue reachable, so navigation must follow the union while the
+    // page asks the server per target.
+    mocks.getCurrentUser.mockResolvedValue(
+      create(UserSchema, {
+        name: "users/1",
+        permissions: [],
+        scopedPermissions: ["metaxisdata.dataQuality.suggest"],
+      })
+    );
+
+    await router.push("/data-quality/suggestions");
+
+    expect(router.currentRoute.value.name).toBe("DataQualitySuggestions");
+  });
+
   it("does not land a signed-in caller on a page they cannot open", async () => {
     mocks.getCurrentUser.mockResolvedValue(
       create(UserSchema, { name: "users/1", permissions: [] })

@@ -1,5 +1,5 @@
-import type { ComputedRef, Ref } from "vue";
-import { ref, watch } from "vue";
+import type { ComputedRef } from "vue";
+import { type Ref, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { notify } from "@/lib/notify";
@@ -15,6 +15,12 @@ export interface TargetWorkspaceDialogsOptions {
   loading: Ref<boolean>;
   /** Whether the reader may create a check. */
   canCreate: ComputedRef<boolean>;
+  /**
+   * Whether the CheckPermissions answer for this target has arrived. A scoped
+   * member's `canCreate` is false until then, so the `?add=1` deep link must
+   * wait instead of reporting a refusal it cannot know yet.
+   */
+  permissionResolved?: Ref<boolean>;
 }
 
 /**
@@ -150,6 +156,12 @@ export function useTargetWorkspaceDialogs(
     if (options.loading.value || route.query.add !== "1") {
       return;
     }
+    // The resource answer is part of the decision: while it is unknown the flag
+    // stays, so the resolved answer can still open the composer.
+    const permissionResolved = options.permissionResolved?.value ?? true;
+    if (!options.canCreate.value && !permissionResolved) {
+      return;
+    }
     // The flag is consumed first, whatever happens next, so a reload never
     // re-triggers it and a `check` in the same URL keeps its own path.
     const query = { ...route.query };
@@ -174,9 +186,15 @@ export function useTargetWorkspaceDialogs(
       immediate: true,
     }
   );
-  watch([() => route.query.add, options.loading], syncAddFromQuery, {
-    immediate: true,
-  });
+  watch(
+    [
+      () => route.query.add,
+      options.loading,
+      () => options.permissionResolved?.value,
+    ],
+    syncAddFromQuery,
+    { immediate: true }
+  );
 
   /**
    * The old edit URL arrives as `check=<name>&edit=1`: consume the flag, then open

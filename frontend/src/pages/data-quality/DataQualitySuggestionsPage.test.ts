@@ -72,7 +72,17 @@ const DRAFT_TWO = "workspaces/ws/qualitySuggestions/draft-2";
 const LABEL_ONE = "workspaces/ws/qualitySuggestions/label-1";
 const Dummy = { template: "<div />" };
 
-function draftSuggestion(name: string, title: string, target = TARGET) {
+const VIEWER_PERMISSIONS = [
+  "metaxisdata.dataQuality.rules.create",
+  "metaxisdata.dataQuality.suggest",
+];
+
+function draftSuggestion(
+  name: string,
+  title: string,
+  target = TARGET,
+  viewerPermissions = VIEWER_PERMISSIONS
+) {
   return create(QualitySuggestionSchema, {
     name,
     kind: QualitySuggestionKind.RULE_DRAFT,
@@ -84,6 +94,7 @@ function draftSuggestion(name: string, title: string, target = TARGET) {
       metaGuid: target,
       metaType: MetaType.TABLE,
     }),
+    viewerPermissions,
     payload: {
       payload: {
         case: "rule",
@@ -104,7 +115,10 @@ function draftSuggestion(name: string, title: string, target = TARGET) {
   });
 }
 
-function labelSuggestion(target = OTHER_TARGET) {
+function labelSuggestion(
+  target = OTHER_TARGET,
+  viewerPermissions = VIEWER_PERMISSIONS
+) {
   return create(QualitySuggestionSchema, {
     name: LABEL_ONE,
     kind: QualitySuggestionKind.LABEL,
@@ -114,6 +128,7 @@ function labelSuggestion(target = OTHER_TARGET) {
       metaGuid: target,
       metaType: MetaType.TABLE,
     }),
+    viewerPermissions,
     payload: {
       payload: {
         case: "label",
@@ -335,6 +350,34 @@ describe("DataQualitySuggestionsPage", () => {
       label("dataQuality.suggestions.refreshedAt", {
         time: formatRelativeTime(refreshed.refreshTime, "en-US"),
       })
+    );
+    wrapper.unmount();
+  });
+
+  it("keeps create-rule unavailable when the draft's target lacks create", async () => {
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [
+        draftSuggestion(DRAFT_ONE, "Orders should have rows", TARGET, [
+          "metaxisdata.dataQuality.suggest",
+        ]),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    groupCheckbox(0)?.click();
+    await flushPromises();
+
+    const create = buttonByText(
+      label("dataQuality.suggestions.createRules", { count: 1 })
+    );
+    // The page-wide navigation grant says create exists somewhere; the row's
+    // target answer is what decides this draft.
+    expect(create?.hasAttribute("disabled")).toBe(true);
+    create?.click();
+    await flushPromises();
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.suggestions.batchCreate.title")
     );
     wrapper.unmount();
   });

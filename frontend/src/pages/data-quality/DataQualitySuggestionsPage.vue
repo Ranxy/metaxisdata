@@ -202,7 +202,7 @@
             <template v-if="selectionCounts.drafts > 0">
               <Button
                 size="sm"
-                :disabled="!canCreateRule"
+                :disabled="!selectedDrafts.some(canCreateRuleFor)"
                 @click="openBatchCreate(selectedDrafts)"
               >
                 {{ t("dataQuality.suggestions.createRules", { count: selectionCounts.drafts }) }}
@@ -511,7 +511,7 @@
       :suggestion="selected"
       :target-label="selected ? suggestionTargetLabel(selected.target?.metaGuid ?? '', selectedInstanceTitle(selected)) : ''"
       :can-decide="canDecide"
-      :can-create-rule="canCreateRule"
+      :can-create-rule="!!selected && canCreateRuleFor(selected)"
       :deciding="deciding"
       :error="decideError"
       @accept="accept"
@@ -579,11 +579,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { notify } from "@/lib/notify";
+import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
   QualitySeverity,
@@ -648,7 +648,21 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const instanceStore = useInstanceStore();
-const { canCreate: canCreateRule, canSuggest } = useDataQualityPermissions();
+const authStore = useAuthStore();
+// The queue is already filtered to the caller's suggest scope server-side, so a
+// visible draft is one they may decide; deciding or turning it into a rule still
+// asks the target workspace for the concrete resource.
+const canSuggest = computed(() =>
+  authStore.canAccess("metaxisdata.dataQuality.suggest")
+);
+
+// "Create rule from draft" needs rules.create on the *draft's target*, which the
+// list reports per row; the page-wide union says only that the action exists
+// somewhere, and a scoped reviewer may hold it on one target but not another.
+const RULE_CREATE_PERMISSION = "metaxisdata.dataQuality.rules.create";
+function canCreateRuleFor(suggestion: QualitySuggestion): boolean {
+  return suggestion.viewerPermissions.includes(RULE_CREATE_PERMISSION);
+}
 /** Deciding a suggestion is the same permission as drafting one. */
 const canDecide = canSuggest;
 
@@ -1059,7 +1073,7 @@ function selectedInstanceTitle(suggestion: QualitySuggestion): string {
 }
 
 function canEditDraft(suggestion: QualitySuggestion): boolean {
-  return isPendingDraft(suggestion) && canCreateRule.value;
+  return isPendingDraft(suggestion) && canCreateRuleFor(suggestion);
 }
 
 function groupSelectionState(
@@ -1133,10 +1147,11 @@ function openTarget(suggestion: QualitySuggestion) {
 }
 
 function openBatchCreate(items: QualitySuggestion[]) {
-  if (!canCreateRule.value || items.length === 0) {
+  const allowed = items.filter(canCreateRuleFor);
+  if (allowed.length === 0) {
     return;
   }
-  batchCreateSuggestions.value = items.slice(0, MAX_SUGGESTION_BATCH);
+  batchCreateSuggestions.value = allowed.slice(0, MAX_SUGGESTION_BATCH);
   batchCreateOpen.value = true;
 }
 

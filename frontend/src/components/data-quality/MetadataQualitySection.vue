@@ -503,6 +503,7 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { useQualitySignalText } from "@/composables/useQualitySignalText";
+import { useResourcePermissions } from "@/composables/useResourcePermissions";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -530,6 +531,7 @@ import {
   qualityStatusKey,
   qualityStatusVariant,
   qualityTargetWorkspaceRoute,
+  resourceTypeForMetaType,
 } from "@/utils/dataQuality";
 import { ruleTypeForConfigCase } from "@/utils/dataQualityForm";
 import {
@@ -575,14 +577,34 @@ const authStore = useAuthStore();
 const canView = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.list")
 );
-const canProfile = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.profile.run")
+
+// The tab's writes act on this table, so the server's answer for this resource
+// decides them: a scoped quality owner holds them in its scope without holding
+// them workspace-wide. The flat permission stays the administrator's immediate
+// path before the check resolves.
+const targetResource = computed(() => ({
+  resourceType: resourceTypeForMetaType(props.metaType),
+  resourceId: props.tableGuid,
+}));
+const { can: targetCan } = useResourcePermissions(targetResource, [
+  "metaxisdata.dataQuality.profile.run",
+  "metaxisdata.dataQuality.suggest",
+  "metaxisdata.dataQuality.labels.update",
+] as const);
+const canProfile = computed(
+  () =>
+    authStore.hasPermission("metaxisdata.dataQuality.profile.run") ||
+    targetCan("metaxisdata.dataQuality.profile.run")
 );
-const canSuggest = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
+const canSuggest = computed(
+  () =>
+    authStore.hasPermission("metaxisdata.dataQuality.suggest") ||
+    targetCan("metaxisdata.dataQuality.suggest")
 );
-const canUpdateLabels = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.labels.update")
+const canUpdateLabels = computed(
+  () =>
+    authStore.hasPermission("metaxisdata.dataQuality.labels.update") ||
+    targetCan("metaxisdata.dataQuality.labels.update")
 );
 
 /** The workspace's model switch; the label pass needs it, recommendation does not. */
@@ -982,4 +1004,13 @@ watch(
     void loadAll();
   }
 );
+
+// The suggest permission for a scoped owner arrives after the first load (it is
+// the server's per-resource answer), so read the queue again when it turns on;
+// otherwise the pending-proposals card stays empty.
+watch(canSuggest, (allowed, previous) => {
+  if (allowed && !previous) {
+    void loadSuggestions();
+  }
+});
 </script>

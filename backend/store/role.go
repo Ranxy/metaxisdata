@@ -297,3 +297,37 @@ func marshalRolePermissions(permissions map[permission.Permission]bool) ([]byte,
 	}
 	return payload, nil
 }
+
+// GetGrantScopesUsingRole returns the scopes whose iam_grant still names role.
+// The workspace policy is not the only binding surface anymore, so the delete
+// guard must consult the grant ledger too.
+func (s *Store) GetGrantScopesUsingRole(ctx context.Context, role string) ([]string, error) {
+	return s.grantScopes(ctx, `SELECT resource_type, resource_id FROM iam_grant WHERE role = $1 ORDER BY id`, role)
+}
+
+// GetGrantScopesUsingMember returns the scopes whose iam_grant still names
+// member. Deleting a group or user that a grant binds would turn that grant into
+// a no-op, so the guard consults the ledger.
+func (s *Store) GetGrantScopesUsingMember(ctx context.Context, member string) ([]string, error) {
+	return s.grantScopes(ctx, `SELECT resource_type, resource_id FROM iam_grant WHERE member = $1 ORDER BY id`, member)
+}
+
+func (s *Store) grantScopes(ctx context.Context, query, value string) ([]string, error) {
+	rows, err := s.GetDB().QueryContext(ctx, query, value)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the grants using a binding")
+	}
+	defer rows.Close()
+	var scopes []string
+	for rows.Next() {
+		var resourceType, resourceID string
+		if err := rows.Scan(&resourceType, &resourceID); err != nil {
+			return nil, err
+		}
+		scopes = append(scopes, FormatIamGrantScope(resourceType, resourceID))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return scopes, nil
+}

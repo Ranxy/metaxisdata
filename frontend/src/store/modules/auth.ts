@@ -57,6 +57,16 @@ export const useAuthStore = defineStore("auth", {
     permissions: (state) => state.user?.permissions ?? [],
     hasPermission: (state) => (permission: Permission) =>
       state.user?.permissions.includes(permission) ?? false,
+    // The permissions a scoped grant or an agent ownership derivation adds
+    // outside the workspace policy. They are a navigation hint, not proof an
+    // action is allowed on a page's resource.
+    scopedPermissions: (state) => state.user?.scopedPermissions ?? [],
+    // Whether the caller may reach a page at all. Navigation uses this union;
+    // an action on a concrete resource uses hasPermission or the resource's
+    // CheckPermissions/viewerPermissions answer instead.
+    canAccess: (state) => (permission: Permission) =>
+      (state.user?.permissions.includes(permission) ?? false) ||
+      (state.user?.scopedPermissions.includes(permission) ?? false),
   },
 
   actions: {

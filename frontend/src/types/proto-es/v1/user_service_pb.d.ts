@@ -333,10 +333,24 @@ export declare type User = Message<"metaxisdata.v1.User"> & {
    * The effective workspace permissions of the caller, as a list of
    * `metaxisdata.<resource>.<verb>` strings. Populated by GetCurrentUser only,
    * so the frontend can gate navigation and actions without probing each RPC.
+   * It holds only what the workspace policy grants: a permission that comes
+   * from a scoped grant or an agent ownership derivation is not here.
    *
    * @generated from field: repeated string permissions = 15;
    */
   permissions: string[];
+
+  /**
+   * The permissions the caller holds on some scope through a scoped grant or an
+   * agent ownership derivation, which the workspace policy does not grant.
+   * Populated by GetCurrentUser only. Navigation may combine it with
+   * `permissions`, but it is not evidence that an action is allowed somewhere:
+   * a resource action asks CheckPermissions or reads the resource's
+   * viewer_permissions instead.
+   *
+   * @generated from field: repeated string scoped_permissions = 17;
+   */
+  scopedPermissions: string[];
 
   /**
    * The BCP-47 tag of the language the user reads the UI in, so server-side

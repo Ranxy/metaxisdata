@@ -158,11 +158,16 @@ func (s *RoleService) DeleteRole(ctx context.Context, request *connect.Request[v
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check role references"))
 	}
-	if len(used) > 0 {
-		names := make([]string, 0, len(used))
+	scopes, err := s.store.GetGrantScopesUsingRole(ctx, common.FormatRole(roleID))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check scoped grant references"))
+	}
+	if len(used) > 0 || len(scopes) > 0 {
+		names := make([]string, 0, len(used)+len(scopes))
 		for _, u := range used {
 			names = append(names, u.Resource)
 		}
+		names = append(names, scopes...)
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf("role %q is still bound in: %s", roleID, strings.Join(names, ", ")))
 	}
 	if err := s.store.DeleteRole(ctx, roleID); err != nil {

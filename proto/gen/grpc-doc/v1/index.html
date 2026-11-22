@@ -5025,7 +5025,21 @@ Format: groups/{email} </p></td>
                   <td>repeated</td>
                   <td><p>The effective workspace permissions of the caller, as a list of
 `metaxisdata.&lt;resource&gt;.&lt;verb&gt;` strings. Populated by GetCurrentUser only,
-so the frontend can gate navigation and actions without probing each RPC. </p></td>
+so the frontend can gate navigation and actions without probing each RPC.
+It holds only what the workspace policy grants: a permission that comes
+from a scoped grant or an agent ownership derivation is not here. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scoped_permissions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The permissions the caller holds on some scope through a scoped grant or an
+agent ownership derivation, which the workspace policy does not grant.
+Populated by GetCurrentUser only. Navigation may combine it with
+`permissions`, but it is not evidence that an action is allowed somewhere:
+a resource action asks CheckPermissions or reads the resource&#39;s
+viewer_permissions instead. </p></td>
                 </tr>
               
                 <tr>
@@ -23982,6 +23996,15 @@ their first attempt and for manual batches. </p></td>
                   <td></td>
                   <td><p>When a later generation pass refreshed this pending proposal&#39;s payload.
 Unset when the proposal has not been refreshed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>viewer_permissions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The permissions the caller holds on this suggestion&#39;s target, e.g.
+&#34;metaxisdata.dataQuality.rules.create&#34;. Output only; a page uses it to gate
+the row&#39;s create-rule and decision actions without a second request. </p></td>
                 </tr>
               
             </tbody>

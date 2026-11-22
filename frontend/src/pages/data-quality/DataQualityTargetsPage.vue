@@ -481,8 +481,10 @@ const router = useRouter();
 const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
+// The directory's create entry opens a target picker; the target workspace
+// decides per target whether this caller may author a check there.
 const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
+  authStore.canAccess("metaxisdata.dataQuality.rules.create")
 );
 
 /** The three "needs attention" filters, all off by default. */

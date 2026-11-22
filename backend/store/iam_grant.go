@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 )
 
 // IamGrantMessage is one resource-scoped grant: a role bound to a member over a
@@ -27,9 +28,9 @@ type IamGrantMessage struct {
 	CreatedAt    time.Time
 }
 
-// FindIamGrantMessage filters grants. An empty but non-nil Scopes or Members
-// slice matches nothing, so a caller that collected no scope cannot read every
-// grant by accident.
+// FindIamGrantMessage filters grants. An empty but non-nil Members slice
+// matches nothing, so a caller that collected no member cannot read every grant
+// by accident.
 type FindIamGrantMessage struct {
 	ResourceType *string
 	ResourceID   *string
@@ -160,20 +161,21 @@ func buildIamGrantWhere(find *FindIamGrantMessage) ([]string, []any) {
 		args = append(args, *v)
 		where = append(where, fmt.Sprintf("resource_id = $%d", len(args)))
 	}
-	if find.Members != nil || find.IncludeGroupGrants {
-		conditions := make([]string, 0, 2)
-		if len(find.Members) > 0 {
-			args = append(args, pq.Array(find.Members))
-			conditions = append(conditions, fmt.Sprintf("member = ANY($%d)", len(args)))
-		}
-		if find.IncludeGroupGrants {
-			conditions = append(conditions, "member LIKE 'groups/%'")
-		}
-		if len(conditions) == 0 {
+	if find.Members != nil {
+		// An empty non-nil list is "nobody", never "everybody": a caller that
+		// collected no member would otherwise read every grant.
+		if len(find.Members) == 0 {
 			where = append(where, "FALSE")
 		} else {
+			args = append(args, pq.Array(find.Members))
+			conditions := []string{fmt.Sprintf("member = ANY($%d)", len(args))}
+			if find.IncludeGroupGrants {
+				conditions = append(conditions, "member LIKE 'groups/%'")
+			}
 			where = append(where, "("+strings.Join(conditions, " OR ")+")")
 		}
+	} else if find.IncludeGroupGrants {
+		where = append(where, "member LIKE 'groups/%'")
 	}
 	return where, args
 }
@@ -191,4 +193,23 @@ func scanIamGrant(scanner interface{ Scan(dest ...any) error }) (*IamGrantMessag
 		grant.CreatedBy = &createdBy.Int32
 	}
 	return &grant, nil
+}
+
+// FormatIamGrantScope renders a stored grant scope the way the grant API names
+// it: instances/{instance} or instances/{instance}/databases/{database}.
+func FormatIamGrantScope(resourceType, resourceID string) string {
+	switch resourceType {
+	case resource.TypeInstance.String():
+		return common.FormatInstance(resourceID)
+	case resource.TypeDatabase.String():
+		parts := common.SplitMetaGUID(resourceID)
+		if len(parts) == 2 {
+			return common.FormatDatabase(parts[0], parts[1])
+		}
+		return resourceID
+	default:
+		// A stored type outside the grant API (a future scope kind) still lists
+		// as its raw id rather than an empty name.
+		return resourceID
+	}
 }

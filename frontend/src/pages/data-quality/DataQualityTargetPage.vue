@@ -404,7 +404,7 @@
                     @accepted="onDraftAccepted(draft, $event)"
                     @rejected="onDraftRejected"
                     @edit="openComposer(draft)"
-                    @refresh="loadDrafts"
+                    @refresh="refreshDrafts"
                   />
                 </div>
                 <ul
@@ -803,6 +803,7 @@ import {
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualityTargetMetadataRoute,
+  resourceTypeForMetaType,
 } from "@/utils/dataQuality";
 import { type TargetColumnDetail } from "@/utils/dataQualityForm";
 import { formatQualityScore } from "@/utils/dataQualityOverview";
@@ -883,17 +884,6 @@ const effectiveMetaType = computed<MetaType>(() => {
     : MetaType.TABLE;
 });
 
-function resourceTypeForMetaType(metaType: MetaType): string {
-  switch (metaType) {
-    case MetaType.VIEW:
-      return "view";
-    case MetaType.EXTERNAL_TABLE:
-      return "external_table";
-    default:
-      return "table";
-  }
-}
-
 // The target-scoped actions are decided by the server: a scoped grant can allow
 // a rule edit or run that the workspace-level permission does not, and a page
 // must not show an action the server will refuse. The flat permission stays the
@@ -907,14 +897,15 @@ const targetResource = computed(() => {
     resourceId: targetGuid.value,
   };
 });
-const { can: targetCan } = useResourcePermissions(targetResource, [
-  "metaxisdata.dataQuality.rules.create",
-  "metaxisdata.dataQuality.rules.update",
-  "metaxisdata.dataQuality.rules.run",
-  "metaxisdata.dataQuality.contracts.publish",
-  "metaxisdata.dataQuality.suggest",
-  "metaxisdata.dataQuality.profile.run",
-] as const);
+const { can: targetCan, resolved: targetPermissionsResolved } =
+  useResourcePermissions(targetResource, [
+    "metaxisdata.dataQuality.rules.create",
+    "metaxisdata.dataQuality.rules.update",
+    "metaxisdata.dataQuality.rules.run",
+    "metaxisdata.dataQuality.contracts.publish",
+    "metaxisdata.dataQuality.suggest",
+    "metaxisdata.dataQuality.profile.run",
+  ] as const);
 
 const canCreate = computed(
   () => canCreateFlat.value || targetCan("metaxisdata.dataQuality.rules.create")
@@ -987,7 +978,12 @@ const {
   openCheck,
   closeCheck,
   onCheckOpenChange,
-} = useTargetWorkspaceDialogs({ rules, loading, canCreate });
+} = useTargetWorkspaceDialogs({
+  rules,
+  loading,
+  canCreate,
+  permissionResolved: targetPermissionsResolved,
+});
 
 const {
   targetSchedule,
@@ -1207,11 +1203,20 @@ function issueTo(issue: QualityIssue) {
 
 /** Guards against a slow read of the previous target landing on this one. */
 let loadTicket = 0;
+/** The load ticket whose drafts read was started, once the permission allowed it. */
+let draftsTicket = -1;
 
-async function loadDrafts(ticket = loadTicket) {
-  if (!canSuggest.value) {
+/**
+ * Loads the target's pending drafts. The draft queue needs the suggest
+ * permission, which for a scoped member arrives with the server's answer to
+ * CheckPermissions *after* the workspace load starts; the permission watcher
+ * calls this again with the same ticket, and the ticket keeps that to one read.
+ */
+async function loadDrafts(ticket = loadTicket, force = false) {
+  if (!canSuggest.value || (!force && draftsTicket === ticket)) {
     return;
   }
+  draftsTicket = ticket;
   try {
     const page = await listQualitySuggestions({
       targetGuid: targetGuid.value,
@@ -1402,14 +1407,19 @@ async function load() {
   }
 }
 
+/** The drafts region refreshes within one workspace load, so force its read. */
+function refreshDrafts() {
+  void loadDrafts(loadTicket, true);
+}
+
 function onDraftsSuggested() {
-  void loadDrafts();
+  void loadDrafts(loadTicket, true);
 }
 
 /** A field's label pass reports its own failure; the queue is re-read either way. */
 function onLabelsFailed(message: string) {
   labelError.value = message;
-  void loadDrafts();
+  void loadDrafts(loadTicket, true);
 }
 
 function onDraftAccepted(draft: QualitySuggestion, rule: QualityRule) {
@@ -1677,5 +1687,14 @@ onMounted(() => {
 // the whole workspace reloads with the GUID.
 watch(targetGuid, () => {
   void load();
+});
+
+// A scoped member's suggest permission is answered after the first workspace
+// load; without this the draft cards never appear even though the server counts
+// them in the target summary.
+watch(canSuggest, (allowed, previous) => {
+  if (allowed && !previous) {
+    void loadDrafts();
+  }
 });
 </script>
