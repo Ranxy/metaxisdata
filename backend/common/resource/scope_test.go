@@ -108,3 +108,22 @@ func TestScopeSetMetadataScopes(t *testing.T) {
 func pointer[T any](value T) *T {
 	return &value
 }
+
+// Self is reserved, not shipped: it makes a set non-empty (so the ACL gate does
+// not deny a future self-scoped list) but contains no resource reference, so a
+// caller that ignores it fails closed.
+func TestScopeSetSelfIsReserved(t *testing.T) {
+	t.Parallel()
+
+	self := int32(7)
+	set := ScopeSet{Self: &self}
+	require.False(t, set.IsEmpty())
+	require.False(t, set.Contains(NewRef(TypeTable, "i;db;t")))
+	require.Empty(t, set.MetadataScopes())
+
+	// Union keeps the first self id: two principals are not a meaningful union.
+	other := int32(9)
+	set.Union(ScopeSet{Self: &other})
+	require.NotNil(t, set.Self)
+	require.Equal(t, int32(7), *set.Self)
+}

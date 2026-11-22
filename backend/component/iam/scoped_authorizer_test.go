@@ -411,3 +411,36 @@ func TestScopedAuthorizerSnapshotExpires(t *testing.T) {
 	require.True(t, allowed)
 	require.Equal(t, 2, reader.grantCalls, "past the TTL the snapshot is rebuilt")
 }
+
+// A list filters by ScopeSet and a handler checks the resource; the two answers
+// must agree for every reachable reference, or a row can be listed that the
+// action refuses (or the reverse).
+func TestScopedAuthorizerCheckMatchesScopes(t *testing.T) {
+	t.Parallel()
+
+	principal := &store.UserMessage{ID: 7}
+	reader := &fakeGrantReader{grants: []*store.IamGrantMessage{qualityOwnerGrant(common.FormatUserUID(7))}}
+	authorizer := NewScopedAuthorizer(&fakeChecker{}, reader)
+
+	refs := []resource.Ref{
+		resource.NewRef(resource.TypeInstance, "i"),
+		resource.NewRef(resource.TypeDatabase, "i;db"),
+		resource.NewRef(resource.TypeTable, "i;db;public;orders"),
+		resource.NewRef(resource.TypeTable, "i2;db;public;orders"),
+		resource.NewRef(resource.TypeTable, "i;db;public;columns"),
+	}
+	for _, perm := range []permission.Permission{
+		permission.DataQualityRulesCreate,
+		permission.DataQualityIssuesUpdate,
+		permission.SettingsUpdate,
+	} {
+		scopes, err := authorizer.Scopes(context.Background(), principal, perm)
+		require.NoError(t, err)
+		for _, ref := range refs {
+			allowed, err := authorizer.Check(context.Background(), principal, perm, ref)
+			require.NoError(t, err)
+			require.Equalf(t, allowed, scopes.Contains(ref),
+				"permission %q on %s: Check and Scopes disagree", perm, ref.String())
+		}
+	}
+}

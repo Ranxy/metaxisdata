@@ -205,6 +205,14 @@
                     })
                   }}
                 </div>
+                <div
+                  v-if="grant.condition"
+                  class="font-mono text-xs text-muted-foreground"
+                  :title="grant.condition.expression"
+                >
+                  {{ t("iam.grants.conditionLabel") }}:
+                  {{ grant.condition.expression }}
+                </div>
               </TableCell>
               <TableCell>
                 <div class="font-medium">
@@ -558,7 +566,7 @@
         <p class="text-sm text-muted-foreground">
           {{
             t("iam.grants.deleteConfirm", {
-              resource: deleteTarget?.resource ?? "",
+              resource: deleteTarget ? grantResourceLabel(deleteTarget.resource) : "",
             })
           }}
         </p>
@@ -908,8 +916,10 @@ async function resolveUserMembers() {
     }
   }
   for (const grant of grants.value) {
-    if (grant.member.startsWith("users/") && !known.has(grant.member)) {
-      unresolved.add(grant.member);
+    for (const name of [grant.member, grant.createdBy]) {
+      if (name && name.startsWith("users/") && !known.has(name)) {
+        unresolved.add(name);
+      }
     }
   }
   if (unresolved.size === 0) {

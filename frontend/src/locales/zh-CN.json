@@ -2122,6 +2122,7 @@
       "add": "添加作用域授权",
       "condition": "条件（可选）",
       "conditionHint": "仅对 request.time 求值；留空表示无条件。",
+      "conditionLabel": "条件",
       "conditionPlaceholder": "request.time < timestamp('2030-01-01T00:00:00Z')",
       "created": "作用域授权已添加",
       "createdBy": "由 {member} 创建",
