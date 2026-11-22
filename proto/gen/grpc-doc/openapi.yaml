@@ -9578,6 +9578,10 @@ components:
                     type: array
                     items:
                         type: string
+                    description: |-
+                        The permissions to answer. A permission the server always checks at the
+                         workspace (settings, users, IAM, catalog administration, ...) answers
+                         false: a scoped grant cannot satisfy it.
         CheckPermissionsResponse:
             type: object
             properties:
@@ -11636,7 +11640,10 @@ components:
                          resource type and id the ledger stores.
                 role:
                     type: string
-                    description: 'Format: roles/{role}'
+                    description: |-
+                        Format: roles/{role}. The role's permissions must all be satisfiable at a
+                         resource scope: a role carrying a workspace-checked permission (settings,
+                         users, IAM, ...) is refused rather than stored as a grant that cannot work.
                 member:
                     type: string
                     description: |-
@@ -18791,7 +18798,9 @@ components:
                         type: string
                     description: |-
                         The permissions the caller holds on some scope through a scoped grant or an
-                         agent ownership derivation, which the workspace policy does not grant.
+                         agent ownership derivation, which the workspace policy does not grant. Only
+                         permissions a scope can satisfy are listed; a workspace-checked permission
+                         never appears here even if a stored role names it.
                          Populated by GetCurrentUser only. Navigation may combine it with
                          `permissions`, but it is not evidence that an action is allowed somewhere:
                          a resource action asks CheckPermissions or reads the resource's

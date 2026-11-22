@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +19,7 @@ type fakeGrantReader struct {
 	grants        []*store.IamGrantMessage
 	relations     []*store.AgentGrantRelation
 	groups        map[string]*store.GroupMessage
+	roles         map[string]*store.RoleMessage
 	generation    uint64
 	grantCalls    int
 	relationCalls int
@@ -39,7 +41,10 @@ func (f *fakeGrantReader) AuthorizationGeneration() uint64 {
 	return f.generation
 }
 
-func (*fakeGrantReader) GetRoleSnapshot(_ context.Context, resourceID string) (*store.RoleMessage, error) {
+func (f *fakeGrantReader) GetRoleSnapshot(_ context.Context, resourceID string) (*store.RoleMessage, error) {
+	if role, ok := f.roles[resourceID]; ok {
+		return role, nil
+	}
 	return store.GetPredefinedRole(resourceID), nil
 }
 
@@ -328,4 +333,114 @@ func TestScopedAuthorizerScopes(t *testing.T) {
 		require.ErrorIs(t, err, cause)
 		require.True(t, scopes.IsEmpty())
 	})
+}
+
+// A custom role bound at a scope may also name workspace-checked permissions.
+// The resource authorizer must ignore those: the RPC path always checks the
+// workspace, so reporting them would open pages and checks the server denies.
+func TestScopedAuthorizerIgnoresWorkspaceOnlyPermissions(t *testing.T) {
+	t.Parallel()
+
+	principal := &store.UserMessage{ID: 7}
+	table := resource.NewRef(resource.TypeTable, "i;db;public;orders")
+	reader := &fakeGrantReader{
+		grants: []*store.IamGrantMessage{{
+			ResourceType: "database",
+			ResourceID:   "i;db",
+			Role:         "roles/custom",
+			Member:       "users/7",
+		}},
+		roles: map[string]*store.RoleMessage{
+			"custom": {
+				ResourceID: "custom",
+				Permissions: map[permission.Permission]bool{
+					permission.DataQualityRulesCreate: true,
+					permission.SettingsUpdate:         true,
+				},
+			},
+		},
+	}
+	authorizer := NewScopedAuthorizer(&fakeChecker{}, reader)
+
+	allowed, err := authorizer.Check(context.Background(), principal, permission.DataQualityRulesCreate, table)
+	require.NoError(t, err)
+	require.True(t, allowed)
+
+	allowed, err = authorizer.Check(context.Background(), principal, permission.SettingsUpdate, table)
+	require.NoError(t, err)
+	require.False(t, allowed, "a workspace-only permission must never come from a scoped grant")
+
+	scopes, err := authorizer.Scopes(context.Background(), principal, permission.SettingsUpdate)
+	require.NoError(t, err)
+	require.True(t, scopes.IsEmpty())
+
+	granted, err := authorizer.ScopedPermissions(context.Background(), principal)
+	require.NoError(t, err)
+	require.Contains(t, granted, permission.DataQualityRulesCreate)
+	require.NotContains(t, granted, permission.SettingsUpdate)
+}
+
+// The snapshot has a TTL as well as the generation: a write this process did not
+// observe (another replica, or a store bump missed by a future refactor) is
+// honored within the bound instead of until restart.
+func TestScopedAuthorizerSnapshotExpires(t *testing.T) {
+	t.Parallel()
+
+	principal := &store.UserMessage{ID: 7}
+	table := resource.NewRef(resource.TypeTable, "i;db;public;orders")
+	reader := &fakeGrantReader{grants: []*store.IamGrantMessage{qualityOwnerGrant(common.FormatUserUID(7))}}
+	authorizer := NewScopedAuthorizer(&fakeChecker{allowed: false}, reader)
+	now := time.Unix(1_700_000_000, 0)
+	authorizer.now = func() time.Time { return now }
+	authorizer.ttl = 10 * time.Second
+
+	allowed, err := authorizer.Check(context.Background(), principal, permission.DataQualityRulesCreate, table)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, reader.grantCalls)
+
+	now = now.Add(9 * time.Second)
+	allowed, err = authorizer.Check(context.Background(), principal, permission.DataQualityRulesCreate, table)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 1, reader.grantCalls, "inside the TTL the snapshot is reused")
+
+	now = now.Add(2 * time.Second)
+	allowed, err = authorizer.Check(context.Background(), principal, permission.DataQualityRulesCreate, table)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Equal(t, 2, reader.grantCalls, "past the TTL the snapshot is rebuilt")
+}
+
+// A list filters by ScopeSet and a handler checks the resource; the two answers
+// must agree for every reachable reference, or a row can be listed that the
+// action refuses (or the reverse).
+func TestScopedAuthorizerCheckMatchesScopes(t *testing.T) {
+	t.Parallel()
+
+	principal := &store.UserMessage{ID: 7}
+	reader := &fakeGrantReader{grants: []*store.IamGrantMessage{qualityOwnerGrant(common.FormatUserUID(7))}}
+	authorizer := NewScopedAuthorizer(&fakeChecker{}, reader)
+
+	refs := []resource.Ref{
+		resource.NewRef(resource.TypeInstance, "i"),
+		resource.NewRef(resource.TypeDatabase, "i;db"),
+		resource.NewRef(resource.TypeTable, "i;db;public;orders"),
+		resource.NewRef(resource.TypeTable, "i2;db;public;orders"),
+		resource.NewRef(resource.TypeTable, "i;db;public;columns"),
+	}
+	for _, perm := range []permission.Permission{
+		permission.DataQualityRulesCreate,
+		permission.DataQualityIssuesUpdate,
+		permission.SettingsUpdate,
+	} {
+		scopes, err := authorizer.Scopes(context.Background(), principal, perm)
+		require.NoError(t, err)
+		for _, ref := range refs {
+			allowed, err := authorizer.Check(context.Background(), principal, perm, ref)
+			require.NoError(t, err)
+			require.Equalf(t, allowed, scopes.Contains(ref),
+				"permission %q on %s: Check and Scopes disagree", perm, ref.String())
+		}
+	}
 }

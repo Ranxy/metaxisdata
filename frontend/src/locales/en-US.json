@@ -2122,6 +2122,7 @@
       "add": "Add scoped grant",
       "condition": "Condition (optional)",
       "conditionHint": "Evaluated against request.time only; empty means unconditional.",
+      "conditionLabel": "Condition",
       "conditionPlaceholder": "request.time < timestamp('2030-01-01T00:00:00Z')",
       "created": "Scoped grant added",
       "createdBy": "Created by {member}",

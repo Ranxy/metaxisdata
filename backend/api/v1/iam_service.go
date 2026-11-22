@@ -217,6 +217,13 @@ func (s *IamService) CheckPermissions(ctx context.Context, req *connect.Request[
 			allowed = append(allowed, ok)
 			continue
 		}
+		// A workspace-only permission has no resource answer: a scoped grant
+		// cannot make it true here even if a stored row names it.
+		if !permission.Scopeable(perm) {
+			checked[perm] = false
+			allowed = append(allowed, false)
+			continue
+		}
 		ok, err := s.authorizer.Check(ctx, user, perm, ref)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission"))

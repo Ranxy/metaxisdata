@@ -124,7 +124,9 @@ export declare type IamGrant = Message<"metaxisdata.v1.IamGrant"> & {
   resource: string;
 
   /**
-   * Format: roles/{role}
+   * Format: roles/{role}. The role's permissions must all be satisfiable at a
+   * resource scope: a role carrying a workspace-checked permission (settings,
+   * users, IAM, ...) is refused rather than stored as a grant that cannot work.
    *
    * @generated from field: string role = 3;
    */
@@ -273,6 +275,10 @@ export declare type CheckPermissionsRequest = Message<"metaxisdata.v1.CheckPermi
   resourceId: string;
 
   /**
+   * The permissions to answer. A permission the server always checks at the
+   * workspace (settings, users, IAM, catalog administration, ...) answers
+   * false: a scoped grant cannot satisfy it.
+   *
    * @generated from field: repeated string permissions = 3;
    */
   permissions: string[];

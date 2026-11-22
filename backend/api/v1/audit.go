@@ -46,6 +46,9 @@ func (in *AuditInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc 
 		}
 
 		startTime := time.Now()
+		// A handler can record audit-only detail (the row a delete removed) that
+		// the request and response messages cannot carry.
+		ctx = audit.WithDetailRecorder(ctx)
 		resp, err := next(ctx, req)
 		if auditErr := in.createAuditLog(ctx, req, resp, err, startTime); auditErr != nil {
 			slog.Error("failed to persist audit log", "method", req.Spec().Procedure, clog.WithError(auditErr))
@@ -75,12 +78,14 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 		// audit search would then fail to scope.
 		recorder := audit.NewStreamRecorder()
 		streamCtx := audit.WithStreamRecorder(ctx, recorder)
+		streamCtx = audit.WithDetailRecorder(streamCtx)
 		err := next(streamCtx, &recordingStreamingHandlerConn{StreamingHandlerConn: conn, recorder: recorder})
 		auditCtx, cancel := audit.Context(ctx)
 		defer cancel()
 		workspaceID, workspaceErr := in.store.GetWorkspaceID(auditCtx)
 		if workspaceErr == nil {
 			requestStruct, requestMap := audit.MarshalAuditMessage(recorder.Request())
+			requestStruct = audit.AttachDetail(streamCtx, requestStruct)
 			responseStruct, responseMap := audit.MarshalAuditResult(recorder.Result())
 			auditLog := &storepb.AuditLog{
 				Parent:          common.FormatWorkspace(workspaceID),
@@ -144,6 +149,7 @@ func (in *AuditInterceptor) createAuditLog(ctx context.Context, req connect.AnyR
 		return pkgerrors.New("failed to cast request to proto.Message")
 	}
 	requestStruct, requestMap := audit.MarshalAuditMessage(requestMessage)
+	requestStruct = audit.AttachDetail(ctx, requestStruct)
 
 	var responseMessage proto.Message
 	if !isNilConnectValue(resp) {

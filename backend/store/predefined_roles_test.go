@@ -126,3 +126,19 @@ func TestIsPredefinedRole(t *testing.T) {
 	require.False(t, IsPredefinedRole("syncer"))
 	require.False(t, IsPredefinedRole(""))
 }
+
+// The scoped roles are only usable as scoped grants if every permission they
+// carry is scopeable; a workspace-only permission would make the grant report
+// access the resource path cannot satisfy.
+func TestScopedRolesAreFullyScopeable(t *testing.T) {
+	t.Parallel()
+
+	for _, role := range []*RoleMessage{
+		GetPredefinedRole(QualityOwnerRole),
+		GetPredefinedRole(QualityAgentRole),
+	} {
+		require.NotNil(t, role)
+		require.Emptyf(t, permission.NonScopeable(role.Permissions),
+			"role %q carries permissions that cannot be granted at a scope", role.ResourceID)
+	}
+}

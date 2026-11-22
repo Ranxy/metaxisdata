@@ -210,7 +210,9 @@ type IamGrant struct {
 	// instances/{instance}/databases/{database}. The server maps it to the
 	// resource type and id the ledger stores.
 	Resource string `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Format: roles/{role}
+	// Format: roles/{role}. The role's permissions must all be satisfiable at a
+	// resource scope: a role carrying a workspace-checked permission (settings,
+	// users, IAM, ...) is refused rather than stored as a grant that cannot work.
 	Role string `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
 	// Format: users/{id} or groups/{email}. allUsers is the workspace read
 	// baseline and is not accepted as a scoped grant member.
@@ -517,7 +519,10 @@ type CheckPermissionsRequest struct {
 	// database, either the resource name (instances/{id},
 	// instances/{id}/databases/{name}) or the bare id / stored GUID; the handler
 	// normalizes both forms.
-	ResourceId    string   `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	ResourceId string `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	// The permissions to answer. A permission the server always checks at the
+	// workspace (settings, users, IAM, catalog administration, ...) answers
+	// false: a scoped grant cannot satisfy it.
 	Permissions   []string `protobuf:"bytes,3,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
