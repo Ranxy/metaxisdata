@@ -796,6 +796,13 @@ func (c *denyingChecker) CheckPermission(_ context.Context, perm permission.Perm
 	return false, nil
 }
 
+// CheckResource makes the fake a target-aware checker: a target session asks the
+// resource-scoped half, which the engine requires.
+func (c *denyingChecker) CheckResource(_ context.Context, perm permission.Permission, _ *store.UserMessage, _ resource.Ref) (bool, error) {
+	c.asked = append(c.asked, perm)
+	return false, nil
+}
+
 // A tool call runs under the session's agent principal, and its declared IAM
 // permission is checked before the body runs. A refusal is a tool error the wake
 // survives, not a wake failure.

@@ -58,6 +58,9 @@ func (s *Store) CreateIamGrant(ctx context.Context, message *IamGrantMessage) (*
 	if message == nil || message.ResourceType == "" || message.Role == "" || message.Member == "" {
 		return nil, common.Errorf(common.Invalid, "a grant needs a resource type, a role and a member")
 	}
+	if message.Member == common.AllUsers {
+		return nil, common.Errorf(common.Invalid, "allUsers is the workspace baseline; bind a group instead")
+	}
 	if message.ResourceType == "workspace" {
 		if message.ResourceID != "" {
 			return nil, common.Errorf(common.Invalid, "a workspace grant has no resource id")

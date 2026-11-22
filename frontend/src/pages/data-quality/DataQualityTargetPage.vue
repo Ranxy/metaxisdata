@@ -523,6 +523,9 @@
       :meta-type="effectiveMetaType"
       :target-label="displayName"
       :default-severity="contractDefaultSeverity"
+      :can-create="canCreate"
+      :can-update="canUpdate"
+      :can-run="canRun"
       @saved="onRuleSaved"
     />
 

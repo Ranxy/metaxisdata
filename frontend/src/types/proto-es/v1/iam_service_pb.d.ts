@@ -254,15 +254,19 @@ export declare const DeleteIamGrantRequestSchema: GenMessage<DeleteIamGrantReque
 export declare type CheckPermissionsRequest = Message<"metaxisdata.v1.CheckPermissionsRequest"> & {
   /**
    * The resource type name: "instance", "database", "table", "view",
-   * "external_table", "schema", or another resource.Type name.
+   * "external_table", "schema", or another resource.Type name. A derived type
+   * (quality_rule, quality_issue, ...) has no scope resolver, so only an exact
+   * grant on that type can answer true.
    *
    * @generated from field: string resource_type = 1;
    */
   resourceType: string;
 
   /**
-   * The resource id: the resource name for instances/databases, the metadata GUID
-   * for metadata resources.
+   * The resource id. For metadata resources, the GUID. For an instance or a
+   * database, either the resource name (instances/{id},
+   * instances/{id}/databases/{name}) or the bare id / stored GUID; the handler
+   * normalizes both forms.
    *
    * @generated from field: string resource_id = 2;
    */

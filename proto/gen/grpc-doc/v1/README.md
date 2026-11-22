@@ -10435,8 +10435,8 @@ IamService.SetWorkspaceIamPolicy.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| resource_type | [string](#string) |  | The resource type name: &#34;instance&#34;, &#34;database&#34;, &#34;table&#34;, &#34;view&#34;, &#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. |
-| resource_id | [string](#string) |  | The resource id: the resource name for instances/databases, the metadata GUID for metadata resources. |
+| resource_type | [string](#string) |  | The resource type name: &#34;instance&#34;, &#34;database&#34;, &#34;table&#34;, &#34;view&#34;, &#34;external_table&#34;, &#34;schema&#34;, or another resource.Type name. A derived type (quality_rule, quality_issue, ...) has no scope resolver, so only an exact grant on that type can answer true. |
+| resource_id | [string](#string) |  | The resource id. For metadata resources, the GUID. For an instance or a database, either the resource name (instances/{id}, instances/{id}/databases/{name}) or the bare id / stored GUID; the handler normalizes both forms. |
 | permissions | [string](#string) | repeated |  |
 
 

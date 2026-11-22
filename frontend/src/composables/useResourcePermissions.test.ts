@@ -127,3 +127,38 @@ describe("useResourcePermissions", () => {
     scope.stop();
   });
 });
+
+it("clears the previous answer while a new resource is loading", async () => {
+  const second = deferred<boolean[]>();
+  mockedCheck
+    .mockResolvedValueOnce([true, true])
+    .mockReturnValueOnce(second.promise);
+  const { result, resource, scope } = setup();
+
+  await flush();
+  expect(result.can(PERMISSIONS[0])).toBe(true);
+
+  resource.value = { resourceType: "table", resourceId: "i;db;second" };
+  await flush();
+  expect(result.can(PERMISSIONS[0])).toBe(false);
+
+  second.resolve([false, false]);
+  await flush();
+  expect(result.can(PERMISSIONS[0])).toBe(false);
+  scope.stop();
+});
+
+it("ignores an in-flight answer after the resource disappears", async () => {
+  const first = deferred<boolean[]>();
+  mockedCheck.mockReturnValueOnce(first.promise);
+  const { result, resource, scope } = setup();
+
+  resource.value = null;
+  await flush();
+  first.resolve([true, true]);
+  await flush();
+
+  expect(result.can(PERMISSIONS[0])).toBe(false);
+  expect(result.loading.value).toBe(false);
+  scope.stop();
+});

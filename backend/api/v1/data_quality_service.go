@@ -450,6 +450,11 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesCreate, targetGUID); err != nil {
 		return nil, err
 	}
+	if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesCreate,
+		storepb.QualityRuleType(req.Msg.GetRule().GetRuleType()),
+		convertQualityRuleConfigFromV1(req.Msg.GetRule().GetConfig())); err != nil {
+		return nil, err
+	}
 	created, suggestion, err := s.createQualityRuleFromRequest(ctx, workspaceID, req.Msg.GetRule(), req.Msg.GetSuggestion())
 	if err != nil {
 		return nil, err
@@ -722,6 +727,15 @@ func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1
 	if err != nil {
 		return "", nil, err
 	}
+	if update.TargetMoved {
+		movedTo := ""
+		if update.Patch.TargetGUID != nil {
+			movedTo = *update.Patch.TargetGUID
+		}
+		if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesUpdate, movedTo); err != nil {
+			return "", nil, err
+		}
+	}
 	if msg.GetRule().GetRevision() != 0 {
 		expected := msg.GetRule().GetRevision()
 		update.Patch.ExpectedRevision = &expected
@@ -730,6 +744,12 @@ func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1
 
 	if err := s.revalidateQualityRuleDefinition(ctx, workspaceID, update, current); err != nil {
 		return "", nil, err
+	}
+	if update.DefinitionChanged {
+		ruleType, _, _, config := mergedQualityRuleDefinition(current, update.Patch)
+		if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesUpdate, ruleType, config); err != nil {
+			return "", nil, err
+		}
 	}
 
 	updated, err := s.store.UpdateQualityRule(ctx, resourceID, update.Patch)
@@ -932,6 +952,11 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 	if err := requireReferenceConnectionBudget(validated); err != nil {
 		return err
 	}
+	if update.TargetMoved {
+		if err := requireReadOnlySourceForNewRule(ruleType, validated); err != nil {
+			return err
+		}
+	}
 	if filledSnapshot {
 		// The snapshot was filled here rather than sent by the caller, so it has
 		// to be part of the patch or the store would keep the empty config.
@@ -1018,6 +1043,9 @@ func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connec
 	target := rule.GetTarget()
 	if target == nil {
 		return nil, connectErrorInvalid("target is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesRun, strings.TrimSpace(target.GetMetaGuid())); err != nil {
+		return nil, err
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
 	ruleType := storepb.QualityRuleType(rule.GetRuleType())
@@ -2433,6 +2461,15 @@ func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name s
 	status, err := qualitySuggestionDecision(decision)
 	if err != nil {
 		return nil, nil, err
+	}
+	suggestion, err := s.fetchQualitySuggestion(ctx, resourceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if suggestion != nil {
+		if err := s.requireQualityTargetPermission(ctx, permission.DataQualitySuggest, suggestion.TargetGUID); err != nil {
+			return nil, nil, err
+		}
 	}
 	updated, err := s.store.DecideQualitySuggestion(ctx, resourceID, status, int32(currentUserID(ctx)),
 		note, time.Now())

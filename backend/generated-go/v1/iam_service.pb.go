@@ -509,10 +509,14 @@ func (x *DeleteIamGrantRequest) GetName() string {
 type CheckPermissionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The resource type name: "instance", "database", "table", "view",
-	// "external_table", "schema", or another resource.Type name.
+	// "external_table", "schema", or another resource.Type name. A derived type
+	// (quality_rule, quality_issue, ...) has no scope resolver, so only an exact
+	// grant on that type can answer true.
 	ResourceType string `protobuf:"bytes,1,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// The resource id: the resource name for instances/databases, the metadata GUID
-	// for metadata resources.
+	// The resource id. For metadata resources, the GUID. For an instance or a
+	// database, either the resource name (instances/{id},
+	// instances/{id}/databases/{name}) or the bare id / stored GUID; the handler
+	// normalizes both forms.
 	ResourceId    string   `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	Permissions   []string `protobuf:"bytes,3,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields

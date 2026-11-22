@@ -109,7 +109,7 @@ func configureGrpcRouters(
 
 	iamManager := iam.NewManager(stores)
 	scopedAuthorizer := iam.NewScopedAuthorizer(iamManager, stores)
-	userService := apiv1.NewUserService(stores, iamManager, profile)
+	userService := apiv1.NewUserService(stores, iamManager, scopedAuthorizer, profile)
 	authService := apiv1.NewAuthService(stores, secret, profile, stateCfg)
 	auditLogService := apiv1.NewAuditLogService(stores)
 	notificationService := apiv1.NewNotificationService(stores, notifier)

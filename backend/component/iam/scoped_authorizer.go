@@ -3,6 +3,7 @@ package iam
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -312,3 +313,38 @@ func directMembers(principal *store.UserMessage) []string {
 }
 
 var _ Authorizer = (*ScopedAuthorizer)(nil)
+
+// ScopedPermissions returns every permission the principal holds on any scope
+// through a grant or a derived relation. It is what the current-user permission
+// union adds to the workspace permissions, so the SPA can gate a page on a
+// scoped grant the workspace policy does not include.
+func (a *ScopedAuthorizer) ScopedPermissions(ctx context.Context, principal *store.UserMessage) ([]permission.Permission, error) {
+	if principal == nil {
+		return nil, nil
+	}
+	snapshot, err := a.snapshot(ctx, principal)
+	if err != nil {
+		return nil, err
+	}
+	set := map[permission.Permission]bool{}
+	now := time.Now()
+	for _, grant := range snapshot.grants {
+		if !grantConditionHolds(grant, now) {
+			continue
+		}
+		for perm := range snapshot.rolePermissions[grant.Role] {
+			set[perm] = true
+		}
+	}
+	for _, relation := range snapshot.relations {
+		for perm := range snapshot.rolePermissions[relation.Role] {
+			set[perm] = true
+		}
+	}
+	out := make([]permission.Permission, 0, len(set))
+	for perm := range set {
+		out = append(out, perm)
+	}
+	slices.Sort(out)
+	return out, nil
+}

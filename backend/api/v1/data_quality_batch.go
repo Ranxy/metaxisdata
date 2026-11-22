@@ -9,6 +9,7 @@ import (
 
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -77,6 +78,13 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 			continue
 		}
 		if err := s.requireQualityTargetPermission(ctx, permission.DataQualityRulesCreate, targetGUID); err != nil {
+			result.Error = err.Error()
+			results = append(results, result)
+			continue
+		}
+		if err := s.requireQualityRuleDefinitionScope(ctx, permission.DataQualityRulesCreate,
+			storepb.QualityRuleType(item.GetRule().GetRuleType()),
+			convertQualityRuleConfigFromV1(item.GetRule().GetConfig())); err != nil {
 			result.Error = err.Error()
 			results = append(results, result)
 			continue

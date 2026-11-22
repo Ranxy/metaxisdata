@@ -9,6 +9,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -36,6 +37,12 @@ var scopedMethods = map[string]bool{
 	"/metaxisdata.v1.DataQualityService/SuggestColumnLabels":            true,
 	"/metaxisdata.v1.DataQualityService/SuggestQualityRule":             true,
 	"/metaxisdata.v1.DataQualityService/RecommendQualityChecks":         true,
+	"/metaxisdata.v1.DataQualityService/ListQualitySuggestions":         true,
+	"/metaxisdata.v1.DataQualityService/GetQualitySuggestion":           true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion":        true,
+	"/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions":  true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule":    true,
+	"/metaxisdata.v1.DataQualityService/PreviewQualityRule":             true,
 }
 
 // qualityRuleTarget resolves the target a create writes to. A named suggestion
@@ -60,8 +67,11 @@ func (s *DataQualityService) qualityRuleTarget(ctx context.Context, suggestionNa
 // without the scoped path (focused unit tests and internal callers); the ACL
 // interceptor fails closed for scoped methods in production.
 func (s *DataQualityService) requireQualityTargetPermission(ctx context.Context, perm permission.Permission, targetGUID string) error {
-	if s.authorizer == nil || strings.TrimSpace(targetGUID) == "" {
-		return nil
+	if s.authorizer == nil {
+		return connect.NewError(connect.CodeInternal, errors.New("the resource authorizer is not configured"))
+	}
+	if strings.TrimSpace(targetGUID) == "" {
+		return connectErrorInvalid("a target resource is required")
 	}
 	user, ok := GetUserFromContext(ctx)
 	if !ok || user == nil {
@@ -170,4 +180,36 @@ func (s *DataQualityService) requireQualitySuggestionRead(ctx context.Context, s
 		return connect.NewError(connect.CodeNotFound, errors.New("the quality suggestion is not found"))
 	}
 	return err
+}
+
+// requireQualityRuleDefinitionScope confines a scoped author's rule definition to
+// the resources the grant covers. Custom SQL runs on the target's connection,
+// query-sourced accepted values run arbitrary read-only SQL, and a cross-table
+// reference may name another database or instance; a workspace-wide author is
+// unrestricted. The check runs before the definition is saved.
+func (s *DataQualityService) requireQualityRuleDefinitionScope(ctx context.Context, perm permission.Permission, ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig) error {
+	scopes, err := s.qualityListScopes(ctx, perm)
+	if err != nil {
+		return err
+	}
+	if scopes.All {
+		return nil
+	}
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL {
+		return connect.NewError(connect.CodePermissionDenied,
+			errors.New("a scoped grant cannot author a custom SQL check"))
+	}
+	if config != nil && config.GetAcceptedValues().GetQuery() != nil {
+		return connect.NewError(connect.CodePermissionDenied,
+			errors.New("a scoped grant cannot author a check whose accepted values come from a query"))
+	}
+	if config != nil {
+		if reference := strings.TrimSpace(config.GetCrossTable().GetReference().GetMetaGuid()); reference != "" {
+			if !scopes.Contains(resource.NewRef(resource.TypeTable, reference)) {
+				return connect.NewError(connect.CodePermissionDenied,
+					errors.New("a scoped grant cannot reference a table outside its scope"))
+			}
+		}
+	}
+	return nil
 }

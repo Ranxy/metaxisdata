@@ -8,7 +8,7 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 
 ## Decisions
 
-- **Workspace-scoped today** — `CheckPermission` resolves against the workspace policy. The resource-scoped target, its grant model and the compatibility contract are in [resource-iam.md](resource-iam.md); new authorization paths are written against that model.
+- **The workspace policy is the root; scoped grants are additive** — `CheckPermission` resolves the workspace policy first, then the scoped authorizer's grants and derived agent relations on the resource. The model is in [resource-iam.md](resource-iam.md).
 - **Scoped grants are additive and managed beside the policy** — `IamService.{List,Create,Delete}IamGrant` write the `iam_grant` ledger, and the IAM page's scope picker names an instance or one of its databases. A grant adds a role over that subtree; the workspace policy remains the root editor, and no grant can deny or narrow it. `IamService.CheckPermissions` is the unannotated self-service query a page uses to gate an action on one resource; it answers only about the caller.
 - **`workspaceMember` is an implicit `allUsers` binding resolved in memory** before any policy read, so a fresh install with an empty policy is usable; **`workspaceAdmin` holds the whole catalog**, so admin falls out of normal role→permission resolution instead of being a special case.
 - **Custom roles are real** — an operator can grant "sync instances but not touch users" without a code change.
@@ -16,7 +16,7 @@ One permission catalog, roles as named permission bundles (predefined in Go, cus
 - **Predefined roles resolve in memory, custom roles through `GetRoleSnapshot`** (LRU-cached and invalidated after a role write) — the hot path costs one map lookup plus one cached policy read.
 - **The catalog is generated** from `backend/common/permission/permission.json` (`go generate ./backend/common/permission`); `permission_gen.go` is committed and never hand-edited.
 - **`EvalBindingCondition` is validated at write time** in `validateIamPolicy` as well as failing closed at read time; only `request.time` is bound, so a condition referencing other attributes is rejected rather than stored.
-- **Unannotated RPCs are an explicit allowlist** (auth and device/OAuth self-service, `GetCurrentUser`, `CreateUser`, `UpdateUser`, the notification inbox, connected apps); everything else must be gated.
+- **Unannotated RPCs are an explicit allowlist** (auth and device/OAuth self-service, `GetCurrentUser`, `CreateUser`, `UpdateUser`, the notification inbox, connected apps, and the self-service `IamService.CheckPermissions`); everything else must be gated. `CheckPermissions` answers only about the caller's own permissions on one resource.
 - **A mixed-audience RPC is unannotated and handler-scoped** — `ConnectedAppService.List/Revoke` serve an administrator (the whole workspace) and an ordinary user (their own rows) from one call, so each handler narrows first and widens only when `connectedApps.list` / `.revoke` resolves; `backend/api/v1/connected_app_test.go` is the matrix guard.
 
 ## Permission catalog
@@ -55,12 +55,12 @@ Predefined roles (`backend/store/predefined_roles.go`) are read-only over `RoleS
 
 ## Open items
 
-Per-resource IAM is the target and is tracked in [resource-iam.md](resource-iam.md). `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog today, guarded by a drift test; the resource model makes it generated from the same source.
+Resource-scoped IAM is shipped for the data-quality surface; its model, invariants and remaining gaps are in [resource-iam.md](resource-iam.md). `frontend/src/lib/permissions.ts` is a hand-maintained mirror of the catalog, guarded by a drift test.
 
 ## Where things live
 
 - Catalog: `backend/common/permission/permission.json`, generator `backend/common/permission/gen/main.go`, generated `backend/common/permission/permission_gen.go`; engine `backend/component/iam/manager.go` (`CheckPermission`, `EffectivePermissions`), with principal and group expansion in `backend/utils/member.go`.
 - Store: `backend/store/predefined_roles.go`, `backend/store/role.go`, `backend/store/policy.go` (etag and `allUsers` guards), `backend/store/group.go`, `backend/store/iam_grant.go`; schema `backend/migrator/migration/0.1/0006##iam_role.sql` and `backend/migrator/migration/LATEST.sql`.
-- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,iam_grant_service,scoped_authorizer,role_service,group_service,connected_app_service,user_service}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage,ConnectedAppsSettingsPage}.vue`, `frontend/src/pages/ConnectedAppsPage.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam,connected-app}.ts`.
+- API and frontend: `backend/api/v1/{acl_interceptor,iam_service,iam_grant_service,role_service,group_service,connected_app_service,user_service}.go`, the authorizer in `backend/component/iam/{authorizer,scoped_authorizer}.go`; `frontend/src/pages/settings/{RoleManagementPage,IamPage,GroupManagementPage,ConnectedAppsSettingsPage}.vue`, `frontend/src/pages/ConnectedAppsPage.vue`, `frontend/src/lib/permissions.ts`, `frontend/src/api/{role,group,iam,connected-app}.ts`.
 - Tests: `backend/common/permission/permission_test.go`, `backend/component/iam/manager_test.go`, `backend/api/v1/acl_interceptor_test.go`, `backend/api/v1/connected_app_test.go`, `backend/store/{predefined_roles,role,policy,policy_all_users}_test.go`, `frontend/src/lib/permissions.test.ts`, end-to-end `backend/test/integration/runner/iam_service_test.go`.
 - Gates: `go test ./backend/...` plus `golangci-lint run --allow-parallel-runners`; `make test-integration` for the end-to-end file; inside `frontend/` the order is `pnpm biome:check`, `pnpm lint`, `pnpm i18n` (`pnpm i18n:sort` after locale edits), `pnpm type-check`, `pnpm test run`.

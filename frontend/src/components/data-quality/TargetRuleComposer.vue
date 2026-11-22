@@ -829,11 +829,18 @@ const props = withDefaults(
      * dialog uses these and makes no metadata request of its own.
      */
     columnDetails?: TargetColumnDetail[];
+    /** The caller's target-scoped write/run permissions, from the workspace page. */
+    canCreate?: boolean;
+    canUpdate?: boolean;
+    canRun?: boolean;
   }>(),
   {
     defaultSeverity: QualitySeverity.UNSPECIFIED,
     initialColumn: "",
     columnDetails: () => [],
+    canCreate: false,
+    canUpdate: false,
+    canRun: false,
   }
 );
 
@@ -847,18 +854,21 @@ const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
 const isEdit = computed(() => props.rule !== undefined);
+// The target page resolves the caller's target-scoped permissions; the workspace
+// permission stays the fallback for surfaces that do not pass one.
 const canSave = computed(() =>
-  authStore.hasPermission(
-    isEdit.value
-      ? "metaxisdata.dataQuality.rules.update"
-      : "metaxisdata.dataQuality.rules.create"
-  )
+  isEdit.value
+    ? props.canUpdate ||
+      authStore.hasPermission("metaxisdata.dataQuality.rules.update")
+    : props.canCreate ||
+      authStore.hasPermission("metaxisdata.dataQuality.rules.create")
 );
 // Preview is a separate permission on the service (`rules.run`): a role allowed
 // to author a rule may still not run one, so the dry run is only attempted when
 // it can succeed — same rule the old editor followed.
-const canPreview = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.run")
+const canPreview = computed(
+  () =>
+    props.canRun || authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
 // Workspace templates are a separate resource from checks: reading them is one
 // permission, writing the catalogue is another.

@@ -538,7 +538,7 @@
     </Card>
 
     <BatchEditChecksDialog
-      v-if="canEdit"
+      v-if="canEditAny"
       v-model:open="batchEditOpen"
       :rules="selectedRules"
       :users="canListUsers ? userDirectory : undefined"

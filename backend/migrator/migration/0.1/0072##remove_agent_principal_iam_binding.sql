@@ -1,8 +1,10 @@
 -- The built-in quality agent's principal no longer holds a workspace-wide
 -- qualityAgent binding: the scoped authorizer derives that role on the agent's
--- databases. Remove the principal from every existing binding and drop a
--- qualityAgent binding left empty. The rewrite is idempotent and keeps the
--- binding/member order so the policy payload changes only where needed.
+-- databases. Remove the agent principal from existing roles/qualityAgent
+-- bindings and drop a binding left empty; a binding an administrator gave the
+-- principal under another role is left untouched. The rewrite is idempotent,
+-- keeps the binding/member order, and moves updated_at so the policy etag
+-- reflects the change.
 WITH agent_members AS (
     SELECT 'users/' || principal_id AS member FROM quality_agent
 ),
@@ -42,6 +44,6 @@ rewritten AS (
     WHERE p.type = 'IAM' AND p.payload ? 'bindings'
 )
 UPDATE policy p
-SET payload = r.payload
+SET payload = r.payload, updated_at = NOW()
 FROM rewritten r
 WHERE p.id = r.id;
