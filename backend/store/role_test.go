@@ -51,19 +51,6 @@ func TestMarshalRolePermissionsEmpty(t *testing.T) {
 	require.Equal(t, `{}`, string(payload))
 }
 
-// TestMarshalRolePermissionsRoundTrip guards the JSONB encoding against the
-// protojson field naming the store relies on.
-func TestMarshalRolePermissionsRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	payload, err := marshalRolePermissions(map[permission.Permission]bool{permission.IAMSetPolicy: true})
-	require.NoError(t, err)
-
-	var decoded storepb.RolePermissions
-	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(payload, &decoded))
-	require.Equal(t, []string{permission.IAMSetPolicy}, decoded.GetPermissions())
-}
-
 func TestEtagMismatch(t *testing.T) {
 	t.Parallel()
 

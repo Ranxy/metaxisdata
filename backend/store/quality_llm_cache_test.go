@@ -72,23 +72,6 @@ func TestDataQualityLLMCacheKindValuesAreStable(t *testing.T) {
 	require.False(t, DataQualityLLMCacheKind(3).known())
 }
 
-func TestDataQualityLLMCacheKindForResult(t *testing.T) {
-	t.Parallel()
-
-	kind, ok := dataQualityLLMCacheKindForResult(&storepb.DataQualityLLMResult{
-		Result: &storepb.DataQualityLLMResult_RuleDraft{RuleDraft: &storepb.RuleDraftResult{}},
-	})
-	require.True(t, ok)
-	require.Equal(t, DataQualityLLMCacheKindRuleDraft, kind)
-
-	kind, ok = dataQualityLLMCacheKindForResult(explanationResult())
-	require.True(t, ok)
-	require.Equal(t, DataQualityLLMCacheKindExplanation, kind)
-
-	_, ok = dataQualityLLMCacheKindForResult(&storepb.DataQualityLLMResult{})
-	require.False(t, ok)
-}
-
 // A cache entry must carry a key and a result whose oneof arm matches its kind:
 // a reader that trusts the kind would otherwise unmarshal the other shape and
 // render an empty analysis.
@@ -125,25 +108,21 @@ func TestValidateDataQualityLLMCacheRow(t *testing.T) {
 	broken = *valid
 	broken.Kind = 9
 	require.Equal(t, common.Invalid, common.ErrorCode(validateDataQualityLLMCacheRow(&broken)))
-}
 
-// A caller that only set the result gets the kind its arm implies, so the common
-// write does not have to repeat what the payload already says.
-func TestValidateDataQualityLLMCacheRowDerivesTheKind(t *testing.T) {
-	t.Parallel()
+	// A caller that only set the result gets the kind its arm implies, so the
+	// common write does not have to repeat what the payload already says.
+	derived := &DataQualityLLMCacheRow{CacheKey: "key", Result: explanationResult()}
+	require.NoError(t, validateDataQualityLLMCacheRow(derived))
+	require.Equal(t, DataQualityLLMCacheKindExplanation, derived.Kind)
 
-	row := &DataQualityLLMCacheRow{CacheKey: "key", Result: explanationResult()}
-	require.NoError(t, validateDataQualityLLMCacheRow(row))
-	require.Equal(t, DataQualityLLMCacheKindExplanation, row.Kind)
-
-	row = &DataQualityLLMCacheRow{
+	derived = &DataQualityLLMCacheRow{
 		CacheKey: "key",
 		Result: &storepb.DataQualityLLMResult{
 			Result: &storepb.DataQualityLLMResult_RuleDraft{RuleDraft: &storepb.RuleDraftResult{}},
 		},
 	}
-	require.NoError(t, validateDataQualityLLMCacheRow(row))
-	require.Equal(t, DataQualityLLMCacheKindRuleDraft, row.Kind)
+	require.NoError(t, validateDataQualityLLMCacheRow(derived))
+	require.Equal(t, DataQualityLLMCacheKindRuleDraft, derived.Kind)
 }
 
 // The provider, model and prompt version live in both the columns and the cached

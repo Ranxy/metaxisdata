@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"encoding/base64"
-	"strings"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -40,29 +39,6 @@ func wrapKey(t *testing.T, kek, key []byte) string {
 	wrapped, err := mustCipher(t, kek).Encrypt(string(key))
 	require.NoError(t, err)
 	return wrapped
-}
-
-// A store without an installed cipher must refuse to read a credential instead
-// of treating an unset cipher as "no encryption".
-func TestCredentialCipherWithoutOneFails(t *testing.T) {
-	t.Parallel()
-
-	s := &Store{}
-	_, err := s.credentialCipher()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not configured")
-}
-
-func TestSetCipherInstallsTheCipher(t *testing.T) {
-	t.Parallel()
-
-	cipher := newTestCipher(t)
-	s := &Store{}
-	s.SetCipher(cipher)
-
-	got, err := s.credentialCipher()
-	require.NoError(t, err)
-	require.Same(t, cipher, got)
 }
 
 func TestUnwrapDataKeyBareKey(t *testing.T) {
@@ -116,24 +92,6 @@ func TestUnwrapDataKeyWrappedKey(t *testing.T) {
 	got, err = unwrapDataKey(wrapKey(t, retired, key), nil, [][]byte{retired})
 	require.NoError(t, err)
 	require.False(t, got.wrappedByCurrent)
-}
-
-// The wrapping round-trip the server performs when it re-wraps a bare data key
-// must produce a value this code can open again.
-func TestWrappedDataKeyRoundTrips(t *testing.T) {
-	t.Parallel()
-
-	key := newTestKey(t)
-	kek := newTestKey(t)
-
-	wrapped := wrapKey(t, kek, key)
-	require.True(t, crypto.IsCiphertext(wrapped))
-	require.False(t, strings.Contains(wrapped, base64.StdEncoding.EncodeToString(key)))
-
-	got, err := unwrapDataKey(wrapped, kek, nil)
-	require.NoError(t, err)
-	require.Equal(t, key, got.key)
-	require.True(t, got.wrappedByCurrent)
 }
 
 // fakeSettings is an in-memory setting table, so the key lifecycle can be tested

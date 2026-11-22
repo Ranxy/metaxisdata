@@ -13,7 +13,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
-func buildTableMetaWithStats(name string, rowCount, dataSize, indexSize, dataFree int64, columns ...string) *storepb.StoredMetadata {
+func buildTableMetaWithStats(rowCount, dataSize, indexSize, dataFree int64, columns ...string) *storepb.StoredMetadata {
 	metaCols := make([]*storepb.ColumnMetadata, 0, len(columns))
 	for _, col := range columns {
 		metaCols = append(metaCols, &storepb.ColumnMetadata{Name: col})
@@ -21,7 +21,7 @@ func buildTableMetaWithStats(name string, rowCount, dataSize, indexSize, dataFre
 	return &storepb.StoredMetadata{
 		Type: &storepb.StoredMetadata_TableMetadata{
 			TableMetadata: &storepb.TableMetadata{
-				Name:      name,
+				Name:      "t",
 				Columns:   metaCols,
 				RowCount:  rowCount,
 				DataSize:  dataSize,
@@ -44,49 +44,38 @@ func mustHex(t *testing.T, b []byte) string {
 	return hex.EncodeToString(b)
 }
 
-func TestNormalizeMetadataForHashZeroesTableStats(t *testing.T) {
+// TestCalcMetaHashIgnoresSequenceLastValue pins that a sequence's last value is a
+// statistic, not its structure: it advances as the sequence is used, and a sync
+// must not record that as a change.
+func TestCalcMetaHashIgnoresSequenceLastValue(t *testing.T) {
 	t.Parallel()
 
-	original := buildTableMetaWithStats("mytable", 1000, 65536, 32768, 1024, "id", "name")
-	normalized := normalizeMetadataForHash(original)
-
-	// The original is not mutated: the un-normalized statistics are what gets
-	// persisted for display.
-	require.Equal(t, int64(1000), original.GetTableMetadata().RowCount)
-	require.Equal(t, int64(65536), original.GetTableMetadata().DataSize)
-
-	require.Equal(t, int64(0), normalized.GetTableMetadata().RowCount)
-	require.Equal(t, int64(0), normalized.GetTableMetadata().DataSize)
-	require.Equal(t, int64(0), normalized.GetTableMetadata().IndexSize)
-	require.Equal(t, int64(0), normalized.GetTableMetadata().DataFree)
-
-	require.Equal(t, "mytable", normalized.GetTableMetadata().Name)
-	require.Len(t, normalized.GetTableMetadata().Columns, 2)
-}
-
-func TestNormalizeMetadataForHashZeroesSequenceLastValue(t *testing.T) {
-	t.Parallel()
-
-	original := &storepb.StoredMetadata{
-		Type: &storepb.StoredMetadata_SequenceMetadata{
-			SequenceMetadata: &storepb.SequenceMetadata{Name: "seq1", LastValue: "42"},
-		},
+	build := func(lastValue string) *storepb.StoredMetadata {
+		return &storepb.StoredMetadata{
+			Type: &storepb.StoredMetadata_SequenceMetadata{
+				SequenceMetadata: &storepb.SequenceMetadata{Name: "seq1", LastValue: lastValue},
+			},
+		}
 	}
-	normalized := normalizeMetadataForHash(original)
 
-	require.Equal(t, "42", original.GetSequenceMetadata().LastValue)
-	require.Equal(t, "", normalized.GetSequenceMetadata().LastValue)
-	require.Equal(t, "seq1", normalized.GetSequenceMetadata().Name)
+	original := build("42")
+	hash := mustCalcMetaHash(t, original)
+	require.Equal(t, "42", original.GetSequenceMetadata().LastValue,
+		"hashing must not normalize the caller's metadata in place")
+	require.Equal(t, hash, mustCalcMetaHash(t, build("99")))
 }
 
 func TestCalcMetaHashIgnoresTableStats(t *testing.T) {
 	t.Parallel()
 
-	hashA := mustCalcMetaHash(t, buildTableMetaWithStats("t", 100, 200, 300, 400, "id"))
-	hashB := mustCalcMetaHash(t, buildTableMetaWithStats("t", 999, 888, 777, 666, "id"))
+	original := buildTableMetaWithStats(100, 200, 300, 400, "id")
+	hashA := mustCalcMetaHash(t, original)
+	require.Equal(t, int64(100), original.GetTableMetadata().RowCount,
+		"hashing must not normalize the caller's metadata in place")
+	hashB := mustCalcMetaHash(t, buildTableMetaWithStats(999, 888, 777, 666, "id"))
 	require.Equal(t, hashA, hashB)
 
-	hashC := mustCalcMetaHash(t, buildTableMetaWithStats("t", 100, 200, 300, 400, "id", "name"))
+	hashC := mustCalcMetaHash(t, buildTableMetaWithStats(100, 200, 300, 400, "id", "name"))
 	require.NotEqual(t, hashA, hashC, "a schema change must change the fingerprint")
 }
 
@@ -95,8 +84,8 @@ func TestCalcMetaHashIgnoresTableStats(t *testing.T) {
 func TestCalcMetaHashRepeatedOrderMatters(t *testing.T) {
 	t.Parallel()
 
-	hashA := mustCalcMetaHash(t, buildTableMetaWithStats("t", 0, 0, 0, 0, "id", "name"))
-	hashB := mustCalcMetaHash(t, buildTableMetaWithStats("t", 0, 0, 0, 0, "name", "id"))
+	hashA := mustCalcMetaHash(t, buildTableMetaWithStats(0, 0, 0, 0, "id", "name"))
+	hashB := mustCalcMetaHash(t, buildTableMetaWithStats(0, 0, 0, 0, "name", "id"))
 	require.NotEqual(t, hashA, hashB)
 }
 
@@ -130,7 +119,7 @@ func TestCalcMetaHashMapOrderIsCanonical(t *testing.T) {
 func TestCalcMetaHashIgnoresUnknownFields(t *testing.T) {
 	t.Parallel()
 
-	known := buildTableMetaWithStats("t", 0, 0, 0, 0, "id")
+	known := buildTableMetaWithStats(0, 0, 0, 0, "id")
 	knownBytes, err := proto.Marshal(known)
 	require.NoError(t, err)
 
@@ -151,7 +140,7 @@ func TestCalcMetaHashIgnoresUnknownFields(t *testing.T) {
 func TestCalcStoreMetaHashIsSelfConsistent(t *testing.T) {
 	t.Parallel()
 
-	meta := buildTableMetaWithStats("t", 100, 200, 300, 400, "id", "name")
+	meta := buildTableMetaWithStats(100, 200, 300, 400, "id", "name")
 	metadataBytes, metaHash, err := CalcStoreMetaHash(meta)
 	require.NoError(t, err)
 

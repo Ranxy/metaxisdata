@@ -54,12 +54,9 @@ func TestRetryableSessionBlockedCodes(t *testing.T) {
 
 	codes := retryableSessionBlockedCodes()
 	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "internal-error", "concurrency-limit"}, codes)
+	// A person-action blocker and an escalated restart must stay parked.
 	require.NotContains(t, codes, "needs-human")
 	require.NotContains(t, codes, "restart-limit")
-	require.NotContains(t, codes, "model-reported")
-	// Codes that no writer produces are not kept in the retry list.
-	require.NotContains(t, codes, "llm-quota")
-	require.NotContains(t, codes, "no-work")
 	require.True(t, QualityAgentSessionBlockedCodeRetryable("token-budget"))
 	require.True(t, QualityAgentSessionBlockedCodeRetryable("concurrency-limit"))
 	require.False(t, QualityAgentSessionBlockedCodeRetryable("needs-human"))
@@ -72,7 +69,10 @@ func TestCreateQualityAgentSessionRejectsIncompleteInput(t *testing.T) {
 	for _, input := range []*CreateQualityAgentSessionInput{
 		nil,
 		{WorkspaceID: "ws"},
-		{TargetGUID: "target"},
+		{AgentID: 1},
+		// A target work thread needs a target: the kind defaults to one, so a
+		// workspace and agent alone do not identify a session.
+		{WorkspaceID: "ws", AgentID: 1},
 	} {
 		_, err := stores.CreateQualityAgentSession(context.Background(), input)
 		require.Error(t, err)
@@ -207,10 +207,16 @@ func TestScanQualityAgentTranscriptDecodesToolCalls(t *testing.T) {
 	require.Equal(t, int32(120), message.Tokens)
 }
 
+// An absent tool-call payload leaves an empty list rather than a nil pointer a
+// caller would have to guard: the JSONB column has a default, and a row written
+// by an older build still reads.
 func TestScanQualityAgentTranscriptAcceptsEmptyJSONB(t *testing.T) {
 	t.Parallel()
 
-	message, err := scanQualityAgentTranscript(&fakeScanner{values: messageScanValues([]byte(`{}`))})
-	require.NoError(t, err)
-	require.Empty(t, message.ToolCalls.GetToolCalls())
+	for _, raw := range [][]byte{nil, []byte(`{}`)} {
+		message, err := scanQualityAgentTranscript(&fakeScanner{values: messageScanValues(raw)})
+		require.NoError(t, err)
+		require.NotNil(t, message.ToolCalls)
+		require.Empty(t, message.ToolCalls.GetToolCalls())
+	}
 }

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 func TestBuildManualSQLGUID(t *testing.T) {
@@ -13,7 +15,7 @@ func TestBuildManualSQLGUID(t *testing.T) {
 	require.Equal(t, "instance_1;db1;public;__manual_sql__/top-orders", guid)
 	// The manual SQL segment must keep its prefix so it cannot collide with a
 	// schema object of the same name.
-	require.NotEqual(t, guid, buildManualSQLGUID("instance_1", "db1", "public", "orders"))
+	require.NotEqual(t, guid, common.BuildMetaGUID("instance_1", "db1", "public", "top-orders"))
 }
 
 func TestNormalizeManualSQLTags(t *testing.T) {

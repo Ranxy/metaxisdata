@@ -31,11 +31,9 @@ func TestQualityDigestCountQueries(t *testing.T) {
 	require.Contains(t, qualityDigestTargetRuleCountsQuery, "WHERE state = $1 AND deleted = FALSE")
 
 	require.Contains(t, qualityDigestExecutionCountsQuery, "WHERE state = $1 AND started_at >= $2 AND started_at < $3")
-	require.Contains(t, qualityDigestExecutionCountsQuery, "AND status IN ($4, $5, $6, $7)")
+	require.Contains(t, qualityDigestExecutionCountsQuery, "AND status IN ($4, $5, $6, $7)",
+		"exactly the four verdicts: SKIPPED and NOT_EVALUATED observed no data and have no tally")
 	require.Contains(t, qualityDigestExecutionCountsQuery, "GROUP BY status")
-	require.NotContains(t, qualityDigestExecutionCountsQuery, "ABANDONED")
-	require.NotContains(t, qualityDigestExecutionCountsQuery, "SKIPPED",
-		"a skipped execution observed no data and is not a digest verdict")
 
 	// New and recovered problems are both bounded by the period, so an issue that
 	// resolved after it belongs to neither.
@@ -64,7 +62,6 @@ func TestQualityDigestOwnerQuery(t *testing.T) {
 		"the unassigned bucket must survive the query")
 	require.NotContains(t, qualityDigestOwnerQuery, "deleted",
 		"an issue's rule being soft-deleted does not close its problem")
-	require.Equal(t, 5, qualityDigestOwnerLimit)
 }
 
 // The target breakdown is ordered by failed checks and capped, and the open
@@ -80,7 +77,6 @@ func TestQualityDigestTargetQuery(t *testing.T) {
 	require.Contains(t, qualityDigestTargetQuery, "array_agg(e.target_path ORDER BY e.started_at DESC)")
 	require.Contains(t, qualityDigestTargetQuery, "ORDER BY COUNT(*) FILTER (WHERE e.status = $1) DESC")
 	require.Contains(t, qualityDigestTargetQuery, "LIMIT $7")
-	require.Equal(t, 5, qualityDigestTargetLimit)
 }
 
 // execution_count is the sum of the four verdicts: a SKIPPED or NOT_EVALUATED

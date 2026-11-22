@@ -318,9 +318,20 @@ func TestBuildQualityExecutionWhereAllFilters(t *testing.T) {
 		EndAt:              &endAt,
 	})
 
-	require.Equal(t, "run_id = $1 AND rule_id = $2 AND state = ANY($3::int[]) AND "+
-		"status = ANY($4::int[]) AND trigger = $5::int AND target_guid = $6 AND "+
-		"instance_resource_id = $7 AND initiator_id = $8 AND started_at >= $9 AND started_at < $10", where)
+	for _, fragment := range []string{
+		"run_id = $1",
+		"rule_id = $2",
+		"state = ANY($3::int[])",
+		"status = ANY($4::int[])",
+		"trigger = $5::int",
+		"target_guid = $6",
+		"instance_resource_id = $7",
+		"initiator_id = $8",
+		"started_at >= $9",
+		"started_at < $10",
+	} {
+		require.Contains(t, where, fragment)
+	}
 	require.Equal(t, []any{
 		int64(11),
 		int64(7),
@@ -339,6 +350,7 @@ func TestBuildQualityExecutionWhereAllFilters(t *testing.T) {
 		startAt,
 		endAt,
 	}, args)
+	requirePlaceholdersMatchArgs(t, where, args)
 }
 
 func TestQualityExecutionOrderClause(t *testing.T) {
@@ -667,16 +679,19 @@ func TestQualityExecutionSegmentEvidenceWindow(t *testing.T) {
 	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "LIMIT $6")
 }
 
+// A scope set restricts the list to the target subtrees it allows; an empty
+// non-nil set matches nothing, so a caller that computed no scope cannot list
+// every execution.
 func TestBuildQualityExecutionWhereFiltersByScopes(t *testing.T) {
 	t.Parallel()
 
 	where, args := buildQualityExecutionWhere(&FindQualityExecutionMessage{
 		Scopes: []resource.Scope{{Type: resource.TypeDatabase, ID: "i;db"}},
 	})
-	require.Contains(t, where, "target_guid")
-	require.Contains(t, where, "LIKE")
-	require.Len(t, args, 2)
+	require.Contains(t, where, `(target_guid = $1 OR target_guid LIKE $2 ESCAPE E'\\')`)
+	require.Equal(t, []any{"i;db", "i;db;%"}, args)
 
-	where, _ = buildQualityExecutionWhere(&FindQualityExecutionMessage{Scopes: []resource.Scope{}})
-	require.Contains(t, where, "FALSE")
+	where, args = buildQualityExecutionWhere(&FindQualityExecutionMessage{Scopes: []resource.Scope{}})
+	require.Equal(t, "FALSE", where)
+	require.Empty(t, args)
 }

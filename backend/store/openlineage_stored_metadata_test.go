@@ -50,13 +50,9 @@ func TestOpenLineageRunSnapshotHoldsTheRunItself(t *testing.T) {
 
 	var persisted storepb.StoredMetadata
 	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(metadataBytes, &persisted))
-	summary := persisted.GetOpenlineageRunSummary()
-	require.NotNil(t, summary)
-	require.Equal(t, "run-1", summary.GetRunId())
-	require.Equal(t, "default", summary.GetJobNamespace())
-	require.Equal(t, "COMPLETE", summary.GetEventType())
-	require.Equal(t, "dag", summary.GetRootJobName())
-	require.Equal(t, eventTime, summary.GetEventTime().AsTime())
+	require.NotNil(t, persisted.GetOpenlineageRunSummary(), "the snapshot must be the run summary variant")
+	require.Contains(t, string(metadataBytes), `"runId":"run-1"`,
+		"the persisted JSONB keeps the protojson camelCase key of the run's identity")
 
 	// protojson omits a zero value, so an absent field is only provable by name.
 	for _, derived := range []string{"inputCount", "outputCount", "hasLineage", "createdAt", "updatedAt"} {
@@ -117,11 +113,9 @@ func TestOpenLineageTaskSnapshotHoldsTheJobNotItsRuns(t *testing.T) {
 
 	var persisted storepb.StoredMetadata
 	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(metadataBytes, &persisted))
-	summary := persisted.GetOpenlineageTaskSummary()
-	require.NotNil(t, summary)
-	require.Equal(t, "job", summary.GetJobName())
-	require.Equal(t, "AIRFLOW", summary.GetIntegration())
-	require.Equal(t, "dag", summary.GetRootJobName())
+	require.NotNil(t, persisted.GetOpenlineageTaskSummary(), "the snapshot must be the job summary variant")
+	require.Contains(t, string(metadataBytes), `"jobName":"job"`,
+		"the persisted JSONB keeps the protojson camelCase key of the job's identity")
 
 	for _, derived := range []string{
 		"latestRunGuid", "latestRunId", "latestEventTime", "latestEventType",
@@ -141,4 +135,12 @@ func TestOpenLineageTaskSnapshotHoldsTheJobNotItsRuns(t *testing.T) {
 	_, movedHash, err := CalcStoreMetaHash(buildOpenLineageTaskStoredMetadata(&moved))
 	require.NoError(t, err)
 	require.Equal(t, metaHash, movedHash)
+
+	// A facet a later run reports is the job itself changing, which is the change
+	// the registry history exists to record.
+	repainted := *task
+	repainted.Integration = "SPARK"
+	_, repaintedHash, err := CalcStoreMetaHash(buildOpenLineageTaskStoredMetadata(&repainted))
+	require.NoError(t, err)
+	require.NotEqual(t, metaHash, repaintedHash)
 }

@@ -29,26 +29,20 @@ func TestIsUniqueViolation(t *testing.T) {
 	require.False(t, isUniqueViolation(errors.New("boom")))
 }
 
-// RecordLastLogin stamps the profile with a targeted JSONB write, so the key it
-// sets has to be the one protojson produces for UserProfile.last_login_time.
-// Renaming the proto field without this constant would silently stop recording
-// logins instead of failing.
-func TestUserProfileLastLoginKeyMatchesProtojson(t *testing.T) {
+// RecordLastLogin and a language-only update each stamp one JSONB profile key
+// with a targeted write, so every key has to be the one protojson produces for
+// its UserProfile field: renaming the proto field without the constant would
+// silently stop recording the value instead of failing.
+func TestUserProfilePatchKeysMatchProtojson(t *testing.T) {
 	t.Parallel()
 
-	payload, err := protojson.Marshal(&storepb.UserProfile{LastLoginTime: timestamppb.New(time.Now())})
+	lastLogin, err := protojson.Marshal(&storepb.UserProfile{LastLoginTime: timestamppb.New(time.Now())})
 	require.NoError(t, err)
-	require.Contains(t, string(payload), `"`+userProfileLastLoginKey+`"`)
-}
+	require.Contains(t, string(lastLogin), `"`+userProfileLastLoginKey+`"`)
 
-// A language update writes one profile key, so the key has to be the one
-// protojson produces for UserProfile.language for the same reason.
-func TestUserProfileLanguageKeyMatchesProtojson(t *testing.T) {
-	t.Parallel()
-
-	payload, err := protojson.Marshal(&storepb.UserProfile{Language: "zh-CN"})
+	language, err := protojson.Marshal(&storepb.UserProfile{Language: "zh-CN"})
 	require.NoError(t, err)
-	require.Contains(t, string(payload), `"`+userProfileLanguageKey+`"`)
+	require.Contains(t, string(language), `"`+userProfileLanguageKey+`"`)
 }
 
 // A language on its own must be one JSONB key rather than a whole-column write:

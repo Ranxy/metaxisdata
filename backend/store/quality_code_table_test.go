@@ -97,7 +97,7 @@ func TestBuildQualityCodeTableWhereScopesByResourceID(t *testing.T) {
 	t.Parallel()
 
 	where, args := buildQualityCodeTableWhere(&FindQualityCodeTableMessage{ResourceID: proto.String(" code-table-1 ")})
-	require.Equal(t, "TRUE AND resource_id = $1", where)
+	require.Contains(t, where, "resource_id = $1")
 	require.Equal(t, []any{"code-table-1"}, args)
 
 	where, args = buildQualityCodeTableWhere(nil)

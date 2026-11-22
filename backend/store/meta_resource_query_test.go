@@ -118,19 +118,6 @@ func TestBuildSublevelMetaRegistryResourceQueryHistoryAddsValidityWindow(t *test
 	requirePlaceholdersMatchArgs(t, query, args)
 }
 
-func TestBuildSublevelMetaRegistryResourceQueryHasNoPredicateWhenNoChildType(t *testing.T) {
-	query, args := buildSublevelMetaRegistryResourceQuery(
-		"meta_registry_resource",
-		nil,
-		"instance_1",
-		10,
-		0,
-		nil,
-	)
-	require.Empty(t, query)
-	require.Empty(t, args)
-}
-
 // The open-history lookup must pair guid with object_type. The previous
 // `guid = ANY($1) AND object_type = ANY($2)` also matched cross combinations.
 func TestBuildOpenMetaRegistryHistoryByKeyQueryIsPaired(t *testing.T) {
