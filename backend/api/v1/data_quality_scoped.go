@@ -10,6 +10,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // scopedMethods are the RPCs whose permission is decided per resource rather
@@ -18,14 +19,23 @@ import (
 // specific target. Adding a method here without a handler check would let a
 // caller with a grant on one target reach another.
 var scopedMethods = map[string]bool{
-	"/metaxisdata.v1.DataQualityService/GetQualityRule":          true,
-	"/metaxisdata.v1.DataQualityService/ListQualityRules":        true,
-	"/metaxisdata.v1.DataQualityService/CreateQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/UpdateQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/DeleteQualityRule":       true,
-	"/metaxisdata.v1.DataQualityService/RunQualityRules":         true,
-	"/metaxisdata.v1.DataQualityService/BatchCreateQualityRules": true,
-	"/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules": true,
+	"/metaxisdata.v1.DataQualityService/GetQualityRule":                 true,
+	"/metaxisdata.v1.DataQualityService/ListQualityRules":               true,
+	"/metaxisdata.v1.DataQualityService/CreateQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/DeleteQualityRule":              true,
+	"/metaxisdata.v1.DataQualityService/RunQualityRules":                true,
+	"/metaxisdata.v1.DataQualityService/BatchCreateQualityRules":        true,
+	"/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules":        true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityContract":          true,
+	"/metaxisdata.v1.DataQualityService/PublishQualityContract":         true,
+	"/metaxisdata.v1.DataQualityService/UpdateQualityIssue":             true,
+	"/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema": true,
+	"/metaxisdata.v1.DataQualityService/ProfileColumns":                 true,
+	"/metaxisdata.v1.DataQualityService/UpdateColumnLabel":              true,
+	"/metaxisdata.v1.DataQualityService/SuggestColumnLabels":            true,
+	"/metaxisdata.v1.DataQualityService/SuggestQualityRule":             true,
+	"/metaxisdata.v1.DataQualityService/RecommendQualityChecks":         true,
 }
 
 // qualityRuleTarget resolves the target a create writes to. A named suggestion
@@ -79,7 +89,7 @@ func (s *DataQualityService) requireQualityRuleRead(ctx context.Context, targetG
 
 // qualityRuleListScopes returns the caller's scope set for the rule list. A nil
 // authorizer keeps the legacy unfiltered behavior for focused unit tests.
-func (s *DataQualityService) qualityRuleListScopes(ctx context.Context, perm permission.Permission) (resource.ScopeSet, error) {
+func (s *DataQualityService) qualityListScopes(ctx context.Context, perm permission.Permission) (resource.ScopeSet, error) {
 	if s.authorizer == nil {
 		return resource.ScopeSet{All: true}, nil
 	}
@@ -92,4 +102,72 @@ func (s *DataQualityService) qualityRuleListScopes(ctx context.Context, perm per
 		return resource.ScopeSet{}, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the permission scopes"))
 	}
 	return scopes.Normalize(), nil
+}
+
+// qualityRuleViewerChecks are the row actions a rule list or read reports.
+var qualityRuleViewerChecks = []permission.Permission{
+	permission.DataQualityRulesGet,
+	permission.DataQualityRulesCreate,
+	permission.DataQualityRulesUpdate,
+	permission.DataQualityRulesDelete,
+	permission.DataQualityRulesRun,
+}
+
+// qualityRuleViewerPermissions reports, per rule, which row actions the caller
+// holds on the rule's target. The scope set is computed once per permission and
+// each rule target is tested against it, so a list stays a fixed number of
+// authorization reads instead of one per rule.
+func (s *DataQualityService) qualityRuleViewerPermissions(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64][]string, error) {
+	if s.authorizer == nil || len(rules) == 0 {
+		return nil, nil
+	}
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil {
+		return nil, nil
+	}
+	scopeSets := make([]resource.ScopeSet, len(qualityRuleViewerChecks))
+	for i, perm := range qualityRuleViewerChecks {
+		scopes, err := s.authorizer.Scopes(ctx, user, perm)
+		if err != nil {
+			return nil, err
+		}
+		scopeSets[i] = scopes
+	}
+	viewer := make(map[int64][]string, len(rules))
+	for _, rule := range rules {
+		ref := resource.NewRef(resource.TypeTable, rule.TargetGUID)
+		for i, perm := range qualityRuleViewerChecks {
+			if scopeSets[i].Contains(ref) {
+				viewer[rule.ID] = append(viewer[rule.ID], string(perm))
+			}
+		}
+	}
+	return viewer, nil
+}
+
+// qualityListScopeFilter turns the caller's scope set into a store filter: nil
+// means no filter (the permission is workspace-wide), an empty non-nil slice
+// means the caller holds it nowhere, and otherwise the metadata scopes.
+func (s *DataQualityService) qualityListScopeFilter(ctx context.Context, perm permission.Permission) ([]resource.Scope, error) {
+	scopes, err := s.qualityListScopes(ctx, perm)
+	if err != nil {
+		return nil, err
+	}
+	if scopes.All {
+		return nil, nil
+	}
+	return scopes.MetadataScopes(), nil
+}
+
+// requireQualitySuggestionRead maps a denied suggestion read to NotFound so a
+// reader cannot learn that a draft exists outside its scope.
+func (s *DataQualityService) requireQualitySuggestionRead(ctx context.Context, suggestion *store.QualitySuggestionMessage) error {
+	if suggestion == nil {
+		return nil
+	}
+	err := s.requireQualityTargetPermission(ctx, permission.DataQualitySuggest, suggestion.TargetGUID)
+	if err != nil && connect.CodeOf(err) == connect.CodePermissionDenied {
+		return connect.NewError(connect.CodeNotFound, errors.New("the quality suggestion is not found"))
+	}
+	return err
 }

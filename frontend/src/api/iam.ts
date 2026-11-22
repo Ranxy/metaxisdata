@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import type { IamGrant, IamPolicy } from "@/types/proto-es/v1/iam_service_pb";
 import {
+  CheckPermissionsRequestSchema,
   CreateIamGrantRequestSchema,
   DeleteIamGrantRequestSchema,
   GetWorkspaceIamPolicyRequestSchema,
@@ -65,4 +66,23 @@ export async function createIamGrant(input: {
 export async function deleteIamGrant(name: string) {
   const request = create(DeleteIamGrantRequestSchema, { name });
   return await iamClient.deleteIamGrant(request);
+}
+
+/**
+ * The caller's own permissions on one resource. Self-service: the server
+ * authenticates and answers only about the caller, so a page can gate an action
+ * on a target without holding an administration permission.
+ */
+export async function checkPermissions(input: {
+  resourceType: string;
+  resourceId: string;
+  permissions: readonly string[];
+}): Promise<boolean[]> {
+  const request = create(CheckPermissionsRequestSchema, {
+    resourceType: input.resourceType,
+    resourceId: input.resourceId,
+    permissions: [...input.permissions],
+  });
+  const response = await iamClient.checkPermissions(request);
+  return response.allowed;
 }

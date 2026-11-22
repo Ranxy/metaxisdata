@@ -2829,6 +2829,10 @@ type QualityRule struct {
 	// and results are still recorded.
 	MuteUntil *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=mute_until,json=muteUntil,proto3" json:"mute_until,omitempty"`
 	Tags      []string               `protobuf:"bytes,19,rep,name=tags,proto3" json:"tags,omitempty"`
+	// The permissions the caller holds on this rule's target, e.g.
+	// "metaxisdata.dataQuality.rules.update". Output only; a page uses it to gate
+	// row actions without a second request.
+	ViewerPermissions []string `protobuf:"bytes,21,rep,name=viewer_permissions,json=viewerPermissions,proto3" json:"viewer_permissions,omitempty"`
 	// How often this check needs to run inside the target's schedule. The target
 	// tick is the floor, so a tier denser than the target is a no-op; a manual run
 	// is not affected. It is scheduling metadata, not part of the rule definition:
@@ -2990,6 +2994,13 @@ func (x *QualityRule) GetMuteUntil() *timestamppb.Timestamp {
 func (x *QualityRule) GetTags() []string {
 	if x != nil {
 		return x.Tags
+	}
+	return nil
+}
+
+func (x *QualityRule) GetViewerPermissions() []string {
+	if x != nil {
+		return x.ViewerPermissions
 	}
 	return nil
 }
@@ -20982,7 +20993,7 @@ var File_v1_data_quality_service_proto protoreflect.FileDescriptor
 
 const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1dv1/data_quality_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\x1a\x1cv1/explain_sql_service.proto\x1a\x18v1/setting_service.proto\"\xcd\b\n" +
+	"\x1dv1/data_quality_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\x1a\x1cv1/explain_sql_service.proto\x1a\x18v1/setting_service.proto\"\x81\t\n" +
 	"\vQualityRule\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
@@ -21007,7 +21018,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x0forphaned_reason\x18\x11 \x01(\tB\x03\xe0A\x03R\x0eorphanedReason\x129\n" +
 	"\n" +
 	"mute_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tmuteUntil\x12\x12\n" +
-	"\x04tags\x18\x13 \x03(\tR\x04tags\x12K\n" +
+	"\x04tags\x18\x13 \x03(\tR\x04tags\x122\n" +
+	"\x12viewer_permissions\x18\x15 \x03(\tB\x03\xe0A\x03R\x11viewerPermissions\x12K\n" +
 	"\x0efrequency_tier\x18\x14 \x01(\x0e2$.metaxisdata.v1.QualityFrequencyTierR\rfrequencyTier:P\xeaAM\n" +
 	"\x17metaxisdata/QualityRule\x122workspaces/{workspace}/qualityRules/{quality_rule}J\x04\b\v\x10\fR\x11schedule_interval\"\xb4\x01\n" +
 	"\rQualityTarget\x12\x1b\n" +

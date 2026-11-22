@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -489,4 +490,19 @@ func TestBuildQualityIssueWhereRuleIDs(t *testing.T) {
 	ruleIDs, ok := args[1].(*pq.Int64Array)
 	require.True(t, ok)
 	require.Equal(t, pq.Int64Array{7, 9}, *ruleIDs)
+}
+
+func TestBuildQualityIssueWhereFiltersByScopes(t *testing.T) {
+	t.Parallel()
+
+	where, args := buildQualityIssueWhere(&FindQualityIssueMessage{
+		Scopes: []resource.Scope{{Type: resource.TypeDatabase, ID: "i;db"}},
+	})
+	joined := strings.Join(where, " AND ")
+	require.Contains(t, joined, "target_guid")
+	require.Contains(t, joined, "LIKE")
+	require.Len(t, args, 2)
+
+	where, _ = buildQualityIssueWhere(&FindQualityIssueMessage{Scopes: []resource.Scope{}})
+	require.Contains(t, strings.Join(where, " AND "), "FALSE")
 }

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -664,4 +665,18 @@ func TestQualityExecutionSegmentEvidenceWindow(t *testing.T) {
 	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "COALESCE(sample->'segments'->>'truncated', 'false') <> 'true'")
 	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "ORDER BY started_at DESC, id DESC")
 	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "LIMIT $6")
+}
+
+func TestBuildQualityExecutionWhereFiltersByScopes(t *testing.T) {
+	t.Parallel()
+
+	where, args := buildQualityExecutionWhere(&FindQualityExecutionMessage{
+		Scopes: []resource.Scope{{Type: resource.TypeDatabase, ID: "i;db"}},
+	})
+	require.Contains(t, where, "target_guid")
+	require.Contains(t, where, "LIKE")
+	require.Len(t, args, 2)
+
+	where, _ = buildQualityExecutionWhere(&FindQualityExecutionMessage{Scopes: []resource.Scope{}})
+	require.Contains(t, where, "FALSE")
 }

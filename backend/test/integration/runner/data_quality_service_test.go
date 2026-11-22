@@ -5265,6 +5265,28 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 
+	// The list carries the caller's own target permissions: the scoped owner may
+	// update and run the rule, a stranger may only read it.
+	ownerList, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.ListQualityRulesRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: fixture.usersGUID,
+		PageSize:   100,
+	}))
+	require.NoError(t, err)
+	require.NotEmpty(t, ownerList.Msg.GetQualityRules())
+	require.Contains(t, ownerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
+	require.Contains(t, ownerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.run")
+
+	strangerList, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(strangerToken, &v1pb.ListQualityRulesRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: fixture.usersGUID,
+		PageSize:   100,
+	}))
+	require.NoError(t, err)
+	require.NotEmpty(t, strangerList.Msg.GetQualityRules())
+	require.Contains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.get")
+	require.NotContains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
+
 	// The granted member can read, update, run and archive its rule.
 	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx,
 		withToken(ownerToken, &v1pb.GetQualityRuleRequest{Name: created.Msg.GetName()}))
@@ -5361,4 +5383,101 @@ func TestQualityAgentOwnerDerivedGrantRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, ruleRequest("another-instance;another_db;;users")))
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+}
+
+// TestQualityOwnerScopedContractRealServerIntegration covers the contract write
+// surface under a scoped grant: the owner may update and publish the contract on
+// the granted database, and is refused on another database; a stranger is refused
+// at the interceptor. The owner's first attempt caches an empty snapshot, so the
+// grant created through the API must invalidate it.
+func TestQualityOwnerScopedContractRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "contract-owner")
+	_, strangerToken := createQualityAgentTestMember(t, fixture, "contract-stranger")
+
+	// The target needs one live rule so the contract has a check to publish.
+	_, err := fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(adminToken, &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "contract row count",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
+			Config:    qualityRowCountConfig(1),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+	}))
+	require.NoError(t, err)
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
+
+	updateContract := func(token string, targetGUID string) error {
+		_, err := fixture.dataQuality.UpdateQualityContract(fixture.ctx, withToken(token, &v1pb.UpdateQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: targetGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Settings:   &v1pb.QualityContractSettings{},
+		}))
+		return err
+	}
+	publishContract := func(token string, targetGUID string) error {
+		_, err := fixture.dataQuality.PublishQualityContract(fixture.ctx, withToken(token, &v1pb.PublishQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: targetGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+		return err
+	}
+
+	// Before the grant the owner has no rules.update anywhere; the interceptor
+	// denies and caches an empty snapshot.
+	err = updateContract(ownerToken, fixture.usersGUID)
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The administrator grants qualityOwner on the fixture database through the
+	// API; the write bumps the authorization generation.
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(adminToken, &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.NoError(t, err)
+
+	require.NoError(t, updateContract(ownerToken, fixture.usersGUID))
+	require.NoError(t, publishContract(ownerToken, fixture.usersGUID))
+
+	// The grant does not reach another database.
+	otherTarget := "another-instance;another_db;;users"
+	err = updateContract(ownerToken, otherTarget)
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	err = publishContract(ownerToken, otherTarget)
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// A member without a grant is refused at the interceptor.
+	err = publishContract(strangerToken, fixture.usersGUID)
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The label write is scoped on the same target: the owner may label a column
+	// in scope and is refused outside it.
+	labelUpdate := func(token, targetGUID string) error {
+		_, err := fixture.dataQuality.UpdateColumnLabel(fixture.ctx, withToken(token, &v1pb.UpdateColumnLabelRequest{
+			Parent:    "workspaces/-",
+			TableGuid: targetGUID,
+			MetaType:  v1pb.MetaType_TABLE,
+			Column:    "id",
+			Label:     v1pb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID,
+			Action:    v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT,
+		}))
+		return err
+	}
+	require.NoError(t, labelUpdate(ownerToken, fixture.usersGUID))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(ownerToken, otherTarget)))
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(strangerToken, fixture.usersGUID)))
 }

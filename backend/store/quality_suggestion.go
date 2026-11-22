@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -150,8 +151,12 @@ type FindQualitySuggestionMessage struct {
 	// draft refreshed in place keeps its original created_at, so the comparison is
 	// against the later of the two timestamps.
 	QueuedAfter *time.Time
-	Limit       *int
-	Offset      *int
+	// Scopes restricts the list to the target subtrees an authorization scope set
+	// allows. A nil slice adds no predicate; an empty non-nil slice matches
+	// nothing.
+	Scopes []resource.Scope
+	Limit  *int
+	Offset *int
 }
 
 // qualitySuggestionWhere builds the predicate and positional arguments for a
@@ -208,6 +213,13 @@ func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any, 
 	}
 	if prefix != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", prefix)
+	}
+	if find.Scopes != nil {
+		if len(find.Scopes) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = appendGUIDSubtreeConditions(where, args, find.Scopes)
+		}
 	}
 	return strings.Join(where, " AND "), args, nil
 }

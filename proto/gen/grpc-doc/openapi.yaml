@@ -1037,6 +1037,34 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/iam:checkPermissions:
+        post:
+            tags:
+                - IamService
+            description: |-
+                Check the caller's own permissions on one resource. Unannotated: it is a
+                 self-service query, the caller's identity is the only input, and the handler
+                 authenticates before answering.
+            operationId: IamService_CheckPermissions
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CheckPermissionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CheckPermissionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/iamGrants:
         get:
             tags:
@@ -9526,6 +9554,34 @@ components:
                 expression:
                     type: string
                     description: The expression is the expression of a check constraint.
+        CheckPermissionsRequest:
+            required:
+                - resourceType
+                - resourceId
+            type: object
+            properties:
+                resourceType:
+                    type: string
+                    description: |-
+                        The resource type name: "instance", "database", "table", "view",
+                         "external_table", "schema", or another resource.Type name.
+                resourceId:
+                    type: string
+                    description: |-
+                        The resource id: the resource name for instances/databases, the metadata GUID
+                         for metadata resources.
+                permissions:
+                    type: array
+                    items:
+                        type: string
+        CheckPermissionsResponse:
+            type: object
+            properties:
+                allowed:
+                    type: array
+                    items:
+                        type: boolean
+                    description: Parallel to the request's permissions.
         ColumnMetadata:
             type: object
             properties:
@@ -15897,6 +15953,15 @@ components:
                     type: array
                     items:
                         type: string
+                viewerPermissions:
+                    readOnly: true
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The permissions the caller holds on this rule's target, e.g.
+                         "metaxisdata.dataQuality.rules.update". Output only; a page uses it to gate
+                         row actions without a second request.
                 frequencyTier:
                     enum:
                         - QUALITY_FREQUENCY_TIER_UNSPECIFIED

@@ -49,6 +49,9 @@ const (
 	// IamServiceDeleteIamGrantProcedure is the fully-qualified name of the IamService's DeleteIamGrant
 	// RPC.
 	IamServiceDeleteIamGrantProcedure = "/metaxisdata.v1.IamService/DeleteIamGrant"
+	// IamServiceCheckPermissionsProcedure is the fully-qualified name of the IamService's
+	// CheckPermissions RPC.
+	IamServiceCheckPermissionsProcedure = "/metaxisdata.v1.IamService/CheckPermissions"
 )
 
 // IamServiceClient is a client for the metaxisdata.v1.IamService service.
@@ -63,6 +66,10 @@ type IamServiceClient interface {
 	CreateIamGrant(context.Context, *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error)
 	// Delete one scoped grant.
 	DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error)
+	// Check the caller's own permissions on one resource. Unannotated: it is a
+	// self-service query, the caller's identity is the only input, and the handler
+	// authenticates before answering.
+	CheckPermissions(context.Context, *connect.Request[v1.CheckPermissionsRequest]) (*connect.Response[v1.CheckPermissionsResponse], error)
 }
 
 // NewIamServiceClient constructs a client for the metaxisdata.v1.IamService service. By default, it
@@ -106,6 +113,12 @@ func NewIamServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(iamServiceMethods.ByName("DeleteIamGrant")),
 			connect.WithClientOptions(opts...),
 		),
+		checkPermissions: connect.NewClient[v1.CheckPermissionsRequest, v1.CheckPermissionsResponse](
+			httpClient,
+			baseURL+IamServiceCheckPermissionsProcedure,
+			connect.WithSchema(iamServiceMethods.ByName("CheckPermissions")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -116,6 +129,7 @@ type iamServiceClient struct {
 	listIamGrants         *connect.Client[v1.ListIamGrantsRequest, v1.ListIamGrantsResponse]
 	createIamGrant        *connect.Client[v1.CreateIamGrantRequest, v1.IamGrant]
 	deleteIamGrant        *connect.Client[v1.DeleteIamGrantRequest, emptypb.Empty]
+	checkPermissions      *connect.Client[v1.CheckPermissionsRequest, v1.CheckPermissionsResponse]
 }
 
 // GetWorkspaceIamPolicy calls metaxisdata.v1.IamService.GetWorkspaceIamPolicy.
@@ -143,6 +157,11 @@ func (c *iamServiceClient) DeleteIamGrant(ctx context.Context, req *connect.Requ
 	return c.deleteIamGrant.CallUnary(ctx, req)
 }
 
+// CheckPermissions calls metaxisdata.v1.IamService.CheckPermissions.
+func (c *iamServiceClient) CheckPermissions(ctx context.Context, req *connect.Request[v1.CheckPermissionsRequest]) (*connect.Response[v1.CheckPermissionsResponse], error) {
+	return c.checkPermissions.CallUnary(ctx, req)
+}
+
 // IamServiceHandler is an implementation of the metaxisdata.v1.IamService service.
 type IamServiceHandler interface {
 	// Get the workspace IAM policy.
@@ -155,6 +174,10 @@ type IamServiceHandler interface {
 	CreateIamGrant(context.Context, *connect.Request[v1.CreateIamGrantRequest]) (*connect.Response[v1.IamGrant], error)
 	// Delete one scoped grant.
 	DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error)
+	// Check the caller's own permissions on one resource. Unannotated: it is a
+	// self-service query, the caller's identity is the only input, and the handler
+	// authenticates before answering.
+	CheckPermissions(context.Context, *connect.Request[v1.CheckPermissionsRequest]) (*connect.Response[v1.CheckPermissionsResponse], error)
 }
 
 // NewIamServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -194,6 +217,12 @@ func NewIamServiceHandler(svc IamServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(iamServiceMethods.ByName("DeleteIamGrant")),
 		connect.WithHandlerOptions(opts...),
 	)
+	iamServiceCheckPermissionsHandler := connect.NewUnaryHandler(
+		IamServiceCheckPermissionsProcedure,
+		svc.CheckPermissions,
+		connect.WithSchema(iamServiceMethods.ByName("CheckPermissions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.IamService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IamServiceGetWorkspaceIamPolicyProcedure:
@@ -206,6 +235,8 @@ func NewIamServiceHandler(svc IamServiceHandler, opts ...connect.HandlerOption) 
 			iamServiceCreateIamGrantHandler.ServeHTTP(w, r)
 		case IamServiceDeleteIamGrantProcedure:
 			iamServiceDeleteIamGrantHandler.ServeHTTP(w, r)
+		case IamServiceCheckPermissionsProcedure:
+			iamServiceCheckPermissionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -233,4 +264,8 @@ func (UnimplementedIamServiceHandler) CreateIamGrant(context.Context, *connect.R
 
 func (UnimplementedIamServiceHandler) DeleteIamGrant(context.Context, *connect.Request[v1.DeleteIamGrantRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.DeleteIamGrant is not implemented"))
+}
+
+func (UnimplementedIamServiceHandler) CheckPermissions(context.Context, *connect.Request[v1.CheckPermissionsRequest]) (*connect.Response[v1.CheckPermissionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.IamService.CheckPermissions is not implemented"))
 }

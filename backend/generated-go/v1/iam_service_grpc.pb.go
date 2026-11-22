@@ -25,6 +25,7 @@ const (
 	IamService_ListIamGrants_FullMethodName         = "/metaxisdata.v1.IamService/ListIamGrants"
 	IamService_CreateIamGrant_FullMethodName        = "/metaxisdata.v1.IamService/CreateIamGrant"
 	IamService_DeleteIamGrant_FullMethodName        = "/metaxisdata.v1.IamService/DeleteIamGrant"
+	IamService_CheckPermissions_FullMethodName      = "/metaxisdata.v1.IamService/CheckPermissions"
 )
 
 // IamServiceClient is the client API for IamService service.
@@ -45,6 +46,10 @@ type IamServiceClient interface {
 	CreateIamGrant(ctx context.Context, in *CreateIamGrantRequest, opts ...grpc.CallOption) (*IamGrant, error)
 	// Delete one scoped grant.
 	DeleteIamGrant(ctx context.Context, in *DeleteIamGrantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Check the caller's own permissions on one resource. Unannotated: it is a
+	// self-service query, the caller's identity is the only input, and the handler
+	// authenticates before answering.
+	CheckPermissions(ctx context.Context, in *CheckPermissionsRequest, opts ...grpc.CallOption) (*CheckPermissionsResponse, error)
 }
 
 type iamServiceClient struct {
@@ -105,6 +110,16 @@ func (c *iamServiceClient) DeleteIamGrant(ctx context.Context, in *DeleteIamGran
 	return out, nil
 }
 
+func (c *iamServiceClient) CheckPermissions(ctx context.Context, in *CheckPermissionsRequest, opts ...grpc.CallOption) (*CheckPermissionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckPermissionsResponse)
+	err := c.cc.Invoke(ctx, IamService_CheckPermissions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IamServiceServer is the server API for IamService service.
 // All implementations must embed UnimplementedIamServiceServer
 // for forward compatibility.
@@ -123,6 +138,10 @@ type IamServiceServer interface {
 	CreateIamGrant(context.Context, *CreateIamGrantRequest) (*IamGrant, error)
 	// Delete one scoped grant.
 	DeleteIamGrant(context.Context, *DeleteIamGrantRequest) (*emptypb.Empty, error)
+	// Check the caller's own permissions on one resource. Unannotated: it is a
+	// self-service query, the caller's identity is the only input, and the handler
+	// authenticates before answering.
+	CheckPermissions(context.Context, *CheckPermissionsRequest) (*CheckPermissionsResponse, error)
 	mustEmbedUnimplementedIamServiceServer()
 }
 
@@ -147,6 +166,9 @@ func (UnimplementedIamServiceServer) CreateIamGrant(context.Context, *CreateIamG
 }
 func (UnimplementedIamServiceServer) DeleteIamGrant(context.Context, *DeleteIamGrantRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteIamGrant not implemented")
+}
+func (UnimplementedIamServiceServer) CheckPermissions(context.Context, *CheckPermissionsRequest) (*CheckPermissionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckPermissions not implemented")
 }
 func (UnimplementedIamServiceServer) mustEmbedUnimplementedIamServiceServer() {}
 func (UnimplementedIamServiceServer) testEmbeddedByValue()                    {}
@@ -259,6 +281,24 @@ func _IamService_DeleteIamGrant_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IamService_CheckPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckPermissionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IamServiceServer).CheckPermissions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IamService_CheckPermissions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IamServiceServer).CheckPermissions(ctx, req.(*CheckPermissionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IamService_ServiceDesc is the grpc.ServiceDesc for IamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -285,6 +325,10 @@ var IamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteIamGrant",
 			Handler:    _IamService_DeleteIamGrant_Handler,
+		},
+		{
+			MethodName: "CheckPermissions",
+			Handler:    _IamService_CheckPermissions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

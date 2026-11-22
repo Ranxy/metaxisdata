@@ -261,7 +261,7 @@
           <!-- A selection is page-local: it never spans a cursor walk, so the
                bar says how many rows on this page an edit covers. -->
           <div
-            v-if="canEdit && selectedRules.length > 0"
+            v-if="canEditAny && selectedRules.length > 0"
             class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2"
           >
             <span class="text-sm font-medium">
@@ -290,7 +290,7 @@
             <TableHeader>
               <TableRow>
                 <TableHead
-                  v-if="canEdit"
+                  v-if="canEditAny"
                   class="w-10"
                 >
                   <Checkbox
@@ -335,12 +335,15 @@
                 :key="rule.name"
               >
                 <TableCell
-                  v-if="canEdit"
+                  v-if="canEditAny"
                   class="align-top"
                 >
                   <Checkbox
                     :checked="selectedNames.includes(rule.name)"
-                    :disabled="rule.state === QualityRuleState.ARCHIVED"
+                    :disabled="
+                      rule.state === QualityRuleState.ARCHIVED ||
+                      !canEditRule(rule)
+                    "
                     class="mt-1"
                     :aria-label="t('dataQuality.checks.batchEdit.selectCheck')"
                     @update:checked="
@@ -488,7 +491,7 @@
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
                     <Button
-                      v-if="canRun"
+                      v-if="canRunRule(rule)"
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
@@ -644,6 +647,15 @@ const canSuggest = computed(() =>
 const canRun = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
+
+// A scoped grant can allow a run the workspace permission does not; the rule
+// carries the caller's target permissions, so the row action follows it.
+function canRunRule(rule: QualityRule): boolean {
+  return (
+    canRun.value ||
+    rule.viewerPermissions.includes("metaxisdata.dataQuality.rules.run")
+  );
+}
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
 );
@@ -925,11 +937,27 @@ const selectedRules = computed(() =>
     .filter((rule): rule is QualityRule => rule !== undefined)
 );
 
+const RULE_UPDATE_PERMISSION = "metaxisdata.dataQuality.rules.update";
+
+// A scoped grant can allow an edit the workspace permission does not; the rule
+// carries the caller's target permissions, so the selection follows it.
+function canEditRule(rule: QualityRule): boolean {
+  return (
+    canEdit.value || rule.viewerPermissions.includes(RULE_UPDATE_PERMISSION)
+  );
+}
+
+const canEditAny = computed(
+  () => canEdit.value || rules.value.some((rule) => canEditRule(rule))
+);
+
 // Archiving is a soft delete and the store refuses to update a deleted row, so
 // an archived check cannot be part of a bulk edit. The directory lists archived
 // rows only under the ARCHIVED state filter; those rows stay unselectable.
 const selectableRules = computed(() =>
-  rules.value.filter((rule) => rule.state !== QualityRuleState.ARCHIVED)
+  rules.value.filter(
+    (rule) => rule.state !== QualityRuleState.ARCHIVED && canEditRule(rule)
+  )
 );
 
 /** The select-all control's three states: all, some, or none of this page. */

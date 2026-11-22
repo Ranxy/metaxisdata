@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -446,4 +447,22 @@ func TestQualitySuggestionWhereQueuedAfterUsesRefreshTime(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, where, "refreshed_at")
 	require.Empty(t, args)
+}
+
+// A scope set restricts the suggestion queue to the caller's target subtrees; an
+// empty non-nil set matches nothing.
+func TestQualitySuggestionWhereFiltersByScopes(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := qualitySuggestionWhere(&FindQualitySuggestionMessage{
+		Scopes: []resource.Scope{{Type: resource.TypeDatabase, ID: "i;db"}},
+	})
+	require.NoError(t, err)
+	require.Contains(t, where, "target_guid")
+	require.Contains(t, where, "LIKE")
+	require.Len(t, args, 2)
+
+	where, _, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{Scopes: []resource.Scope{}})
+	require.NoError(t, err)
+	require.Contains(t, where, "FALSE")
 }

@@ -287,16 +287,15 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 	if err := applyQualityRuleListFilters(find, req.Msg); err != nil {
 		return nil, err
 	}
-	scopes, err := s.qualityRuleListScopes(ctx, permission.DataQualityRulesList)
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityRulesList)
 	if err != nil {
 		return nil, err
 	}
-	if !scopes.All {
-		metadata := scopes.MetadataScopes()
-		if len(metadata) == 0 {
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
 			return connect.NewResponse(&v1pb.ListQualityRulesResponse{}), nil
 		}
-		find.Scopes = metadata
+		find.Scopes = scopeFilter
 	}
 	rules, err := s.store.ListQualityRules(ctx, find)
 	if err != nil {
@@ -307,30 +306,14 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 		return nil, err
 	}
 
-	latest, err := s.latestQualityExecutions(ctx, rules)
+	converted, err := s.enrichQualityRules(ctx, workspaceID, rules)
 	if err != nil {
 		return nil, err
 	}
-	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	orphaned, err := s.targetOrphanReasons(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-
-	response := &v1pb.ListQualityRulesResponse{NextPageToken: nextPageToken}
-	for _, rule := range rules {
-		converted := convertQualityRule(workspaceID, rule)
-		converted.TargetSchemaChanged = schemaChanged[rule.ID]
-		converted.OrphanedReason = orphaned[rule.ID]
-		if execution := latest[rule.ID]; execution != nil {
-			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
-		}
-		response.QualityRules = append(response.QualityRules, converted)
-	}
-	return connect.NewResponse(response), nil
+	return connect.NewResponse(&v1pb.ListQualityRulesResponse{
+		QualityRules:  converted,
+		NextPageToken: nextPageToken,
+	}), nil
 }
 
 // applyQualityRuleListFilters maps the request filters onto the store filter.
@@ -439,12 +422,17 @@ func (s *DataQualityService) enrichQualityRules(ctx context.Context, workspaceID
 	if err != nil {
 		return nil, err
 	}
+	viewer, err := s.qualityRuleViewerPermissions(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
 	for i, rule := range rules {
 		if execution := latest[rule.ID]; execution != nil {
 			converted[i].LastResult = convertQualityExecutionSummary(workspaceID, execution)
 		}
 		converted[i].TargetSchemaChanged = schemaChanged[rule.ID]
 		converted[i].OrphanedReason = orphaned[rule.ID]
+		converted[i].ViewerPermissions = viewer[rule.ID]
 	}
 	return converted, nil
 }
@@ -1530,6 +1518,16 @@ func (s *DataQualityService) ListQualityExecutions(ctx context.Context, req *con
 	if err := s.applyQualityExecutionListFilters(ctx, find, req.Msg); err != nil {
 		return nil, err
 	}
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityExecutionsList)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualityExecutionsResponse{}), nil
+		}
+		find.Scopes = scopeFilter
+	}
 	executions, err := s.store.ListQualityExecutions(ctx, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality executions")
@@ -2018,6 +2016,16 @@ func (s *DataQualityService) ListQualityIssues(ctx context.Context, req *connect
 		find.RuleIDs = ruleIDs
 	}
 
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualityIssuesList)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualityIssuesResponse{}), nil
+		}
+		find.Scopes = scopeFilter
+	}
 	issues, err := s.store.ListQualityIssues(ctx, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality issues")
@@ -2210,6 +2218,9 @@ func (s *DataQualityService) UpdateQualityIssue(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityIssuesUpdate, issue.TargetGUID); err != nil {
+		return nil, err
+	}
 	update, err := parseQualityIssueUpdate(req.Msg.GetIssue(), req.Msg.GetAcknowledged(), req.Msg.GetUpdateMask().GetPaths())
 	if err != nil {
 		return nil, err
@@ -2300,6 +2311,9 @@ func (s *DataQualityService) GetQualitySuggestion(ctx context.Context, req *conn
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualitySuggestionRead(ctx, suggestion); err != nil {
+		return nil, err
+	}
 	return connect.NewResponse(convertQualitySuggestion(workspaceID, suggestion)), nil
 }
 
@@ -2323,6 +2337,16 @@ func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *co
 	find := &store.FindQualitySuggestionMessage{Limit: &limitPlusOne, Offset: &offset.offset}
 	if err := applyQualitySuggestionListFilters(find, req.Msg); err != nil {
 		return nil, err
+	}
+	scopeFilter, err := s.qualityListScopeFilter(ctx, permission.DataQualitySuggest)
+	if err != nil {
+		return nil, err
+	}
+	if scopeFilter != nil {
+		if len(scopeFilter) == 0 {
+			return connect.NewResponse(&v1pb.ListQualitySuggestionsResponse{}), nil
+		}
+		find.Scopes = scopeFilter
 	}
 	suggestions, err := s.store.ListQualitySuggestions(ctx, find)
 	if err != nil {
@@ -2616,6 +2640,9 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityLabelsUpdate, update.tableGUID); err != nil {
+		return nil, err
+	}
 	switch update.action {
 	case v1pb.ColumnLabelAction_COLUMN_LABEL_ACTION_ACCEPT:
 		now := time.Now()
@@ -2679,6 +2706,9 @@ func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Re
 	metaType := storepb.MetaType(req.Msg.GetMetaType())
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		return nil, connectErrorInvalid("meta_type is required")
+	}
+	if err := s.requireQualityTargetPermission(ctx, permission.DataQualityProfileRun, guid); err != nil {
+		return nil, err
 	}
 	settings, err := dataquality.LoadSettings(ctx, s.store)
 	if err != nil {

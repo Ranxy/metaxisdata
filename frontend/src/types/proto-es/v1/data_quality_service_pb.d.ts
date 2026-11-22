@@ -133,6 +133,15 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
   tags: string[];
 
   /**
+   * The permissions the caller holds on this rule's target, e.g.
+   * "metaxisdata.dataQuality.rules.update". Output only; a page uses it to gate
+   * row actions without a second request.
+   *
+   * @generated from field: repeated string viewer_permissions = 21;
+   */
+  viewerPermissions: string[];
+
+  /**
    * How often this check needs to run inside the target's schedule. The target
    * tick is the floor, so a tier denser than the target is a no-op; a manual run
    * is not affected. It is scheduling metadata, not part of the rule definition:

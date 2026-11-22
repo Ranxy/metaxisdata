@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -81,6 +82,10 @@ type FindQualityIssueMessage struct {
 	// TargetGUID matches the object or any of its descendants: the GUID is a
 	// ';'-separated path, so an instance prefix selects every issue under it.
 	TargetGUID *string
+	// Scopes restricts the list to the target subtrees an authorization scope set
+	// allows. A nil slice adds no predicate; an empty non-nil slice matches
+	// nothing.
+	Scopes []resource.Scope
 	// StartAt and EndAt bound first_seen_at, the moment the problem appeared. The
 	// list is ordered by it, so a range filter and the ordering agree.
 	StartAt *time.Time
@@ -213,6 +218,13 @@ func buildQualityIssueWhere(find *FindQualityIssueMessage) ([]string, []any) {
 	}
 	if v := find.TargetGUID; v != nil && strings.TrimSpace(*v) != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", strings.TrimSpace(*v))
+	}
+	if find.Scopes != nil {
+		if len(find.Scopes) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = appendGUIDSubtreeConditions(where, args, find.Scopes)
+		}
 	}
 	if v := find.StartAt; v != nil {
 		where = append(where, fmt.Sprintf("first_seen_at >= $%d", len(args)+1))
