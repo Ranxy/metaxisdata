@@ -3709,8 +3709,9 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	// RotateQualityAgentToken does not exist, so there is no credential to assert: the
 	// compile-time surface below is the assertion.
 
-	// The agent is an internal principal: the store binds it to the qualityAgent role
-	// and the user directory hides it, while an audit reference still resolves.
+	// The agent is an internal principal: it holds no workspace-wide binding (the
+	// scoped authorizer derives the qualityAgent role on the agent's databases), and
+	// the user directory hides it while an audit reference still resolves.
 	resourceID := resourceIDFromName(agent.GetName())
 	stored, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceID)
 	require.NoError(t, err)
@@ -3720,8 +3721,8 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	policy, err := iamClient.GetWorkspaceIamPolicy(fixture.ctx,
 		withToken(adminToken, &v1pb.GetWorkspaceIamPolicyRequest{}))
 	require.NoError(t, err)
-	require.True(t, iamPolicyBindsMember(policy.Msg.GetPolicy(), "roles/qualityAgent", principalName),
-		"creating the agent binds its principal to roles/qualityAgent")
+	require.False(t, iamPolicyBindsMember(policy.Msg.GetPolicy(), "roles/qualityAgent", principalName),
+		"the agent principal holds its role through the derived agent scope, not a workspace binding")
 
 	principal, err := userClient.GetUser(fixture.ctx,
 		withToken(adminToken, &v1pb.GetUserRequest{Name: principalName}))
@@ -5214,14 +5215,9 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "scoped-owner")
 	_, strangerToken := createQualityAgentTestMember(t, fixture, "scoped-stranger")
 
-	grant, err := fixture.env.Store.CreateIamGrant(fixture.ctx, &store.IamGrantMessage{
-		ResourceType: "database",
-		ResourceID:   common.BuildMetaGUID(fixture.instanceID, fixture.sourceDatabase),
-		Role:         common.FormatRole(store.QualityOwnerRole),
-		Member:       ownerName,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, grant)
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
+	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
 
 	ruleRequest := func(targetGUID string) *v1pb.CreateQualityRuleRequest {
 		return &v1pb.CreateQualityRuleRequest{
@@ -5238,10 +5234,24 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	}
 
 	// A member without a grant is refused by the interceptor's scoped gate.
-	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+	_, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
 		withToken(strangerToken, ruleRequest(fixture.usersGUID)))
 	require.Error(t, err)
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// Before the grant the owner holds no rules.create anywhere; the interceptor
+	// denies, and that empty snapshot is cached in the server process.
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// The administrator adds the grant through the API. The write bumps the
+	// authorization generation, so the cached empty snapshot is rebuilt.
+	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.CreateIamGrantRequest{
+		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
+	}))
+	require.NoError(t, err)
 
 	// The granted member can create on a table in the database.
 	created, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
@@ -5301,4 +5311,54 @@ func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
 	_, err = fixture.dataQuality.DeleteQualityRule(fixture.ctx,
 		withToken(ownerToken, &v1pb.DeleteQualityRuleRequest{Name: created.Msg.GetName()}))
 	require.NoError(t, err)
+}
+
+// TestQualityAgentOwnerDerivedGrantRealServerIntegration covers the derived
+// ownership source: the owner of a quality agent holds qualityOwner on the
+// agent's databases without an explicit grant, so it can author checks there
+// and nowhere else.
+func TestQualityAgentOwnerDerivedGrantRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "derived-owner")
+
+	scope := []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)}
+	providerProfile := fixture.createQualityAgentProvider(t, "fast", "reasoner")
+	createdAgent, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx, withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+		Parent:          "workspaces/-",
+		DisplayName:     "owner derived agent",
+		Owner:           ownerName,
+		ProviderProfile: providerProfile,
+		ProviderModel:   "fast",
+		Databases:       scope,
+		Capabilities:    []string{"suggest"},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, createdAgent.Msg.GetAgent())
+
+	ruleRequest := func(targetGUID string) *v1pb.CreateQualityRuleRequest {
+		return &v1pb.CreateQualityRuleRequest{
+			Parent: "workspaces/-",
+			Rule: &v1pb.QualityRule{
+				Title:     "owner derived row count",
+				Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+				RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+				Target:    &v1pb.QualityTarget{MetaGuid: targetGUID, MetaType: v1pb.MetaType_TABLE},
+				Config:    qualityRowCountConfig(1),
+				Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			},
+		}
+	}
+
+	created, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
+	require.NoError(t, err, "the agent owner holds qualityOwner on the agent's database")
+	require.NotEmpty(t, created.Msg.GetName())
+
+	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
+		withToken(ownerToken, ruleRequest("another-instance;another_db;;users")))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }

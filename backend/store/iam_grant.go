@@ -82,6 +82,7 @@ func (s *Store) CreateIamGrant(ctx context.Context, message *IamGrantMessage) (*
 		}
 		return nil, errors.Wrap(err, "failed to create the iam grant")
 	}
+	s.bumpAuthorizationGeneration()
 	return created, nil
 }
 
@@ -94,6 +95,9 @@ func (s *Store) DeleteIamGrant(ctx context.Context, id int64) (bool, error) {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, errors.Wrap(err, "failed to read the deleted grant count")
+	}
+	if rows > 0 {
+		s.bumpAuthorizationGeneration()
 	}
 	return rows > 0, nil
 }

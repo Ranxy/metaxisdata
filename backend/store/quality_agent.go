@@ -131,52 +131,8 @@ func (s *Store) CreateQualityAgent(ctx context.Context, resourceID, displayName,
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality agent")
 	}
-	if err := s.bindQualityAgentRole(ctx, principal.ID); err != nil {
-		return nil, err
-	}
+	s.bumpAuthorizationGeneration()
 	return message, nil
-}
-
-// bindQualityAgentRole adds the agent principal to the qualityAgent role binding,
-// retrying the optimistic policy write a few times so a concurrent IAM change does
-// not make agent creation fail spuriously.
-func (s *Store) bindQualityAgentRole(ctx context.Context, principalID int) error {
-	member := common.FormatUserUID(principalID)
-	role := common.RolePrefix + QualityAgentRole
-	for attempt := 0; attempt < 5; attempt++ {
-		current, err := s.GetWorkspaceIamPolicy(ctx)
-		if err != nil {
-			return errors.Wrap(err, "failed to read the workspace policy")
-		}
-		policy := current.Policy
-		if policy == nil {
-			return common.Errorf(common.Internal, "the workspace has no IAM policy")
-		}
-		found := false
-		for _, binding := range policy.GetBindings() {
-			if binding.GetRole() != role {
-				continue
-			}
-			found = true
-			if !slicesContains(binding.GetMembers(), member) {
-				binding.Members = append(binding.Members, member)
-			}
-		}
-		if !found {
-			policy.Bindings = append(policy.Bindings, &storepb.Binding{
-				Role:    role,
-				Members: []string{member},
-			})
-		}
-		if _, err := s.SetWorkspaceIamPolicy(ctx, policy, current.Etag); err != nil {
-			if errors.Is(err, ErrPolicyEtagMismatch) {
-				continue
-			}
-			return errors.Wrap(err, "failed to bind the quality agent role")
-		}
-		return nil
-	}
-	return common.Errorf(common.Internal, "failed to bind the quality agent role; the policy kept changing")
 }
 
 // ListQualityAgents lists the workspace's agents, oldest first.
@@ -322,6 +278,7 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		}
 		return nil, errors.Wrap(err, "failed to update the quality agent config")
 	}
+	s.bumpAuthorizationGeneration()
 	return updated, nil
 }
 
@@ -353,6 +310,7 @@ func (s *Store) UpdateQualityAgentState(ctx context.Context, agentID int64, stat
 		}
 		return nil, errors.Wrap(err, "failed to update the quality agent state")
 	}
+	s.bumpAuthorizationGeneration()
 	return updated, nil
 }
 
@@ -428,6 +386,7 @@ func (s *Store) ReplaceQualityAgentDatabases(ctx context.Context, agentID int64,
 	if err := tx.Commit(); err != nil {
 		return errors.Wrap(err, "failed to commit the agent database scope")
 	}
+	s.bumpAuthorizationGeneration()
 	return nil
 }
 
@@ -527,16 +486,6 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 	}
 	message.AdoptionRuleTypes = decodedRuleTypes
 	return &message, nil
-}
-
-// slicesContains is the small membership check the policy binding needs.
-func slicesContains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func marshalStrings(values []string) ([]byte, error) {

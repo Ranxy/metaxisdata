@@ -204,6 +204,7 @@ func (s *Store) UpdateGroup(ctx context.Context, email string, patch *UpdateGrou
 	}
 
 	s.groupCache.Add(group.Email, &group)
+	s.bumpAuthorizationGeneration()
 	return &group, nil
 }
 
@@ -239,6 +240,7 @@ func (s *Store) CreateGroup(ctx context.Context, group *GroupMessage) (*GroupMes
 		return nil, err
 	}
 	s.groupCache.Add(group.Email, group)
+	s.bumpAuthorizationGeneration()
 	return group, nil
 }
 
@@ -254,5 +256,8 @@ func (s *Store) DeleteGroup(ctx context.Context, email string) (bool, error) {
 		return false, err
 	}
 	s.groupCache.Remove(email)
+	if affected > 0 {
+		s.bumpAuthorizationGeneration()
+	}
 	return affected > 0, nil
 }

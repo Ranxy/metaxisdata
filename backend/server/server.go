@@ -279,9 +279,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// The session runner hosts the built-in quality agent: one long-lived conversation
 	// per target, continued wake by wake.
 	// The agent's tools run in-process, so the RPC ACL interceptor never sees
-	// them; the engine checks each tool's permission against the session's agent
-	// principal itself.
-	agentIAM := iam.NewManager(stores)
+	// them. The engine checks each tool's capability against the session's agent
+	// principal through the scoped authorizer: the agent holds its role only on
+	// its own databases, and the session target is one of them.
+	agentIAM := iam.NewScopedPermissionChecker(iam.NewScopedAuthorizer(iam.NewManager(stores), stores))
 	// A renamed spec tool must fail the boot, not reach the model as an unknown
 	// tool during a wake.
 	if err := agentrunner.ValidateSpecs(); err != nil {
