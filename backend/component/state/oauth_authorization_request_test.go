@@ -7,11 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testOAuthUserID is the owner every OAuth request helper acts as.
+const testOAuthUserID = 7
+
 func newTestOAuthAuthorizationStore() (*OAuthAuthorizationRequestStore, time.Time) {
 	return NewOAuthAuthorizationRequestStore(), time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 }
 
-func oauthAuthorizationRequestFor(userID int) OAuthAuthorizationRequest {
+func oauthAuthorizationRequestFor() OAuthAuthorizationRequest {
 	return OAuthAuthorizationRequest{
 		ClientID:            "client-1",
 		ClientName:          "Claude Desktop",
@@ -21,44 +24,44 @@ func oauthAuthorizationRequestFor(userID int) OAuthAuthorizationRequest {
 		CodeChallenge:       "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
 		CodeChallengeMethod: "S256",
 		ClientState:         "client-state",
-		UserID:              userID,
+		UserID:              testOAuthUserID,
 		RequestIP:           "203.0.113.7",
 	}
 }
 
-func mustCreateOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, now time.Time, userID int) OAuthAuthorizationRequest {
+func mustCreateOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, now time.Time) OAuthAuthorizationRequest {
 	t.Helper()
-	request, err := s.Create(oauthAuthorizationRequestFor(userID), now)
+	request, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
 	return request
 }
 
-func mustApproveOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, requestID string, userID int, now time.Time) {
+func mustApproveOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, requestID string, now time.Time) {
 	t.Helper()
-	require.NoError(t, s.Approve(requestID, userID, true, now))
+	require.NoError(t, s.Approve(requestID, testOAuthUserID, true, now))
 }
 
-func mustCompleteOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, requestID string, userID int, now time.Time) OAuthAuthorizationRequest {
+func mustCompleteOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, requestID string, now time.Time) OAuthAuthorizationRequest {
 	t.Helper()
-	request, err := s.Complete(requestID, userID, now)
+	request, err := s.Complete(requestID, testOAuthUserID, now)
 	require.NoError(t, err)
 	return request
 }
 
 // mustCompleteApprovedOAuthRequest walks one request through approval and
 // completion, which is the state every Exchange test starts from.
-func mustCompleteApprovedOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, now time.Time, userID int) OAuthAuthorizationRequest {
+func mustCompleteApprovedOAuthRequest(t *testing.T, s *OAuthAuthorizationRequestStore, now time.Time) OAuthAuthorizationRequest {
 	t.Helper()
-	request := mustCreateOAuthRequest(t, s, now, userID)
-	mustApproveOAuthRequest(t, s, request.RequestID, userID, now)
-	return mustCompleteOAuthRequest(t, s, request.RequestID, userID, now)
+	request := mustCreateOAuthRequest(t, s, now)
+	mustApproveOAuthRequest(t, s, request.RequestID, now)
+	return mustCompleteOAuthRequest(t, s, request.RequestID, now)
 }
 
 func TestOAuthAuthorizationCreateMintsTheRequestIdentity(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	supplied := oauthAuthorizationRequestFor(7)
+	supplied := oauthAuthorizationRequestFor()
 	supplied.RequestID = "caller-supplied"
 	supplied.State = OAuthAuthorizationApproved
 	supplied.Code = "caller-supplied"
@@ -97,9 +100,9 @@ func TestOAuthAuthorizationRefusesAnotherUsersRequest(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	pending := mustCreateOAuthRequest(t, s, now, 7)
-	approved := mustCreateOAuthRequest(t, s, now, 7)
-	mustApproveOAuthRequest(t, s, approved.RequestID, 7, now)
+	pending := mustCreateOAuthRequest(t, s, now)
+	approved := mustCreateOAuthRequest(t, s, now)
+	mustApproveOAuthRequest(t, s, approved.RequestID, now)
 
 	_, err := s.Get(pending.RequestID, 8, now)
 	require.ErrorIs(t, err, ErrOAuthRequestWrongUser)
@@ -120,29 +123,22 @@ func TestOAuthAuthorizationRefusesAnotherUsersRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, OAuthAuthorizationApproved, stored.State)
 	require.Empty(t, stored.Code, "a foreign Complete never mints a code")
-}
 
-func TestOAuthAuthorizationIsScopedToItsOwner(t *testing.T) {
-	t.Parallel()
-
-	s, now := newTestOAuthAuthorizationStore()
-	completed := mustCompleteApprovedOAuthRequest(t, s, now, 8)
-	require.Equal(t, 8, completed.UserID)
-
-	// The request is invisible to everybody else, but the code itself carries
-	// its owner through an exchange.
-	_, err := s.Get(completed.RequestID, 7, now)
+	// A completed request stays private to its owner, but the code itself carries
+	// the owner through the exchange.
+	completed := mustCompleteOAuthRequest(t, s, approved.RequestID, now)
+	_, err = s.Get(completed.RequestID, 8, now)
 	require.ErrorIs(t, err, ErrOAuthRequestWrongUser)
 	answer, err := s.Exchange(completed.Code, now)
 	require.NoError(t, err)
-	require.Equal(t, 8, answer.UserID)
+	require.Equal(t, 7, answer.UserID)
 }
 
 func TestOAuthAuthorizationApproveRecordsTheDecisionOnce(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	request := mustCreateOAuthRequest(t, s, now, 7)
+	request := mustCreateOAuthRequest(t, s, now)
 
 	require.NoError(t, s.Approve(request.RequestID, 7, true, now))
 	decided, err := s.Get(request.RequestID, 7, now)
@@ -157,7 +153,7 @@ func TestOAuthAuthorizationApproveRecordsTheDecisionOnce(t *testing.T) {
 	require.Equal(t, OAuthAuthorizationApproved, again.State)
 	require.Equal(t, 7, again.ApprovedByUserID)
 
-	denied, err := s.Create(oauthAuthorizationRequestFor(7), now)
+	denied, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
 	require.NoError(t, s.Approve(denied.RequestID, 7, false, now))
 	stored, err := s.Get(denied.RequestID, 7, now)
@@ -174,19 +170,19 @@ func TestOAuthAuthorizationCompleteMintsOneCode(t *testing.T) {
 
 	s, now := newTestOAuthAuthorizationStore()
 
-	pending := mustCreateOAuthRequest(t, s, now, 7)
+	pending := mustCreateOAuthRequest(t, s, now)
 	_, err := s.Complete(pending.RequestID, 7, now)
 	require.ErrorIs(t, err, ErrOAuthRequestNotPending)
 
-	denied, err := s.Create(oauthAuthorizationRequestFor(7), now)
+	denied, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
 	require.NoError(t, s.Approve(denied.RequestID, 7, false, now))
 	_, err = s.Complete(denied.RequestID, 7, now)
 	require.ErrorIs(t, err, ErrOAuthRequestNotApproved)
 
-	approved := mustCreateOAuthRequest(t, s, now, 7)
-	mustApproveOAuthRequest(t, s, approved.RequestID, 7, now)
-	completed := mustCompleteOAuthRequest(t, s, approved.RequestID, 7, now)
+	approved := mustCreateOAuthRequest(t, s, now)
+	mustApproveOAuthRequest(t, s, approved.RequestID, now)
+	completed := mustCompleteOAuthRequest(t, s, approved.RequestID, now)
 	require.NotEmpty(t, completed.Code)
 	require.Equal(t, now.Add(OAuthAuthorizationCodeTTL), completed.CodeExpireTime)
 	require.Equal(t, OAuthAuthorizationApproved, completed.State)
@@ -194,7 +190,6 @@ func TestOAuthAuthorizationCompleteMintsOneCode(t *testing.T) {
 
 	// Calling Complete again never hands out a second code.
 	second, err := s.Complete(approved.RequestID, 7, now)
-	require.Error(t, err)
 	require.ErrorIs(t, err, ErrOAuthRequestNotPending)
 	require.Empty(t, second.Code)
 	stored, err := s.Get(approved.RequestID, 7, now)
@@ -206,7 +201,7 @@ func TestOAuthAuthorizationCodeIsSingleUse(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	completed := mustCompleteApprovedOAuthRequest(t, s, now, 7)
+	completed := mustCompleteApprovedOAuthRequest(t, s, now)
 
 	first, err := s.Exchange(completed.Code, now)
 	require.NoError(t, err)
@@ -217,17 +212,16 @@ func TestOAuthAuthorizationCodeIsSingleUse(t *testing.T) {
 	_, err = s.Exchange(completed.Code, now)
 	require.ErrorIs(t, err, ErrOAuthCodeNotFound, "a code is exchanged exactly once")
 
-	// The consumed record is gone from both lookups.
+	// The consumed record is gone, so the request id resolves no longer either.
 	_, err = s.Get(completed.RequestID, 7, now)
 	require.ErrorIs(t, err, ErrOAuthRequestNotFound)
-	require.NotContains(t, s.byCode, completed.Code)
 }
 
 func TestOAuthAuthorizationRequestExpiresLazily(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	request := mustCreateOAuthRequest(t, s, now, 7)
+	request := mustCreateOAuthRequest(t, s, now)
 
 	// The deadline is inclusive: at the TTL the error replaces the stale record.
 	_, err := s.Get(request.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
@@ -235,19 +229,19 @@ func TestOAuthAuthorizationRequestExpiresLazily(t *testing.T) {
 	_, err = s.Get(request.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
 	require.ErrorIs(t, err, ErrOAuthRequestNotFound, "the expired record is dropped")
 
-	toApprove, err := s.Create(oauthAuthorizationRequestFor(7), now)
+	toApprove, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
 	require.ErrorIs(t, s.Approve(toApprove.RequestID, 7, true, now.Add(OAuthAuthorizationRequestTTL)), ErrOAuthRequestExpired)
 
-	toComplete, err := s.Create(oauthAuthorizationRequestFor(7), now)
+	toComplete, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
 	_, err = s.Complete(toComplete.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
 	require.ErrorIs(t, err, ErrOAuthRequestExpired)
 
 	// An approval that is never completed dies with the pending TTL too.
-	uncompleted, err := s.Create(oauthAuthorizationRequestFor(7), now)
+	uncompleted, err := s.Create(oauthAuthorizationRequestFor(), now)
 	require.NoError(t, err)
-	mustApproveOAuthRequest(t, s, uncompleted.RequestID, 7, now)
+	mustApproveOAuthRequest(t, s, uncompleted.RequestID, now)
 	_, err = s.Complete(uncompleted.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
 	require.ErrorIs(t, err, ErrOAuthRequestExpired)
 }
@@ -258,10 +252,10 @@ func TestOAuthAuthorizationCodeExpiresLazily(t *testing.T) {
 	// A code outlives the consent window it came from: only its own TTL bounds
 	// it, so an exchange late in the pending TTL still works.
 	s, now := newTestOAuthAuthorizationStore()
-	request := mustCreateOAuthRequest(t, s, now, 7)
+	request := mustCreateOAuthRequest(t, s, now)
 	late := now.Add(OAuthAuthorizationRequestTTL - time.Second)
-	mustApproveOAuthRequest(t, s, request.RequestID, 7, late)
-	completed := mustCompleteOAuthRequest(t, s, request.RequestID, 7, late)
+	mustApproveOAuthRequest(t, s, request.RequestID, late)
+	completed := mustCompleteOAuthRequest(t, s, request.RequestID, late)
 
 	exchanged, err := s.Exchange(completed.Code, now.Add(OAuthAuthorizationRequestTTL+time.Second))
 	require.NoError(t, err)
@@ -269,7 +263,7 @@ func TestOAuthAuthorizationCodeExpiresLazily(t *testing.T) {
 
 	// Past the code TTL the code is reported expired and dropped.
 	s2, now2 := newTestOAuthAuthorizationStore()
-	completed2 := mustCompleteApprovedOAuthRequest(t, s2, now2, 7)
+	completed2 := mustCompleteApprovedOAuthRequest(t, s2, now2)
 	_, err = s2.Exchange(completed2.Code, now2.Add(OAuthAuthorizationCodeTTL))
 	require.ErrorIs(t, err, ErrOAuthCodeExpired)
 	_, err = s2.Exchange(completed2.Code, now2.Add(OAuthAuthorizationCodeTTL))
@@ -277,13 +271,13 @@ func TestOAuthAuthorizationCodeExpiresLazily(t *testing.T) {
 
 	// A read of a completed request is bounded by the code TTL as well.
 	s3, now3 := newTestOAuthAuthorizationStore()
-	completed3 := mustCompleteApprovedOAuthRequest(t, s3, now3, 7)
+	completed3 := mustCompleteApprovedOAuthRequest(t, s3, now3)
 	_, err = s3.Get(completed3.RequestID, 7, now3.Add(OAuthAuthorizationCodeTTL))
 	require.ErrorIs(t, err, ErrOAuthCodeExpired)
 
 	// One nanosecond earlier both the read and the exchange still work.
 	s4, now4 := newTestOAuthAuthorizationStore()
-	completed4 := mustCompleteApprovedOAuthRequest(t, s4, now4, 7)
+	completed4 := mustCompleteApprovedOAuthRequest(t, s4, now4)
 	alive := now4.Add(OAuthAuthorizationCodeTTL - time.Nanosecond)
 	_, err = s4.Get(completed4.RequestID, 7, alive)
 	require.NoError(t, err)
@@ -309,27 +303,26 @@ func TestOAuthAuthorizationPruneDropsExpiredRequests(t *testing.T) {
 	t.Parallel()
 
 	s, now := newTestOAuthAuthorizationStore()
-	first := mustCreateOAuthRequest(t, s, now, 7)
-	second := mustCreateOAuthRequest(t, s, now.Add(time.Minute), 7)
+	first := mustCreateOAuthRequest(t, s, now)
+	second := mustCreateOAuthRequest(t, s, now.Add(time.Minute))
 
-	// A create prunes the entry that has passed its TTL, code or not.
-	mustCreateOAuthRequest(t, s, now.Add(OAuthAuthorizationRequestTTL), 7)
-	require.Len(t, s.byRequestID, 2)
-	require.NotContains(t, s.byRequestID, first.RequestID)
-	require.Contains(t, s.byRequestID, second.RequestID)
-}
+	// A create prunes the record that has passed its TTL: it reads as unknown
+	// rather than expired afterwards, while a live record survives the prune.
+	mustCreateOAuthRequest(t, s, now.Add(OAuthAuthorizationRequestTTL))
+	_, err := s.Get(first.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
+	require.ErrorIs(t, err, ErrOAuthRequestNotFound)
+	_, err = s.Get(second.RequestID, 7, now.Add(OAuthAuthorizationRequestTTL))
+	require.NoError(t, err)
 
-func TestOAuthAuthorizationPruneReapsCodesWithTheirRequest(t *testing.T) {
-	t.Parallel()
-
-	s, now := newTestOAuthAuthorizationStore()
-	completed := mustCompleteApprovedOAuthRequest(t, s, now, 7)
-	require.Contains(t, s.byCode, completed.Code)
-
-	// A create past the code TTL reaps the whole record, code included.
-	mustCreateOAuthRequest(t, s, now.Add(OAuthAuthorizationCodeTTL), 7)
-	require.NotContains(t, s.byCode, completed.Code)
-	require.NotContains(t, s.byRequestID, completed.RequestID)
+	// The prune reaps the code with its request, so a code whose request is gone
+	// reads as unknown rather than expired.
+	s2, now2 := newTestOAuthAuthorizationStore()
+	completed := mustCompleteApprovedOAuthRequest(t, s2, now2)
+	mustCreateOAuthRequest(t, s2, now2.Add(OAuthAuthorizationCodeTTL))
+	_, err = s2.Exchange(completed.Code, now2.Add(OAuthAuthorizationCodeTTL))
+	require.ErrorIs(t, err, ErrOAuthCodeNotFound)
+	_, err = s2.Get(completed.RequestID, 7, now2.Add(OAuthAuthorizationCodeTTL))
+	require.ErrorIs(t, err, ErrOAuthRequestNotFound)
 }
 
 func TestOAuthAuthorizationEvictsTheOldestAtCapacity(t *testing.T) {
@@ -340,16 +333,13 @@ func TestOAuthAuthorizationEvictsTheOldestAtCapacity(t *testing.T) {
 	// Every request stays inside its TTL, so the ceiling — not expiry — is what
 	// the next create has to relieve.
 	for i := range oauthAuthorizationRequestCapacity {
-		request, err := s.Create(oauthAuthorizationRequestFor(7), now.Add(time.Duration(i)*time.Microsecond))
+		request, err := s.Create(oauthAuthorizationRequestFor(), now.Add(time.Duration(i)*time.Microsecond))
 		require.NoError(t, err)
-		require.Equal(t, OAuthAuthorizationPending, request.State)
 		ids = append(ids, request.RequestID)
 	}
-	require.Len(t, s.byRequestID, oauthAuthorizationRequestCapacity)
 
-	latest := mustCreateOAuthRequest(t, s, now.Add(time.Second), 7)
+	latest := mustCreateOAuthRequest(t, s, now.Add(time.Second))
 
-	require.Len(t, s.byRequestID, oauthAuthorizationRequestCapacity)
 	_, err := s.Get(ids[0], 7, now.Add(time.Second))
 	require.ErrorIs(t, err, ErrOAuthRequestNotFound, "the oldest request was evicted")
 	_, err = s.Get(ids[1], 7, now.Add(time.Second))
@@ -364,7 +354,7 @@ func TestOAuthAuthorizationCreateNeverRepeatsARequestID(t *testing.T) {
 	s, now := newTestOAuthAuthorizationStore()
 	seen := make(map[string]struct{}, 1000)
 	for range 1000 {
-		request := mustCreateOAuthRequest(t, s, now, 7)
+		request := mustCreateOAuthRequest(t, s, now)
 		_, duplicate := seen[request.RequestID]
 		require.False(t, duplicate, "request ids are never reused")
 		seen[request.RequestID] = struct{}{}

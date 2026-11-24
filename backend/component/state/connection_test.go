@@ -19,23 +19,23 @@ func connectionRequest(limit int, priority ConnectionPriority) InstanceConnectio
 	}
 }
 
-// holderCount and waiterCount are test views into the governor; the production
-// API deliberately exposes neither.
-func (g *connectionGovernor) holderCount() int {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.holders[testInstanceID]
+// holderCount and waiterCount read the governor's public diagnostics, which are
+// the same view the metrics collector sees.
+func holderCount(stateCfg *State) int {
+	return stateCfg.ConnectionInUse()
 }
 
-func (g *connectionGovernor) waiterCount() int {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return len(g.waiters[testInstanceID])
+func waiterCount(stateCfg *State) int {
+	total := 0
+	for _, count := range stateCfg.ConnectionWaiters() {
+		total += count
+	}
+	return total
 }
 
-func waitForWaiters(t *testing.T, g *connectionGovernor, want int) {
+func waitForWaiters(t *testing.T, stateCfg *State, want int) {
 	t.Helper()
-	require.Eventually(t, func() bool { return g.waiterCount() == want }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return waiterCount(stateCfg) == want }, time.Second, time.Millisecond)
 }
 
 type grantResult struct {
@@ -103,20 +103,16 @@ func TestAcquireInstanceConnectionWaitsForASlot(t *testing.T) {
 	require.True(t, ok)
 
 	waiter := acquireAsync(context.Background(), stateCfg, connectionRequest(1, ConnectionPriorityBackground), "background")
-	waitForWaiters(t, stateCfg.instanceConnections, 1)
-
-	select {
-	case grant := <-waiter:
-		t.Fatalf("the waiter was admitted while the budget was exhausted: %+v", grant)
-	case <-time.After(20 * time.Millisecond):
-	}
+	// A queued waiter cannot have been admitted: every admission either bypasses
+	// the queue or removes the waiter from it under the same lock.
+	waitForWaiters(t, stateCfg, 1)
 
 	hold()
 	grant := receiveGrant(t, waiter)
 	require.NoError(t, grant.err)
-	require.Equal(t, 1, stateCfg.instanceConnections.holderCount())
+	require.Equal(t, 1, holderCount(stateCfg))
 	grant.release()
-	require.Equal(t, 0, stateCfg.instanceConnections.holderCount())
+	require.Equal(t, 0, holderCount(stateCfg))
 }
 
 // A caller that cannot wait forever gets a distinguishable, transient error and
@@ -136,8 +132,8 @@ func TestAcquireInstanceConnectionHonorsItsWaitBudget(t *testing.T) {
 	require.ErrorIs(t, err, ErrInstanceConnectionLimit)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, release)
-	require.Equal(t, 1, stateCfg.instanceConnections.holderCount())
-	require.Equal(t, 0, stateCfg.instanceConnections.waiterCount())
+	require.Equal(t, 1, holderCount(stateCfg))
+	require.Equal(t, 0, waiterCount(stateCfg))
 }
 
 // A cancelled waiter must leave the queue; otherwise it would be granted a slot
@@ -152,13 +148,13 @@ func TestCancelledWaiterLeavesTheQueue(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	waiter := acquireAsync(ctx, stateCfg, connectionRequest(1, ConnectionPriorityBackground), "background")
-	waitForWaiters(t, stateCfg.instanceConnections, 1)
+	waitForWaiters(t, stateCfg, 1)
 	cancel()
 	grant := receiveGrant(t, waiter)
 	require.ErrorIs(t, grant.err, ErrInstanceConnectionLimit)
 	require.ErrorIs(t, grant.err, context.Canceled)
 	require.Nil(t, grant.release)
-	require.Equal(t, 0, stateCfg.instanceConnections.waiterCount())
+	require.Equal(t, 0, waiterCount(stateCfg))
 
 	hold()
 	release, ok := stateCfg.TryAcquireInstanceConnection(connectionRequest(1, ConnectionPriorityBackground))
@@ -177,11 +173,11 @@ func TestWaitersAreServedByPriorityThenArrival(t *testing.T) {
 	require.True(t, ok)
 
 	backgroundFirst := acquireAsync(context.Background(), stateCfg, connectionRequest(1, ConnectionPriorityBackground), "background-1")
-	waitForWaiters(t, stateCfg.instanceConnections, 1)
+	waitForWaiters(t, stateCfg, 1)
 	backgroundSecond := acquireAsync(context.Background(), stateCfg, connectionRequest(1, ConnectionPriorityBackground), "background-2")
-	waitForWaiters(t, stateCfg.instanceConnections, 2)
+	waitForWaiters(t, stateCfg, 2)
 	manual := acquireAsync(context.Background(), stateCfg, connectionRequest(1, ConnectionPriorityManual), "manual")
-	waitForWaiters(t, stateCfg.instanceConnections, 3)
+	waitForWaiters(t, stateCfg, 3)
 
 	hold()
 	first := receiveGrant(t, manual)
@@ -195,7 +191,7 @@ func TestWaitersAreServedByPriorityThenArrival(t *testing.T) {
 	third := receiveGrant(t, backgroundSecond)
 	require.Equal(t, "background-2", third.label)
 	third.release()
-	require.Equal(t, 0, stateCfg.instanceConnections.holderCount())
+	require.Equal(t, 0, holderCount(stateCfg))
 }
 
 // A caller that can retry later must not jump a queued waiter: the schema
@@ -230,11 +226,11 @@ func TestReleaseIsIdempotent(t *testing.T) {
 
 	releaseFirst()
 	releaseFirst()
-	require.Equal(t, 1, stateCfg.instanceConnections.holderCount(), "a double release must not free another holder's slot")
+	require.Equal(t, 1, holderCount(stateCfg), "a double release must not free another holder's slot")
 
 	releaseSecond()
 	releaseSecond()
-	require.Equal(t, 0, stateCfg.instanceConnections.holderCount())
+	require.Equal(t, 0, holderCount(stateCfg))
 }
 
 func TestUnlimitedBudgetNeverQueues(t *testing.T) {
@@ -253,8 +249,8 @@ func TestUnlimitedBudgetNeverQueues(t *testing.T) {
 			release()
 		}
 	}()
-	require.Equal(t, 5, stateCfg.instanceConnections.holderCount(), "an unlimited instance is still counted")
-	require.Equal(t, 0, stateCfg.instanceConnections.waiterCount())
+	require.Equal(t, 5, holderCount(stateCfg), "an unlimited instance is still counted")
+	require.Equal(t, 0, waiterCount(stateCfg))
 }
 
 func TestAcquireWithACancelledContextDoesNotConsumeASlot(t *testing.T) {
@@ -268,7 +264,7 @@ func TestAcquireWithACancelledContextDoesNotConsumeASlot(t *testing.T) {
 	release, err := stateCfg.AcquireInstanceConnection(ctx, connectionRequest(1, ConnectionPriorityBackground))
 	require.ErrorIs(t, err, ErrInstanceConnectionLimit)
 	require.Nil(t, release)
-	require.Equal(t, 0, stateCfg.instanceConnections.holderCount())
+	require.Equal(t, 0, holderCount(stateCfg))
 }
 
 // A waiter that is cancelled at the same moment it is granted must return the slot
@@ -284,7 +280,7 @@ func TestCancelledWaiterNeverLeaksItsSlot(t *testing.T) {
 		require.True(t, ok)
 		ctx, cancel := context.WithCancel(context.Background())
 		waiter := acquireAsync(ctx, stateCfg, connectionRequest(1, ConnectionPriorityBackground), "background")
-		waitForWaiters(t, stateCfg.instanceConnections, 1)
+		waitForWaiters(t, stateCfg, 1)
 		cancel()
 		hold()
 

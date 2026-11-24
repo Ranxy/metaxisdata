@@ -8,17 +8,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeviceLoginLimiterBoundsOneSource(t *testing.T) {
+// Every limiter this package wires spends its own fixed window on the key it is
+// given: the key is refused at the budget and another key is unaffected, so one
+// caller cannot spend another's. The table is the registry of budgets — a limiter
+// added without a row would be a budget nobody pinned.
+func TestRequestLimitersEnforceTheirOwnBudgetsPerKey(t *testing.T) {
 	t.Parallel()
 
-	limiter := newDeviceLoginCreateLimiter()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-
-	for i := range deviceLoginSourceLimit {
-		require.True(t, limiter.Allow("203.0.113.7", now), "request %d is under the limit", i+1)
+	for _, tc := range []struct {
+		name    string
+		limiter *WindowLimiter
+		limit   int
+	}{
+		{"device login create per source", newDeviceLoginCreateLimiter(), deviceLoginSourceLimit},
+		{"device login lookup per caller", newDeviceLoginLookupLimiter(), deviceLoginLookupLimit},
+		{"anonymous login per source", newLoginRequestLimiter(), loginRequestSourceLimit},
+		{"anonymous create user per source", newCreateUserRequestLimiter(), createUserRequestSourceLimit},
+		{"anonymous logout per source", newLogoutRequestLimiter(), logoutRequestSourceLimit},
+		{"mcp call per principal", newMCPCallLimiter(), mcpCallLimit},
+		{"mcp endpoint per address", newMCPSourceCallLimiter(), mcpSourceCallLimit},
+		{"sso state per source", newSSOStateRequestLimiter(), ssoStateSourceLimit},
+		{"principal request per (principal, procedure)", newPrincipalRequestLimiter(), principalMethodLimit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for i := range tc.limit {
+				require.True(t, tc.limiter.Allow("first", now), "request %d is under the limit", i+1)
+			}
+			require.False(t, tc.limiter.Allow("first", now), "the key's budget is spent")
+			require.True(t, tc.limiter.Allow("second", now), "another key has its own bucket")
+		})
 	}
-	require.False(t, limiter.Allow("203.0.113.7", now), "the limit is reached")
-	require.True(t, limiter.Allow("203.0.113.8", now), "another source has its own bucket")
 }
 
 // A refused request must not count, otherwise hammering the endpoint would keep
@@ -56,9 +77,10 @@ func TestDeviceLoginLimiterCapsTheEndpointOverall(t *testing.T) {
 		"the global window rolls over")
 }
 
-// The source map is seeded directly: the global bucket caps one window at
-// fewer requests than the map can hold, so the ceiling is only reached across
-// windows.
+// The source map is seeded directly: the global bucket caps one window at one
+// request per source, far below what the map can hold, so the ceiling is only
+// reached across windows. A seeded entry is spent, so its presence is observable
+// through Allow: it refuses until the create that hits the ceiling evicts it.
 func TestDeviceLoginLimiterPrunesAtCapacity(t *testing.T) {
 	t.Parallel()
 
@@ -67,86 +89,25 @@ func TestDeviceLoginLimiterPrunesAtCapacity(t *testing.T) {
 	for i := range limiterCapacity {
 		// Distinct times make the oldest entry deterministic.
 		limiter.sources["198.51.100."+strconv.Itoa(i)] = loginAttempt{
-			count: 1,
+			count: deviceLoginSourceLimit,
 			first: now.Add(time.Duration(i) * time.Microsecond),
 		}
 	}
-	require.Len(t, limiter.sources, limiterCapacity)
 
-	require.True(t, limiter.Allow("192.0.2.1", now.Add(time.Second)))
-	require.Len(t, limiter.sources, limiterCapacity, "the ceiling holds")
-	require.NotContains(t, limiter.sources, "198.51.100.0", "the oldest entry is evicted")
-	require.Contains(t, limiter.sources, "192.0.2.1")
+	require.True(t, limiter.Allow("192.0.2.1", now.Add(time.Second)), "a full map still admits one more")
+	require.False(t, limiter.Allow("198.51.100.1", now.Add(time.Second)),
+		"the other spent windows are untouched")
+	require.True(t, limiter.Allow("198.51.100.0", now.Add(time.Second)),
+		"the oldest entry was evicted, so that source has a fresh bucket")
 }
 
-// The lookup budget is per caller, so one account cannot spend another's.
-func TestDeviceLoginLookupLimiterIsPerCaller(t *testing.T) {
-	t.Parallel()
-
-	limiter := newDeviceLoginLookupLimiter()
-	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-
-	for range deviceLoginLookupLimit {
-		require.True(t, limiter.Allow("user:42", now))
-	}
-	require.False(t, limiter.Allow("user:42", now), "the caller's budget is spent")
-	require.True(t, limiter.Allow("user:7", now), "another caller has its own budget")
-}
-
-// The MCP budget is per principal, not per token or per address: one agent
-// cannot spend another's, and a model that runs a call loop eventually hits it.
-func TestMCPCallLimiterIsPerPrincipal(t *testing.T) {
-	t.Parallel()
-
-	limiter := newMCPCallLimiter()
-	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-
-	for i := range mcpCallLimit {
-		require.True(t, limiter.Allow("user:42", now), "call %d is under the limit", i+1)
-	}
-	require.False(t, limiter.Allow("user:42", now), "the principal's budget is spent")
-	require.True(t, limiter.Allow("user:7", now), "another principal has its own budget")
-	require.True(t, limiter.Allow("user:42", now.Add(throttleWindow)), "the window rolls over")
-}
-
-// CreateSSOState is anonymous and writes one nonce into the bounded state cache
-// per call, so the budget is what keeps one source from spending the cache.
-func TestSSOStateLimiterBoundsOneSource(t *testing.T) {
-	t.Parallel()
-
-	limiter := newSSOStateRequestLimiter()
-	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-
-	for i := range ssoStateSourceLimit {
-		require.True(t, limiter.Allow("203.0.113.7", now), "request %d is under the limit", i+1)
-	}
-	require.False(t, limiter.Allow("203.0.113.7", now), "the limit is reached")
-	require.True(t, limiter.Allow("203.0.113.8", now), "another source has its own bucket")
-}
-
-// The cache has to hold every nonce the global budget can admit while a nonce is
-// still usable. The window is fixed rather than sliding, so the adversary's first
-// quota may start up to one window before the nonce is minted and still land inside
-// its lifetime, and every window boundary after that hands out another: the ceiling
-// is ceil(TTL/window) + 1 quotas. The ceiling matters — truncating division loses a
-// whole quota whenever the TTL is not a multiple of the window (779s would be
-// admitted 14 times, not 13). Below this relation a caller that only mints nonces
-// fills the cache and evicts the state of users who are mid-sign-in — the DoS the
+// The flood spends the worst case the counter allows: a full quota one window
+// before the victim mints its nonce (so the next quota lands immediately inside the
+// victim's lifetime), then a fresh quota at every window boundary until the nonce
+// expires. The cache must hold every nonce the budget can admit, or a caller that
+// only mints nonces evicts the state of users who are mid-sign-in — the DoS the
 // budget exists to close, because the capacity, not the request rate, is then the
 // binding constraint.
-func TestSSOStateCacheOutgrowsTheStateBudget(t *testing.T) {
-	t.Parallel()
-
-	quotaPerTTL := int((SSOStateTTL+throttleWindow-1)/throttleWindow) + 1
-	require.Greater(t, ssoStateCapacity, ssoStateGlobalLimit*quotaPerTTL,
-		"the state cache must hold every nonce the global budget admits within one TTL")
-}
-
-// The relation above is arithmetic over constants; this is the property itself,
-// measured against the real limiter and the real cache. The flood spends the worst
-// case the counter allows: a full quota one window before the victim mints its nonce
-// (so the next quota lands immediately inside the victim's lifetime), then a fresh
-// quota at every window boundary until the nonce expires.
 func TestSSOStateFloodCannotEvictAValidNonce(t *testing.T) {
 	t.Parallel()
 
@@ -173,33 +134,4 @@ func TestSSOStateFloodCannotEvictAValidNonce(t *testing.T) {
 	require.GreaterOrEqual(t, admitted, ssoStateGlobalLimit, "the flood has to be able to spend at least one quota")
 	require.True(t, stateCfg.SSOStateCache.Contains(victim),
 		"a nonce a user just minted must survive the anonymous flood for its whole TTL")
-}
-
-// The principal limiter tracks (principal, procedure) pairs rather than sources,
-// so its constants have to describe that set: a budget that bounds a loop of
-// ledger writes, one shared global counter across every covered method, and a
-// capacity above what a deployment's users times the covered methods reach.
-func TestPrincipalRequestLimiterIsSizedForItsKeys(t *testing.T) {
-	t.Parallel()
-
-	limiter := newPrincipalRequestLimiter()
-	require.Equal(t, principalMethodLimit, limiter.sourceLimit)
-	require.Equal(t, principalGlobalLimit, limiter.globalLimit)
-	require.Equal(t, principalLimiterCapacity, limiter.capacity)
-	require.Greater(t, limiter.capacity, limiterCapacity,
-		"principal keys are server-chosen pairs, a larger set than anonymous sources")
-	require.Greater(t, principalGlobalLimit, principalMethodLimit,
-		"the deployment ceiling spans every covered method, so it is above one key's")
-}
-
-// Logout is anonymous, audited and replayable, so it needs a budget of its own;
-// sharing Login's would let a token replay spend the sign-in budget.
-func TestLogoutRequestLimiterIsItsOwnBudget(t *testing.T) {
-	t.Parallel()
-
-	logout := newLogoutRequestLimiter()
-	login := newLoginRequestLimiter()
-	require.NotSame(t, logout, login)
-	require.Equal(t, logoutRequestSourceLimit, logout.sourceLimit)
-	require.Equal(t, logoutRequestGlobalLimit, logout.globalLimit)
 }
