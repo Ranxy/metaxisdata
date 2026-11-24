@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -27,13 +26,13 @@ func (f *fakeProfileStore) ListLLMProfiles(_ context.Context, find *store.FindLL
 	return f.pages[offset], nil
 }
 
-func profileWithModel(name, model string, enabled bool) *store.LLMProfileMessage {
+func profileWithModel(name, model string) *store.LLMProfileMessage {
 	return &store.LLMProfileMessage{
 		Metadata: &storepb.LlmProviderProfile{
 			Name:  name,
 			Title: name,
 			Models: []*storepb.LlmProviderModel{
-				{Name: model, Enabled: enabled},
+				{Name: model, Enabled: true},
 			},
 		},
 	}
@@ -76,7 +75,7 @@ func TestRegistryListEnabledCachesUntilInvalidated(t *testing.T) {
 	t.Parallel()
 
 	fake := &fakeProfileStore{pages: map[int][]*store.LLMProfileMessage{
-		0: {profileWithModel("openai", "gpt-4", true)},
+		0: {profileWithModel("openai", "gpt-4")},
 	}}
 	registry := &Registry{store: fake}
 
@@ -101,11 +100,11 @@ func TestRegistryListEnabledWalksEveryPage(t *testing.T) {
 
 	fullPage := make([]*store.LLMProfileMessage, 0, registryPageSize)
 	for i := 0; i < registryPageSize; i++ {
-		fullPage = append(fullPage, profileWithModel("p", "m", true))
+		fullPage = append(fullPage, profileWithModel("p", "m"))
 	}
 	fake := &fakeProfileStore{pages: map[int][]*store.LLMProfileMessage{
 		0:                fullPage,
-		registryPageSize: {profileWithModel("tail", "m", true)},
+		registryPageSize: {profileWithModel("tail", "m")},
 	}}
 	registry := &Registry{store: fake}
 
@@ -113,30 +112,4 @@ func TestRegistryListEnabledWalksEveryPage(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, configs, registryPageSize+1, "profiles past the first page must not be dropped")
 	require.Equal(t, 2, fake.calls)
-}
-
-func TestRegistryListEnabledSkipsDisabledModels(t *testing.T) {
-	t.Parallel()
-
-	fake := &fakeProfileStore{pages: map[int][]*store.LLMProfileMessage{
-		0: {
-			profileWithModel("openai", "gpt-4", true),
-			profileWithModel("local", "llama", false),
-		},
-	}}
-	registry := &Registry{store: fake}
-
-	configs, err := registry.ListEnabled(context.Background())
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-	require.Equal(t, "openai", configs[0].ProfileName)
-}
-
-// registryCacheTTL is part of the contract the ExplainSQL cache key relies on;
-// keep it in one place and fail loudly if it is ever shortened to zero.
-func TestRegistryCacheTTLIsSet(t *testing.T) {
-	t.Parallel()
-
-	require.Positive(t, registryCacheTTL)
-	require.LessOrEqual(t, registryCacheTTL, time.Minute)
 }

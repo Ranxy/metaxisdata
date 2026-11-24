@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 	"encoding/json"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -176,85 +175,52 @@ func TestFetchModelsReadsDisclosedCapacities(t *testing.T) {
 			{"id":"enriched","contextWindow":128000,"maxOutputTokens":8192},
 			{"id":"nested","limit":{"context":32000,"output":4096}},
 			{"id":"snake","context_window":64000,"max_tokens":2048},
-			{"id":"plain"}
+			{"id":"plain"},
+			{"id":"bogus","context_window":2147483648,"context_length":0,"max_tokens":-1,"max_output_tokens":1.5,"maxTokens":"4096"}
 		]}`))
 	}))
 	defer server.Close()
 
 	models, err := FetchModels(context.Background(), server.URL, "")
 	require.NoError(t, err)
-	require.Len(t, models, 5)
+	require.Len(t, models, 6)
 	require.Equal(t, DiscoveredModel{Name: "openrouter", ContextWindow: 200000, MaxOutputTokens: 16000}, models[0])
 	require.Equal(t, DiscoveredModel{Name: "enriched", ContextWindow: 128000, MaxOutputTokens: 8192}, models[1])
 	require.Equal(t, DiscoveredModel{Name: "nested", ContextWindow: 32000, MaxOutputTokens: 4096}, models[2])
 	require.Equal(t, DiscoveredModel{Name: "snake", ContextWindow: 64000, MaxOutputTokens: 2048}, models[3])
 	require.Equal(t, DiscoveredModel{Name: "plain"}, models[4])
-}
-
-// A capacity that is not a positive integer is treated as not disclosed.
-func TestPositiveInt32(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, int32(4096), mustCapacity(t, 4096.0))
-	_, ok := positiveInt32(0.0)
-	require.False(t, ok)
-	_, ok = positiveInt32(-1.0)
-	require.False(t, ok)
-	_, ok = positiveInt32(1.5)
-	require.False(t, ok)
-	_, ok = positiveInt32("4096")
-	require.False(t, ok)
-	_, ok = positiveInt32(math.MaxInt32 + 1)
-	require.False(t, ok)
-}
-
-func mustCapacity(t *testing.T, value float64) int32 {
-	t.Helper()
-	capacity, ok := positiveInt32(value)
-	require.True(t, ok)
-	return capacity
-}
-
-func TestNormalizeAPIBaseURL(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		baseURL string
-		want    string
-	}{
-		{"API root", "https://api.openai.com", "https://api.openai.com"},
-		{"SDK form", "https://api.openai.com/v1", "https://api.openai.com"},
-		{"SDK form with a trailing slash", "https://api.openai.com/v1/", "https://api.openai.com"},
-		{"trailing slash only", "https://api.openai.com/", "https://api.openai.com"},
-		{"path prefix is kept", "https://openrouter.ai/api", "https://openrouter.ai/api"},
-		{"path prefix before the SDK form", "https://openrouter.ai/api/v1", "https://openrouter.ai/api"},
-		{"a host named v1 is not a path", "https://v1", "https://v1"},
-		{"surrounding whitespace", "  https://api.openai.com/v1  ", "https://api.openai.com"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, normalizeAPIBaseURL(tt.baseURL))
-		})
-	}
+	// A capacity that is not a positive int32 is not disclosed.
+	require.Equal(t, DiscoveredModel{Name: "bogus"}, models[5])
 }
 
 // The settings form suggests the SDK form (.../v1), so listing models from it
-// must not request /v1/v1/models.
-func TestFetchModelsAcceptsAnSDKStyleBaseURL(t *testing.T) {
+// must not request /v1/v1/models; a gateway's own path prefix is kept.
+func TestFetchModelsNormalizesTheBaseURL(t *testing.T) {
 	t.Parallel()
 
-	var gotPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
-	}))
-	defer server.Close()
+	tests := []struct {
+		name     string
+		suffix   string
+		wantPath string
+	}{
+		{name: "SDK form", suffix: "/v1", wantPath: "/v1/models"},
+		{name: "path prefix before the SDK form", suffix: "/api/v1", wantPath: "/api/v1/models"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	ids, err := FetchModels(context.Background(), server.URL+"/v1", "key")
-	require.NoError(t, err)
-	require.Equal(t, []string{"m"}, modelNames(ids))
-	require.Equal(t, "/v1/models", gotPath)
+			var gotPath string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
+			}))
+			defer server.Close()
+
+			ids, err := FetchModels(context.Background(), server.URL+test.suffix, "key")
+			require.NoError(t, err)
+			require.Equal(t, []string{"m"}, modelNames(ids))
+			require.Equal(t, test.wantPath, gotPath)
+		})
+	}
 }

@@ -89,42 +89,39 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	require.Equal(t, true, streamOptions["include_usage"])
 }
 
-// A caller that sets no cap uses the model's resolved budget, so the model (not
-// every caller) owns the output ceiling.
-func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
+// The output ceiling belongs to the model unless a caller sets a smaller cap, in
+// which case the caller's cap wins.
+func TestStreamRawResolvesTheOutputBudget(t *testing.T) {
 	t.Parallel()
 
-	capture := &capturedRequest{}
-	server := optionProvider(t, capture)
-
-	cfg := StreamRequest{Provider: ResolvedConfig{
-		BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096,
-	}}
-	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
-
-	body, _ := capture.snapshot(t)
-	var request map[string]any
-	require.NoError(t, json.Unmarshal(body, &request))
-	require.InDelta(t, 4096, request["max_tokens"], 1e-9)
-}
-
-// A caller's smaller cap wins over the model budget.
-func TestStreamRawKeepsTheCallerCap(t *testing.T) {
-	t.Parallel()
-
-	capture := &capturedRequest{}
-	server := optionProvider(t, capture)
-
-	cfg := StreamRequest{
-		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096},
-		MaxTokens: 512,
+	tests := []struct {
+		name      string
+		maxTokens int
+		want      int
+	}{
+		{name: "the model budget when the caller sets no cap", want: 4096},
+		{name: "the caller cap when it is smaller", maxTokens: 512, want: 512},
 	}
-	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
-	body, _ := capture.snapshot(t)
-	var request map[string]any
-	require.NoError(t, json.Unmarshal(body, &request))
-	require.InDelta(t, 512, request["max_tokens"], 1e-9)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			capture := &capturedRequest{}
+			server := optionProvider(t, capture)
+
+			cfg := StreamRequest{
+				Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096},
+				MaxTokens: test.maxTokens,
+			}
+			drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
+
+			body, _ := capture.snapshot(t)
+			var request map[string]any
+			require.NoError(t, json.Unmarshal(body, &request))
+			require.InDelta(t, test.want, request["max_tokens"], 1e-9)
+		})
+	}
 }
 
 // A caller that sets nothing sends exactly the request it sent before the

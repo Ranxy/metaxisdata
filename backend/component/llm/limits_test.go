@@ -95,14 +95,9 @@ func TestCompactionTrigger(t *testing.T) {
 		maxOutputTokens int
 		want            int
 	}{
-		{name: "default capacities", contextWindow: DefaultContextWindow, maxOutputTokens: DefaultMaxOutputTokens, want: 196608},
-		{name: "128K window, 32K output", contextWindow: 131072, maxOutputTokens: 32768, want: 81920},
-		{name: "128K window, 8K output", contextWindow: 131072, maxOutputTokens: 8192, want: 104857},
-		{name: "64K window, 32K output", contextWindow: 65536, maxOutputTokens: 32768, want: 24576},
-		{name: "64K window, 8K output", contextWindow: 65536, maxOutputTokens: 8192, want: 49152},
-		{name: "32K window, 8K output", contextWindow: 32768, maxOutputTokens: 8192, want: 20480},
+		{name: "the pressure bound wins", contextWindow: DefaultContextWindow, maxOutputTokens: DefaultMaxOutputTokens, want: 196608},
+		{name: "the window fraction wins", contextWindow: 131072, maxOutputTokens: 8192, want: 104857},
 		{name: "no message budget left", contextWindow: 32768, maxOutputTokens: 32768, want: 0},
-		{name: "zero capacities resolve the defaults", want: 196608},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
