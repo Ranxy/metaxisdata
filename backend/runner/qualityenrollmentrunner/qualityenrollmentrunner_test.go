@@ -34,33 +34,65 @@ func TestComputePriorityOrdersByValue(t *testing.T) {
 	require.Equal(t, int32(1000), capped, "the score is capped")
 }
 
-func TestAdmissionSkipsTriageWithoutAModel(t *testing.T) {
+// Admission refuses a target whose mode the agent cannot serve, before any session
+// is created: a TRIAGE target needs the suggest capability and a usable model, a
+// MONITOR target the patrol capability.
+func TestAdmissionRefusesAModeTheAgentCannotServe(t *testing.T) {
 	t.Parallel()
 
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
-		ResourceID:  "enr-1",
-		TargetGUID:  "i;d;public;t",
-		TargetType:  storepb.MetaType_TABLE,
-		DatabaseRef: "instances/i/databases/d",
-		Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
-	}}
-	runner := testRunner(fake)
-	var checked *store.QualityAgentMessage
-	runner.llmConfigured = func(_ context.Context, agent *store.QualityAgentMessage) bool {
-		checked = agent
-		return false
+	for _, tc := range []struct {
+		name            string
+		capabilities    []string
+		mode            storepb.QualityAgentSessionMode
+		llmReady        bool
+		wantLLMAsked    bool
+		wantBlockedCode string
+	}{
+		{
+			name: "triage without a model", capabilities: []string{"suggest", "patrol"},
+			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+			llmReady: false, wantLLMAsked: true, wantBlockedCode: "no-model",
+		},
+		{
+			name: "triage without the suggest capability", capabilities: []string{"patrol"},
+			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+			llmReady: true, wantBlockedCode: "capability-suggest-disabled",
+		},
+		{
+			name: "monitor without the patrol capability", capabilities: []string{"suggest"},
+			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
+			llmReady: true, wantBlockedCode: "capability-patrol-disabled",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeStore()
+			fake.agent = testAgent()
+			fake.agent.Capabilities = tc.capabilities
+			fake.candidates = []*store.QualityAgentEnrollmentMessage{{
+				ResourceID:  "enr-1",
+				TargetGUID:  "i;d;public;t",
+				TargetType:  storepb.MetaType_TABLE,
+				DatabaseRef: "instances/i/databases/d",
+				Mode:        tc.mode,
+			}}
+			runner := testRunner(fake)
+			var asked *store.QualityAgentMessage
+			runner.llmConfigured = func(_ context.Context, agent *store.QualityAgentMessage) bool {
+				asked = agent
+				return tc.llmReady
+			}
+
+			runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+
+			require.Empty(t, fake.created)
+			require.Equal(t, []string{tc.wantBlockedCode}, fake.blockedReasonValues)
+			if tc.wantLLMAsked {
+				require.NotNil(t, asked, "admission asks about the agent it is admitting for")
+				require.Equal(t, int64(7), asked.ID)
+			}
+		})
 	}
-
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-	require.NotNil(t, checked, "admission asks about the agent it is admitting for")
-	require.Equal(t, int64(7), checked.ID)
-
-	require.Empty(t, fake.created)
-	require.Equal(t, []string{"enr-1"}, fake.blockedReasons)
-	require.Equal(t, []string{"no-model"}, fake.blockedReasonValues)
 }
 
 func TestAdmissionCreatesAutomaticSession(t *testing.T) {
@@ -88,34 +120,47 @@ func TestAdmissionCreatesAutomaticSession(t *testing.T) {
 	require.Len(t, fake.linked, 1)
 }
 
-func TestAdmissionStopsAtTheHourlyCap(t *testing.T) {
+// Admission stops when any one of the agent's budgets is spent, and records the
+// reason on the candidate rows so the queue page can explain a stalled run.
+func TestAdmissionStopsAtItsBudgets(t *testing.T) {
 	t.Parallel()
 
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.createdLastHour = int(testAgent().MaxNewSessionsPerHour)
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
-	runner := testRunner(fake)
+	for _, tc := range []struct {
+		name       string
+		spend      func(*fakeStore)
+		wantReason string
+	}{
+		{
+			name:       "the hourly new-session rate",
+			spend:      func(f *fakeStore) { f.createdLastHour = int(testAgent().MaxNewSessionsPerHour) },
+			wantReason: "admission-limit",
+		},
+		{
+			name:       "the active-session budget",
+			spend:      func(f *fakeStore) { f.activeEnrollments = int(testAgent().MaxActiveSessions) },
+			wantReason: "active-limit",
+		},
+		{
+			// Half of the 100-wake hourly budget is reserved for events and people.
+			name:       "the wake budget reserved for events and people",
+			spend:      func(f *fakeStore) { f.wakesLastHour = 50 },
+			wantReason: "event-budget",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeStore()
+			fake.agent = testAgent()
+			fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
+			tc.spend(fake)
+			runner := testRunner(fake)
 
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+			runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
-	require.Empty(t, fake.created)
-	require.Equal(t, []string{"admission-limit"}, fake.blockedReasonValues)
-}
-
-func TestAdmissionStopsAtTheActiveCap(t *testing.T) {
-	t.Parallel()
-
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.activeEnrollments = int(testAgent().MaxActiveSessions)
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
-	runner := testRunner(fake)
-
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-	require.Empty(t, fake.created)
-	require.Equal(t, []string{"active-limit"}, fake.blockedReasonValues)
+			require.Empty(t, fake.created)
+			require.Equal(t, []string{tc.wantReason}, fake.blockedReasonValues)
+		})
+	}
 }
 
 func TestRequeueDueReviews(t *testing.T) {
@@ -187,15 +232,13 @@ func TestRunOnceReconcilesChangedScope(t *testing.T) {
 
 	runner.runOnce(context.Background())
 	require.Equal(t, 1, fake.reconcileCalls)
-	firstFingerprint := runner.scopeFingerprints[7]
 
 	runner.runOnce(context.Background())
 	require.Equal(t, 1, fake.reconcileCalls, "an unchanged scope is not reconciled again")
 
 	fake.scopes[7] = []string{"instances/other/databases/d"}
 	runner.runOnce(context.Background())
-	require.Equal(t, 2, fake.reconcileCalls)
-	require.NotEqual(t, firstFingerprint, runner.scopeFingerprints[7])
+	require.Equal(t, 2, fake.reconcileCalls, "a changed scope is reconciled again")
 }
 
 func TestScanDatabaseUpsertsAndMarksGone(t *testing.T) {
@@ -220,21 +263,6 @@ func TestScanDatabaseUpsertsAndMarksGone(t *testing.T) {
 	require.True(t, fake.prioritiesUpdated)
 }
 
-func TestAdmissionRespectsTheEventBudgetReserve(t *testing.T) {
-	t.Parallel()
-
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.wakesLastHour = 50
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
-	runner := testRunner(fake)
-
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-	require.Empty(t, fake.created)
-	require.Equal(t, []string{"event-budget"}, fake.blockedReasonValues)
-}
-
 func TestAdmissionClampsToTheRemainingActiveSlots(t *testing.T) {
 	t.Parallel()
 
@@ -250,24 +278,6 @@ func TestAdmissionClampsToTheRemainingActiveSlots(t *testing.T) {
 	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
 	require.Len(t, fake.created, 1, "one free active slot admits exactly one session")
-}
-
-func TestAdmissionBlocksAnAgentWithoutThePatrolCapability(t *testing.T) {
-	t.Parallel()
-
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.agent.Capabilities = []string{"suggest"}
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
-		ResourceID: "enr-1", TargetGUID: "i;d;public;t", DatabaseRef: "instances/i/databases/d",
-		Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
-	}}
-	runner := testRunner(fake)
-
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-	require.Empty(t, fake.created)
-	require.Equal(t, []string{"capability-patrol-disabled"}, fake.blockedReasonValues)
 }
 
 // testAgent is one ACTIVE agent with its merged runtime configuration and budgets.
@@ -343,7 +353,6 @@ type fakeStore struct {
 	sessionModesSet     []string
 	advancedWakes       []string
 	enabledSessions     []string
-	blockedReasons      []string
 	blockedReasonValues []string
 }
 
@@ -399,8 +408,7 @@ func (f *fakeStore) LinkQualityAgentEnrollmentSession(_ context.Context, resourc
 	f.linked = append(f.linked, resourceID)
 	return &store.QualityAgentEnrollmentMessage{ResourceID: resourceID}, true, nil
 }
-func (f *fakeStore) SetQualityAgentEnrollmentBlockedReason(_ context.Context, resourceID, reason string) error {
-	f.blockedReasons = append(f.blockedReasons, resourceID)
+func (f *fakeStore) SetQualityAgentEnrollmentBlockedReason(_ context.Context, _ string, reason string) error {
 	f.blockedReasonValues = append(f.blockedReasonValues, reason)
 	return nil
 }

@@ -164,71 +164,101 @@ func TestHostParksTheEnrollmentAfterTriage(t *testing.T) {
 		stores.enrollmentNextReview, time.Second)
 }
 
-// A session whose agent is no longer active parks without spending model tokens.
-func TestHostBlocksWhenTheAgentIsNotActive(t *testing.T) {
+// Before spending a wake the runner checks that the session may still run: the agent
+// must be active, the database still in scope, and both hourly budgets unspent. A
+// refusal parks the session with its stable code and consumes no wake.
+func TestHostParksASessionItMayNotRun(t *testing.T) {
 	t.Parallel()
 
-	stores := &fakeStore{}
-	engine := &fakeEngine{}
-	runner := testRunner(stores, engine)
-	stores.agent.State = store.QualityAgentStatePaused
+	nextHour := time.Unix(10_000, 0).UTC().Truncate(time.Hour).Add(time.Hour)
+	for _, tc := range []struct {
+		name     string
+		prepare  func(*fakeStore)
+		wantCode string
+		wantWake *time.Time
+	}{
+		{
+			name:     "the agent is not active",
+			prepare:  func(f *fakeStore) { f.agent.State = store.QualityAgentStatePaused },
+			wantCode: "agent-disabled",
+		},
+		{
+			name:     "the database left the agent's scope",
+			prepare:  func(f *fakeStore) { f.databases = []string{"instances/other/databases/d9"} },
+			wantCode: "out-of-scope",
+		},
+		{
+			name:     "the hourly token budget is spent",
+			prepare:  func(f *fakeStore) { f.tokensSpent = 2_000_000 },
+			wantCode: "token-budget",
+			wantWake: &nextHour,
+		},
+		{
+			name:     "the hourly wake budget is spent",
+			prepare:  func(f *fakeStore) { f.wakesSpent = int64(f.agent.WakesPerHour) },
+			wantCode: "wake-budget",
+			wantWake: &nextHour,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores := &fakeStore{}
+			engine := &fakeEngine{}
+			runner := testRunner(stores, engine)
+			tc.prepare(stores)
 
-	runner.host(context.Background(), testSession())
+			runner.host(context.Background(), testSession())
 
-	require.Zero(t, engine.called)
-	require.Equal(t, []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED}, stores.states)
-	require.Equal(t, []string{"agent-disabled"}, stores.blockedCodes)
-	require.Nil(t, stores.nextWakes[0])
+			require.Zero(t, engine.called)
+			require.Equal(t, []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED}, stores.states)
+			require.Equal(t, []string{tc.wantCode}, stores.blockedCodes)
+			if tc.wantWake != nil {
+				require.WithinDuration(t, *tc.wantWake, *stores.nextWakes[0], time.Second)
+				return
+			}
+			require.Nil(t, stores.nextWakes[0])
+		})
+	}
 }
 
-// The hourly token budget stops model spend before the wake starts.
-func TestHostBlocksOnTheTokenBudget(t *testing.T) {
+// A finished wake records its progress and releases the lease on the idle cadence,
+// unless an event that arrived while the wake ran makes the session due again
+// immediately.
+func TestHostSchedulesTheNextWake(t *testing.T) {
 	t.Parallel()
 
-	stores := &fakeStore{tokensSpent: 2_000_000}
-	engine := &fakeEngine{}
-	runner := testRunner(stores, engine)
+	now := time.Unix(10_000, 0).UTC()
+	for _, tc := range []struct {
+		name       string
+		pendingSeq int64
+		wantWake   time.Time
+	}{
+		{
+			name:     "nothing new wakes on the idle cadence",
+			wantWake: now.Add(dataquality.DefaultAgentRunnerIdleWakeSeconds * time.Second),
+		},
+		{
+			name:       "an event that arrived during the wake makes it due now",
+			pendingSeq: 9,
+			wantWake:   now,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores := &fakeStore{pendingInputSeq: tc.pendingSeq}
+			engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
+			runner := testRunner(stores, engine)
 
-	runner.host(context.Background(), testSession())
+			runner.host(context.Background(), testSession())
 
-	require.Zero(t, engine.called)
-	require.Equal(t, []string{"token-budget"}, stores.blockedCodes)
-	require.WithinDuration(t, time.Unix(10_000, 0).Truncate(time.Hour).Add(time.Hour), *stores.nextWakes[0], time.Second)
-}
-
-// A normal wake records its progress, then releases the lease on the idle cadence.
-func TestHostSchedulesTheIdleWake(t *testing.T) {
-	t.Parallel()
-
-	stores := &fakeStore{}
-	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
-	runner := testRunner(stores, engine)
-
-	runner.host(context.Background(), testSession())
-
-	require.Equal(t, 1, engine.called)
-	require.Len(t, stores.progress, 1)
-	require.Equal(t, int32(1), stores.progress[0].WakeCountIncrement)
-	require.Empty(t, stores.states)
-	require.Len(t, stores.releasedWakes, 1)
-	require.WithinDuration(t,
-		time.Unix(10_000, 0).Add(dataquality.DefaultAgentRunnerIdleWakeSeconds*time.Second),
-		*stores.releasedWakes[0], time.Second)
-}
-
-// An event that arrived while the wake ran is visible as a newer message seq, so the
-// session becomes due again immediately instead of sleeping for the idle cadence.
-func TestHostWakesAgainWhenAnEventArrived(t *testing.T) {
-	t.Parallel()
-
-	stores := &fakeStore{pendingInputSeq: 9}
-	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
-	runner := testRunner(stores, engine)
-
-	runner.host(context.Background(), testSession())
-
-	require.Len(t, stores.releasedWakes, 1)
-	require.WithinDuration(t, time.Unix(10_000, 0), *stores.releasedWakes[0], time.Second)
+			require.Equal(t, 1, engine.called)
+			require.Len(t, stores.progress, 1)
+			require.Equal(t, int32(1), stores.progress[0].WakeCountIncrement)
+			require.Empty(t, stores.states)
+			require.Len(t, stores.releasedWakes, 1)
+			require.WithinDuration(t, tc.wantWake, *stores.releasedWakes[0], time.Second)
+		})
+	}
 }
 
 // A blocked outcome parks the session with its stable code and no next wake.
@@ -251,22 +281,6 @@ func TestHostParksABlockedSession(t *testing.T) {
 	require.Equal(t, []string{"model-reported"}, stores.blockedCodes)
 	require.Nil(t, stores.nextWakes[0])
 	require.Empty(t, stores.releasedWakes)
-}
-
-// A removed database parks the session instead of running a wake the allowlist forbids.
-func TestHostBlocksASessionOutsideTheAllowlist(t *testing.T) {
-	t.Parallel()
-
-	stores := &fakeStore{}
-	engine := &fakeEngine{}
-	runner := testRunner(stores, engine)
-	stores.databases = []string{"instances/other/databases/d9"}
-
-	runner.host(context.Background(), testSession())
-
-	require.Zero(t, engine.called)
-	require.Equal(t, []string{"out-of-scope"}, stores.blockedCodes)
-	require.Nil(t, stores.nextWakes[0])
 }
 
 // The lease sweep's restart-limit parks are escalated to one owner attention per

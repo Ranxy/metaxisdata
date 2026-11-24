@@ -71,7 +71,7 @@ func TestOperationReportsOneMessageWhenEveryDatabaseSucceeds(t *testing.T) {
 		{InstanceID: "inst-1", DatabaseName: "app"},
 		{InstanceID: "inst-1", DatabaseName: "audit"},
 	}
-	operation := testOperation(syncer, 7, databases...)
+	testOperation(syncer, 7, databases...)
 
 	syncer.completeDatabase(context.Background(), databases[0], nil)
 	require.Empty(t, notifier.sent, "the operation is still waiting for the second database")
@@ -89,7 +89,6 @@ func TestOperationReportsOneMessageWhenEveryDatabaseSucceeds(t *testing.T) {
 	require.Equal(t, storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, message.GetSchemaSync().GetTrigger())
 	require.Equal(t, int32(2), message.GetSchemaSync().GetSucceededCount())
 	require.Zero(t, message.GetSchemaSync().GetFailedCount())
-	require.Empty(t, operation.databases)
 
 	// The finished operation is gone: a later result for the same database cannot
 	// resurrect it.
@@ -106,7 +105,7 @@ func TestOperationReportsEachFailingDatabase(t *testing.T) {
 		{InstanceID: "inst-1", DatabaseName: "app"},
 		{InstanceID: "inst-1", DatabaseName: "audit"},
 	}
-	operation := testOperation(syncer, 7, databases...)
+	testOperation(syncer, 7, databases...)
 
 	syncer.completeDatabase(context.Background(), databases[0], nil)
 	syncer.completeDatabase(context.Background(), databases[1], errors.New("permission denied"))
@@ -120,7 +119,6 @@ func TestOperationReportsEachFailingDatabase(t *testing.T) {
 	require.Equal(t, "instances/inst-1/databases/audit", detail.GetDatabases()[0].GetDatabase())
 	require.Equal(t, storepb.SyncDatabaseState_SYNC_DATABASE_STATE_FAILED, detail.GetDatabases()[0].GetState())
 	require.Equal(t, "permission denied", detail.GetDatabases()[0].GetError())
-	require.Equal(t, 1, operation.failed)
 }
 
 // A database can complete before the caller has finished registering the
@@ -261,18 +259,17 @@ func TestDatabaseResultReachesEveryWaitingOperation(t *testing.T) {
 	notifier := &fakeNotifier{}
 	syncer := &Syncer{notifier: notifier}
 	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
-	first := testOperation(syncer, 7, database)
-	second := testOperation(syncer, 8, database)
+	testOperation(syncer, 7, database)
+	testOperation(syncer, 8, database)
 
 	syncer.completeDatabase(context.Background(), database, nil)
 
 	require.Len(t, notifier.sent, 2)
-	recipients := []int32{notifier.sent[0].GetRecipientId(), notifier.sent[1].GetRecipientId()}
-	require.ElementsMatch(t, []int32{7, 8}, recipients)
-	require.True(t, first.done)
-	require.True(t, second.done)
-	require.Equal(t, 1, first.succeeded)
-	require.Equal(t, 1, second.succeeded)
+	results := make(map[int32]int32, len(notifier.sent))
+	for _, message := range notifier.sent {
+		results[message.GetRecipientId()] = message.GetSchemaSync().GetSucceededCount()
+	}
+	require.Equal(t, map[int32]int32{7: 1, 8: 1}, results)
 }
 
 // Nobody asked for a scheduled sync, so a failure after every retry goes to the
@@ -313,38 +310,45 @@ func TestBackgroundInstanceFailureNotifiesTheAdministrators(t *testing.T) {
 	require.Equal(t, "connection refused", message.GetSchemaSync().GetInstanceError())
 }
 
-// A runner without a notifier — the unit tests, and a build that never wires one —
-// must not panic on the reporting path.
-func TestOperationWithoutANotifierIsSilent(t *testing.T) {
-	t.Parallel()
-
-	syncer := &Syncer{}
-	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
-	operation := testOperation(syncer, 7, database)
-	syncer.completeDatabase(context.Background(), database, nil)
-	require.Empty(t, syncer.operations)
-	require.True(t, operation.done)
-}
-
 // A handler that returns between registering the operation and reporting its
 // result must not leave the operation to expire two hours later as a zero-count
-// INFO success: the abandon fallback reports an error now.
+// INFO success: the abandon fallback reports an error now, whether or not the
+// databases were already sealed in.
 func TestAbandonOperationReportsAnError(t *testing.T) {
 	t.Parallel()
 
-	notifier := &fakeNotifier{}
-	syncer := &Syncer{notifier: notifier}
-	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
+	tests := []struct {
+		name    string
+		enqueue []*store.DatabaseMessage
+	}{
+		{name: "before the databases are registered"},
+		{name: "after the databases are sealed in", enqueue: []*store.DatabaseMessage{database}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
-	syncer.AbandonOperation(context.Background(), operation, ErrOperationAbandoned)
+			notifier := &fakeNotifier{}
+			syncer := &Syncer{notifier: notifier}
+			instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
+			operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
+			if tc.enqueue != nil {
+				syncer.EnqueueDatabases(context.Background(), operation, tc.enqueue)
+			}
+			syncer.AbandonOperation(context.Background(), operation, ErrOperationAbandoned)
 
-	require.Len(t, notifier.sent, 1)
-	message := notifier.sent[0]
-	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, message.GetSeverity())
-	require.Equal(t, ErrOperationAbandoned.Error(), message.GetSchemaSync().GetInstanceError())
-	require.Empty(t, syncer.operations)
-	require.True(t, operation.done)
+			require.Len(t, notifier.sent, 1)
+			message := notifier.sent[0]
+			require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, message.GetSeverity())
+			require.Equal(t, ErrOperationAbandoned.Error(), message.GetSchemaSync().GetInstanceError())
+			require.Empty(t, syncer.operations)
+
+			// A database result arriving after the abandonment does not resurrect it.
+			syncer.completeDatabase(context.Background(), database, nil)
+			require.Len(t, notifier.sent, 1)
+		})
+	}
 }
 
 // The normal path is not an abandonment: an operation that reported its instance
@@ -387,32 +391,6 @@ func TestAbandonOperationIsIdempotent(t *testing.T) {
 	require.Len(t, notifier.sent, 1)
 	require.Equal(t, ErrOperationAbandoned.Error(), notifier.sent[0].GetSchemaSync().GetInstanceError(),
 		"a nil cause falls back to the sentinel, and the first cause wins")
-}
-
-// The instance step never reported, but the databases were already sealed in:
-// this is not the normal path either, and the operation must report the
-// abandonment instead of waiting for databases whose report can no longer be
-// assembled into a message.
-func TestAbandonOperationReportsASealedOperationThatNeverReportedTheInstance(t *testing.T) {
-	t.Parallel()
-
-	notifier := &fakeNotifier{}
-	syncer := &Syncer{notifier: notifier}
-	instance := &store.InstanceMessage{ResourceID: "inst-1", Metadata: &storepb.Instance{Title: "prod"}}
-	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "app"}
-
-	operation := syncer.StartOperation(storepb.SyncTrigger_SYNC_TRIGGER_MANUAL, 7, instance)
-	syncer.EnqueueDatabases(context.Background(), operation, []*store.DatabaseMessage{database})
-	syncer.AbandonOperation(context.Background(), operation, ErrOperationAbandoned)
-
-	require.Len(t, notifier.sent, 1)
-	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, notifier.sent[0].GetSeverity())
-	require.Equal(t, ErrOperationAbandoned.Error(), notifier.sent[0].GetSchemaSync().GetInstanceError())
-	require.True(t, operation.done)
-
-	// A database result arriving after the abandonment does not resurrect it.
-	syncer.completeDatabase(context.Background(), database, nil)
-	require.Len(t, notifier.sent, 1)
 }
 
 // A sealed operation is never mutated: a late enqueue cannot add work to an

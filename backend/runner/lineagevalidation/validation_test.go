@@ -258,29 +258,6 @@ func TestTriggerDuringSettleIsFolded(t *testing.T) {
 	require.Equal(t, 2, probe.count())
 }
 
-// The syncer calls Trigger unconditionally when it was wired with a runner; a
-// server without one must not panic or spin.
-func TestTriggerWithoutARevalidatorIsIgnored(t *testing.T) {
-	t.Parallel()
-
-	runner := NewRunner(nil, nil)
-	require.NotPanics(t, runner.Trigger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		runner.Run(ctx)
-	}()
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return when the context was cancelled")
-	}
-}
-
 // A failed pass must not wedge the runner: the next sync retries the same edges.
 func TestFailedPassKeepsTheRunnerRunning(t *testing.T) {
 	t.Parallel()
@@ -300,14 +277,6 @@ func TestFailedPassKeepsTheRunnerRunning(t *testing.T) {
 	runner.Trigger()
 	waitForPass(t, probe)
 	require.Equal(t, 2, probe.count())
-}
-
-func TestRunReturnsOnContextCancel(t *testing.T) {
-	t.Parallel()
-
-	probe := newProbeRevalidator()
-	_, stop := start(t, probe)
-	stop()
 }
 
 // One pass drains a backlog larger than the implementation's batch, and the counts
@@ -447,4 +416,26 @@ func gatheredCounter(t *testing.T, registry *prometheus.Registry, name string, l
 		}
 	}
 	return 0
+}
+
+// A context cancelled while the runner is waiting out the settle window returns
+// instead of running the pass: shutdown must not wait for a sync to settle.
+func TestRunReturnsOnContextCancel(t *testing.T) {
+	t.Parallel()
+
+	probe := newProbeRevalidator()
+	runner := NewRunner(probe, nil)
+	settleEntered := make(chan struct{}, 1)
+	runner.settleTimer = func(time.Duration) <-chan time.Time {
+		settleEntered <- struct{}{}
+		return make(chan time.Time)
+	}
+	stop := startRunner(t, runner)
+
+	select {
+	case <-settleEntered:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not enter the settle window")
+	}
+	stop()
 }

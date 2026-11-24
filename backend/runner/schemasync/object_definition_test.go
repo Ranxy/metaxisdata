@@ -101,34 +101,8 @@ func TestMetaObjectName(t *testing.T) {
 	}
 }
 
-func TestSupportsObjectDefinition(t *testing.T) {
-	t.Parallel()
-
-	for _, objectType := range []storepb.MetaType{
-		storepb.MetaType_TABLE,
-		storepb.MetaType_VIEW,
-		storepb.MetaType_MATERIALIZED_VIEW,
-		storepb.MetaType_FUNCTION,
-		storepb.MetaType_PROCEDURE,
-	} {
-		require.True(t, supportsObjectDefinition(objectType), objectType.String())
-	}
-	// A column has no definition of its own, and the database/schema rows carry
-	// attributes rather than DDL.
-	for _, objectType := range []storepb.MetaType{
-		storepb.MetaType_UNSPECIFIED,
-		storepb.MetaType_DATABASE,
-		storepb.MetaType_SCHEMA,
-		storepb.MetaType_COLUMN,
-		storepb.MetaType_SEQUENCE,
-		storepb.MetaType_EXTERNAL_TABLE,
-		storepb.MetaType_MANUAL_SQL,
-	} {
-		require.False(t, supportsObjectDefinition(objectType), objectType.String())
-	}
-}
-
-// A full fetch covers every schema-bearing object, and objects with no
+// A full fetch covers every schema-bearing object — functions and procedures
+// included, so a MySQL-family driver can opt in later — and objects with no
 // definition of their own are never candidates.
 func TestPlanDefinitionFetchFiltersNonDefinitionTypes(t *testing.T) {
 	t.Parallel()
@@ -138,6 +112,8 @@ func TestPlanDefinitionFetchFiltersNonDefinitionTypes(t *testing.T) {
 			tableResource("t1"),
 			viewResource("v1"),
 			materializedViewResource("mv1"),
+			registryResource("f1", storepb.MetaType_FUNCTION, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: &storepb.FunctionMetadata{Name: "f1"}}}),
+			registryResource("p1", storepb.MetaType_PROCEDURE, &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ProcedureMetadata{ProcedureMetadata: &storepb.ProcedureMetadata{Name: "p1"}}}),
 			columnResource("c1"),
 			databaseResource(),
 			schemaResource(),
@@ -147,7 +123,7 @@ func TestPlanDefinitionFetchFiltersNonDefinitionTypes(t *testing.T) {
 	plan := bmc.planDefinitionFetch(true, 0)
 	require.True(t, plan.full)
 	require.False(t, plan.rotating)
-	require.Len(t, plan.items, 3)
+	require.Len(t, plan.items, 5)
 	types := make(map[storepb.MetaType]int)
 	for _, item := range plan.items {
 		types[item.ObjectType]++
@@ -156,6 +132,8 @@ func TestPlanDefinitionFetchFiltersNonDefinitionTypes(t *testing.T) {
 		storepb.MetaType_TABLE:             1,
 		storepb.MetaType_VIEW:              1,
 		storepb.MetaType_MATERIALIZED_VIEW: 1,
+		storepb.MetaType_FUNCTION:          1,
+		storepb.MetaType_PROCEDURE:         1,
 	}, types)
 }
 

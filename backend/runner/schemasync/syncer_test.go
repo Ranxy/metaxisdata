@@ -36,41 +36,21 @@ func buildTableMeta(name string, columns ...string) *storepb.StoredMetadata {
 	}
 }
 
-func TestConvertMetadataToGUID(t *testing.T) {
-	t.Parallel()
-
-	databaseMeta := &storepb.StoredMetadata{
-		Type: &storepb.StoredMetadata_DatabaseSchemaMetadata{DatabaseSchemaMetadata: &storepb.DatabaseSchemaMetadata{Name: "db1"}},
-	}
-	tableMeta := buildTableMeta("users", "id", "name")
-
-	guid, err := convertMetadataToGUID("inst1", storepb.MetaType_DATABASE, databaseMeta)
-	require.NoError(t, err)
-	require.Equal(t, buildGUID("inst1", "db1"), guid)
-
-	prefix := buildGUID("inst1", "db1", "public")
-	guid, err = convertMetadataToGUID(prefix, storepb.MetaType_TABLE, tableMeta)
-	require.NoError(t, err)
-	require.Equal(t, buildGUID(prefix, "users"), guid)
-
-	children := getChildMetadataResources(guid, storepb.MetaType_TABLE, tableMeta)
-	require.Len(t, children, 2)
-	require.Equal(t, []string{buildGUID(prefix, "users", "id"), buildGUID(prefix, "users", "name")}, []string{children[0].GUID, children[1].GUID})
-	require.Equal(t, "id", children[0].Metadata.GetColumnMetadata().Name)
-	require.Equal(t, "name", children[1].Metadata.GetColumnMetadata().Name)
-
-	_, err = convertMetadataToGUID("inst1", storepb.MetaType_COLUMN, &storepb.StoredMetadata{})
-	require.Error(t, err)
-}
-
-func TestBatchMetaCreateStoreMetaResourceTable(t *testing.T) {
+// The snapshot a sync builds: a root object and its children name their own GUIDs,
+// and an object type with no name mapping is an error rather than a row with an
+// empty GUID.
+func TestBatchMetaCreateStoreMetaResource(t *testing.T) {
 	t.Parallel()
 
 	b := &batchMetaCreate{}
+	databaseMeta := &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_DatabaseSchemaMetadata{DatabaseSchemaMetadata: &storepb.DatabaseSchemaMetadata{Name: "db1"}},
+	}
+	require.NoError(t, b.StoreMetaResource(context.Background(), "inst1", storepb.MetaType_DATABASE, databaseMeta))
+
 	prefix := buildGUID("inst1", "db1", "public")
-	err := b.StoreMetaResource(context.Background(), prefix, storepb.MetaType_TABLE, buildTableMeta("users", "id", "name"))
-	require.NoError(t, err)
-	require.Len(t, b.guidList, 3)
+	require.NoError(t, b.StoreMetaResource(context.Background(), prefix, storepb.MetaType_TABLE, buildTableMeta("users", "id", "name")))
+	require.Len(t, b.guidList, 4)
 
 	got := map[string]storepb.MetaType{}
 	gotMeta := map[string]*storepb.StoredMetadata{}
@@ -79,11 +59,15 @@ func TestBatchMetaCreateStoreMetaResourceTable(t *testing.T) {
 		gotMeta[item.GUID] = item.Metadata
 	}
 
+	require.Equal(t, storepb.MetaType_DATABASE, got[buildGUID("inst1", "db1")])
 	require.Equal(t, storepb.MetaType_TABLE, got[buildGUID(prefix, "users")])
 	require.Equal(t, storepb.MetaType_COLUMN, got[buildGUID(prefix, "users", "id")])
 	require.Equal(t, storepb.MetaType_COLUMN, got[buildGUID(prefix, "users", "name")])
 	require.Equal(t, "id", gotMeta[buildGUID(prefix, "users", "id")].GetColumnMetadata().Name)
 	require.Equal(t, "name", gotMeta[buildGUID(prefix, "users", "name")].GetColumnMetadata().Name)
+
+	err := b.StoreMetaResource(context.Background(), "inst1", storepb.MetaType_COLUMN, &storepb.StoredMetadata{})
+	require.Error(t, err)
 }
 
 func buildTableMetaWithStats(name string, rowCount, dataSize, indexSize, dataFree int64, columns ...string) *storepb.StoredMetadata {
@@ -172,35 +156,6 @@ func TestBatchMetaCreateDiff(t *testing.T) {
 	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), deletes[0].GUID)
 }
 
-// The write transaction must not compute anything: prepare() computes the diff
-// and populates the update/delete sets, and write() only persists them. Moving
-// the diff back inside the transaction would put it back across the snapshot's
-// network round trips.
-func TestBatchMetaCreatePreparePopulatesDiff(t *testing.T) {
-	t.Parallel()
-
-	unchangedMeta := buildTableMeta("orders", "id")
-	_, unchangedHash, err := store.CalcStoreMetaHash(unchangedMeta)
-	require.NoError(t, err)
-
-	batch := &batchMetaCreate{
-		exist: []*store.MetaRegistryResource{
-			{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, MetaHash: unchangedHash},
-			{GUID: buildGUID("inst", "db", "public", "legacy"), ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("legacy-hash")},
-		},
-		guidList: []*store.CreateMetaRegistryResourceMessage{
-			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, Metadata: unchangedMeta}},
-			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "products"), ObjectType: storepb.MetaType_TABLE, Metadata: buildTableMeta("products", "id")}},
-		},
-	}
-
-	require.NoError(t, batch.prepare())
-	require.Len(t, batch.updates, 1)
-	require.Equal(t, buildGUID("inst", "db", "public", "products"), batch.updates[0].GUID)
-	require.Len(t, batch.deletes, 1)
-	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), batch.deletes[0].GUID)
-}
-
 func TestGetOrDefaultSyncInterval(t *testing.T) {
 	t.Parallel()
 
@@ -248,27 +203,35 @@ func TestGetOrDefaultSyncInterval(t *testing.T) {
 	}
 }
 
-// A deactivated instance reports a zero sync interval, which means "never sync".
-// The scheduling predicate must reject it even though lastSyncTime.Add(0) is
-// never after now, otherwise every tick re-queues all of its databases.
-func TestShouldSyncNowRejectsNeverSyncInterval(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	require.False(t, shouldSyncNow(defaultSyncInterval, time.Unix(0, 0), now))
-	require.False(t, shouldSyncNow(defaultSyncInterval, now.Add(-time.Hour), now))
-}
-
-func TestShouldSyncNowRespectsInterval(t *testing.T) {
+// A resource is due once its interval has elapsed since its last successful
+// sync. A zero interval means "never sync" and must be rejected explicitly:
+// lastSyncTime.Add(0) is never after now, so a deactivated instance would
+// otherwise re-queue all of its databases on every tick.
+func TestShouldSyncNowRespectsIntervalAndRejectsNeverSync(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
 	const interval = 15 * time.Minute
 
-	require.True(t, shouldSyncNow(interval, time.Unix(0, 0), now), "never synced resource is due")
-	require.False(t, shouldSyncNow(interval, now.Add(-time.Minute), now), "recently synced resource is not due")
-	require.True(t, shouldSyncNow(interval, now.Add(-interval), now), "resource synced exactly one interval ago is due")
-	require.True(t, shouldSyncNow(interval, now.Add(-2*interval), now), "stale resource is due")
+	tests := []struct {
+		name         string
+		interval     time.Duration
+		lastSyncTime time.Time
+		want         bool
+	}{
+		{name: "never synced is due", interval: interval, lastSyncTime: time.Unix(0, 0), want: true},
+		{name: "recently synced is not due", interval: interval, lastSyncTime: now.Add(-time.Minute)},
+		{name: "synced exactly one interval ago is due", interval: interval, lastSyncTime: now.Add(-interval), want: true},
+		{name: "stale is due", interval: interval, lastSyncTime: now.Add(-2 * interval), want: true},
+		{name: "a never-sync interval is never due", interval: defaultSyncInterval, lastSyncTime: time.Unix(0, 0)},
+		{name: "a never-sync interval stays not due after an old sync", interval: defaultSyncInterval, lastSyncTime: now.Add(-time.Hour)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, shouldSyncNow(tc.interval, tc.lastSyncTime, now))
+		})
+	}
 }
 
 func TestGetOrDefaultLastSyncTime(t *testing.T) {
@@ -401,17 +364,9 @@ func TestDatabaseSyncGateSerializesOneDatabase(t *testing.T) {
 	gate.finish("inst-1;db2", other, nil)
 }
 
-// A nil database is nothing to sync; the store being nil proves the check runs
-// before anything dereferences the message.
-func TestSyncDatabaseSchemaIgnoresNilDatabase(t *testing.T) {
-	t.Parallel()
-
-	syncer := &Syncer{}
-	require.NoError(t, syncer.SyncDatabaseSchema(context.Background(), nil))
-}
-
 // A joiner reuses the running sync's outcome, including its error, without
-// touching the store itself.
+// touching the store itself. The failure is published while the entry is still in
+// flight, so the join is deterministic rather than a race with the owner.
 func TestSyncDatabaseSchemaJoinerReusesTheOwnerResult(t *testing.T) {
 	t.Parallel()
 
@@ -419,11 +374,8 @@ func TestSyncDatabaseSchemaJoinerReusesTheOwnerResult(t *testing.T) {
 	database := &store.DatabaseMessage{InstanceID: "inst-1", DatabaseName: "db1"}
 	call, owner := syncer.databaseSyncGate.acquire(database.String())
 	require.True(t, owner)
-
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		syncer.databaseSyncGate.finish(database.String(), call, errors.New("owner failed"))
-	}()
+	call.err = errors.New("owner failed")
+	close(call.done)
 
 	require.EqualError(t, syncer.SyncDatabaseSchema(context.Background(), database), "owner failed")
 }
@@ -825,8 +777,34 @@ func TestSchemaSyncFailureReason(t *testing.T) {
 	require.Equal(t, metrics.FailureReasonOther, schemaSyncFailureReason(common.Errorf(common.Internal, "internal")))
 }
 
-// The committed-write counter is per object type: the diff merges created and
-// updated rows, so one map entry per type is what gets reported.
+// prepare computes the diff and wraps its error message before the write
+// transaction opens; a changed row is an update and a vanished row a delete.
+func TestBatchMetaCreatePreparePopulatesDiff(t *testing.T) {
+	t.Parallel()
+
+	unchangedMeta := buildTableMeta("orders", "id")
+	_, unchangedHash, err := store.CalcStoreMetaHash(unchangedMeta)
+	require.NoError(t, err)
+
+	batch := &batchMetaCreate{
+		exist: []*store.MetaRegistryResource{
+			{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, MetaHash: unchangedHash},
+			{GUID: buildGUID("inst", "db", "public", "legacy"), ObjectType: storepb.MetaType_TABLE, MetaHash: []byte("legacy-hash")},
+		},
+		guidList: []*store.CreateMetaRegistryResourceMessage{
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "orders"), ObjectType: storepb.MetaType_TABLE, Metadata: unchangedMeta}},
+			{MetaRegistryResource: store.MetaRegistryResource{GUID: buildGUID("inst", "db", "public", "products"), ObjectType: storepb.MetaType_TABLE, Metadata: buildTableMeta("products", "id")}},
+		},
+	}
+
+	require.NoError(t, batch.prepare())
+	require.Len(t, batch.updates, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "products"), batch.updates[0].GUID)
+	require.Len(t, batch.deletes, 1)
+	require.Equal(t, buildGUID("inst", "db", "public", "legacy"), batch.deletes[0].GUID)
+}
+
+// The per-type counters a committed sync records come from this tally.
 func TestCountMetaResourcesByType(t *testing.T) {
 	t.Parallel()
 

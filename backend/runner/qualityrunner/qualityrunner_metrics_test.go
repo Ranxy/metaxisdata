@@ -12,36 +12,12 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// TestRuleExecutionTypeFallsBackFromSnapshotToHead pins the label derivation for
-// the per-rule funnel: an execution that failed before its snapshot was read still
-// names its type from the due scan's head row, and only a manual run with neither
-// falls back to unspecified.
-func TestRuleExecutionTypeFallsBackFromSnapshotToHead(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		ruleExecutionType(&ruleExecution{
-			snapshot: &dataquality.RuleSnapshot{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
-			head:     &store.QualityRuleMessage{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE},
-		}),
-		"the executed snapshot wins over the mutable head")
-	require.Equal(t,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		ruleExecutionType(&ruleExecution{head: &store.QualityRuleMessage{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE}}),
-		"a failed snapshot read falls back to the head's rule type")
-	require.Equal(t,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED,
-		ruleExecutionType(&ruleExecution{}),
-		"a manual run has neither snapshot nor head")
-	require.Equal(t,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED,
-		ruleExecutionType(nil))
-}
-
 // TestObserveRuleExecutionRecordsOneAttemptPerResult pins the funnel's labels and
-// values: one execution counter, one duration observation and, only when the result
-// carries a code, one error counter.
+// values: every written result costs one execution counter and one duration
+// observation, and an ERROR result also costs one error counter under its code. The
+// rule-type label is the type the execution was judged with: the snapshot when it
+// was read, the due scan's head row when the snapshot read failed, and unspecified
+// for a manual run that has neither.
 func TestObserveRuleExecutionRecordsOneAttemptPerResult(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +32,7 @@ func TestObserveRuleExecutionRecordsOneAttemptPerResult(t *testing.T) {
 			DurationMS: 250,
 		},
 		snapshot: &dataquality.RuleSnapshot{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
+		head:     &store.QualityRuleMessage{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE},
 	})
 	runner.observeRuleExecution(&ruleExecution{
 		result: &store.QualityExecutionMessage{
@@ -65,11 +42,18 @@ func TestObserveRuleExecutionRecordsOneAttemptPerResult(t *testing.T) {
 		},
 		head: &store.QualityRuleMessage{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE},
 	})
+	runner.observeRuleExecution(&ruleExecution{
+		result: &store.QualityExecutionMessage{
+			Status: storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		},
+	})
 
+	// The executed snapshot wins over the mutable head row.
 	require.Equal(t, 1.0, gatheredQualityCounter(t, registry, "metaxisdata_quality_rule_executions_total", map[string]string{
 		"rule_type": "row_count",
 		"status":    "fail",
 	}))
+	// A failed snapshot read labels the attempt from the head.
 	require.Equal(t, 1.0, gatheredQualityCounter(t, registry, "metaxisdata_quality_rule_executions_total", map[string]string{
 		"rule_type": "unique",
 		"status":    "error",
@@ -78,16 +62,20 @@ func TestObserveRuleExecutionRecordsOneAttemptPerResult(t *testing.T) {
 		"rule_type":  "unique",
 		"error_code": "timeout",
 	}))
-	require.Equal(t, uint64(2), gatheredQualityHistogramCount(t, registry, "metaxisdata_quality_rule_execution_duration_seconds", map[string]string{
+	// A manual run has neither snapshot nor head, so its label is unspecified.
+	require.Equal(t, 1.0, gatheredQualityCounter(t, registry, "metaxisdata_quality_rule_executions_total", map[string]string{
+		"rule_type": "unspecified",
+		"status":    "skipped",
+	}))
+	require.Equal(t, uint64(3), gatheredQualityHistogramCount(t, registry, "metaxisdata_quality_rule_execution_duration_seconds", map[string]string{
 		"rule_type": "row_count",
 	})+
 		gatheredQualityHistogramCount(t, registry, "metaxisdata_quality_rule_execution_duration_seconds", map[string]string{
 			"rule_type": "unique",
+		})+
+		gatheredQualityHistogramCount(t, registry, "metaxisdata_quality_rule_execution_duration_seconds", map[string]string{
+			"rule_type": "unspecified",
 		}))
-
-	// Nothing to record: no panic and no extra series.
-	runner.observeRuleExecution(nil)
-	runner.observeRuleExecution(&ruleExecution{})
 }
 
 // gatheredQualityCounter returns one counter's value matched on its full label

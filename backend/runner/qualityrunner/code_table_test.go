@@ -19,12 +19,23 @@ func TestCodeTableResourceID(t *testing.T) {
 	require.Empty(t, codeTableResourceID("workspaces/ws1/qualityRules/abc123"))
 }
 
-func TestBatchCodeTablesReadsOncePerReference(t *testing.T) {
+// A batch reads each referenced code table once: several standard-code checks on one
+// table share the read, a rule without a reference costs none, and a failed read is
+// retried instead of cached as an unavailable table.
+func TestBatchCodeTablesReadsEachReferenceOnce(t *testing.T) {
 	t.Parallel()
 
 	calls := 0
-	cache := newBatchCodeTables(func(_ context.Context, _ string) ([]string, error) {
+	brokenCalls := 0
+	cache := newBatchCodeTables(func(_ context.Context, reference string) ([]string, error) {
 		calls++
+		if reference == "workspaces/ws1/qualityCodeTables/broken" {
+			brokenCalls++
+			if brokenCalls == 1 {
+				return nil, errors.New("store unavailable")
+			}
+			return []string{"A"}, nil
+		}
 		return []string{"A", "B"}, nil
 	})
 
@@ -34,32 +45,19 @@ func TestBatchCodeTablesReadsOncePerReference(t *testing.T) {
 	second, err := cache.forRule(context.Background(), "workspaces/ws1/qualityCodeTables/t1")
 	require.NoError(t, err)
 	require.Equal(t, first, second)
-	require.Equal(t, 1, calls)
+	require.Equal(t, 1, calls, "a second rule on the same table reuses the cached values")
 
 	empty, err := cache.forRule(context.Background(), "")
 	require.NoError(t, err)
 	require.Empty(t, empty)
 	require.Equal(t, 1, calls, "a rule without a reference costs no read")
-}
 
-func TestBatchCodeTablesDoesNotCacheErrors(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-	cache := newBatchCodeTables(func(_ context.Context, _ string) ([]string, error) {
-		calls++
-		if calls == 1 {
-			return nil, errors.New("store unavailable")
-		}
-		return []string{"A"}, nil
-	})
-
-	_, err := cache.forRule(context.Background(), "workspaces/ws1/qualityCodeTables/t1")
+	_, err = cache.forRule(context.Background(), "workspaces/ws1/qualityCodeTables/broken")
 	require.Error(t, err)
-	values, err := cache.forRule(context.Background(), "workspaces/ws1/qualityCodeTables/t1")
+	values, err := cache.forRule(context.Background(), "workspaces/ws1/qualityCodeTables/broken")
 	require.NoError(t, err)
 	require.Equal(t, []string{"A"}, values)
-	require.Equal(t, 2, calls)
+	require.Equal(t, 3, calls, "a failed read is retried instead of cached")
 }
 
 func TestCodeTableReference(t *testing.T) {

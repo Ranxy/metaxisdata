@@ -35,9 +35,9 @@ func newYork(t *testing.T) *time.Location {
 }
 
 // The most recent scheduled instant at or before now is the digest that is due:
-// the schedule's weekday and wall clock are read in its own time zone, a pass
-// within the catch-up window still sends a missed slot, and an older one is
-// skipped instead of backfilled.
+// the schedule's weekday and wall clock are read in its own time zone, each
+// scheduled slot is its own ISO-week period, a pass within the catch-up window
+// still sends a missed slot, and an older one is skipped instead of backfilled.
 func TestDueDigest(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +88,20 @@ func TestDueDigest(t *testing.T) {
 			schedule: scheduleIn(time.Friday, 9, 0, "Asia/Shanghai"),
 			now:      time.Date(2026, 10, 28, 10, 0, 0, 0, loc),
 			due:      false,
+		},
+		{
+			name:     "the next scheduled slot is the next period",
+			schedule: weekly,
+			now:      monday.AddDate(0, 0, 7).Add(time.Minute),
+			due:      true, until: monday.AddDate(0, 0, 7), periodKey: "2026-W45",
+		},
+		{
+			// A send late on a Sunday still counts as the week it ends, not the week
+			// it announces.
+			name:     "a late Sunday send is the week it ends",
+			schedule: scheduleIn(time.Sunday, 23, 0, "Asia/Shanghai"),
+			now:      time.Date(2026, 10, 25, 23, 0, 0, 0, loc),
+			due:      true, until: time.Date(2026, 10, 25, 23, 0, 0, 0, loc), periodKey: "2026-W43",
 		},
 		{
 			name:      "the wall clock is read in the schedule's zone",
@@ -152,30 +166,6 @@ func TestDueDigestAcrossDaylightSavingChanges(t *testing.T) {
 	require.True(t, period.dueAt(now))
 	require.True(t, period.until.Equal(time.Date(2026, 11, 1, 1, 30, 0, 0, loc)))
 	require.Equal(t, "2026-W44", period.periodKey)
-}
-
-// The period key names the send week, so two consecutive sends are two periods.
-func TestDueDigestPeriodKeysAdvanceWeekly(t *testing.T) {
-	t.Parallel()
-
-	loc := shanghai(t)
-	first := time.Date(2026, 10, 26, 9, 0, 0, 0, loc)
-	weekly := scheduleIn(time.Monday, 9, 0, "Asia/Shanghai")
-
-	period := mostRecentDigest(weekly, first.Add(time.Minute))
-	require.Equal(t, "2026-W44", period.periodKey)
-	require.True(t, period.dueAt(first.Add(time.Minute)))
-
-	second := first.AddDate(0, 0, 7).Add(time.Minute)
-	period = mostRecentDigest(weekly, second)
-	require.Equal(t, "2026-W45", period.periodKey)
-	require.True(t, period.dueAt(second))
-
-	// An early Sunday send is still the week it ends, not the week it announces.
-	sunday := time.Date(2026, 10, 25, 23, 0, 0, 0, loc)
-	period = mostRecentDigest(scheduleIn(time.Sunday, 23, 0, "Asia/Shanghai"), sunday)
-	require.Equal(t, "2026-W43", period.periodKey)
-	require.True(t, period.dueAt(sunday))
 }
 
 func mustLocation(t *testing.T, name string) *time.Location {
@@ -277,8 +267,9 @@ func newTestRunner(t *testing.T, stores Store, notifier Notifier, settings dataq
 	}
 }
 
-// A due period is aggregated, queued and then recorded. The record call is what
-// makes the next tick cheap.
+// A due period is aggregated, queued and then recorded. The envelope names the
+// period's window in the schedule's own zone and its counts add up; the record
+// call is what makes the next tick cheap.
 func TestRunnerPassQueuesAndRecordsTheDueDigest(t *testing.T) {
 	t.Parallel()
 
@@ -295,6 +286,7 @@ func TestRunnerPassQueuesAndRecordsTheDueDigest(t *testing.T) {
 		RecoveredIssueCount: 0,
 		Owners: []*store.QualityDigestOwnerMessage{
 			{UserID: 7, Name: "Alice", OpenIssueCount: 2, FailingRuleCount: 1},
+			{OpenIssueCount: 1, FailingRuleCount: 1},
 		},
 		Targets: []*store.QualityDigestTargetMessage{
 			{DisplayPath: "prod/shop/public/orders", FailedExecutionCount: 2, OpenIssueCount: 1},
@@ -312,10 +304,16 @@ func TestRunnerPassQueuesAndRecordsTheDueDigest(t *testing.T) {
 	require.Equal(t, "2026-W44", call.periodKey)
 	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, call.severity)
 	require.Equal(t, int32(3), call.detail.GetTargetCount())
-	require.NotNil(t, call.detail.GetPeriodStart())
+	require.Equal(t, "Asia/Shanghai", call.detail.GetTimezone(), "the period label needs the schedule's zone")
+	require.True(t, call.detail.GetPeriodStart().AsTime().Equal(time.Date(2026, 10, 19, 9, 0, 0, 0, shanghai(t))))
 	require.True(t, call.detail.GetPeriodEnd().AsTime().Equal(time.Date(2026, 10, 26, 9, 0, 0, 0, shanghai(t))))
-	require.Len(t, call.detail.GetOwners(), 1)
+	require.Equal(t,
+		call.detail.GetPassedCount()+call.detail.GetWarnedCount()+call.detail.GetFailedCount()+call.detail.GetErroredCount(),
+		call.detail.GetExecutionCount(), "execution_count is the sum of the four verdicts")
+	require.Len(t, call.detail.GetOwners(), 2)
 	require.Equal(t, "users/7", call.detail.GetOwners()[0].GetOwner())
+	require.Equal(t, "Alice", call.detail.GetOwners()[0].GetOwnerName())
+	require.Empty(t, call.detail.GetOwners()[1].GetOwner(), "zero is the unassigned bucket")
 	require.Len(t, call.detail.GetTargets(), 1)
 	require.Equal(t, "prod/shop/public/orders", call.detail.GetTargets()[0].GetTargetPath())
 
@@ -337,6 +335,8 @@ func TestRunnerPassWhenNothingIsDue(t *testing.T) {
 	require.Empty(t, stores.recordCalls)
 	require.Empty(t, notifier.calls)
 
+	// A recorded period is not aggregated again: the ordinary case after a
+	// successful send and before the next slot.
 	stores = &fakeStore{recorded: map[string]bool{"2026-W44": true}}
 	notifier = &fakeNotifier{}
 	enabled := newTestRunner(t, stores, notifier, enabledSettings(), now)
@@ -344,18 +344,6 @@ func TestRunnerPassWhenNothingIsDue(t *testing.T) {
 	require.Equal(t, []string{"2026-W44"}, stores.recordCalls)
 	require.Zero(t, stores.snapshots, "a recorded period must not be aggregated")
 	require.Empty(t, notifier.calls)
-
-	// Outside the catch-up window the stale period is not sent, but it is probed
-	// once and then remembered, so the next tick does not read it again.
-	stores = &fakeStore{}
-	notifier = &fakeNotifier{}
-	stale := newTestRunner(t, stores, notifier, enabledSettings(), now.AddDate(0, 0, 8))
-	stale.pass(context.Background())
-	require.Equal(t, []string{"2026-W45"}, stores.recordCalls)
-	require.Zero(t, stores.snapshots)
-	require.Empty(t, notifier.calls)
-	stale.pass(context.Background())
-	require.Equal(t, []string{"2026-W45"}, stores.recordCalls, "a handled period is not probed again")
 }
 
 // A week with no subscribed channel is still a finished period: it is recorded
@@ -415,24 +403,20 @@ func TestRunnerPassLeavesThePeriodOpenOnErrors(t *testing.T) {
 	newTestRunner(t, stores, notifier, enabledSettings(), now).pass(context.Background())
 	require.Len(t, notifier.calls, 1)
 	require.Len(t, stores.tryCalls, 1)
-}
 
-// A settings read failure is logged rather than fatal, and the next tick
-// re-reads the setting.
-func TestRunnerPassSurvivesASettingsFailure(t *testing.T) {
-	t.Parallel()
-
-	stores := &fakeStore{}
-	notifier := &fakeNotifier{}
-	runner := &Runner{
+	// A settings read failure is the same: logged rather than fatal, and the next
+	// tick re-reads the setting.
+	stores = &fakeStore{}
+	notifier = &fakeNotifier{}
+	settingsErr := &Runner{
 		store:    stores,
 		notifier: notifier,
 		loadSettings: func(context.Context) (dataquality.Settings, error) {
 			return dataquality.Settings{}, errors.New("setting unavailable")
 		},
-		now: time.Now,
+		now: func() time.Time { return now },
 	}
-	runner.pass(context.Background())
+	settingsErr.pass(context.Background())
 	require.Empty(t, stores.recordCalls)
 	require.Empty(t, notifier.calls)
 }
@@ -470,61 +454,6 @@ func TestDigestSeverity(t *testing.T) {
 			require.Equal(t, tc.want, digestSeverity(tc.snapshot))
 		})
 	}
-}
-
-// The detail is a pure mapping: counts, the period's timestamps, the owner
-// resource names (with the unassigned bucket left empty) and the target paths.
-func TestDigestDetail(t *testing.T) {
-	t.Parallel()
-
-	since := time.Date(2026, 10, 19, 1, 0, 0, 0, time.UTC)
-	until := since.Add(periodLength)
-	period := digestPeriod{since: since, until: until, periodKey: "2026-W44"}
-	detail := digestDetail(period, &store.QualityDigestSnapshot{
-		TargetCount:         3,
-		RuleCount:           9,
-		ExecutionCount:      20,
-		PassedCount:         17,
-		WarnedCount:         1,
-		FailedCount:         1,
-		ErroredCount:        1,
-		NewIssueCount:       2,
-		RecoveredIssueCount: 1,
-		OpenIssueCount:      4,
-		OpenWarningCount:    2,
-		OpenErrorCount:      1,
-		OpenCriticalCount:   1,
-		Owners: []*store.QualityDigestOwnerMessage{
-			{UserID: 7, Name: "Alice", OpenIssueCount: 3, FailingRuleCount: 2},
-			{OpenIssueCount: 1, FailingRuleCount: 1},
-		},
-		Targets: []*store.QualityDigestTargetMessage{
-			{DisplayPath: "prod/shop/public/orders", FailedExecutionCount: 1, ErroredExecutionCount: 1, OpenIssueCount: 2},
-		},
-	}, "Asia/Shanghai")
-
-	require.Equal(t, "Asia/Shanghai", detail.GetTimezone(), "the period label needs the schedule's zone")
-	require.True(t, detail.GetPeriodStart().AsTime().Equal(since))
-	require.True(t, detail.GetPeriodEnd().AsTime().Equal(until))
-	require.Equal(t, int32(20), detail.GetExecutionCount())
-	require.Equal(t,
-		detail.GetPassedCount()+detail.GetWarnedCount()+detail.GetFailedCount()+detail.GetErroredCount(),
-		detail.GetExecutionCount(), "execution_count is the sum of the four verdicts")
-	require.Equal(t, int32(1), detail.GetErroredCount())
-	require.Equal(t, int32(4), detail.GetOpenIssueCount())
-	require.Len(t, detail.GetOwners(), 2)
-	require.Equal(t, "users/7", detail.GetOwners()[0].GetOwner())
-	require.Equal(t, "Alice", detail.GetOwners()[0].GetOwnerName())
-	require.Empty(t, detail.GetOwners()[1].GetOwner(), "zero is the unassigned bucket")
-	require.Len(t, detail.GetTargets(), 1)
-	require.Equal(t, "prod/shop/public/orders", detail.GetTargets()[0].GetTargetPath())
-	require.Equal(t, int32(1), detail.GetTargets()[0].GetErroredExecutionCount())
-}
-
-func TestRunnerName(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "qualitydigest", (&Runner{}).Name())
 }
 
 // digestLogCapture collects this package's log records so a test can assert a

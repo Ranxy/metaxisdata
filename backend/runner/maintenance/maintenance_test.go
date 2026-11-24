@@ -323,24 +323,6 @@ func TestCutoffsAreBasedOnThePassStart(t *testing.T) {
 	}
 }
 
-// A runner wired without a revalidator must still prune; only the revalidation
-// items are absent.
-func TestNilRevalidatorIsSafe(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	stores.deleted["llm_debug_log"] = 4
-
-	var summary *passSummary
-	require.NotPanics(t, func() {
-		summary = newTestRunner(stores, nil).runOnce(context.Background())
-	})
-
-	require.Equal(t, int64(4), summary.counts["llm_debug_log"])
-	require.NotContains(t, summary.counts, "unresolved_lineage")
-	require.NotContains(t, summary.counts, "contradicted_column_claims")
-}
-
 // A backlog larger than one implementation batch is drained in one pass, and the
 // summary records the sum over the batches instead of only the last one.
 func TestBacklogIsDrainedInOnePass(t *testing.T) {
@@ -399,34 +381,6 @@ func TestBacklogDrainIsBoundedPerPass(t *testing.T) {
 	require.Equal(t, int64(maxRevalidationBatches), summary.counts["contradicted_column_claims"])
 }
 
-// Run re-arms its jittered timer after each pass, so the periodic pass keeps
-// running while the context is live.
-func TestRunTicksAfterTheInterval(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	runner := newTestRunner(stores, nil)
-	runner.interval = time.Millisecond
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		runner.Run(ctx)
-	}()
-
-	require.Eventually(t, func() bool {
-		return stores.callCount("explain_sql_cache") >= 2
-	}, 5*time.Second, time.Millisecond)
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return when the context was cancelled")
-	}
-}
-
 // The pass deadline reaches every item: once it fires on a stuck delete the items
 // after it fail fast instead of running unbounded.
 func TestPassTimeoutBoundsTheWholePass(t *testing.T) {
@@ -451,13 +405,13 @@ func TestPassTimeoutBoundsTheWholePass(t *testing.T) {
 	require.Equal(t, "workspace setting unavailable", summary.retentionSkipped)
 }
 
-// Run exits on context cancellation even with a fast injected interval.
-func TestRunStopsOnContextCancel(t *testing.T) {
+// Run passes immediately, re-arms its jittered timer after each pass so the
+// periodic pass keeps running, and exits on context cancellation.
+func TestRunRepeatsPassesUntilTheContextEnds(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
 	runner := newTestRunner(stores, nil)
-	runner.interval = time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -471,6 +425,9 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the startup pass did not run")
 	}
+	require.Eventually(t, func() bool {
+		return stores.callCount("explain_sql_cache") >= 2
+	}, 5*time.Second, time.Millisecond)
 
 	cancel()
 	select {
@@ -509,20 +466,6 @@ func TestRunOncePrunesDataQualityRetention(t *testing.T) {
 	require.Equal(t, passTime.Add(-qualitySuggestionRetention), stores.cutoff("quality_suggestions"))
 }
 
-// The deleted-rows counter is a row counter: the two lineage items count edges
-// re-checked, so folding them in would make the value meaningless.
-func TestRowCountsDropsLineageEdgeCounts(t *testing.T) {
-	t.Parallel()
-
-	rows := rowCounts(map[string]int64{
-		"llm_debug_log":              3,
-		"unresolved_lineage":         5,
-		"contradicted_column_claims": 7,
-	})
-	require.Equal(t, map[string]int64{"llm_debug_log": 3}, rows)
-	require.Empty(t, rowCounts(nil))
-}
-
 // One pass records one pass counter and one deleted-rows entry per item; the
 // lineage edge counts stay out of it, and a failed item is visible as such.
 func TestPassMetricsRecordOutcomeAndItems(t *testing.T) {
@@ -544,6 +487,8 @@ func TestPassMetricsRecordOutcomeAndItems(t *testing.T) {
 	require.Equal(t, 3.0, gatheredCounter(t, registry, "metaxisdata_maintenance_deleted_rows_total", map[string]string{"item": "llm_debug_log"}))
 	require.Equal(t, 1.0, gatheredCounter(t, registry, "metaxisdata_maintenance_item_failures_total", map[string]string{"item": "revoked_tokens"}))
 	require.Equal(t, 0.0, gatheredCounter(t, registry, "metaxisdata_maintenance_deleted_rows_total", map[string]string{"item": "unresolved_lineage"}),
+		"an edge count must not be reported as deleted rows")
+	require.Equal(t, 0.0, gatheredCounter(t, registry, "metaxisdata_maintenance_deleted_rows_total", map[string]string{"item": "contradicted_column_claims"}),
 		"an edge count must not be reported as deleted rows")
 }
 

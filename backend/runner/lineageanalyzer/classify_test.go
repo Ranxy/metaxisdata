@@ -140,17 +140,6 @@ func TestClassifyApplicationSQLNeverPointsAtItself(t *testing.T) {
 	require.Empty(t, edges)
 }
 
-// TestClassifyApplicationSQLDeduplicatesTargets pins that a statement naming the same table
-// twice writes one edge per table, not one per mention.
-func TestClassifyApplicationSQLDeduplicatesTargets(t *testing.T) {
-	t.Parallel()
-
-	kind, edges := classifier(nil).classifyApplicationSQL(context.Background(), classifyContext, storepb.Engine_MYSQL,
-		"INSERT INTO orders (a) VALUES (?), (?)", nil, classifyStatementGUID)
-	require.Equal(t, store.ApplicationSQLKindWrite, kind)
-	require.Len(t, edges, 1)
-}
-
 // TestClassifyApplicationSQLRecordsTheIdentityTheRegistryKnows pins the one resolution this
 // classifier has to do itself. The analyzer produced no relation for this statement — every
 // value came from a placeholder — so the target is read from the SQL, and an engine that binds

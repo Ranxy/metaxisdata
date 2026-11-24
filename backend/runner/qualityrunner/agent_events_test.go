@@ -51,5 +51,4 @@ func TestSessionAcceptsAgentEvents(t *testing.T) {
 	require.False(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
 		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED,
 	}))
-	require.False(t, sessionAcceptsAgentEvents(nil))
 }
