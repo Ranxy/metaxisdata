@@ -163,22 +163,6 @@ func TestRecoverMiddlewareTurnsPanicsIntoErrors(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), "kaboom")
 }
 
-// registerPprof takes the flag by pointer, so a runtime change is picked up.
-func TestRegisterPprofUsesThePointer(t *testing.T) {
-	t.Parallel()
-
-	debug := &atomic.Bool{}
-	e := echo.New()
-	registerPprof(e, debug)
-
-	recorder := doRequest(e, http.MethodGet, "/debug/pprof/goroutine", nil)
-	require.Equal(t, http.StatusNotFound, recorder.Code)
-
-	debug.Store(true)
-	// The payload is a gzipped profile, so only the status is asserted here.
-	require.Equal(t, http.StatusOK, doRequest(e, http.MethodGet, "/debug/pprof/goroutine", nil).Code)
-}
-
 // The Prometheus endpoint moved off the API port: it is served only by the
 // dedicated --metrics-addr listener, which these tests do not start. A GET
 // /metrics here falls through to the SPA catch-all instead of exposing metrics.

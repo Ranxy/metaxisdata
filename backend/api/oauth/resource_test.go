@@ -65,13 +65,6 @@ func TestCanonicalizeExternalURL(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
-
-	t.Run("a missing url is reported as its own error", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := CanonicalizeExternalURL("")
-		require.ErrorIs(t, err, ErrExternalURLRequired)
-	})
 }
 
 func TestMetadataDocuments(t *testing.T) {

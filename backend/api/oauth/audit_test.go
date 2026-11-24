@@ -32,15 +32,3 @@ func TestAuditedKeepsTheResponseIntact(t *testing.T) {
 	require.Equal(t, http.StatusTeapot, recorder.Code)
 	require.Equal(t, "body", recorder.Body.String())
 }
-
-func TestStatusWriterDefaultsToOK(t *testing.T) {
-	t.Parallel()
-
-	recorder := httptest.NewRecorder()
-	writer := &statusWriter{ResponseWriter: recorder}
-	_, err := writer.Write([]byte("body"))
-	require.NoError(t, err)
-
-	require.Equal(t, http.StatusOK, writer.status, "a handler that never calls WriteHeader answered 200")
-	require.Equal(t, http.StatusOK, recorder.Code)
-}

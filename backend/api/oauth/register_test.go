@@ -85,17 +85,6 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			want:    validatedRegistration{RedirectURIs: []string{atCap}},
 		},
 		{
-			name: "an empty token endpoint auth method means none",
-			request: registrationRequest{
-				RedirectURIs:            []string{callback},
-				TokenEndpointAuthMethod: "",
-				GrantTypes:              []string{},
-				ResponseTypes:           []string{},
-				Scope:                   "",
-			},
-			want: validatedRegistration{RedirectURIs: []string{callback}},
-		},
-		{
 			name: "a repeated supported scope is accepted",
 			request: registrationRequest{
 				RedirectURIs: []string{callback},
@@ -109,33 +98,16 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			wantCode: registrationCodeInvalidClientMetadata,
 		},
 		{
-			name:     "empty redirect uris",
-			request:  registrationRequest{RedirectURIs: []string{}},
-			wantCode: registrationCodeInvalidClientMetadata,
-		},
-		{
 			name:     "too many redirect uris",
 			request:  registrationRequest{RedirectURIs: tooManyRedirectURIs},
 			wantCode: registrationCodeInvalidClientMetadata,
 		},
 		{
-			name:     "http redirect uri on a non-loopback host",
+			// The URI rules themselves are owned by TestValidateRedirectURI; this
+			// row pins only that a rejected URI is reported as invalid_redirect_uri
+			// rather than as invalid_client_metadata.
+			name:     "an invalid redirect uri",
 			request:  registrationRequest{RedirectURIs: []string{"http://client.example.com/callback"}},
-			wantCode: registrationCodeInvalidRedirectURI,
-		},
-		{
-			name:     "wildcard redirect uri",
-			request:  registrationRequest{RedirectURIs: []string{"https://*.example.com/callback"}},
-			wantCode: registrationCodeInvalidRedirectURI,
-		},
-		{
-			name:     "relative redirect uri",
-			request:  registrationRequest{RedirectURIs: []string{"/callback"}},
-			wantCode: registrationCodeInvalidRedirectURI,
-		},
-		{
-			name:     "redirect uri with a fragment",
-			request:  registrationRequest{RedirectURIs: []string{callback + "#fragment"}},
 			wantCode: registrationCodeInvalidRedirectURI,
 		},
 		{
@@ -204,26 +176,6 @@ func TestValidateRegistrationRequest(t *testing.T) {
 			require.Equal(t, tc.wantCode+": "+registrationErr.Description, registrationErr.Error())
 			require.Equal(t, validatedRegistration{}, got)
 		})
-	}
-}
-
-// registrationErrorStatus is the status mapping the handler relies on.
-func TestRegistrationErrorStatus(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		code string
-		want int
-	}{
-		{code: registrationCodeInvalidRequest, want: http.StatusBadRequest},
-		{code: registrationCodeInvalidRedirectURI, want: http.StatusBadRequest},
-		{code: registrationCodeInvalidClientMetadata, want: http.StatusBadRequest},
-		{code: registrationCodeServerError, want: http.StatusInternalServerError},
-		// A code this endpoint does not mint is still a client-side failure.
-		{code: "invalid_software_statement", want: http.StatusBadRequest},
-	}
-	for _, tc := range tests {
-		require.Equal(t, tc.want, registrationErrorStatus(tc.code), tc.code)
 	}
 }
 

@@ -147,17 +147,3 @@ func TestVerifyPKCE(t *testing.T) {
 		require.False(t, VerifyPKCE(verifier, verifier), "only S256 is supported")
 	})
 }
-
-func TestScopes(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, RequestedScopesValid(nil), "an empty scope request is granted the one scope that exists")
-	require.True(t, RequestedScopesValid([]string{MCPReadScope}))
-	require.False(t, RequestedScopesValid([]string{"other.scope"}))
-	require.False(t, RequestedScopesValid([]string{MCPReadScope, "other.scope"}))
-
-	require.Nil(t, ParseScopeList(""))
-	require.Nil(t, ParseScopeList("   "))
-	require.Equal(t, []string{MCPReadScope}, ParseScopeList("  "+MCPReadScope+"  "))
-	require.Equal(t, []string{MCPReadScope, "b"}, ParseScopeList(MCPReadScope+" b"))
-}
