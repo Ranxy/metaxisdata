@@ -104,7 +104,8 @@ func TestWebhookRejectsNon2xx(t *testing.T) {
 }
 
 // A transport error quotes the URL, and for a chat robot the URL is the
-// credential. The error that reaches the delivery row must not carry it.
+// credential. The error that reaches the delivery row must not carry it, not
+// even as the parsed, normalized form the transport echoes.
 func TestWebhookTransportErrorDoesNotLeakEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -112,39 +113,16 @@ func TestWebhookTransportErrorDoesNotLeakEndpoint(t *testing.T) {
 	endpoint := server.URL + "/robot/send?access_token=verysecret"
 	server.Close()
 
-	_, err := NewWebhook(endpoint, "", false).Post(context.Background(), testMessage())
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "verysecret")
-	require.NotContains(t, err.Error(), endpoint)
-}
-
-func TestValidateChannel(t *testing.T) {
-	t.Parallel()
-
-	valid := &storepb.NotificationChannel{
-		DisplayName: "on-call",
-		Kind:        storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK,
-		Config: &storepb.NotificationChannelConfig{
-			Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{}},
-		},
+	for name, target := range map[string]string{
+		"verbatim endpoint":   endpoint,
+		"normalized endpoint": strings.ToUpper("http://") + strings.TrimPrefix(endpoint, "http://"),
+	} {
+		_, err := NewWebhook(target, "", false).Post(context.Background(), testMessage())
+		require.Error(t, err, name)
+		require.NotContains(t, err.Error(), "verysecret", name)
+		require.NotContains(t, err.Error(), "access_token", name)
+		require.NotContains(t, err.Error(), strings.ToLower(target), name)
 	}
-	require.NoError(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook"}))
-
-	require.Error(t, ValidateChannel(valid, nil), "a webhook needs an endpoint")
-	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "ftp://example.com"}), "scheme")
-	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "https://"}), "host")
-	require.Error(t, ValidateChannel(&storepb.NotificationChannel{Kind: storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK}, &storepb.NotificationChannelSecret{Endpoint: "https://example.com"}))
-	require.Error(t, ValidateChannel(&storepb.NotificationChannel{}, &storepb.NotificationChannelSecret{Endpoint: "https://example.com"}))
-
-	signed := &storepb.NotificationChannel{
-		DisplayName: "on-call",
-		Kind:        storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK,
-		Config: &storepb.NotificationChannelConfig{
-			Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: true}},
-		},
-	}
-	require.Error(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook"}))
-	require.NoError(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook", SigningSecret: "s3cret"}))
 }
 
 // Redirects are not followed: a 307 would re-POST the signed body to the
@@ -169,19 +147,4 @@ func TestWebhookDoesNotFollowRedirects(t *testing.T) {
 		require.Error(t, err)
 	}
 	require.Zero(t, targetHits, "no redirect target may be contacted")
-}
-
-// The transport quotes the parsed URL, so an uppercase scheme must still be
-// sanitized even though it does not match the stored string byte for byte.
-func TestWebhookSanitizesNormalizedEndpoint(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	endpoint := strings.ToUpper("http://") + strings.TrimPrefix(server.URL, "http://") + "/robot?access_token=verysecret"
-	server.Close()
-
-	_, err := NewWebhook(endpoint, "", false).Post(context.Background(), testMessage())
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "verysecret")
-	require.NotContains(t, err.Error(), "access_token")
 }

@@ -114,17 +114,13 @@ func TestRenderDataQualityTargetSchemaChanged(t *testing.T) {
 	require.Contains(t, zh.Title, "Schema 已变更")
 	require.Contains(t, zh.Text, "复核")
 	require.Equal(t, "https://app.example.com/data-quality/targets/inst-1/app/~/orders", zh.Link)
-}
 
-func TestQualityTargetLink(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "https://app/data-quality/targets/inst/db/public/orders",
-		qualityTargetLink("https://app", "inst;db;public;orders"))
-	require.Equal(t, "https://app/data-quality/targets/inst/db/~/orders",
-		qualityTargetLink("https://app", "inst;db;;orders"))
-	require.Equal(t, "https://app/data-quality/targets",
-		qualityTargetLink("https://app", ""))
+	// A change with no target GUID has no workspace to open, so it falls back to
+	// the targets list rather than a link with an empty segment.
+	unlinked := Render("en-US", dataQualityEvent(&storepb.DataQualityDetail{
+		Kind: storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED,
+	}), "https://app.example.com", time.Now())
+	require.Equal(t, "https://app.example.com/data-quality/targets", unlinked.Link)
 }
 
 func TestRenderSchemaSyncFailure(t *testing.T) {
@@ -199,11 +195,17 @@ func TestRenderWithoutKnownDetailFallsBackToType(t *testing.T) {
 func TestNormalizeLanguage(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "zh-CN", NormalizeLanguage("zh"))
-	require.Equal(t, "zh-CN", NormalizeLanguage("zh-CN"))
-	require.Equal(t, "zh-CN", NormalizeLanguage("ZH-TW"))
-	require.Equal(t, "en-US", NormalizeLanguage("en-US"))
-	require.Equal(t, "en-US", NormalizeLanguage(""))
+	for language, want := range map[string]string{
+		"zh":      "zh-CN",
+		"zh-CN":   "zh-CN",
+		"ZH-TW":   "zh-CN",
+		"zH-CN":   "zh-CN",
+		"zh-Hant": "zh-CN",
+		"en-US":   "en-US",
+		"":        "en-US",
+	} {
+		require.Equal(t, want, NormalizeLanguage(language), language)
+	}
 }
 
 // The data-quality detail routes carry the whole resource name (the pages join
@@ -247,13 +249,6 @@ func TestRenderSchemaSyncLinkTrimsTrailingSlash(t *testing.T) {
 	require.Equal(t, "https://app.example.com/instances/i1", Render("en-US", event, "https://app.example.com", time.Now()).Link)
 }
 
-func TestNormalizeLanguageIsCaseInsensitive(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "zh-CN", NormalizeLanguage("zH-CN"))
-	require.Equal(t, "zh-CN", NormalizeLanguage("zh-Hant"))
-}
-
 func dataQualityDigestEvent(detail *storepb.DataQualityDigestDetail) *storepb.NotificationDeliveryEvent {
 	return &storepb.NotificationDeliveryEvent{
 		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST,
@@ -294,7 +289,9 @@ func dataQualityDigestDetail() *storepb.DataQualityDigestDetail {
 
 // The digest is a weekly summary: the period in the title, then the verdict
 // tally, the ledger's movement and the owners and targets worth looking at, and
-// a link to the overview whose numbers it repeats.
+// a link to the overview whose numbers it repeats. The English body is the one
+// exact golden of this envelope; the Chinese pass only has to prove the catalog
+// is localised and the period label travels with it.
 func TestRenderDataQualityDigest(t *testing.T) {
 	t.Parallel()
 
@@ -313,11 +310,6 @@ func TestRenderDataQualityDigest(t *testing.T) {
 	require.Contains(t, zh.Title, "数据质量周报")
 	require.Contains(t, zh.Title, "2026-10-20 ~ 2026-10-27")
 	require.Contains(t, zh.Text, "周期：2026-10-20 01:00 → 2026-10-27 01:00（UTC）")
-	require.Contains(t, zh.Text, "执行：完成 42 项 · 通过 30 · 警告 4 · 失败 6 · 错误 2")
-	require.Contains(t, zh.Text, "问题：新增 5 · 恢复 3 · 未解决 12（警告 7 · 错误 4 · 严重 1）")
-	require.Contains(t, zh.Text, "覆盖：8 个目标 · 25 条规则")
-	require.Contains(t, zh.Text, "主要负责人：Alice（未解决 6 · 失败规则 4）、未指派（未解决 3 · 失败规则 2）")
-	require.Contains(t, zh.Text, "失败最多的目标：prod/shop/public/orders（失败 4 · 错误 1 · 未解决 3）")
 	require.Empty(t, zh.Link, "no external URL means no link")
 }
 

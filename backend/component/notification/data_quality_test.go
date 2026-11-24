@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -32,15 +33,9 @@ func TestDataQualityMessageCarriesTypeSeverityAndDetail(t *testing.T) {
 
 	require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY, message.GetType())
 	require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR, message.GetSeverity())
-	require.NotNil(t, message.GetDataQuality())
-	require.Equal(t, detail.GetKind(), message.GetDataQuality().GetKind())
-	require.Equal(t, "workspaces/ws/qualityRules/rule1", message.GetDataQuality().GetRule())
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, message.GetDataQuality().GetToStatus())
-	require.Equal(t, int64(42), message.GetDataQuality().GetFailedRows())
-	require.Equal(t, int64(100), message.GetDataQuality().GetTotalRows())
-	require.Equal(t, "workspaces/ws/qualityIssues/issue1", message.GetDataQuality().GetIssue())
-	require.Equal(t, "workspaces/ws/qualityExecutions/101", message.GetDataQuality().GetExecution())
-	require.Empty(t, message.GetDataQuality().GetInstance())
+	// The client renders the stored detail, so a field the envelope forgets to copy
+	// goes missing from every inbox row: the detail must arrive unchanged.
+	require.True(t, proto.Equal(detail, message.GetDataQuality()))
 	// The envelope has no recipient: the runner chooses the owner or the admins.
 	require.Zero(t, message.GetRecipientId())
 }
@@ -59,14 +54,9 @@ func TestDataQualityMessageBoundsTextPayload(t *testing.T) {
 	})
 	require.Len(t, message.GetDataQuality().GetTargetPath(), MaxErrorBytes)
 	require.Len(t, message.GetDataQuality().GetErrorCode(), MaxErrorBytes)
-}
-
-func TestDataQualityMessageWithoutDetail(t *testing.T) {
-	t.Parallel()
-
-	message := DataQualityMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil)
-	require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY, message.GetType())
-	require.Nil(t, message.GetDataQuality())
+	// A missing detail stays missing instead of becoming an empty one the client
+	// would render as a real event.
+	require.Nil(t, DataQualityMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil).GetDataQuality())
 }
 
 func TestDataQualityDedupeKeyBucketsWithinTheWindow(t *testing.T) {

@@ -142,9 +142,11 @@ func TestValidateQuietHoursSetting(t *testing.T) {
 		"window without days":   quietSetting(recurringWindow(nil, "22:00", "08:00")),
 		"invalid day":           quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek(9)}, "22:00", "08:00")),
 		"invalid start":         quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "24:00", "08:00")),
+		"loose clock":           quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "5:30", "08:00")),
 		"same start and end":    quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "22:00", "22:00")),
 		"maintenance no end":    {Enabled: true, Timezone: "UTC", MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.Now()}}},
 		"maintenance backwards": {Enabled: true, Timezone: "UTC", MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.New(time.Now().Add(time.Hour)), End: timestamppb.New(time.Now())}}},
+		"maintenance too long":  {Enabled: true, Timezone: "UTC", MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.New(time.Now()), End: timestamppb.New(time.Now().Add(31 * 24 * time.Hour))}}},
 	}
 	for name, setting := range tests {
 		require.Error(t, ValidateQuietHoursSetting(setting), name)
@@ -154,6 +156,13 @@ func TestValidateQuietHoursSetting(t *testing.T) {
 		Enabled:            true,
 		Timezone:           "UTC",
 		MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.New(time.Now()), End: timestamppb.New(time.Now().Add(time.Hour))}},
+	}))
+	// A typo cannot hold alerting for a month, but a long window under the cap is
+	// accepted: the bound is the duration.
+	require.NoError(t, ValidateQuietHoursSetting(&storepb.QuietHoursSetting{
+		Enabled:            true,
+		Timezone:           "UTC",
+		MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.New(time.Now()), End: timestamppb.New(time.Now().Add(29 * 24 * time.Hour))}},
 	}))
 }
 
@@ -223,35 +232,4 @@ func TestQuietUntilOverlappingWindowsUseTheLatestEnd(t *testing.T) {
 	until, quiet := QuietUntil(now, setting)
 	require.True(t, quiet)
 	require.Equal(t, time.Date(2025, 1, 6, 23, 30, 0, 0, location), until.In(location))
-}
-
-// A typo cannot hold alerting for a month: a maintenance window is bounded.
-func TestValidateQuietHoursSettingCapsMaintenanceDuration(t *testing.T) {
-	t.Parallel()
-
-	long := &storepb.QuietHoursSetting{
-		Enabled:  true,
-		Timezone: "UTC",
-		MaintenanceWindows: []*storepb.MaintenanceWindow{{
-			Start: timestamppb.New(time.Now()),
-			End:   timestamppb.New(time.Now().Add(31 * 24 * time.Hour)),
-		}},
-	}
-	require.Error(t, ValidateQuietHoursSetting(long))
-	require.NoError(t, ValidateQuietHoursSetting(&storepb.QuietHoursSetting{
-		Enabled:  true,
-		Timezone: "UTC",
-		MaintenanceWindows: []*storepb.MaintenanceWindow{{
-			Start: timestamppb.New(time.Now()),
-			End:   timestamppb.New(time.Now().Add(29 * 24 * time.Hour)),
-		}},
-	}))
-}
-
-// The clock is "HH:MM", not "H:M".
-func TestValidateQuietHoursSettingRejectsLooseClock(t *testing.T) {
-	t.Parallel()
-
-	setting := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "5:30", "08:00"))
-	require.Error(t, ValidateQuietHoursSetting(setting))
 }

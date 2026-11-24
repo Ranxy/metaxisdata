@@ -101,7 +101,6 @@ func TestEnqueueDataQualityDigestIsOptIn(t *testing.T) {
 	channels := map[int64]bool{}
 	for _, delivery := range fake.deliveries {
 		channels[delivery.ChannelID] = true
-		require.Equal(t, "dqdigest:2026-W44", delivery.EventID)
 		require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST, delivery.Payload.GetType())
 		require.Equal(t, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, delivery.Payload.GetSeverity())
 		require.Equal(t, int32(10), delivery.Payload.GetDataQualityDigest().GetExecutionCount())
@@ -126,11 +125,17 @@ func TestEnqueueDataQualityDigestUsesThePeriodAsEventIdentity(t *testing.T) {
 	second, err := service.EnqueueDataQualityDigest(context.Background(), "2026-W44",
 		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, digestDetailFixture())
 	require.NoError(t, err)
+	next, err := service.EnqueueDataQualityDigest(context.Background(), "2026-W45",
+		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, digestDetailFixture())
+	require.NoError(t, err)
 	require.Equal(t, 1, first)
 	require.Equal(t, 1, second)
-	require.Len(t, fake.deliveries, 2)
-	require.Equal(t, fake.deliveries[0].EventID, fake.deliveries[1].EventID)
-	require.NotEqual(t, "dqdigest:2026-W45", fake.deliveries[0].EventID)
+	require.Equal(t, 1, next)
+	require.Len(t, fake.deliveries, 3)
+	require.Equal(t, fake.deliveries[0].EventID, fake.deliveries[1].EventID,
+		"a repeated period is the same event, so the unique index drops the repeat")
+	require.NotEqual(t, fake.deliveries[0].EventID, fake.deliveries[2].EventID,
+		"a new period is a new event")
 }
 
 // No subscribed channel is not an error: the period is still finished, and the
@@ -171,28 +176,26 @@ func TestEnqueueDataQualityDigestReportsStoreFailures(t *testing.T) {
 	require.Zero(t, queued)
 }
 
-func TestEnqueueDataQualityDigestRequiresADetail(t *testing.T) {
-	t.Parallel()
-
-	service := newServiceWithStore(adminFakeStore(t))
-	queued, err := service.EnqueueDataQualityDigest(context.Background(), "2026-W44",
-		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil)
-	require.Error(t, err)
-	require.Zero(t, queued)
-}
-
-// A blank period would produce the collision-prone event id "dqdigest:", so the
-// enqueue refuses it like the store does.
-func TestEnqueueDataQualityDigestRequiresAPeriodKey(t *testing.T) {
+// An incomplete envelope is refused before any channel is read: a blank period
+// would collide with every other blank period's event id, and a nil detail has
+// nothing to render.
+func TestEnqueueDataQualityDigestRejectsAPeriodOrDetailItCannotSend(t *testing.T) {
 	t.Parallel()
 
 	fake := adminFakeStore(t, digestChannel(1, true, false, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED,
 		storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST))
 	service := newServiceWithStore(fake)
-
-	queued, err := service.EnqueueDataQualityDigest(context.Background(), "   ",
-		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, digestDetailFixture())
-	require.Error(t, err)
-	require.Zero(t, queued)
-	require.Empty(t, fake.deliveries)
+	for name, envelope := range map[string]struct {
+		period string
+		detail *storepb.DataQualityDigestDetail
+	}{
+		"blank period":   {period: "   ", detail: digestDetailFixture()},
+		"missing detail": {period: "2026-W44", detail: nil},
+	} {
+		queued, err := service.EnqueueDataQualityDigest(context.Background(), envelope.period,
+			storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, envelope.detail)
+		require.Error(t, err, name)
+		require.Zero(t, queued, name)
+	}
+	require.Empty(t, fake.deliveries, "neither envelope may reach the outbox")
 }

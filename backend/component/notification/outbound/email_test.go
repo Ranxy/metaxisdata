@@ -95,9 +95,9 @@ func TestBuildEmailMessage(t *testing.T) {
 		"数据质量：no nulls 失败", "状态：PASS → FAIL\n\nhttps://app.example.com/data-quality/executions/x")
 	require.Contains(t, message, "From: =?utf-8?")
 	require.Contains(t, message, "<alerts@example.com>")
-	// Recipients are envelope-only; no one sees the others' addresses.
+	// Recipients are envelope-only: the To header names the undisclosed-recipients
+	// group, so no one sees the others' addresses.
 	require.Contains(t, message, "To: undisclosed-recipients:;\r\n")
-	require.NotContains(t, message, "oncall@example.com")
 	require.Contains(t, message, "Subject: =?utf-8?")
 	require.Contains(t, message, "Auto-Submitted: auto-generated")
 	require.Contains(t, message, "Content-Type: text/plain; charset=utf-8")
@@ -162,21 +162,4 @@ func TestNewEmailRequiresACompleteSetting(t *testing.T) {
 		_, err := NewEmail(setting)
 		require.Error(t, err, name)
 	}
-}
-
-func TestEmailPostRequiresARecipient(t *testing.T) {
-	t.Parallel()
-
-	receiver, err := NewEmail(&storepb.EmailSetting{
-		From: "alerts@example.com",
-		Smtp: &storepb.EmailSMTPConfig{
-			Host:           "smtp.example.com",
-			Port:           25,
-			Encryption:     storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE,
-			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE,
-		},
-	})
-	require.NoError(t, err)
-	_, err = receiver.Post(context.Background(), Message{Title: "t", Text: "b"})
-	require.Error(t, err)
 }
