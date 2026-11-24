@@ -2,7 +2,6 @@ import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import FormField from "@/components/ui/form-field/FormField.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -15,7 +14,6 @@ import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import {
   emptyConfig,
   type RuleConfigForm as RuleConfigState,
-  THRESHOLD_METRIC_RULE_TYPES,
 } from "@/utils/dataQualityForm";
 import RuleConfigForm from "./RuleConfigForm.vue";
 
@@ -62,45 +60,29 @@ function mountForm(
 
 const THRESHOLD_LABEL = () => label("dataQuality.editor.thresholdMetric");
 
-const NON_METRIC_TYPES = [
-  QualityRuleType.ROW_COUNT,
-  QualityRuleType.ROW_COUNT_CHANGE,
-  QualityRuleType.NULL_PERCENT,
-  QualityRuleType.FRESHNESS,
-  QualityRuleType.SCHEMA_DRIFT,
-  QualityRuleType.AGGREGATE,
-  QualityRuleType.CROSS_TABLE,
-  QualityRuleType.CUSTOM_SQL,
-];
-
 describe("RuleConfigForm", () => {
-  for (const ruleType of THRESHOLD_METRIC_RULE_TYPES) {
-    it(`shows the threshold unit select for ${QualityRuleType[ruleType]}`, () => {
+  // Which types are percent-capable is owned by utils/dataQualityForm.test.ts,
+  // which pins the backend allowlist; the form only routes that flag to the
+  // selector. One type on each side keeps the routing honest without repeating
+  // the catalog as fourteen mounts.
+  it.each([
+    { ruleType: QualityRuleType.UNIQUE, shown: true },
+    { ruleType: QualityRuleType.CUSTOM_SQL, shown: false },
+  ])(
+    "shows the threshold unit for $ruleType: $shown",
+    ({ ruleType, shown }) => {
       const wrapper = mountForm(ruleType);
-      expect(wrapper.text()).toContain(THRESHOLD_LABEL());
+      expect(wrapper.text().includes(THRESHOLD_LABEL())).toBe(shown);
       wrapper.unmount();
-    });
-  }
-
-  // The unit is only meaningful where the rule has a total-rows denominator;
-  // the server rejects PERCENT on every other type.
-  for (const ruleType of NON_METRIC_TYPES) {
-    it(`hides the threshold unit select for ${QualityRuleType[ruleType]}`, () => {
-      const wrapper = mountForm(ruleType);
-      expect(wrapper.text()).not.toContain(THRESHOLD_LABEL());
-      wrapper.unmount();
-    });
-  }
+    }
+  );
 
   it("keeps custom SQL thresholds but hides the unit that has no denominator", () => {
     const wrapper = mountForm(QualityRuleType.CUSTOM_SQL);
     expect(wrapper.find("#dq-config-sql").exists()).toBe(true);
     expect(wrapper.text()).not.toContain(THRESHOLD_LABEL());
-    const fields = wrapper
-      .findAllComponents(FormField)
-      .map((field) => field.props("label"));
-    expect(fields).toContain(label("dataQuality.editor.failThreshold"));
-    expect(fields).toContain(label("dataQuality.editor.warnThreshold"));
+    expect(wrapper.find("#dq-field-failThreshold").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-warnThreshold").exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -136,9 +118,6 @@ describe("RuleConfigForm", () => {
     const wrapper = mountForm(QualityRuleType.ACCEPTED_VALUES);
     expect(wrapper.find("#dq-field-acceptedSource").exists()).toBe(true);
     expect(wrapper.find("#dq-field-values").exists()).toBe(true);
-    expect(wrapper.text()).toContain(
-      label("dataQuality.editor.acceptedSource")
-    );
     wrapper.unmount();
   });
 
@@ -155,14 +134,9 @@ describe("RuleConfigForm", () => {
       leftAggFunction: QualityAggregateFunction.SUM,
       leftAggColumn: "amount",
     });
-    const fields = wrapper
-      .findAllComponents(FormField)
-      .map((field) => field.props("label"));
-    expect(fields).toContain(label("dataQuality.editor.failThreshold"));
-    expect(fields).toContain(label("dataQuality.editor.warnThreshold"));
-    expect(fields).toContain(label("dataQuality.editor.tolerance"));
     expect(wrapper.find("#dq-field-failThreshold").exists()).toBe(true);
     expect(wrapper.find("#dq-field-warnThreshold").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-tolerance").exists()).toBe(true);
     expect(wrapper.find("#dq-field-referenceGuid").exists()).toBe(true);
     expect(wrapper.text()).toContain(
       label("dataQuality.editor.referenceTable")

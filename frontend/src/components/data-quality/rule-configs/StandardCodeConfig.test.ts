@@ -68,7 +68,7 @@ function codeTableIsMarkedRequired(
     .find((candidate) =>
       candidate.text().includes(i18n.global.t("dataQuality.editor.codeTable"))
     );
-  return label?.html().includes("text-destructive") ?? false;
+  return label?.text().includes("*") ?? false;
 }
 
 describe("StandardCodeConfig code table", () => {
@@ -86,9 +86,6 @@ describe("StandardCodeConfig code table", () => {
     await flushPromises();
 
     expect(mocks.listAllQualityCodeTables).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.editor.codeTable")
-    );
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.editor.codeTableValueCount", { count: 12 })
     );

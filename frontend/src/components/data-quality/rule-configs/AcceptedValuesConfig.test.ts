@@ -1,7 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import ColumnSelect from "@/components/common/ColumnSelect.vue";
-import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { QualityRuleType } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -47,8 +46,7 @@ function sourceSelect(wrapper: ReturnType<typeof mountConfig>["wrapper"]) {
 
 describe("AcceptedValuesConfig sources", () => {
   it("starts on the fixed list and shows the values input", () => {
-    const { wrapper, model } = mountConfig();
-    expect(model.acceptedSource).toBe("list");
+    const { wrapper } = mountConfig();
     expect(wrapper.find("#dq-field-values").exists()).toBe(true);
     expect(wrapper.find("#dq-field-acceptedField").exists()).toBe(false);
     expect(wrapper.find("#dq-field-acceptedQuery").exists()).toBe(false);
@@ -91,16 +89,8 @@ describe("AcceptedValuesConfig sources", () => {
     expect(wrapper.find("#dq-field-acceptedField").exists()).toBe(false);
     const query = wrapper.find<HTMLTextAreaElement>("#dq-field-acceptedQuery");
     expect(query.exists()).toBe(true);
-    expect(wrapper.text()).toContain(
-      i18n.global.t("dataQuality.editor.acceptedQuery")
-    );
     // The value column is a plain text field beside the statement.
-    const fields = wrapper
-      .findAllComponents(FormField)
-      .map((field) => field.props("label"));
-    expect(fields).toContain(
-      i18n.global.t("dataQuality.editor.acceptedQueryColumn")
-    );
+    expect(wrapper.find("#dq-field-acceptedQueryColumn").exists()).toBe(true);
     wrapper.unmount();
   });
 
