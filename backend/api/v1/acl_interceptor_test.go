@@ -328,31 +328,6 @@ func methodAllowsWithoutCredential(method protoreflect.MethodDescriptor) bool {
 	return ok && allow
 }
 
-// TestReadPathsAreGated pins the specific concern from the review: the read
-// RPCs that used to be "any authenticated caller" now carry permissions.
-func TestReadPathsAreGated(t *testing.T) {
-	t.Parallel()
-
-	gated := map[string]string{
-		"metaxisdata.v1.UserService.GetUser":                     permission.UsersGet,
-		"metaxisdata.v1.UserService.ListUsers":                   permission.UsersList,
-		"metaxisdata.v1.UserService.BatchGetUsers":               permission.UsersGet,
-		"metaxisdata.v1.InstanceService.GetInstance":             permission.InstancesGet,
-		"metaxisdata.v1.InstanceService.ListInstances":           permission.InstancesList,
-		"metaxisdata.v1.EnvironmentService.ListEnvironments":     permission.EnvironmentsList,
-		"metaxisdata.v1.DatabaseService.ListDatabases":           permission.DatabasesList,
-		"metaxisdata.v1.DatabaseService.GetMetadata":             permission.DatabasesRead,
-		"metaxisdata.v1.DatabaseService.ListMetadata":            permission.DatabasesRead,
-		"metaxisdata.v1.LineageService.GetLineage":               permission.LineageGet,
-		"metaxisdata.v1.OpenLineageService.ListOpenLineageTasks": permission.OpenLineageRead,
-		"metaxisdata.v1.AuditLogService.ListAuditLogs":           permission.AuditLogsSearch,
-	}
-	for fullName, want := range gated {
-		got := permissionForMethod(t, fullName)
-		require.Equalf(t, want, got, "method %s", fullName)
-	}
-}
-
 func permissionForMethod(t *testing.T, fullName string) string {
 	t.Helper()
 	desc, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(fullName))

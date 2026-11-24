@@ -77,6 +77,7 @@ func TestConvertEngineRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	for _, engine := range []storepb.Engine{
+		storepb.Engine_MSSQL,
 		storepb.Engine_MYSQL,
 		storepb.Engine_POSTGRES,
 		storepb.Engine_TIDB,

@@ -125,6 +125,8 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 		ScoredRuleCount:      2,
 		RecentPassRate:       &passRate,
 		RecentExecutionCount: 3,
+		CoveredColumnCount:   2,
+		TotalColumnCount:     7,
 		LatestRun: &store.QualityTargetRunSummaryMessage{
 			TargetGUID: "instance-1;shop;public;orders",
 			TargetType: storepb.MetaType_TABLE,
@@ -170,6 +172,9 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(2), summary.GetScoredRuleCount())
 	require.InDelta(t, 0.75, summary.GetRecentPassRate(), 1e-9, "the pass rate is a 0-1 ratio")
 	require.Equal(t, int32(3), summary.GetRecentExecutionCount())
+	// The directory cell and the asset badge read the same coverage pair.
+	require.Equal(t, int32(2), summary.GetCoveredColumnCount())
+	require.Equal(t, int32(7), summary.GetTotalColumnCount())
 
 	// A target that has never run carries zero values rather than an empty slice.
 	never := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
@@ -178,6 +183,8 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(0), never.GetRunCount())
 	require.Nil(t, never.GetLatestRun())
 	require.Nil(t, never.GetSchedule(), "a target without a schedule row has no schedule")
+	require.Zero(t, never.GetCoveredColumnCount())
+	require.Zero(t, never.GetTotalColumnCount(), "a target that never resolved reports 0/0 rather than a full denominator")
 }
 
 // A cron target's directory row carries the expression and its resolved zone, and
@@ -463,27 +470,4 @@ func TestQualityTargetColumnCoverage(t *testing.T) {
 	covered, total = qualityTargetColumnCoverage(registry, nil)
 	require.Zero(t, covered)
 	require.Equal(t, int32(3), total)
-}
-
-// The conversion carries the coverage pair through to the API message, so the
-// directory cell and the asset badge read the same two numbers.
-func TestConvertQualityTargetSummaryColumnCoverage(t *testing.T) {
-	t.Parallel()
-
-	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
-		GUID:               "instance-1;shop;;orders",
-		Type:               storepb.MetaType_TABLE,
-		CoveredColumnCount: 2,
-		TotalColumnCount:   7,
-	})
-	require.Equal(t, int32(2), summary.GetCoveredColumnCount())
-	require.Equal(t, int32(7), summary.GetTotalColumnCount())
-
-	// A target that never resolved reports 0/0 rather than a full denominator.
-	orphan := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
-		GUID: "instance-1;shop;;orders",
-		Type: storepb.MetaType_TABLE,
-	})
-	require.Zero(t, orphan.GetCoveredColumnCount())
-	require.Zero(t, orphan.GetTotalColumnCount())
 }

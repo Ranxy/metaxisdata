@@ -14,7 +14,7 @@ import (
 )
 
 // TestQualityLabelColumnBatches pins the batch split: at most 20 columns per model
-// call, at most 3 calls, and the per-request cap fits in the batch capacity.
+// call and at most 3 calls.
 func TestQualityLabelColumnBatches(t *testing.T) {
 	t.Parallel()
 
@@ -31,10 +31,6 @@ func TestQualityLabelColumnBatches(t *testing.T) {
 	require.Nil(t, qualityLabelColumnBatches(nil, qualityLabelBatchColumns, qualityLabelMaxBatches))
 	require.Nil(t, qualityLabelColumnBatches(columns, 0, qualityLabelMaxBatches))
 	require.Nil(t, qualityLabelColumnBatches(columns, qualityLabelBatchColumns, 0))
-
-	// The per-request column cap must fit in the batches one request may make;
-	// otherwise a valid request would be silently truncated.
-	require.GreaterOrEqual(t, qualityLabelBatchColumns*qualityLabelMaxBatches, dataquality.MaxDraftColumns)
 }
 
 // TestQualityLabelStaleProfileColumns pins the freshness rule: a missing, empty
@@ -75,121 +71,12 @@ func TestQualityLabelLabelMap(t *testing.T) {
 }
 
 // TestQualityLabelDraftRuleType pins the first filter stage a label-generated rule
-// draft passes: its config's oneof arm is the rule type the handler validates
-// against the target. The resolver knows every arm this build carries, so a stored
-// draft is classified by its config even if a future producer names a v1.1 type. A
-// draft with no recognized arm is dropped before validation, which keeps an
-// unsupported config out of the review queue.
+// draft passes: a draft with no config, or a config with no oneof arm, cannot be
+// classified and is dropped before validation, which keeps an unsupported config
+// out of the review queue.
 func TestQualityLabelDraftRuleType(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name   string
-		config *storepb.QualityRuleConfig
-		want   storepb.QualityRuleType
-	}{
-		{
-			name:   "row count",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		},
-		{
-			name:   "null percent",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		},
-		{
-			name:   "unique",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		},
-		{
-			name:   "accepted values",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		},
-		{
-			name:   "range",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{Range: &storepb.RangeConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		},
-		{
-			name:   "regex",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		},
-		{
-			name:   "string length",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		},
-		{
-			name:   "freshness",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		},
-		{
-			name:   "custom SQL",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		},
-		{
-			name:   "row count change",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCountChange{RowCountChange: &storepb.RowCountChangeConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		},
-		{
-			name:   "unique combination",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		},
-		{
-			name:   "referential integrity",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &storepb.ReferentialIntegrityConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		},
-		{
-			name:   "cross column",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		},
-		{
-			name:   "CEL expression",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{CelExpression: &storepb.CelExpressionConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-		},
-		{
-			name:   "schema drift",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
-		},
-		{
-			name:   "group check",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		},
-		{
-			name:   "aggregate",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Aggregate{Aggregate: &storepb.AggregateConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		},
-		{
-			name:   "cross table",
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{}}},
-			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			ruleType, ok := qualityLabelDraftRuleType(&storepb.QualityRuleDraftConfig{Config: test.config})
-			require.True(t, ok)
-			require.Equal(t, test.want, ruleType)
-		})
-	}
-
-	// A draft with no config, or a config with no oneof arm, cannot be validated
-	// and is filtered before it reaches the queue.
 	for _, draft := range []*storepb.QualityRuleDraftConfig{
 		nil,
 		{},

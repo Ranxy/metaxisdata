@@ -191,21 +191,25 @@ func TestCheckInstanceDataSourcesRequiresOneAdmin(t *testing.T) {
 }
 
 // Only the engines the server actually has a driver for may be stored; the
-// proto enum also carries reserved values.
+// proto enum also carries reserved values. The check runs both ways, so an
+// engine added to the enum needs a decision here and one the server starts
+// supporting cannot be accepted silently.
 func TestIsSupportedStoreEngine(t *testing.T) {
 	t.Parallel()
 
-	for _, engine := range []storepb.Engine{
-		storepb.Engine_MYSQL,
-		storepb.Engine_POSTGRES,
-		storepb.Engine_TIDB,
-		storepb.Engine_MARIADB,
-		storepb.Engine_OCEANBASE,
-		storepb.Engine_STARROCKS,
-		storepb.Engine_DORIS,
-	} {
-		require.True(t, isSupportedStoreEngine(engine), engine.String())
+	supported := map[storepb.Engine]bool{
+		storepb.Engine_MYSQL:     true,
+		storepb.Engine_POSTGRES:  true,
+		storepb.Engine_TIDB:      true,
+		storepb.Engine_MARIADB:   true,
+		storepb.Engine_OCEANBASE: true,
+		storepb.Engine_STARROCKS: true,
+		storepb.Engine_DORIS:     true,
+		storepb.Engine_MSSQL:     true,
 	}
-	require.False(t, isSupportedStoreEngine(storepb.Engine_ENGINE_UNSPECIFIED))
-	require.False(t, isSupportedStoreEngine(storepb.Engine(28)))
+	for number, name := range storepb.Engine_name {
+		engine := storepb.Engine(number)
+		require.Equal(t, supported[engine], isSupportedStoreEngine(engine), "engine %s", name)
+	}
+	require.False(t, isSupportedStoreEngine(storepb.Engine(28)), "a value outside the enum is not an engine")
 }

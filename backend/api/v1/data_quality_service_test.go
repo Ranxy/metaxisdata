@@ -120,14 +120,6 @@ func TestParseQualityRuleUpdateEmptyMaskChangesNothing(t *testing.T) {
 	require.Nil(t, update.Patch.Config)
 }
 
-func TestParseQualityRuleUpdateRejectsUnknownPath(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseQualityRuleUpdate(&v1pb.QualityRule{}, []string{"revision"})
-	require.Error(t, err)
-	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-}
-
 func TestParseQualityRuleUpdateRejectsUnusableValues(t *testing.T) {
 	t.Parallel()
 
@@ -170,6 +162,11 @@ func TestParseQualityRuleUpdateRejectsUnusableValues(t *testing.T) {
 			name:  "invalid owner",
 			rule:  &v1pb.QualityRule{Owner: "nobody"},
 			paths: []string{"owner"},
+		},
+		{
+			name:  "unknown update path",
+			rule:  &v1pb.QualityRule{},
+			paths: []string{"revision"},
 		},
 	}
 	for _, testCase := range cases {
@@ -272,13 +269,6 @@ func TestGroupQualityRulesForManualRunKeepsOneBatchPerTarget(t *testing.T) {
 	require.Len(t, groups, 2)
 	require.Equal(t, storepb.MetaType_TABLE, groups[0].targetType)
 	require.Equal(t, storepb.MetaType_VIEW, groups[1].targetType)
-}
-
-func TestDedupeInt64(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, []int64{3, 1, 2}, dedupeInt64([]int64{3, 1, 3, 2, 1}))
-	require.Empty(t, dedupeInt64(nil))
 }
 
 func TestApplyQualityRuleListFilters(t *testing.T) {

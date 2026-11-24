@@ -70,6 +70,7 @@ func TestResolveResourcePrefersTheResponseName(t *testing.T) {
 		{"request user name", map[string]any{"user": map[string]any{"name": "users/2"}}, nil, "users/2"},
 		{"response user email", nil, map[string]any{"user": map[string]any{"email": "a@example.com"}}, "a@example.com"},
 		{"request email", map[string]any{"email": "b@example.com"}, nil, "b@example.com"},
+		{"nested user is not an object", nil, map[string]any{"user": "not-an-object"}, ""},
 		{"nothing", nil, nil, ""},
 	}
 
@@ -176,6 +177,24 @@ func TestBuildRequestMetadata(t *testing.T) {
 		{name: "peer address without port", peerAddr: "10.1.2.3", wantIP: "10.1.2.3"},
 		{name: "user agent", headers: map[string]string{"User-Agent": "curl/8"}, wantAgent: "curl/8"},
 		{name: "gateway user agent", headers: map[string]string{"grpcgateway-user-agent": "grpc-go/1"}, wantAgent: "grpc-go/1"},
+		{
+			// A malformed proxy entry trusts nobody: the peer is then not a
+			// configured proxy, so the header it forwards is not evidence.
+			name: "malformed trusted-proxy entries trust nobody", headers: map[string]string{"X-Forwarded-For": "203.0.113.9"},
+			peerAddr: "10.1.2.3:54321", trustedProxies: []string{"", "10.1.2.0/33"}, wantIP: "10.1.2.3",
+		},
+		{
+			// A configured CIDR that does not contain the peer leaves it untrusted,
+			// rather than matching every address.
+			name: "a trusted CIDR that does not contain the peer leaves it untrusted", headers: map[string]string{"X-Forwarded-For": "203.0.113.9"},
+			peerAddr: "10.1.3.4:54321", trustedProxies: []string{"10.1.2.0/24"}, wantIP: "10.1.3.4",
+		},
+		{
+			// A peer that is not an address cannot match any entry, so a forwarded
+			// header cannot choose the recorded address.
+			name: "a peer that is not an address is never a trusted proxy", headers: map[string]string{"X-Forwarded-For": "203.0.113.9"},
+			peerAddr: "not-an-ip", trustedProxies: []string{"10.1.2.3"}, wantIP: "not-an-ip",
+		},
 	}
 
 	for _, tt := range tests {
@@ -186,19 +205,6 @@ func TestBuildRequestMetadata(t *testing.T) {
 			require.Equal(t, tt.wantAgent, metadata.GetUserAgent())
 		})
 	}
-}
-
-// A caller must not be able to pick its own audit IP by sending a forwarding
-// header from an address that is not a configured proxy.
-func TestIsTrustedProxy(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, audit.IsTrustedProxy("10.0.0.1", []string{"10.0.0.1"}))
-	require.True(t, audit.IsTrustedProxy("10.0.0.7", []string{"10.0.0.0/24"}))
-	require.False(t, audit.IsTrustedProxy("10.0.1.7", []string{"10.0.0.0/24"}))
-	require.False(t, audit.IsTrustedProxy("10.0.0.1", nil))
-	require.False(t, audit.IsTrustedProxy("not-an-ip", []string{"10.0.0.0/24"}))
-	require.False(t, audit.IsTrustedProxy("10.0.0.1", []string{"", "10.0.0.0/33"}))
 }
 
 // Sanitizing a stored payload is what keeps pre-fix audit rows from handing
@@ -233,22 +239,4 @@ func headerFromMap(values map[string]string) http.Header {
 		header.Set(key, value)
 	}
 	return header
-}
-
-func TestGetNestedString(t *testing.T) {
-	t.Parallel()
-
-	raw := map[string]any{
-		"parent": "instances/i1",
-		"user":   map[string]any{"name": "users/1", "count": 3},
-		"list":   []any{"a"},
-	}
-
-	require.Equal(t, "", audit.GetNestedString(nil, "parent"))
-	require.Equal(t, "instances/i1", audit.GetNestedString(raw, "parent"))
-	require.Equal(t, "users/1", audit.GetNestedString(raw, "user", "name"))
-	require.Equal(t, "", audit.GetNestedString(raw, "user", "count"))
-	require.Equal(t, "", audit.GetNestedString(raw, "user", "missing"))
-	require.Equal(t, "", audit.GetNestedString(raw, "list", "0"))
-	require.Equal(t, "", audit.GetNestedString(map[string]any{"user": "not-an-object"}, "user", "name"))
 }

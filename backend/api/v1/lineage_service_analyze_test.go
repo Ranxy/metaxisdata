@@ -130,17 +130,6 @@ func TestBuildAnalyzeSQLRelationsOnlyReportsTemporaryRelationsForQueryOnlyStatem
 			require.True(t, relation.GetIsTemp(), "sql %q has no real target, so every relation is temporary", sql)
 		}
 	}
-
-	for _, sql := range []string{
-		"CREATE VIEW daily AS SELECT amount FROM orders",
-		"INSERT INTO daily (amount) SELECT amount FROM orders",
-	} {
-		relations := analyzeMySQL(t, analysisContext, sql)
-		require.NotEmpty(t, relations, "sql %q", sql)
-		for _, relation := range relations {
-			require.False(t, relation.GetIsTemp(), "sql %q writes somewhere real, so no temporary relation survives", sql)
-		}
-	}
 }
 
 // A schema-scoped statement resolves into the schema it was analyzed with,

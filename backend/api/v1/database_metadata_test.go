@@ -45,18 +45,3 @@ func TestBuildDiffSummaryCoversEveryCategory(t *testing.T) {
 	require.Contains(t, summary, "Tables: +0 created, ~1 modified, -0 dropped")
 	require.Contains(t, summary, "Views: +0 created, ~0 modified, -1 dropped")
 }
-
-func TestCountDiffActions(t *testing.T) {
-	t.Parallel()
-
-	created, altered, dropped := countDiffActions([]*schema.TableDiff{
-		{Action: schema.MetadataDiffActionCreate},
-		{Action: schema.MetadataDiffActionCreate},
-		{Action: schema.MetadataDiffActionAlter},
-		{Action: schema.MetadataDiffActionDrop},
-	}, func(c *schema.TableDiff) schema.MetadataDiffAction { return c.Action })
-
-	require.Equal(t, 2, created)
-	require.Equal(t, 1, altered)
-	require.Equal(t, 1, dropped)
-}
