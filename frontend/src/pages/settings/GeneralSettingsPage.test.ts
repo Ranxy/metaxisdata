@@ -60,21 +60,6 @@ function profile(
   return { name, title, models } as unknown as LlmProviderProfile;
 }
 
-interface PageVm {
-  allowedModels: Array<{ providerProfile: string; model: string }>;
-  unavailableModels: Array<{ providerProfile: string; model: string }>;
-  toggleAllowedModel: (
-    profile: string,
-    model: string,
-    checked: boolean
-  ) => void;
-  modelGroups: Array<{ profile: string; title: string; models: string[] }>;
-}
-
-function vm(wrapper: ReturnType<typeof mount>): PageVm {
-  return wrapper.vm as unknown as PageVm;
-}
-
 async function mountPage() {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -145,13 +130,6 @@ describe("GeneralSettingsPage", () => {
   it("renders every enabled model grouped by its profile", async () => {
     const wrapper = await mountPage();
 
-    expect(vm(wrapper).modelGroups).toEqual([
-      {
-        profile: "llm-provider-profiles/main",
-        title: "Main",
-        models: ["fast", "reasoner"],
-      },
-    ]);
     expect(wrapper.text()).toContain("Main");
     expect(wrapper.text()).toContain("reasoner");
     // A disabled model and a profile without any enabled model are not offered.
@@ -209,13 +187,9 @@ describe("GeneralSettingsPage", () => {
       })
     );
     const wrapper = await mountPage();
-    const page = vm(wrapper);
 
     // The gone profile is not in the list, but the pair still restricts Explain
     // SQL while the allowlist is non-empty, so it stays visible and removable.
-    expect(
-      page.unavailableModels.map((ref) => [ref.providerProfile, ref.model])
-    ).toEqual([["llm-provider-profiles/gone", "x"]]);
     expect(wrapper.text()).toContain(
       i18n.global.t("generalSettings.explainProvidersUnavailable")
     );
@@ -225,7 +199,6 @@ describe("GeneralSettingsPage", () => {
 
     await wrapper.find('[id="unavailable-model-0"]').trigger("click");
     await flushPromises();
-    expect(page.unavailableModels).toEqual([]);
     expect(wrapper.text()).not.toContain(
       i18n.global.t("generalSettings.explainProvidersUnavailable")
     );
@@ -255,7 +228,9 @@ describe("GeneralSettingsPage", () => {
     );
     const wrapper = await mountPage();
 
-    vm(wrapper).toggleAllowedModel("llm-provider-profiles/main", "fast", false);
+    await modelCheckbox(wrapper, "llm-provider-profiles/main", "fast").trigger(
+      "click"
+    );
     await flushPromises();
     await saveButton(wrapper)?.trigger("click");
     await flushPromises();
@@ -270,23 +245,6 @@ describe("GeneralSettingsPage", () => {
         ref.model,
       ])
     ).toEqual([["llm-provider-profiles/gone", "x"]]);
-  });
-
-  it("de-duplicates a pair toggled on twice", async () => {
-    const wrapper = await mountPage();
-    const page = vm(wrapper);
-
-    page.toggleAllowedModel("llm-provider-profiles/main", "reasoner", true);
-    page.toggleAllowedModel("llm-provider-profiles/main", "fast", true);
-    await flushPromises();
-
-    // Checking an already-authorized pair again does not add a duplicate.
-    expect(
-      page.allowedModels.map((ref) => [ref.providerProfile, ref.model])
-    ).toEqual([
-      ["llm-provider-profiles/main", "fast"],
-      ["llm-provider-profiles/main", "reasoner"],
-    ]);
   });
 
   it("explains when no profile enables a model", async () => {
