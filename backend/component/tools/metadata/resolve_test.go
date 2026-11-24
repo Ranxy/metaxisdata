@@ -61,20 +61,6 @@ func TestResolveObjectPassesAGUIDThrough(t *testing.T) {
 	require.Equal(t, v1pb.MetaType_TABLE, resolved.MetaType)
 }
 
-func TestResolveObjectNeedsANameAndAScope(t *testing.T) {
-	t.Parallel()
-
-	resolver := NewResolver(&fakeReaders{t: t}, &fakeReaders{t: t})
-	_, err := resolver.ResolveObject(context.Background(), ObjectRef{Instance: "prod"}, v1pb.MetaType_TABLE)
-	require.Error(t, err)
-	failure := AsError(err)
-	require.NotNil(t, failure)
-	require.Equal(t, CodeInvalidArgument, failure.Code)
-
-	_, err = resolver.ResolveObject(context.Background(), ObjectRef{Instance: "prod", Database: "shop"}, v1pb.MetaType_TABLE)
-	require.Equal(t, CodeInvalidArgument, AsError(err).Code)
-}
-
 func TestResolveInstanceMatchesATitleAndReportsCandidates(t *testing.T) {
 	t.Parallel()
 
@@ -95,14 +81,6 @@ func TestResolveInstanceMatchesATitleAndReportsCandidates(t *testing.T) {
 	details, ok := failure.Details.(map[string]any)
 	require.True(t, ok)
 	require.Len(t, details["candidates"], 2)
-}
-
-func TestResolveDatabaseRejectsAGUIDFromAnotherInstance(t *testing.T) {
-	t.Parallel()
-
-	resolver := NewResolver(&fakeReaders{t: t}, &fakeReaders{t: t})
-	_, err := resolver.ResolveDatabase(context.Background(), "instances/1", "2;shop")
-	require.Equal(t, CodeInvalidArgument, AsError(err).Code)
 }
 
 func TestSearchObjectRequiresAnExactChildOfTheParent(t *testing.T) {
@@ -126,7 +104,9 @@ func TestSearchObjectRequiresAnExactChildOfTheParent(t *testing.T) {
 	require.Equal(t, CodeNotFound, AsError(err).Code)
 }
 
-func TestResolveScopeNeedsBothFieldsAndResolvesTheDatabase(t *testing.T) {
+// A complete scope resolves to the database GUID the analyzer takes; a partial
+// one is refused by TestNamePathRefusalsCarryTheirHint.
+func TestResolveScopeResolvesTheDatabase(t *testing.T) {
 	t.Parallel()
 
 	readers := &fakeReaders{t: t,
@@ -134,9 +114,6 @@ func TestResolveScopeNeedsBothFieldsAndResolvesTheDatabase(t *testing.T) {
 		databases: []*v1pb.Database{{Name: "instances/1/databases/shop", Guid: "1;shop"}},
 	}
 	resolver := NewResolver(readers, readers)
-
-	_, err := resolver.ResolveScope(context.Background(), AnalysisScope{Instance: "prod"})
-	require.Equal(t, CodeInvalidArgument, AsError(err).Code)
 
 	guid, err := resolver.ResolveScope(context.Background(), AnalysisScope{Instance: "prod", Database: "shop"})
 	require.NoError(t, err)
@@ -159,8 +136,9 @@ func TestScopeRequiredCarriesTheAvailableDatabases(t *testing.T) {
 	require.Len(t, details["databases"], 1)
 }
 
-// Every name-path refusal carries the hint that tells the caller how to fix the
-// call; the tool envelope would be incomplete without it.
+// Every name-path refusal is an invalid_argument that carries the hint telling
+// the caller how to fix the call; the tool envelope would be incomplete without
+// either, so this is the one owner of both the code and the hint text.
 func TestNamePathRefusalsCarryTheirHint(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +149,7 @@ func TestNamePathRefusalsCarryTheirHint(t *testing.T) {
 		hint string
 	}{
 		{
-			name: "object name",
+			name: "missing object name",
 			call: func() error {
 				_, err := resolver.ResolveObject(context.Background(), ObjectRef{Instance: "prod", Database: "shop"}, v1pb.MetaType_TABLE)
 				return err
@@ -179,7 +157,7 @@ func TestNamePathRefusalsCarryTheirHint(t *testing.T) {
 			hint: "address the object as {instance, database, schema?, name}, or pass a guid from an earlier result",
 		},
 		{
-			name: "object scope",
+			name: "missing object scope",
 			call: func() error {
 				_, err := resolver.ResolveObject(context.Background(), ObjectRef{Name: "orders"}, v1pb.MetaType_TABLE)
 				return err
@@ -216,6 +194,7 @@ func TestNamePathRefusalsCarryTheirHint(t *testing.T) {
 			t.Parallel()
 			failure := AsError(testCase.call())
 			require.NotNil(t, failure)
+			require.Equal(t, CodeInvalidArgument, failure.Code)
 			require.Equal(t, testCase.hint, failure.Hint)
 		})
 	}

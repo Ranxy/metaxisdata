@@ -4,52 +4,42 @@ package common
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestEvalBindingConditionEmptyIsSatisfied(t *testing.T) {
-	ok, err := EvalBindingCondition("", time.Now())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !ok {
-		t.Fatal("an empty condition should be satisfied")
-	}
-}
+func TestEvalBindingCondition(t *testing.T) {
+	t.Parallel()
 
-func TestEvalBindingConditionRequestTime(t *testing.T) {
 	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name    string
+		expr    string
+		want    bool
+		wantErr bool
+	}{
+		{name: "an empty condition is satisfied", expr: "", want: true},
+		{name: "request.time is bound", expr: `request.time > timestamp("2020-01-01T00:00:00Z")`, want: true},
+		{name: "request.time can make a condition false", expr: `request.time < timestamp("2020-01-01T00:00:00Z")`, want: false},
+		// A condition referencing a variable that is not bound cannot be
+		// decided. Returning true there would grant the binding globally, so it
+		// must be an error.
+		{name: "an unbound database fails closed", expr: `resource.database == "hr"`, wantErr: true},
+		{name: "an unbound schema fails closed", expr: `resource.schema_name == "public"`, wantErr: true},
+		{name: "an unbound table method fails closed", expr: `resource.table_name.startsWith("secret")`, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	ok, err := EvalBindingCondition(`request.time > timestamp("2020-01-01T00:00:00Z")`, now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !ok {
-		t.Fatal("condition that holds should evaluate to true")
-	}
-
-	ok, err = EvalBindingCondition(`request.time < timestamp("2020-01-01T00:00:00Z")`, now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ok {
-		t.Fatal("condition that does not hold should evaluate to false")
-	}
-}
-
-// A condition referencing a variable that is not bound cannot be decided.
-// Returning true there would grant the binding globally, so it must be an error.
-func TestEvalBindingConditionUnboundVariableFailsClosed(t *testing.T) {
-	for _, expr := range []string{
-		`resource.database == "hr"`,
-		`resource.schema_name == "public"`,
-		`resource.table_name.startsWith("secret")`,
-	} {
-		ok, err := EvalBindingCondition(expr, time.Now())
-		if err == nil {
-			t.Errorf("EvalBindingCondition(%q) returned (%v, nil), want an error", expr, ok)
-		}
-		if ok {
-			t.Errorf("EvalBindingCondition(%q) must not report an undecidable condition as satisfied", expr)
-		}
+			ok, err := EvalBindingCondition(tc.expr, now)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.False(t, ok, "an undecidable condition must not be reported as satisfied")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, ok)
+		})
 	}
 }

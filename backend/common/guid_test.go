@@ -28,50 +28,48 @@ func TestGUIDPrefix(t *testing.T) {
 	}
 }
 
-func TestGetInstanceFromGUID(t *testing.T) {
-	if got, ok := GetInstanceFromGUID("inst;db;public;users"); !ok || got != "inst" {
-		t.Errorf("GetInstanceFromGUID = (%q, %v), want (\"inst\", true)", got, ok)
-	}
-	if _, ok := GetInstanceFromGUID("inst"); ok {
-		t.Error("GetInstanceFromGUID(\"inst\") should report no separator")
-	}
-}
+// The instance and the schema are fields of the joined GUID; a GUID too short to
+// carry the field reports that instead of returning an empty name.
+func TestGUIDFieldExtraction(t *testing.T) {
+	t.Parallel()
 
-func TestGetSchemaFromGUID(t *testing.T) {
-	if got, ok := GetSchemaFromGUID("inst;db;public;users"); !ok || got != "public" {
-		t.Errorf("GetSchemaFromGUID = (%q, %v), want (\"public\", true)", got, ok)
-	}
-	if _, ok := GetSchemaFromGUID("inst;db"); ok {
-		t.Error("GetSchemaFromGUID(\"inst;db\") should report too few segments")
-	}
+	instance, ok := GetInstanceFromGUID("inst;db;public;users")
+	require.True(t, ok)
+	require.Equal(t, "inst", instance)
+
+	schema, ok := GetSchemaFromGUID("inst;db;public;users")
+	require.True(t, ok)
+	require.Equal(t, "public", schema)
+
+	_, ok = GetInstanceFromGUID("inst")
+	require.False(t, ok, "a GUID with no separator has no instance field")
+	_, ok = GetSchemaFromGUID("inst;db")
+	require.False(t, ok, "a GUID with fewer than three segments has no schema field")
 }
 
 // A name containing the separator must not shift the parsed fields. Names
 // without it must keep the exact same GUID so stored rows are unaffected.
 func TestMetaGUIDEscapesTheSeparator(t *testing.T) {
+	t.Parallel()
+
 	plain := BuildMetaGUID("inst", "db", "public", "users")
-	if plain != "inst;db;public;users" {
-		t.Fatalf("BuildMetaGUID without a separator = %q, want the plain join", plain)
-	}
+	require.Equal(t, "inst;db;public;users", plain)
 
 	escaped := BuildMetaGUID("inst", "db;prod", "public", "users")
-	if escaped == "inst;db;prod;public;users" {
-		t.Fatalf("BuildMetaGUID did not escape the separator: %q", escaped)
-	}
-	parts := SplitMetaGUID(escaped)
-	if len(parts) != 4 {
-		t.Fatalf("SplitMetaGUID(%q) = %v, want 4 segments", escaped, parts)
-	}
-	if parts[1] != "db;prod" {
-		t.Fatalf("database segment = %q, want %q", parts[1], "db;prod")
-	}
+	require.NotEqual(t, "inst;db;prod;public;users", escaped, "the separator inside a name must be escaped")
+	require.Equal(t, []string{"inst", "db;prod", "public", "users"}, SplitMetaGUID(escaped))
 
-	if got, ok := GetInstanceFromGUID(escaped); !ok || got != "inst" {
-		t.Fatalf("GetInstanceFromGUID(%q) = (%q, %v)", escaped, got, ok)
-	}
-	if got, ok := GetSchemaFromGUID(escaped); !ok || got != "public" {
-		t.Fatalf("GetSchemaFromGUID(%q) = (%q, %v)", escaped, got, ok)
-	}
+	instance, ok := GetInstanceFromGUID(escaped)
+	require.True(t, ok)
+	require.Equal(t, "inst", instance)
+	schema, ok := GetSchemaFromGUID(escaped)
+	require.True(t, ok)
+	require.Equal(t, "public", schema)
+
+	// The escape character itself must survive a round trip through the joined
+	// GUID, together with the separator.
+	parts := []string{"inst", "db%3B", "schema;x", "100%"}
+	require.Equal(t, parts, SplitMetaGUID(BuildMetaGUID(parts...)))
 }
 
 // The escaping must be injective: two different names may never produce the same
@@ -115,16 +113,4 @@ func TestEscapeGUIDPartIsInjective(t *testing.T) {
 	require.NotEqual(t, EscapeGUIDPart("db;prod"), EscapeGUIDPart("db%3Bprod"))
 	require.Equal(t, "db%3Bprod", EscapeGUIDPart("db;prod"))
 	require.Equal(t, "db%253Bprod", EscapeGUIDPart("db%3Bprod"))
-}
-
-// BuildMetaGUID/SplitMetaGUID are the pair that must stay symmetric: a name
-// containing the separator or the escape character has to survive a round trip
-// through a joined GUID.
-func TestMetaGUIDRoundTripsNamesWithTheEscapeCharacter(t *testing.T) {
-	t.Parallel()
-
-	parts := []string{"inst", "db%3B", "schema;x", "100%"}
-	guid := BuildMetaGUID(parts...)
-	require.Equal(t, parts, SplitMetaGUID(guid))
-	require.Equal(t, []string{"inst", "db%3B", "schema;x", "100%"}, SplitMetaGUID(guid))
 }

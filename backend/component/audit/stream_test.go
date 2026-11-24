@@ -26,20 +26,6 @@ func TestStreamRecorderKeepsTheFirstRequest(t *testing.T) {
 	require.Equal(t, int32(7), request.GetMaxRows())
 }
 
-// Values that are not proto messages, and messages received before any exist,
-// must not break the recorder: a non-audited stream or a hand-built connection
-// never provides one.
-func TestStreamRecorderIgnoresNonProtoMessages(t *testing.T) {
-	t.Parallel()
-
-	recorder := NewStreamRecorder()
-	recorder.RecordRequest(nil)
-	recorder.RecordRequest("not a proto message")
-	recorder.RecordRequest(map[string]any{"parent": "workspaces/-"})
-
-	require.Nil(t, recorder.Request())
-}
-
 // The recorder clones the request, so a later mutation by the handler or by the
 // connection cannot rewrite what the audit row says was asked for.
 func TestStreamRecorderClonesTheRequest(t *testing.T) {

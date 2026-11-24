@@ -89,9 +89,9 @@ func TestMarshalAuditMessageRedactsReportHTML(t *testing.T) {
 	require.Equal(t, "quality-report-2026-10-31.html", structured.GetFields()["fileName"].GetStringValue())
 }
 
-// The target-debug RPC returns raw LLM request/response bodies. The audit row must
-// keep the call context but never the bodies: the debug log expires after seven
-// days, while the ledger is kept forever.
+// Every string in a payload is bounded, wherever it sits: truncating only the
+// top-level fields would leave a nested object or a list free to carry a body
+// into a ledger that is never pruned.
 func TestMarshalAuditMessageBoundsLongFields(t *testing.T) {
 	t.Parallel()
 
@@ -195,15 +195,8 @@ func TestBuildRequestMetadataTruncatesUserAgent(t *testing.T) {
 	shortHeader.Set("User-Agent", "curl/8.5.0")
 	require.Equal(t, "curl/8.5.0", BuildRequestMetadata(shortHeader, "203.0.113.7:1234", nil).GetUserAgent())
 
-	// A forwarded entry that is not an address is ignored rather than recorded,
-	// so the trusted proxy's own address is what the row carries.
-	forwarded := http.Header{}
-	forwarded.Set("X-Forwarded-For", strings.Repeat("1", MaxIPBytes*2))
-	metadata = BuildRequestMetadata(forwarded, "10.0.0.1:1234", []string{"10.0.0.1"})
-	require.Equal(t, "10.0.0.1", metadata.GetIp())
-
-	// A peer address that is not an address either is still bounded, so a row
-	// stays bounded whatever the transport hands over.
+	// A peer address that is not an address is still bounded, so a row stays
+	// bounded whatever the transport hands over.
 	metadata = BuildRequestMetadata(http.Header{}, strings.Repeat("x", MaxIPBytes*2), nil)
 	require.Equal(t, strings.Repeat("x", MaxIPBytes)+auditTruncationSuffix, metadata.GetIp())
 }
@@ -220,6 +213,7 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 		peer           string
 		trustedProxies []string
 		forwarded      string
+		forwardedLines []string
 		gatewayPeer    string
 		forgedPeer     string
 		want           string
@@ -230,6 +224,23 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 			// The caller is not a proxy, so the header is not evidence at all.
 			forwarded: "1.2.3.4",
 			want:      "203.0.113.5",
+		},
+		{
+			// Several header lines keep their order: grpc-gateway appends the peer
+			// it saw as another line.
+			name:           "several header lines keep their order",
+			peer:           "10.0.0.1:5000",
+			trustedProxies: []string{"10.0.0.1"},
+			forwardedLines: []string{"1.2.3.4, 198.51.100.7", "10.0.0.1"},
+			want:           "198.51.100.7",
+		},
+		{
+			// A chain with no address in it is not evidence, so the peer stands.
+			name:           "an unparseable chain falls back to the peer",
+			peer:           "10.0.0.1:1234",
+			trustedProxies: []string{"10.0.0.1"},
+			forwarded:      strings.Repeat("1", MaxIPBytes*2),
+			want:           "10.0.0.1",
 		},
 		{
 			name:           "a forged leftmost entry is ignored",
@@ -315,6 +326,9 @@ func TestClientAddressReadsTheForwardedChainFromTheRight(t *testing.T) {
 			if tc.forwarded != "" {
 				header.Set("X-Forwarded-For", tc.forwarded)
 			}
+			for _, line := range tc.forwardedLines {
+				header.Add("X-Forwarded-For", line)
+			}
 			if tc.gatewayPeer != "" {
 				StampGatewayPeer(header, tc.gatewayPeer)
 				throughGateway(header)
@@ -339,7 +353,8 @@ func throughGateway(header http.Header) {
 }
 
 // The gateway middleware overwrites rather than appends, so a caller cannot
-// smuggle its own value into the marker the resolver reads.
+// smuggle its own value into the marker the resolver reads; the proof is a MAC
+// over the stamped address, so moving it under another address does not validate.
 func TestStampGatewayPeerOverwritesACallerSuppliedValue(t *testing.T) {
 	t.Parallel()
 
@@ -350,19 +365,6 @@ func TestStampGatewayPeerOverwritesACallerSuppliedValue(t *testing.T) {
 	require.Equal(t, "203.0.113.7", header.Get(gatewayPeerForwardHeader))
 	require.NotEqual(t, "bogus", header.Get(gatewayProofForwardHeader))
 
-	// The stamp and its proof together are what the resolver believes.
-	stamped := http.Header{}
-	StampGatewayPeer(stamped, "203.0.113.7:4040")
-	throughGateway(stamped)
-	require.Equal(t, "203.0.113.7", verifiedGatewayPeer(stamped))
-
-	// Replacing the address while keeping the proof stops it from being believed,
-	// even when the address it names is the caller's choice.
-	forged := http.Header{}
-	forged.Set(GatewayPeerHeader, "8.8.8.8")
-	forged.Set(GatewayProofHeader, stamped.Get(GatewayProofHeader))
-	require.Empty(t, verifiedGatewayPeer(forged))
-
 	// A missing peer leaves neither header behind, so nothing is believed.
 	empty := http.Header{}
 	empty.Set(gatewayPeerForwardHeader, "1.2.3.4")
@@ -370,17 +372,16 @@ func TestStampGatewayPeerOverwritesACallerSuppliedValue(t *testing.T) {
 	StampGatewayPeer(empty, "")
 	require.Empty(t, empty.Get(gatewayPeerForwardHeader))
 	require.Empty(t, empty.Get(gatewayProofForwardHeader))
-}
 
-// grpc-gateway turns each header line into metadata and joins the entries it
-// received with the peer it appended; several lines keep their order.
-func TestClientAddressJoinsSeveralForwardedHeaderLines(t *testing.T) {
-	t.Parallel()
-
-	header := http.Header{}
-	header.Add("X-Forwarded-For", "1.2.3.4, 198.51.100.7")
-	header.Add("X-Forwarded-For", "10.0.0.1")
-	require.Equal(t, "198.51.100.7", ClientAddress(header, "10.0.0.1:5000", []string{"10.0.0.1"}))
+	// Replacing the address while keeping a genuine proof stops it from being
+	// believed: the resolver falls back to the loopback peer.
+	stamped := http.Header{}
+	StampGatewayPeer(stamped, "203.0.113.7:4040")
+	throughGateway(stamped)
+	forged := http.Header{}
+	forged.Set(GatewayPeerHeader, "8.8.8.8")
+	forged.Set(GatewayProofHeader, stamped.Get(GatewayProofHeader))
+	require.Equal(t, "127.0.0.1", ClientAddress(forged, "127.0.0.1:5555", nil))
 }
 
 // A status message is built by a handler out of the request (an address, a

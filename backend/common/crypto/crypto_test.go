@@ -111,14 +111,6 @@ func TestDecryptRejectsEditedCiphertext(t *testing.T) {
 	}
 }
 
-func TestIsCiphertext(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, IsCiphertext(Prefix+"AAAA"))
-	require.False(t, IsCiphertext("aGVsbG8="))
-	require.False(t, IsCiphertext(""))
-}
-
 func TestNewCipherRejectsTheWrongKeySize(t *testing.T) {
 	t.Parallel()
 

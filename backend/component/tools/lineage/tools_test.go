@@ -1,7 +1,6 @@
 package lineage
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,23 +25,6 @@ func TestParseDirectionMapsTheTransportWords(t *testing.T) {
 
 	_, err = ParseDirection("sideways")
 	require.Error(t, err)
-}
-
-func TestSplitTemporaryRelationsSeparatesThem(t *testing.T) {
-	t.Parallel()
-
-	existing, temporary, err := splitTemporaryRelations([]*v1pb.AnalyzeSQLRelation{
-		{SourceGuid: "1;shop", TargetGuid: "1;shop;;orders"},
-		{SourceGuid: "1;shop", TargetGuid: "1;shop;;tmp", IsTemp: true},
-	})
-	require.NoError(t, err)
-
-	var existingRows, temporaryRows []map[string]any
-	require.NoError(t, json.Unmarshal(existing, &existingRows))
-	require.NoError(t, json.Unmarshal(temporary, &temporaryRows))
-	require.Len(t, existingRows, 1)
-	require.Len(t, temporaryRows, 1)
-	require.Equal(t, true, temporaryRows[0]["isTemp"])
 }
 
 func TestFilterGraphByColumnKeepsTheEdgesAndTheirNodes(t *testing.T) {

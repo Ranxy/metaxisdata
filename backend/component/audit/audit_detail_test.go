@@ -37,6 +37,8 @@ func TestDetailRecorderAttachesToTheAuditPayload(t *testing.T) {
 	require.NotNil(t, again.GetFields()["auditDetail"].GetStructValue())
 }
 
+// A request that records no detail, and one that is not being audited at all,
+// keeps its own payload: the merge must not add an empty "auditDetail".
 func TestAuditDetailIsANoOpWithoutARecorder(t *testing.T) {
 	t.Parallel()
 
@@ -45,10 +47,13 @@ func TestAuditDetailIsANoOpWithoutARecorder(t *testing.T) {
 
 	payload, err := structpb.NewStruct(map[string]any{"name": "iamGrants/42"})
 	require.NoError(t, err)
-	require.Equal(t, payload, AttachDetail(ctx, payload))
+	unrecorded := AttachDetail(ctx, payload)
+	require.NotContains(t, unrecorded.GetFields(), "auditDetail")
+	require.Equal(t, "iamGrants/42", unrecorded.GetFields()["name"].GetStringValue())
 
 	// A recorder with no fields leaves the payload untouched too.
 	empty := WithDetailRecorder(context.Background())
-	require.Equal(t, payload, AttachDetail(empty, payload))
-	require.Equal(t, "iamGrants/42", AttachDetail(empty, payload).GetFields()["name"].GetStringValue())
+	unchanged := AttachDetail(empty, payload)
+	require.NotContains(t, unchanged.GetFields(), "auditDetail")
+	require.Equal(t, "iamGrants/42", unchanged.GetFields()["name"].GetStringValue())
 }

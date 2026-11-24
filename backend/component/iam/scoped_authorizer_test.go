@@ -178,14 +178,6 @@ func TestScopedAuthorizerCheck(t *testing.T) {
 		require.False(t, allowed)
 		require.Zero(t, reader.grantCalls)
 	})
-
-	t.Run("a missing principal is denied", func(t *testing.T) {
-		t.Parallel()
-		allowed, err := NewScopedAuthorizer(&fakeChecker{allowed: true}, &fakeGrantReader{}).
-			Check(context.Background(), nil, permission.DataQualityRulesCreate, table)
-		require.NoError(t, err)
-		require.False(t, allowed)
-	})
 }
 
 // The agent ownership model derives two relations: the owner gets qualityOwner

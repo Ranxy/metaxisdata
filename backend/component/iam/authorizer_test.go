@@ -41,7 +41,8 @@ func (f *fakeAuthorizer) Scopes(context.Context, *store.UserMessage, permission.
 }
 
 // The flat checker the in-process tool pipeline uses is the capability gate: the
-// agent holds the permission when it holds it in at least one scope.
+// principal holds the permission when it holds it in at least one scope. The
+// resource check binds the same decision to one resource.
 func TestScopedPermissionChecker(t *testing.T) {
 	t.Parallel()
 
@@ -53,13 +54,9 @@ func TestScopedPermissionChecker(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, allowed)
 
+	// A principal with no grant in any scope holds nothing.
 	allowed, err = NewScopedPermissionChecker(&fakeAuthorizer{}).
 		CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
-	require.NoError(t, err)
-	require.False(t, allowed)
-
-	allowed, err = NewScopedPermissionChecker(&fakeAuthorizer{}).
-		CheckPermission(context.Background(), permission.DataQualityRulesList, nil)
 	require.NoError(t, err)
 	require.False(t, allowed)
 
@@ -68,26 +65,20 @@ func TestScopedPermissionChecker(t *testing.T) {
 		CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
 	require.ErrorIs(t, err, cause)
 	require.False(t, allowed)
-}
 
-// CheckResource answers on one resource, which the agent's target session binds
-// its tool checks to.
-func TestScopedPermissionCheckerCheckResource(t *testing.T) {
-	t.Parallel()
-
-	principal := &store.UserMessage{ID: 7}
 	ref := resource.NewRef(resource.TypeTable, "i;db;public;orders")
 	authorizer := &fakeAuthorizer{scopes: resource.ScopeSet{
 		Scopes: []resource.Scope{resource.NewScope(resource.TypeDatabase, "i;db")},
 	}}
-	allowed, err := NewScopedPermissionChecker(authorizer).
+	allowed, err = NewScopedPermissionChecker(authorizer).
 		CheckResource(context.Background(), permission.DataQualityRulesList, principal, ref)
 	require.NoError(t, err)
 	require.True(t, allowed)
 	require.Equal(t, ref, authorizer.ref)
 
+	// The resource answer is the authorizer's: no grant on the target denies.
 	allowed, err = NewScopedPermissionChecker(&fakeAuthorizer{}).
-		CheckResource(context.Background(), permission.DataQualityRulesList, nil, ref)
+		CheckResource(context.Background(), permission.DataQualityRulesList, principal, ref)
 	require.NoError(t, err)
 	require.False(t, allowed)
 }

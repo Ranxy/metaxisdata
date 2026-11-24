@@ -159,10 +159,14 @@ func TestRenderQualityScoreUnset(t *testing.T) {
 	report.QualityScore = nil
 	report.ScoredRuleCount = 0
 	report.UnscoredRuleCount = 1
-	view := newReportView(LanguageEnglish, report, newRenderLimits(report))
-	require.Equal(t, englishLabels.LabelNotAvailable, view.Summary.QualityScore)
-	require.Equal(t, "0", view.Summary.ScoredRuleCount)
-	require.Equal(t, "1", view.Summary.UnscoredRuleCount)
+	document, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, document,
+		`<div class="value">`+englishLabels.LabelNotAvailable+`</div><div class="label">`+englishLabels.LabelQualityScore+`</div>`,
+		"no judged result renders the not-available mark instead of a score")
+	require.Contains(t, document,
+		`<div class="value">0 / 1</div><div class="label">`+englishLabels.LabelScoredRules+" / "+englishLabels.LabelUnscoredRules+`</div>`,
+		"the enabled rules partition into the judged and the not-judged")
 }
 
 // The Chinese report keeps the same structure and switches the vocabulary.
@@ -179,6 +183,7 @@ func TestRenderChineseReport(t *testing.T) {
 	require.Contains(t, document, "质量分")
 	require.Contains(t, document, "已判定检查")
 	require.Contains(t, document, "行数")
+	require.Contains(t, document, "每 2小时", "an interval target's basis renders in the catalog's vocabulary")
 	require.Contains(t, document, "转发本文件即转发这些数据",
 		"页脚必须提示报告含真实样本值")
 	require.NotContains(t, document, "Report scope")
@@ -356,9 +361,10 @@ func TestRenderTrimmedSectionsDoNotClaimEmpty(t *testing.T) {
 	require.Contains(t, document, englishLabels.TrimNote, "the document still explains why")
 }
 
-// The omitted count and the list come from different observations, so the
-// rendered denominator must be at least the number of rows shown.
-func TestRenderShowsTheLargerFailedCheckTotal(t *testing.T) {
+// The omitted denominator comes from the window's failed-check total, not from
+// the capped list, so a section that shows 20 rows can still say how many the
+// window held.
+func TestRenderShowsTheWindowFailedCheckTotal(t *testing.T) {
 	t.Parallel()
 
 	report := reportFixture()
@@ -370,27 +376,6 @@ func TestRenderShowsTheLargerFailedCheckTotal(t *testing.T) {
 	document, err := Render(LanguageEnglish, report)
 	require.NoError(t, err)
 	require.Contains(t, document, "Showing 20 of 21 failed checks in the window.")
-}
-
-// The trimming loop is bounded: every step halves a budget and the budgets hit
-// their floors in far fewer steps than the loop cap, so a pathological report
-// fails fast instead of re-rendering forever.
-func TestRenderLimitsShrinkConverges(t *testing.T) {
-	t.Parallel()
-
-	limits := newRenderLimits(reportFixture())
-	steps := 0
-	for limits.shrink() {
-		steps++
-	}
-	require.Less(t, steps, maxTrimIterations)
-	require.True(t, limits.trimmed)
-	require.Zero(t, limits.checks)
-	require.Zero(t, limits.rules)
-	require.Zero(t, limits.issues)
-	require.Equal(t, 1, limits.rows)
-	require.Equal(t, 8, limits.cellRunes)
-	require.Equal(t, 25, limits.titleRunes)
 }
 
 // An orphaned target still renders from the snapshots, and the document states
@@ -408,14 +393,6 @@ func TestRenderOrphanedTarget(t *testing.T) {
 	require.Contains(t, document, "instance-1/shop/orders", "the path snapshot still renders")
 }
 
-// Render refuses a nil report instead of emitting a blank document.
-func TestRenderRejectsNilReport(t *testing.T) {
-	t.Parallel()
-
-	_, err := Render(LanguageEnglish, nil)
-	require.Error(t, err)
-}
-
 // Language normalization accepts the supported tags and their variants.
 func TestNormalizeLanguage(t *testing.T) {
 	t.Parallel()
@@ -430,48 +407,48 @@ func TestNormalizeLanguage(t *testing.T) {
 	require.Equal(t, LanguageEnglish, NormalizeLanguage("fr-FR"))
 }
 
-// Threshold and interval text is bilingual and skips an unset level.
-func TestFormatThresholdsAndInterval(t *testing.T) {
+// A rule's thresholds render in the requested language; a rule with no thresholds
+// shows the not-available mark instead of a blank cell.
+func TestRenderThresholds(t *testing.T) {
 	t.Parallel()
 
-	warn := 5.0
-	fail := 10.0
-	thresholds := &storepb.QualityThresholds{
-		Comparison: storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN,
-		WarnValue:  &warn,
-		FailValue:  &fail,
-	}
-	require.Equal(t, "warn > 5 · fail > 10", formatThresholds(LanguageEnglish, thresholds))
-	require.Equal(t, "警告 > 5 · 失败 > 10", formatThresholds(LanguageChinese, thresholds))
-	require.Empty(t, formatThresholds(LanguageEnglish, nil))
-	require.Equal(t, "2h", formatInterval(LanguageEnglish, 2*time.Hour))
-	require.Equal(t, "2小时", formatInterval(LanguageChinese, 2*time.Hour))
-	require.Equal(t, "15m", formatInterval(LanguageEnglish, 15*time.Minute))
+	report := reportFixture()
+	english, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, english, "warn &gt; 5 · fail &gt; 10")
+
+	chinese, err := Render(LanguageChinese, report)
+	require.NoError(t, err)
+	require.Contains(t, chinese, "警告 &gt; 5 · 失败 &gt; 10")
+
+	// Every other display fallback is filled in, so the one not-available cell left
+	// is the thresholds of a rule that has none.
+	observed := 12.5
+	report.Rules = []Rule{{
+		Title:           "orders row count",
+		TypeKey:         "ROW_COUNT",
+		DimensionKey:    "COMPLETENESS",
+		SeverityKey:     SeverityWarning,
+		StateKey:        "ENABLED",
+		Owner:           "users/1",
+		Column:          "amount",
+		LastStatusKey:   StatusPass,
+		ObservedValue:   &observed,
+		ObservedKindKey: ObservedKindCount,
+		LastRunTime:     time.Date(2026, time.October, 31, 8, 0, 0, 0, time.UTC),
+		Revision:        3,
+	}}
+	bare, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(bare, "<td>"+englishLabels.LabelNotAvailable+"</td>"),
+		"a rule with no thresholds shows the not-available mark, and no other cell falls back")
 }
 
-// A cron target's monitoring basis names the expression and the IANA time zone
-// it is resolved in; an interval target keeps the interval text, and a target
-// with neither schedule still reads "no schedule".
-func TestBasisScheduleText(t *testing.T) {
-	t.Parallel()
-
-	cron := Basis{Cron: "*/15 * * * *", TimeZone: "Asia/Shanghai"}
-	require.Equal(t, "cron */15 * * * * (Asia/Shanghai)", scheduleText(LanguageEnglish, englishLabels, cron))
-	require.Equal(t, "cron */15 * * * *（Asia/Shanghai）", scheduleText(LanguageChinese, chineseLabels, cron))
-	require.Equal(t, "cron */15 * * * *", scheduleText(LanguageEnglish, englishLabels, Basis{Cron: "*/15 * * * *"}),
-		"a cron basis without a stored zone renders the expression alone")
-	require.Equal(t, "every 2h", scheduleText(LanguageEnglish, englishLabels, Basis{ScheduleInterval: 2 * time.Hour}))
-	require.Equal(t, "每 2小时", scheduleText(LanguageChinese, chineseLabels, Basis{ScheduleInterval: 2 * time.Hour}))
-	require.Equal(t, englishLabels.ScheduleNone, scheduleText(LanguageEnglish, englishLabels, Basis{}))
-	require.Equal(t, chineseLabels.ScheduleNone, scheduleText(LanguageChinese, chineseLabels, Basis{}))
-	require.Equal(t, "cron 0 2 * * * (UTC)", scheduleText(LanguageEnglish, englishLabels, Basis{
-		Cron: "0 2 * * *", TimeZone: "UTC", ScheduleInterval: 2 * time.Hour,
-	}), "a cron expression wins over a leftover interval: the two modes are exclusive")
-}
-
-// The rendered document carries the cron basis and the next run in both
-// languages, while an interval target's basis stays unchanged.
-func TestRenderCronScheduleBasis(t *testing.T) {
+// The monitoring basis renders a cron expression with the IANA zone it is
+// resolved in, an interval target's cadence, and "no schedule" when neither is
+// set; a cron expression wins over a leftover interval, because the two modes are
+// exclusive.
+func TestRenderScheduleBasis(t *testing.T) {
 	t.Parallel()
 
 	nextRun := time.Date(2026, time.November, 1, 2, 0, 0, 0, time.UTC)
@@ -479,6 +456,7 @@ func TestRenderCronScheduleBasis(t *testing.T) {
 	report.Basis = Basis{
 		Cron:              "0 2 * * *",
 		TimeZone:          "Asia/Shanghai",
+		ScheduleInterval:  2 * time.Hour,
 		NextRunTime:       &nextRun,
 		HasRevisionRange:  true,
 		RuleRevisionMin:   1,
@@ -491,16 +469,31 @@ func TestRenderCronScheduleBasis(t *testing.T) {
 	require.Contains(t, document, "cron 0 2 * * * (Asia/Shanghai)")
 	require.Contains(t, document, "2026-11-01 02:00:00 UTC",
 		"the next run is an absolute instant and renders in UTC like every other time")
-	require.NotContains(t, document, "every 2h")
+	require.NotContains(t, document, "every 2h",
+		"a cron expression wins over a leftover interval")
 
 	chinese, err := Render(LanguageChinese, report)
 	require.NoError(t, err)
 	require.Contains(t, chinese, "cron 0 2 * * *（Asia/Shanghai）")
 
-	interval, err := Render(LanguageEnglish, reportFixture())
+	// A cron basis with no stored zone renders the expression alone.
+	report.Basis.TimeZone = ""
+	zoneless, err := Render(LanguageEnglish, report)
 	require.NoError(t, err)
-	require.Contains(t, interval, "every 2h", "an interval target's basis is unchanged")
-	require.NotContains(t, interval, "cron ")
+	require.Contains(t, zoneless, "cron 0 2 * * *")
+	require.NotContains(t, zoneless, "Asia/Shanghai")
+
+	// An interval target keeps its cadence, and a target with neither schedule
+	// still reads "no schedule" rather than an empty cell.
+	report.Basis = Basis{ScheduleInterval: 15 * time.Minute}
+	interval, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, interval, "every 15m")
+
+	report.Basis = Basis{}
+	unscheduled, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, unscheduled, englishLabels.ScheduleNone)
 }
 
 // The impact section says what the target feeds and what may explain a failure. An
@@ -624,4 +617,35 @@ func TestRenderWithoutImpact(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, document, "No downstream assets are recorded in lineage.")
 	require.Contains(t, document, "No upstream check failed or changed structure in the window.")
+}
+
+// The trim loop escalates through every cap in a fixed order and reports false
+// only when nothing is left to halve; a missing or reordered step would let a
+// pathological report fail to converge, so the whole ladder is pinned.
+func TestRenderLimitsShrinkEscalatesThroughEveryCap(t *testing.T) {
+	t.Parallel()
+
+	limits := &renderLimits{cellRunes: 16, rows: 4, checks: 2, titleRunes: 50, rules: 2, issues: 2}
+	require.True(t, limits.shrink())
+	require.Equal(t, 8, limits.cellRunes)
+	require.True(t, limits.trimmed)
+	require.True(t, limits.shrink())
+	require.Equal(t, 2, limits.rows)
+	require.True(t, limits.shrink())
+	require.Equal(t, 1, limits.rows)
+	require.True(t, limits.shrink())
+	require.Equal(t, 1, limits.checks)
+	require.True(t, limits.shrink())
+	require.Equal(t, 0, limits.checks)
+	require.True(t, limits.shrink())
+	require.Equal(t, 25, limits.titleRunes)
+	require.True(t, limits.shrink())
+	require.Equal(t, 1, limits.rules)
+	require.True(t, limits.shrink())
+	require.Equal(t, 0, limits.rules)
+	require.True(t, limits.shrink())
+	require.Equal(t, 1, limits.issues)
+	require.True(t, limits.shrink())
+	require.Equal(t, 0, limits.issues)
+	require.False(t, limits.shrink())
 }

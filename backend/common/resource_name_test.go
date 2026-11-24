@@ -7,39 +7,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsValidRoleID(t *testing.T) {
+// The role ID is the segment of roles/{role}. The predefined IDs are camelCased,
+// so uppercase is accepted here, unlike the lowercased resource IDs used in URL
+// paths.
+func TestRoleResourceName(t *testing.T) {
 	t.Parallel()
 
 	for _, id := range []string{"workspaceAdmin", "workspaceMember", "syncer", "read-only", "a", "a1"} {
-		require.Truef(t, IsValidRoleID(id), "%q should be a valid role ID", id)
+		name := FormatRole(id)
+		require.Equal(t, "roles/"+id, name)
+		parsed, err := GetRoleID(name)
+		require.NoError(t, err)
+		require.Equal(t, id, parsed)
 	}
-	for _, id := range []string{"", "-lead", "has space", "has/slash", "trailing-", "a.b"} {
-		require.Falsef(t, IsValidRoleID(id), "%q should not be a valid role ID", id)
+	for _, name := range []string{
+		"roles/",
+		"users/101",
+		"roles/-lead",
+		"roles/has space",
+		"roles/has/slash",
+		"roles/trailing-",
+		"roles/a.b",
+		"roles/1bad",
+	} {
+		_, err := GetRoleID(name)
+		require.Errorf(t, err, "%q should be rejected", name)
 	}
-}
-
-func TestGetRoleID(t *testing.T) {
-	t.Parallel()
-
-	id, err := GetRoleID("roles/workspaceAdmin")
-	require.NoError(t, err)
-	require.Equal(t, "workspaceAdmin", id)
-
-	_, err = GetRoleID("roles/")
-	require.Error(t, err)
-	_, err = GetRoleID("users/101")
-	require.Error(t, err)
-	_, err = GetRoleID("roles/1bad")
-	require.Error(t, err)
-}
-
-func TestFormatRoleRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "roles/syncer", FormatRole("syncer"))
-	id, err := GetRoleID(FormatRole("syncer"))
-	require.NoError(t, err)
-	require.Equal(t, "syncer", id)
 }
 
 func TestGroupEmailRoundTrip(t *testing.T) {
@@ -66,9 +59,9 @@ func TestGetNameParentTokensRejectsEmptyTokens(t *testing.T) {
 }
 
 // RandomResourceID must produce ids that the name parsers accept, and the
-// notification-channel parser is the one that shipped broken once: it rejected
+// notification parsers are the ones that shipped broken once: they rejected
 // 99.8% of the ids the old generator produced.
-func TestRandomResourceIDIsAValidNotificationChannelName(t *testing.T) {
+func TestRandomResourceIDIsValidForNotificationNames(t *testing.T) {
 	t.Parallel()
 
 	for i := 0; i < 500; i++ {
@@ -77,9 +70,14 @@ func TestRandomResourceIDIsAValidNotificationChannelName(t *testing.T) {
 		require.Truef(t, IsValidResourceID(id), "%q should match the resource id pattern", id)
 		require.Falsef(t, id[0] >= '0' && id[0] <= '9', "%q must start with a letter", id)
 
-		name := "workspaces/ws-1/notificationChannels/" + id
-		parsed, err := GetNotificationChannelID(name)
-		require.NoErrorf(t, err, "%q should parse", name)
+		channelName := "workspaces/ws-1/notificationChannels/" + id
+		parsed, err := GetNotificationChannelID(channelName)
+		require.NoErrorf(t, err, "%q should parse", channelName)
+		require.Equal(t, id, parsed)
+
+		routeName := "workspaces/ws-1/notificationRoutes/" + id
+		parsed, err = GetNotificationRouteID(routeName)
+		require.NoErrorf(t, err, "%q should parse", routeName)
 		require.Equal(t, id, parsed)
 	}
 }
@@ -97,20 +95,6 @@ func TestGetNotificationChannelIDRejectsMalformedNames(t *testing.T) {
 	} {
 		_, err := GetNotificationChannelID(name)
 		require.Errorf(t, err, "%q should be rejected", name)
-	}
-}
-
-func TestRandomResourceIDIsAValidNotificationRouteName(t *testing.T) {
-	t.Parallel()
-
-	for i := 0; i < 200; i++ {
-		id, err := RandomResourceID(12)
-		require.NoError(t, err)
-
-		name := "workspaces/ws-1/notificationRoutes/" + id
-		parsed, err := GetNotificationRouteID(name)
-		require.NoErrorf(t, err, "%q should parse", name)
-		require.Equal(t, id, parsed)
 	}
 }
 

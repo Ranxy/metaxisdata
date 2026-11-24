@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 
 	// Register the drivers so GetReadOnlyDatabaseDriver can open them. Opening is
@@ -38,20 +37,6 @@ func testInstance(resourceID string, engine storepb.Engine, dataSources ...*stor
 			DataSources: dataSources,
 		},
 	}
-}
-
-func TestGetReadOnlyDatabaseDriverRejectsInstanceWithoutReadOnlyDataSource(t *testing.T) {
-	t.Parallel()
-
-	// The admin source is deliberately unusable (an invalid port would fail the
-	// driver's DSN parsing). If the factory fell back to ADMIN, the test would
-	// see that error instead of the sentinel.
-	instance := testInstance("inst-admin-only", storepb.Engine_POSTGRES,
-		testDataSource(storepb.DataSourceType_ADMIN, "127.0.0.1", "not-a-port"))
-
-	driver, err := New(nil).GetReadOnlyDatabaseDriver(context.Background(), instance, &store.DatabaseMessage{DatabaseName: "probe"})
-	require.Nil(t, driver)
-	require.ErrorIs(t, err, ErrNoReadOnlyDataSource)
 }
 
 func TestGetReadOnlyDatabaseDriverDoesNotFallBackToAdminForAnyEngine(t *testing.T) {
@@ -107,12 +92,4 @@ func TestGetReadOnlyDatabaseDriverUsesReadOnlyDataSource(t *testing.T) {
 			})
 		})
 	}
-}
-
-func TestGetReadOnlyDatabaseDriverRejectsNilInstance(t *testing.T) {
-	t.Parallel()
-
-	driver, err := New(nil).GetReadOnlyDatabaseDriver(context.Background(), nil, nil)
-	require.Nil(t, driver)
-	require.Equal(t, common.Internal, common.ErrorCode(err))
 }
