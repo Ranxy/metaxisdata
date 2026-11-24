@@ -350,26 +350,27 @@ describe("QualityCheckDrawer", () => {
     wrapper.unmount();
   });
 
-  it("shows the run cadence only when a check runs less often than its target", async () => {
-    mocks.getQualityRule.mockResolvedValue(
-      ruleFixture({ frequencyTier: QualityFrequencyTier.DAILY })
-    );
-    const { wrapper } = await mountDrawer();
+  it.each([
+    { tier: QualityFrequencyTier.DAILY, shown: true },
+    { tier: QualityFrequencyTier.UNSPECIFIED, shown: false },
+  ])(
+    "shows the run cadence only when the check sets one: $shown",
+    async ({ tier, shown }) => {
+      mocks.getQualityRule.mockResolvedValue(
+        ruleFixture({ frequencyTier: tier })
+      );
+      const { wrapper } = await mountDrawer();
 
-    const text = document.body.textContent ?? "";
-    expect(text).toContain(label("dataQuality.frequencyTierLabel"));
-    expect(text).toContain(label("dataQuality.frequencyTier.daily"));
-    wrapper.unmount();
-  });
-
-  it("drops the run cadence row for a check that follows the target", async () => {
-    const { wrapper } = await mountDrawer();
-
-    expect(document.body.textContent ?? "").not.toContain(
-      label("dataQuality.frequencyTierLabel")
-    );
-    wrapper.unmount();
-  });
+      const text = document.body.textContent ?? "";
+      expect(text.includes(label("dataQuality.frequencyTierLabel"))).toBe(
+        shown
+      );
+      if (shown) {
+        expect(text).toContain(label("dataQuality.frequencyTier.daily"));
+      }
+      wrapper.unmount();
+    }
+  );
 
   it("reports a completed execution by its verdict alone", async () => {
     const { wrapper } = await mountDrawer();
