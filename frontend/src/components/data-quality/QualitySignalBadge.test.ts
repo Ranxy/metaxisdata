@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Badge } from "@/components/ui/badge";
 import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { i18n } from "@/locales";
 import {
@@ -75,7 +76,7 @@ describe("QualitySignalBadge", () => {
     expect(query.get("metaType")).toBe(String(MetaType.TABLE));
     expect(query.get("add")).toBe("1");
     // The neutral badge, not a health colour.
-    expect(wrapper.find(".bg-muted").exists()).toBe(true);
+    expect(wrapper.findComponent(Badge).props("variant")).toBe("neutral");
   });
 
   it("opens the workspace without the composer for a monitored object", async () => {
@@ -92,6 +93,7 @@ describe("QualitySignalBadge", () => {
     expect(query.has("add")).toBe(false);
     expect(query.get("metaType")).toBe(String(MetaType.TABLE));
     expect(link.attributes("title")).toContain(t("dataQuality.status.fail"));
+    expect(wrapper.findComponent(Badge).props("variant")).toBe("destructive");
   });
 
   it("shows a fully paused target as a neutral state, not as a verdict", async () => {
@@ -111,6 +113,6 @@ describe("QualitySignalBadge", () => {
         (link.attributes("href") ?? "").split("?")[1] ?? ""
       ).has("add")
     ).toBe(false);
-    expect(wrapper.find(".bg-success").exists()).toBe(false);
+    expect(wrapper.findComponent(Badge).props("variant")).toBe("neutral");
   });
 });

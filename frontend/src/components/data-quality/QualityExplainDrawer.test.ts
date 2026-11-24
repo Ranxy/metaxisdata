@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
@@ -145,7 +146,6 @@ describe("QualityExplainDrawer", () => {
       global: { plugins: [i18n] },
     });
     await settle();
-    await new Promise((r) => setTimeout(r, 500));
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain("Cached answer");
       expect(document.body.textContent).toContain("openai / gpt-test");
@@ -167,7 +167,6 @@ describe("QualityExplainDrawer", () => {
   });
 
   it("maps a not-configured failure to friendly copy", async () => {
-    const { ConnectError, Code } = await import("@connectrpc/connect");
     mocks.explainQualityExecution.mockImplementation(() => {
       throw new ConnectError(
         "LLM analysis is disabled",

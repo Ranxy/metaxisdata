@@ -243,14 +243,14 @@ describe("QualityThresholdSuggestion", () => {
   it("shows nothing while creating a check", async () => {
     const wrapper = await mountPanel({ rule: undefined });
     expect(mocks.getQualityRuleTrend).not.toHaveBeenCalled();
-    expect(wrapper.find(".rounded-md.border").exists()).toBe(false);
+    expect(wrapper.text()).toBe("");
     wrapper.unmount();
   });
 
   it("stays out of the way when the trend cannot be read", async () => {
     mocks.getQualityRuleTrend.mockRejectedValue(new Error("trend down"));
     const wrapper = await mountPanel();
-    expect(wrapper.find(".rounded-md.border").exists()).toBe(false);
+    expect(wrapper.text()).toBe("");
     wrapper.unmount();
   });
 });

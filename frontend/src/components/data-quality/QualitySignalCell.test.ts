@@ -12,6 +12,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import QualitySignalCell from "./QualitySignalCell.vue";
+import QualitySignalDot from "./QualitySignalDot.vue";
 
 const GUID = "inst1;shop;public;orders";
 
@@ -63,9 +64,9 @@ describe("QualitySignalCell", () => {
     const wrapper = mountCell(undefined, "ready");
 
     expect(wrapper.text()).toBe(t("dataQuality.signal.notMonitored"));
-    expect(wrapper.find(".bg-muted-foreground\\/50").exists()).toBe(true);
-    // There is no coverage or last run to claim, so there is no second line.
-    expect(wrapper.findAll(".text-xs")).toHaveLength(0);
+    expect(wrapper.findComponent(QualitySignalDot).props("tone")).toBe(
+      "neutral"
+    );
     expect(wrapper.attributes("title")).toBe(
       t("dataQuality.signal.notMonitoredHint")
     );
@@ -84,8 +85,9 @@ describe("QualitySignalCell", () => {
     expect(wrapper.text()).toContain(
       t("dataQuality.signal.coverage", { covered: 4, total: 9 })
     );
-    expect(wrapper.find(".bg-success").exists()).toBe(true);
-    expect(wrapper.find(".text-xs.text-muted-foreground").exists()).toBe(true);
+    expect(wrapper.findComponent(QualitySignalDot).props("tone")).toBe(
+      "success"
+    );
   });
 
   it("keeps a known answer on screen while a later batch loads", () => {
@@ -93,7 +95,9 @@ describe("QualitySignalCell", () => {
     const wrapper = mountCell(failing, "loading");
 
     expect(wrapper.text()).toContain(t("dataQuality.status.fail"));
-    expect(wrapper.find(".bg-destructive").exists()).toBe(true);
+    expect(wrapper.findComponent(QualitySignalDot).props("tone")).toBe(
+      "destructive"
+    );
   });
 
   it("states a fully paused target neutrally, without health facts", () => {
@@ -107,7 +111,9 @@ describe("QualitySignalCell", () => {
     const wrapper = mountCell(paused, "ready");
 
     expect(wrapper.text()).toBe(t("dataQuality.signal.allPaused"));
-    expect(wrapper.find(".bg-success").exists()).toBe(false);
+    expect(wrapper.findComponent(QualitySignalDot).props("tone")).toBe(
+      "neutral"
+    );
     expect(wrapper.attributes("title")).toBe(
       t("dataQuality.signal.allPausedHint")
     );
@@ -117,6 +123,8 @@ describe("QualitySignalCell", () => {
     const wrapper = mountCell(summary(), "ready");
 
     expect(wrapper.text()).toContain(t("dataQuality.targets.neverRun"));
-    expect(wrapper.find(".bg-success").exists()).toBe(false);
+    expect(wrapper.findComponent(QualitySignalDot).props("tone")).toBe(
+      "neutral"
+    );
   });
 });
