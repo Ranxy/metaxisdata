@@ -1,15 +1,9 @@
 import { create } from "@bufbuild/protobuf";
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
-import {
-  ConnectedApp_State,
-  ConnectedAppSchema,
-} from "@/types/proto-es/v1/connected_app_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import ConnectedAppsSettingsPage from "./ConnectedAppsSettingsPage.vue";
 
@@ -32,19 +26,6 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn() },
 }));
 
-function app() {
-  return create(ConnectedAppSchema, {
-    name: "connectedApps/7",
-    clientId: "client-abc",
-    clientName: "Claude Code",
-    user: "users/1",
-    userEmail: "ada@example.com",
-    createTime: timestampFromDate(new Date("2026-10-01T09:00:00Z")),
-    expireTime: timestampFromDate(new Date("2026-11-01T09:00:00Z")),
-    state: ConnectedApp_State.ACTIVE,
-  });
-}
-
 describe("ConnectedAppsSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,36 +37,18 @@ describe("ConnectedAppsSettingsPage", () => {
       permissions: ["metaxisdata.connectedApps.list"],
     });
     mocks.listConnectedApps.mockResolvedValue({
-      connectedApps: [app()],
+      connectedApps: [],
       nextPageToken: "",
     });
-    mocks.listAllUsers.mockResolvedValue([]);
   });
 
   afterEach(() => {
     document.body.innerHTML = "";
   });
 
-  it("is the administrator's workspace-wide view, with the user column", async () => {
-    const wrapper = mount(ConnectedAppsSettingsPage, {
-      global: { plugins: [i18n] },
-    });
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("Connected apps");
-    expect(wrapper.text()).toContain(
-      "Every client authorized to act on behalf of a user"
-    );
-    // The administrator's own name must not pin the query.
-    expect(mocks.listConnectedApps).toHaveBeenCalledWith(
-      expect.objectContaining({ user: "" })
-    );
-    expect(wrapper.text()).toContain("User");
-    expect(wrapper.text()).toContain("ada@example.com");
-    expect(wrapper.findComponent(AdvancedSearchBar).exists()).toBe(true);
-  });
-
-  it("reloads the current page from the header refresh button", async () => {
+  // The admin/self scope and its columns are the section's contract; this page
+  // only owns the header that wraps it.
+  it("reloads the section from the header refresh button", async () => {
     const wrapper = mount(ConnectedAppsSettingsPage, {
       global: { plugins: [i18n] },
     });
