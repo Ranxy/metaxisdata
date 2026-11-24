@@ -368,35 +368,71 @@ func TestWakeFallsBackToTheDeterministicSurvey(t *testing.T) {
 	require.Contains(t, outcome.Summary, "surveyed")
 }
 
-// An event with an execution reference is reviewed deterministically and its facts
-// stay in the transcript.
-func TestWakeReviewsAFailedExecutionWithoutAModel(t *testing.T) {
+// An event whose execution failed or errored is reviewed deterministically and its
+// facts stay in the transcript. An error is as much something the agent should look
+// at as a FAIL; without a model there is no root cause to conclude, so no knowledge
+// object is written.
+func TestWakeReviewsFailedAndErroredExecutionsWithoutAModel(t *testing.T) {
 	t.Parallel()
 
-	stores := newFakeStore()
-	stores.executions[7] = &store.QualityExecutionMessage{
-		ID:         7,
-		TargetGUID: "target-1",
-		TargetType: storepb.MetaType(1),
-		Status:     storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		FailedRows: 12,
+	tests := []struct {
+		name        string
+		executionID int64
+		status      storepb.QualityStatus
+		failedRows  int64
+		errorCode   string
+		errorReason string
+		wantNote    string
+	}{
+		{
+			name:        "failed execution",
+			executionID: 7,
+			status:      storepb.QualityStatus_QUALITY_STATUS_FAIL,
+			failedRows:  12,
+			wantNote:    "execution qualityExecutions/7 finished QUALITY_STATUS_FAIL with 12 failed rows",
+		},
+		{
+			name:        "errored execution",
+			executionID: 9,
+			status:      storepb.QualityStatus_QUALITY_STATUS_ERROR,
+			errorCode:   "NO_READ_ONLY_SOURCE",
+			errorReason: "the source is not readable",
+			wantNote:    "execution qualityExecutions/9 ended NO_READ_ONLY_SOURCE: the source is not readable",
+		},
 	}
-	message, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
-		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-		Content: "execution 7 failed", Reference: "qualityExecutions/7",
-		IdempotencyKey: "event:execution:7",
-	})
-	require.NoError(t, err)
-	session := testSession()
-	session.ProcessedSeq = message.Seq - 1
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
-	require.NoError(t, err)
-	require.False(t, outcome.Blocked)
-	require.Contains(t, outcome.Summary, "reviewed 1 event(s)")
-	require.Empty(t, stores.memoryInputs, "a deterministic review writes no knowledge object")
-	require.Contains(t, engineNoteContent(stores.messages), "execution qualityExecutions/7 finished QUALITY_STATUS_FAIL with 12 failed rows")
+			stores := newFakeStore()
+			stores.executions[test.executionID] = &store.QualityExecutionMessage{
+				ID:           test.executionID,
+				TargetGUID:   "target-1",
+				TargetType:   storepb.MetaType(1),
+				Status:       test.status,
+				FailedRows:   test.failedRows,
+				ErrorCode:    test.errorCode,
+				ErrorMessage: test.errorReason,
+			}
+			reference := fmt.Sprintf("qualityExecutions/%d", test.executionID)
+			message, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+				SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+				Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+				Content: "execution event", Reference: reference,
+				IdempotencyKey: fmt.Sprintf("event:execution:%d", test.executionID),
+			})
+			require.NoError(t, err)
+			session := testSession()
+			session.ProcessedSeq = message.Seq - 1
+
+			outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
+			require.NoError(t, err)
+			require.False(t, outcome.Blocked)
+			require.Contains(t, outcome.Summary, "reviewed 1 event(s)")
+			require.Empty(t, stores.memoryInputs, "a deterministic review writes no knowledge object")
+			require.Contains(t, engineNoteContent(stores.messages), test.wantNote)
+		})
+	}
 }
 
 // A person's question cannot be answered without a model, so the session parks instead
@@ -450,36 +486,6 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 	require.Greater(t, len(stores.messages), before)
 }
 
-// An event whose execution ended ERROR is reviewed too: an error is as much
-// something the agent should look at as a FAIL.
-func TestWakeReviewsAnErroredExecutionWithoutAModel(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	stores.executions[9] = &store.QualityExecutionMessage{
-		ID:         9,
-		TargetGUID: "target-1",
-		TargetType: storepb.MetaType(1),
-		Status:     storepb.QualityStatus_QUALITY_STATUS_ERROR,
-		ErrorCode:  "NO_READ_ONLY_SOURCE",
-	}
-	message, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
-		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-		Content: "execution 9 errored", Reference: "qualityExecutions/9",
-		IdempotencyKey: "event:execution:9",
-	})
-	require.NoError(t, err)
-	session := testSession()
-	session.ProcessedSeq = message.Seq - 1
-
-	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
-	require.NoError(t, err)
-	require.False(t, outcome.Blocked)
-	require.Contains(t, outcome.Summary, "reviewed 1 event(s)")
-	require.Contains(t, engineNoteContent(stores.messages), "NO_READ_ONLY_SOURCE")
-}
-
 // The watermark counts only external inputs: the assistant/tool/engine rows a wake
 // writes must not make the session look due again (the review's hot-loop blocker).
 func TestWakeWatermarkCountsOnlyExternalInputs(t *testing.T) {
@@ -505,56 +511,50 @@ func TestWakeWatermarkCountsOnlyExternalInputs(t *testing.T) {
 	require.Equal(t, event.Seq, outcome.ProcessedSeq)
 }
 
-// The no-model path reviews every pending event it can, not just the first.
-func TestDeterministicWakeReviewsEveryPendingEvent(t *testing.T) {
+// The no-model path reviews every pending event it can up to the per-wake bound, not
+// just the first; the rest stay above the watermark so the runner picks them up on the
+// next wake.
+func TestDeterministicWakeReviewsPendingEventsUpToTheBound(t *testing.T) {
 	t.Parallel()
 
-	stores := newFakeStore()
-	for id := int64(1); id <= 2; id++ {
-		stores.executions[id] = &store.QualityExecutionMessage{
-			ID: id, TargetGUID: "target-1", TargetType: storepb.MetaType(1),
-			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		}
-		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
-			SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-			Content: "event", Reference: fmt.Sprintf("qualityExecutions/%d", id),
-			IdempotencyKey: fmt.Sprintf("event:%d", id),
-		})
-		require.NoError(t, err)
+	tests := []struct {
+		name         string
+		events       int
+		wantReviewed int
+	}{
+		{name: "every pending event when under the bound", events: 2, wantReviewed: 2},
+		{name: "the bound leaves the rest pending", events: maxDeterministicEvents + 1, wantReviewed: maxDeterministicEvents},
 	}
-	last := stores.messages[len(stores.messages)-1]
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.Equal(t, 2, strings.Count(engineNoteContent(stores.messages), "deterministic event review"))
-	require.Equal(t, last.Seq, outcome.ProcessedSeq)
-}
+			stores := newFakeStore()
+			for id := int64(1); id <= int64(test.events); id++ {
+				stores.executions[id] = &store.QualityExecutionMessage{
+					ID: id, TargetGUID: "target-1", TargetType: storepb.MetaType(1),
+					Status: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+				}
+				_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+					SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+					Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+					Content: "event", Reference: fmt.Sprintf("qualityExecutions/%d", id),
+					IdempotencyKey: fmt.Sprintf("event:%d", id),
+				})
+				require.NoError(t, err)
+			}
 
-// More events than one deterministic wake handles stay above the watermark so the
-// runner picks them up on the next wake.
-func TestDeterministicWakeLeavesTheRestPending(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	for id := int64(1); id <= maxDeterministicEvents+1; id++ {
-		stores.executions[id] = &store.QualityExecutionMessage{
-			ID: id, TargetGUID: "target-1", TargetType: storepb.MetaType(1),
-			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		}
-		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
-			SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-			Content: "event", Reference: fmt.Sprintf("qualityExecutions/%d", id),
-			IdempotencyKey: fmt.Sprintf("event:%d", id),
+			outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
+			require.NoError(t, err)
+			require.Equal(t, test.wantReviewed, strings.Count(engineNoteContent(stores.messages), "deterministic event review"))
+			// The events are the session's first rows, so the watermark is the seq of the
+			// last reviewed event.
+			require.Equal(t, int64(test.wantReviewed), outcome.ProcessedSeq)
+			if test.wantReviewed < test.events {
+				require.Less(t, outcome.ProcessedSeq, int64(test.events), "the last event is still pending")
+			}
 		})
-		require.NoError(t, err)
 	}
-
-	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.Equal(t, maxDeterministicEvents, strings.Count(engineNoteContent(stores.messages), "deterministic event review"))
-	require.Less(t, outcome.ProcessedSeq, stores.nextSeq, "the last event is still pending")
 }
 
 // A crash between the assistant message and its tool result is repaired before the next
@@ -675,7 +675,9 @@ func TestRecordAssetFactKeepsDistinctFacts(t *testing.T) {
 }
 
 // A provider context-overflow rejection forces a compaction and retries the wake once
-// inside the same wake, instead of parking the session for a retry cycle.
+// inside the same wake, instead of parking the session for a retry cycle. The retried
+// estimate reflects the compacted conversation, so the session rail does not stay
+// critical until the next wake.
 func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 	t.Parallel()
 
@@ -708,8 +710,6 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 				events <- agent.Event{Type: agent.EventEnd}
 			default:
 				events <- agent.Event{Type: agent.EventTurnStart, Turn: 1}
-				events <- agent.Event{Type: agent.EventUsage, Turn: 1,
-					Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}}
 				events <- agent.Event{Type: agent.EventAssistant,
 					Assistant: &agent.Message{Role: "assistant", Content: "recovered"}}
 				events <- agent.Event{Type: agent.EventEnd}
@@ -731,54 +731,8 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		}
 	}
 	require.True(t, found)
-}
-
-// A provider that reports no usage after an overflow must leave the compressed estimate,
-// not the pre-compaction one: otherwise the session rail stays critical until the next
-// wake even though the conversation was just compacted.
-func TestWakeReRecordsTheEstimateAfterACompactionRetry(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	session := testSession()
-	for index := 0; index < 12; index++ {
-		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
-			SessionID: 1, WorkspaceID: "ws",
-			Role:    storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
-			Content: strings.Repeat("earlier conversation. ", 200),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	calls := 0
-	chat := func(_ context.Context, _ agent.Config) <-chan agent.Event {
-		calls++
-		events := make(chan agent.Event, 8)
-		go func() {
-			defer close(events)
-			switch calls {
-			case 1:
-				events <- agent.Event{Type: agent.EventError,
-					Error: &llm.ResponseError{Code: llm.FailureContextOverflow}}
-			case 2:
-				events <- agent.Event{Type: agent.EventAssistant,
-					Assistant: &agent.Message{Role: "assistant", Content: "## Next Step\n- (none)"}}
-				events <- agent.Event{Type: agent.EventEnd}
-			default:
-				events <- agent.Event{Type: agent.EventTurnStart, Turn: 1}
-				events <- agent.Event{Type: agent.EventAssistant,
-					Assistant: &agent.Message{Role: "assistant", Content: "recovered"}}
-				events <- agent.Event{Type: agent.EventEnd}
-			}
-		}()
-		return events
-	}
-	engine := NewModelEngine(stores, chat, resolveToModel, nil)
-	_, err := engine.Wake(context.Background(), session, Options{CompactionTriggerTokens: 1_000_000})
-	require.NoError(t, err)
-	require.NotEmpty(t, session.Summary, "the overflow forced a compaction")
+	// The provider reported no usage on the retry, so the compressed estimate must be the
+	// last sample: leaving the pre-compaction one would keep the session rail critical.
 	require.Len(t, stores.contextUsage, 2, "one estimate before each model call")
 	require.True(t, stores.contextUsage[0].GetEstimated())
 	require.True(t, stores.contextUsage[1].GetEstimated())
@@ -786,50 +740,87 @@ func TestWakeReRecordsTheEstimateAfterACompactionRetry(t *testing.T) {
 		"the retried estimate reflects the compacted conversation")
 }
 
-// denyingChecker refuses every permission and records what was asked.
+// denyingChecker refuses every permission and records which half of the scoped
+// checker the engine asked.
 type denyingChecker struct {
-	asked []permission.Permission
+	asked           []permission.Permission
+	capabilityCalls int
+	resourceCalls   int
+	ref             resource.Ref
 }
 
 func (c *denyingChecker) CheckPermission(_ context.Context, perm permission.Permission, _ *store.UserMessage) (bool, error) {
+	c.capabilityCalls++
 	c.asked = append(c.asked, perm)
 	return false, nil
 }
 
 // CheckResource makes the fake a target-aware checker: a target session asks the
 // resource-scoped half, which the engine requires.
-func (c *denyingChecker) CheckResource(_ context.Context, perm permission.Permission, _ *store.UserMessage, _ resource.Ref) (bool, error) {
+func (c *denyingChecker) CheckResource(_ context.Context, perm permission.Permission, _ *store.UserMessage, ref resource.Ref) (bool, error) {
+	c.resourceCalls++
+	c.ref = ref
 	c.asked = append(c.asked, perm)
 	return false, nil
 }
 
 // A tool call runs under the session's agent principal, and its declared IAM
-// permission is checked before the body runs. A refusal is a tool error the wake
-// survives, not a wake failure.
+// permission is checked before the body runs. A target session checks the permission
+// on the session target, so the agent's derived database scope cannot be used to reach
+// a sibling target; a conversation session has no target and keeps the capability
+// check. A refusal is a tool error the wake survives, not a wake failure.
 func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
 	t.Parallel()
 
-	stores := newFakeStore()
-	checker := &denyingChecker{}
-	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
-		{content: "checking", toolCalls: []llm.ToolCall{toolCall("call_1", "list_recent_executions", "{}")}},
-		{content: "done"},
-	}), resolveToModel, nil, WithPermissionChecker(checker))
-
-	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
-	require.NoError(t, err)
-	require.False(t, outcome.Blocked)
-	require.Equal(t, []permission.Permission{permission.DataQualityRulesList}, checker.asked)
-
-	var toolRow *store.QualityAgentTranscriptMessage
-	for _, message := range stores.messages {
-		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
-			toolRow = message
-		}
+	tests := []struct {
+		name              string
+		tool              string
+		conversation      bool
+		wantResourceCheck bool
+	}{
+		{name: "target session checks the session target", tool: "list_recent_executions", wantResourceCheck: true},
+		{name: "conversation session keeps the capability check", tool: "get_scope_summary", conversation: true},
 	}
-	require.NotNil(t, toolRow)
-	require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
-	require.NotEmpty(t, toolRow.Error)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			session := testSession()
+			if test.conversation {
+				session.Kind = 2
+				session.TargetGUID = ""
+			}
+			stores := newFakeStore()
+			checker := &denyingChecker{}
+			engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+				{content: "checking", toolCalls: []llm.ToolCall{toolCall("call_1", test.tool, "{}")}},
+				{content: "done"},
+			}), resolveToModel, nil, WithPermissionChecker(checker))
+
+			outcome, err := engine.Wake(context.Background(), session, Options{})
+			require.NoError(t, err)
+			require.False(t, outcome.Blocked)
+			require.Equal(t, []permission.Permission{permission.DataQualityRulesList}, checker.asked)
+			if test.wantResourceCheck {
+				require.Equal(t, 1, checker.resourceCalls)
+				require.Zero(t, checker.capabilityCalls)
+				require.Equal(t, resource.NewRef(resource.TypeTable, "target-1"), checker.ref)
+			} else {
+				require.Equal(t, 1, checker.capabilityCalls)
+				require.Zero(t, checker.resourceCalls)
+			}
+
+			var toolRow *store.QualityAgentTranscriptMessage
+			for _, message := range stores.messages {
+				if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
+					toolRow = message
+				}
+			}
+			require.NotNil(t, toolRow)
+			require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
+			require.NotEmpty(t, toolRow.Error)
+		})
+	}
 }
 
 // Every wake records one agent tool metric per executed tool, labelled with the
@@ -1022,47 +1013,4 @@ func TestWakePassesAMissingAgentToTheResolver(t *testing.T) {
 	require.True(t, called)
 	require.False(t, outcome.Blocked)
 	require.Contains(t, outcome.Summary, "surveyed")
-}
-
-type resourceCheckingFake struct {
-	allowed         bool
-	ref             resource.Ref
-	resourceCalls   int
-	capabilityCalls int
-}
-
-func (f *resourceCheckingFake) CheckPermission(context.Context, permission.Permission, *store.UserMessage) (bool, error) {
-	f.capabilityCalls++
-	return f.allowed, nil
-}
-
-func (f *resourceCheckingFake) CheckResource(_ context.Context, _ permission.Permission, _ *store.UserMessage, ref resource.Ref) (bool, error) {
-	f.resourceCalls++
-	f.ref = ref
-	return f.allowed, nil
-}
-
-// A target session checks a tool's permission on the session target, so the
-// agent's derived database scope cannot be used to reach a sibling target.
-func TestSessionPermissionCheckerBindsTheTarget(t *testing.T) {
-	t.Parallel()
-
-	principal := &store.UserMessage{ID: 7}
-	checker := &resourceCheckingFake{allowed: true}
-
-	bound := sessionPermissionChecker{checker: checker, targetGUID: "i;db;t"}
-	allowed, err := bound.CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
-	require.NoError(t, err)
-	require.True(t, allowed)
-	require.Equal(t, 1, checker.resourceCalls)
-	require.Zero(t, checker.capabilityCalls)
-	require.Equal(t, resource.NewRef(resource.TypeTable, "i;db;t"), checker.ref)
-
-	// A conversation session has no target and keeps the capability check.
-	unbound := sessionPermissionChecker{checker: checker}
-	allowed, err = unbound.CheckPermission(context.Background(), permission.DataQualityRulesList, principal)
-	require.NoError(t, err)
-	require.True(t, allowed)
-	require.Equal(t, 1, checker.capabilityCalls)
-	require.Equal(t, 1, checker.resourceCalls)
 }

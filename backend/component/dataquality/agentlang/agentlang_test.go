@@ -9,58 +9,91 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestSupportedAndNormalize(t *testing.T) {
+// TestLanguageMapping pins the two tags the frontend offers and the server's
+// fallback: an unknown tag reads as English, the same fallback the Explain SQL
+// prompts use.
+func TestLanguageMapping(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, Supported(""))
 	require.True(t, Supported("en-US"))
 	require.True(t, Supported("zh-CN"))
+	require.True(t, Supported(" zh-CN "))
 	require.False(t, Supported("fr-FR"))
 	require.Equal(t, Chinese, Normalize("zh-TW"))
 	require.Equal(t, English, Normalize("fr-FR"))
+	// The prompt names are part of the model contract, not display copy.
 	require.Equal(t, "Simplified Chinese (zh-CN)", Name("zh-CN"))
 	require.Equal(t, "English (en-US)", Name("en-US"))
 }
 
+// TestForAgentPrefersTheExplicitAgentLanguage pins the one language decision per
+// agent: the agent's explicit setting wins, then the owner's profile language,
+// then English.
 func TestForAgentPrefersTheExplicitAgentLanguage(t *testing.T) {
 	t.Parallel()
 
-	owner := &store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}
-	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{Language: "zh-CN"}, owner))
-	require.Equal(t, English, ForAgent(&store.QualityAgentMessage{Language: "en-US"}, owner))
-	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{}, owner))
-	require.Equal(t, English, ForAgent(&store.QualityAgentMessage{}, nil))
+	chineseOwner := &store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}
+	englishOwner := &store.UserMessage{Profile: &storepb.UserProfile{Language: "en-US"}}
+
+	tests := []struct {
+		name  string
+		agent *store.QualityAgentMessage
+		owner *store.UserMessage
+		want  string
+	}{
+		{"explicit agent language wins over the owner", &store.QualityAgentMessage{Language: "en-US"}, chineseOwner, English},
+		{"explicit Chinese agent language wins over the owner", &store.QualityAgentMessage{Language: "zh-CN"}, englishOwner, Chinese},
+		{"agent language is trimmed", &store.QualityAgentMessage{Language: "  zh-CN  "}, nil, Chinese},
+		{"empty agent language follows the owner", &store.QualityAgentMessage{}, chineseOwner, Chinese},
+		{"empty agent language follows an English owner", &store.QualityAgentMessage{}, englishOwner, English},
+		{"blank agent language follows the owner", &store.QualityAgentMessage{Language: "  "}, chineseOwner, Chinese},
+		{"nil agent follows the owner", nil, chineseOwner, Chinese},
+		{"nil agent and no owner read as English", nil, nil, English},
+		{"owner without a profile reads as English", &store.QualityAgentMessage{}, &store.UserMessage{}, English},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, test.want, ForAgent(test.agent, test.owner))
+		})
+	}
 }
 
-func TestOf(t *testing.T) {
+// TestServerProseLocalizesAndCarriesTheCallerValues pins the escalation prose: the
+// two languages never render the same text, and the model reason, the write
+// failure, the counts and the period are shown inside it as-is.
+func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, Chinese, Of(&store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}))
-	require.Equal(t, English, Of(&store.UserMessage{Profile: &storepb.UserProfile{Language: "en-US"}}))
-	require.Equal(t, English, Of(nil))
-	require.Equal(t, English, Of(&store.UserMessage{}))
-}
+	counts := ProposalCounts{Remaining: 31, Adopted: 12, Skipped: 13, Failed: 14, Failure: "boom-xyz"}
+	tests := []struct {
+		name   string
+		render func(language string) string
+		value  string
+	}{
+		{"blocked question", func(language string) string { return BlockedQuestion(language, "model failed") }, "model failed"},
+		{"proposal question", func(language string) string { return ProposalQuestion(language, counts) }, "boom-xyz"},
+		{"report question", func(language string) string { return ReportQuestion(language, 1234, 5678) }, "1234"},
+		{"report ready", func(language string) string { return ReportReady(language, "2026-11-01", "2026-11-07") }, "2026-11-01"},
+		{"scope summary", func(language string) string {
+			return ScopeSummary(language, 101, 102, 103, 104, 105, 106)
+		}, "101"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestLocalizedServerProse(t *testing.T) {
-	t.Parallel()
+			english, chinese := test.render(English), test.render(Chinese)
+			require.NotEqual(t, english, chinese, "the two languages must not render the same prose")
+			require.Contains(t, english, test.value)
+			require.Contains(t, chinese, test.value)
+		})
+	}
 
-	require.Contains(t, AttentionTitle(Chinese, store.QualityAgentAttentionKindProposalPending), "草案")
-	require.Contains(t, AttentionTitle(English, store.QualityAgentAttentionKindProposalPending), "drafts")
-	require.Contains(t, BlockedQuestion(Chinese, "model failed"), "model failed")
-	require.Contains(t, ProposalQuestion(Chinese, ProposalCounts{Remaining: 3, Adopted: 1, Skipped: 1, Failed: 1, Failure: "boom"}), "3")
-	require.Contains(t, ProposalQuestion(Chinese, ProposalCounts{Remaining: 3, Adopted: 1, Skipped: 1, Failed: 1, Failure: "boom"}), "失败")
-	require.Contains(t, ProposalQuestion(English, ProposalCounts{Remaining: 3, Adopted: 1, Skipped: 1, Failed: 1, Failure: "boom"}), "failed to write")
-	require.Contains(t, ReportQuestion(English, 2, 1), "2")
-	require.Contains(t, ScopeSummary(Chinese, 10, 1, 2, 3, 4, 5), "范围")
-	require.Contains(t, ReportReady(Chinese, "2026-11-01", "2026-11-07"), "巡检报告")
-}
-
-func TestForAgentEdgeCases(t *testing.T) {
-	t.Parallel()
-
-	owner := &store.UserMessage{Profile: &storepb.UserProfile{Language: "zh-CN"}}
-	require.Equal(t, Chinese, ForAgent(nil, owner))
-	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{Language: "  zh-CN  "}, nil))
-	require.Equal(t, Chinese, ForAgent(&store.QualityAgentMessage{Language: "  "}, owner))
-	require.True(t, Supported(" zh-CN "))
+	// Titles carry no caller value; the language alone decides them.
+	require.NotEqual(t,
+		AttentionTitle(English, store.QualityAgentAttentionKindProposalPending),
+		AttentionTitle(Chinese, store.QualityAgentAttentionKindProposalPending))
 }

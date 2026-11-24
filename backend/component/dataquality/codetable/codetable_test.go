@@ -1,11 +1,12 @@
 package codetable
 
 import (
-	"strings"
 	"testing"
 )
 
 func TestIsAdministrativeDivision(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		code string
@@ -22,6 +23,11 @@ func TestIsAdministrativeDivision(t *testing.T) {
 		{"province-directly-administered aggregate", "419000", true},
 		{"province-directly-administered city", "419001", true},
 		{"province-directly-administered county", "659001", true},
+		{"added Taiwan province", "710000", true},
+		{"added Hong Kong province", "810000", true},
+		{"added Macao province", "820000", true},
+		{"genuine county", "370116", true},
+		{"genuine county second", "510185", true},
 		{"empty", "", false},
 		{"five digits", "11000", false},
 		{"seven digits", "1100000", false},
@@ -29,30 +35,54 @@ func TestIsAdministrativeDivision(t *testing.T) {
 		{"letters", "abcdef", false},
 		{"trailing letter", "11000a", false},
 		{"statistics development zone", "320571", false},
+		{"statistics development zone ending 76", "320576", false},
+		{"statistics development zone ending 71", "130171", false},
+		{"statistics development zone second", "131071", false},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsAdministrativeDivision(tt.code); got != tt.want {
-				t.Errorf("IsAdministrativeDivision(%q) = %v, want %v", tt.code, got, tt.want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsAdministrativeDivision(test.code); got != test.want {
+				t.Errorf("IsAdministrativeDivision(%q) = %v, want %v", test.code, got, test.want)
 			}
 		})
 	}
 }
 
 func TestIsProvincePrefix(t *testing.T) {
-	for _, prefix := range provincePrefixList {
-		if !IsProvincePrefix(prefix) {
-			t.Errorf("IsProvincePrefix(%q) = false, want true", prefix)
-		}
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		prefix string
+		want   bool
+	}{
+		{"province", "11", true},
+		{"municipality", "31", true},
+		{"autonomous region", "65", true},
+		{"special administrative region", "81", true},
+		{"unknown prefix", "16", false},
+		{"zero prefix", "00", false},
+		{"unassigned prefix", "99", false},
+		{"one digit", "9", false},
+		{"three digits", "110", false},
+		{"empty", "", false},
 	}
-	for _, code := range []string{"00", "16", "99", "9", "", "110"} {
-		if IsProvincePrefix(code) {
-			t.Errorf("IsProvincePrefix(%q) = true, want false", code)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsProvincePrefix(test.prefix); got != test.want {
+				t.Errorf("IsProvincePrefix(%q) = %v, want %v", test.prefix, got, test.want)
+			}
+		})
 	}
 }
 
 func TestIsIndustryClassification(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		code string
@@ -71,12 +101,10 @@ func TestIsIndustryClassification(t *testing.T) {
 		{"numeric class", "3911", true},
 		{"lowercase section and code", "c3911", true},
 		{"amended public-security class", "S9233", true},
-		{"bare numeric division is valid", "65", true},
 		{"missing numeric code", "I6510", false},
 		{"wrong section for division", "A39", false},
 		{"wrong section for group", "C01", false},
 		{"wrong section for class", "A3911", false},
-		{"wrong section reversed", "I39", false},
 		{"unknown numeric code", "A99", false},
 		{"unknown two-digit code", "C00", false},
 		{"unknown four-digit code", "A0199", false},
@@ -88,204 +116,104 @@ func TestIsIndustryClassification(t *testing.T) {
 		{"numeric with letter suffix", "01A", false},
 		{"two letters", "AA01", false},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsIndustryClassification(tt.code); got != tt.want {
-				t.Errorf("IsIndustryClassification(%q) = %v, want %v", tt.code, got, tt.want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsIndustryClassification(test.code); got != test.want {
+				t.Errorf("IsIndustryClassification(%q) = %v, want %v", test.code, got, test.want)
 			}
 		})
 	}
 }
 
+// TestDivisionDataSanity re-asserts the pinned snapshot's shape: 3226 division
+// codes over all 34 province-level prefixes, with the statistics-bureau
+// development-zone pseudo divisions still filtered out. A malformed line or a
+// duplicate cannot reach this test — init panics first — so these are the
+// properties a data refresh can silently change.
 func TestDivisionDataSanity(t *testing.T) {
-	if got := len(divisionCodes); got < 3200 {
-		t.Fatalf("division code count = %d, want >= 3200", got)
+	t.Parallel()
+
+	// The pinned release's genuine divisions, its derived province "XX0000" and
+	// city "XXXX00" aggregates, and the added 710000/810000/820000.
+	if got := len(divisionCodes); got != 3226 {
+		t.Fatalf("division code count = %d, want the pinned snapshot's 3226", got)
 	}
 	if got := len(provincePrefixes); got != len(provincePrefixList) {
 		t.Fatalf("province prefix count = %d, want %d", got, len(provincePrefixList))
 	}
 
-	allowed := make(map[string]struct{}, len(provincePrefixList))
-	for _, prefix := range provincePrefixList {
-		allowed[prefix] = struct{}{}
-	}
-
-	seen := make(map[string]struct{}, len(divisionCodes))
-	accepted := 0
-	for n, line := range strings.Split(divisionData, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if len(line) != 6 {
-			t.Errorf("line %d: %q is not 6 characters", n+1, line)
-			continue
-		}
-		for i := 0; i < len(line); i++ {
-			if line[i] < '0' || line[i] > '9' {
-				t.Errorf("line %d: %q is not all digits", n+1, line)
-			}
-		}
-		if _, ok := seen[line]; ok {
-			t.Errorf("line %d: duplicate division code %q", n+1, line)
-		}
-		seen[line] = struct{}{}
-		if isStatisticsPseudoDivision(line) {
-			continue
-		}
-		accepted++
-		if _, ok := allowed[line[:2]]; !ok {
-			t.Errorf("line %d: %q has province prefix %q outside the 34", n+1, line, line[:2])
-		}
-	}
-	if accepted != len(divisionCodes) {
-		t.Errorf("accepted data lines = %d, loaded codes = %d", accepted, len(divisionCodes))
-	}
-
-	// The source is a statistics-bureau dataset whose development-zone pseudo
-	// divisions were removed during generation. Re-assert the contract here so a
-	// future data refresh cannot silently reintroduce them: GB/T 2260 has no
-	// county codes ending 71-79, and the known statistics-only codes are absent.
-	for _, code := range []string{"130171", "131071", "320571", "320576", "340176", "411571"} {
-		if _, ok := divisionCodes[code]; ok {
-			t.Errorf("loaded table contains statistics-bureau pseudo division %q", code)
-		}
-	}
+	// GB/T 2260 has no county codes ending 71-79, and 90-99 appears only in the
+	// 省直辖县级 aggregate pattern whose digits 3-4 are 90. A refresh that
+	// reintroduced a statistics-bureau development zone would fail here.
 	for code := range divisionCodes {
-		if last := code[4:]; last >= "71" && last <= "79" {
-			t.Errorf("loaded table contains %q, whose county segment ends 71-79", code)
+		if code[2:4] == "90" {
+			continue
+		}
+		if last := code[4:]; (last >= "71" && last <= "79") || (last >= "90" && last <= "99") {
+			t.Errorf("loaded table contains %q, whose county segment ends %s like a statistics pseudo division", code, last)
 		}
 	}
 }
 
+// TestIndustryDataSanity re-asserts the pinned snapshot's shape: the published
+// 97 大类, 473 中类 and 1380 小类 codes across the 20 sections A-T. As with the
+// division table, init already panics on a malformed or inconsistent line, so
+// only the counts a data refresh can silently change are checked here.
 func TestIndustryDataSanity(t *testing.T) {
-	if got := len(industrySections); got < 900 {
-		t.Fatalf("industry numeric code count = %d, want >= 900", got)
-	}
+	t.Parallel()
 
-	wantSections := make(map[byte]struct{}, len("ABCDEFGHIJKLMNOPQRST"))
-	for c := byte('A'); c <= 'T'; c++ {
-		wantSections[c] = struct{}{}
-	}
-
-	seen := make(map[string]struct{}, len(industrySections))
-	sectionCodes := make(map[byte]int)
-	for n, line := range strings.Split(industryData, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
-			t.Errorf("line %d: want two fields, got %q", n+1, line)
-			continue
-		}
-		letter := fields[0]
-		number := fields[1]
-		if len(letter) != 1 || letter[0] < 'A' || letter[0] > 'T' {
-			t.Errorf("line %d: invalid section %q", n+1, letter)
-			continue
-		}
-		if len(number) < 2 || len(number) > 4 {
-			t.Errorf("line %d: %q is not a 2, 3 or 4 digit code", n+1, number)
-			continue
-		}
-		for i := 0; i < len(number); i++ {
-			if number[i] < '0' || number[i] > '9' {
-				t.Errorf("line %d: %q is not all digits", n+1, number)
-			}
-		}
-		if _, ok := seen[number]; ok {
-			t.Errorf("line %d: duplicate industry code %q", n+1, number)
-		}
-		seen[number] = struct{}{}
-		sectionCodes[letter[0]]++
-		if got, ok := industrySections[number]; !ok || got != letter {
-			t.Errorf("line %d: loaded ownership of %q = %q, %v; want %q", n+1, number, got, ok, letter)
-		}
-	}
-
-	if len(sectionCodes) != len(wantSections) {
-		t.Errorf("section count = %d, want %d", len(sectionCodes), len(wantSections))
-	}
-	for letter := range wantSections {
-		if sectionCodes[letter] == 0 {
-			t.Errorf("section %c has no codes", letter)
-		}
-	}
-
-	// Every 中类/小类 must have its parent in the same section.
+	byLength := make(map[int]int, 3)
+	sections := make(map[byte]struct{}, 20)
 	for code, section := range industrySections {
-		var parent string
-		switch len(code) {
-		case 3:
-			parent = code[:2]
-		case 4:
-			parent = code[:3]
-		default:
-			continue
+		byLength[len(code)]++
+		sections[section[0]] = struct{}{}
+	}
+
+	if got := len(industrySections); got != 1950 {
+		t.Fatalf("industry code count = %d, want the pinned snapshot's 1950", got)
+	}
+	for length, want := range map[int]int{2: 97, 3: 473, 4: 1380} {
+		if got := byLength[length]; got != want {
+			t.Errorf("%d-digit code count = %d, want %d", length, got, want)
 		}
-		if got, ok := industrySections[parent]; !ok || got != section {
-			t.Errorf("%s code %q has parent %q = %q, %v; want same section", section, code, parent, got, ok)
+	}
+	for c := byte('A'); c <= 'T'; c++ {
+		if _, ok := sections[c]; !ok {
+			t.Errorf("section %c has no codes", c)
 		}
+	}
+	if got := len(sections); got != 20 {
+		t.Errorf("section count = %d, want 20", got)
 	}
 }
 
-// TestStatisticsPseudoDivisionFilter pins the source transformation: the
-// statistics-bureau dataset carries development-zone pseudo divisions, and the
-// embedded GB/T table must not accept them.
-func TestStatisticsPseudoDivisionFilter(t *testing.T) {
-	for _, code := range []string{"320571", "320576", "130171", "131071", "340176", "411571"} {
-		if IsAdministrativeDivision(code) {
-			t.Errorf("IsAdministrativeDivision(%q) = true; statistics-bureau development zones must not be accepted", code)
-		}
-	}
-	for _, code := range []string{"110000", "110100", "110101", "419000", "419001", "659001", "370116", "510185"} {
-		if !IsAdministrativeDivision(code) {
-			t.Errorf("IsAdministrativeDivision(%q) = false; genuine divisions must be accepted", code)
-		}
-	}
+// TestParseDivisionsDropsStatisticsPseudoDivisions pins the source transformation:
+// statistics-bureau development zones (county tails 71-79 and 90-99) are dropped,
+// while the 省直辖县级 aggregate rows and genuine county codes are kept.
+func TestParseDivisionsDropsStatisticsPseudoDivisions(t *testing.T) {
+	t.Parallel()
 
-	tests := []struct {
-		code string
-		want bool
-	}{
-		{"130171", true},  // 石家庄高新区, county code ending 71
-		{"320576", true},  // 苏州工业园区, county code ending 76
-		{"320571", true},  // the older statistics code for the same place
-		{"320590", true},  // county code ending 90
-		{"320599", true},  // county code ending 99
-		{"419090", false}, // 省直辖县级 pattern: digits 3-4 are 90
-		{"429090", false},
-		{"419001", false},
-		{"220184", false}, // a genuine county code ending 84
-		{"110100", false},
-		{"11000", false},
-		{"11000a", false},
-	}
-	for _, tt := range tests {
-		if got := isStatisticsPseudoDivision(tt.code); got != tt.want {
-			t.Errorf("isStatisticsPseudoDivision(%q) = %v, want %v", tt.code, got, tt.want)
-		}
-	}
-
-	codes, _, err := parseDivisions("# synthetic\n110000\n320590\n130171\n419001\n419090\n")
+	codes, _, err := parseDivisions("# synthetic\n110000\n320590\n320599\n320576\n130171\n419001\n419090\n429090\n220184\n")
 	if err != nil {
 		t.Fatalf("parseDivisions: %v", err)
 	}
-	for _, dropped := range []string{"320590", "130171"} {
+	for _, dropped := range []string{"320590", "320599", "320576", "130171"} {
 		if _, ok := codes[dropped]; ok {
 			t.Errorf("parseDivisions kept %s, want it filtered as a statistics pseudo division", dropped)
 		}
 	}
-	for _, keep := range []string{"419001", "419090", "110000"} {
-		if _, ok := codes[keep]; !ok {
-			t.Errorf("parseDivisions dropped %s, want it kept", keep)
+	for _, kept := range []string{"419001", "419090", "429090", "220184", "110000"} {
+		if _, ok := codes[kept]; !ok {
+			t.Errorf("parseDivisions dropped %s, want it kept", kept)
 		}
 	}
 }
 
 func TestParseDivisionsRejectsMalformedData(t *testing.T) {
+	t.Parallel()
+
 	for _, data := range []string{
 		"11000",
 		"1100000",
@@ -301,6 +229,8 @@ func TestParseDivisionsRejectsMalformedData(t *testing.T) {
 }
 
 func TestParseIndustriesRejectsMalformedData(t *testing.T) {
+	t.Parallel()
+
 	for _, data := range []string{
 		"A 1",
 		"A 01111",

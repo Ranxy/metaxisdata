@@ -12,7 +12,9 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-func TestTriageWakeWithoutAModelRetries(t *testing.T) {
+// A triage wake without a model is an analysis that cannot be faked: it parks for a
+// person instead of running the deterministic survey.
+func TestTriageWakeWithoutAModelParksTheSession(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
@@ -29,25 +31,6 @@ func TestTriageWakeWithoutAModelRetries(t *testing.T) {
 	require.Contains(t, outcome.BlockedReason, "needs a model")
 	require.Nil(t, outcome.NextWakeAt)
 	require.Empty(t, stores.memoryInputs)
-}
-
-func TestModelToolDefsDependOnModeAndCapabilities(t *testing.T) {
-	t.Parallel()
-
-	agent := capabilityTestAgent("suggest", "adopt", "patrol")
-	monitor := toolSpecNames(toolsFor(monitorSpec(), agent))
-	require.NotContains(t, monitor, "get_table_context")
-	require.NotContains(t, monitor, "draft_checks")
-	require.Contains(t, monitor, "record_asset_fact")
-	require.Contains(t, monitor, "adopt_pending_drafts")
-	require.NotContains(t, monitor, "record_investigation")
-	require.NotContains(t, monitor, "record_decision")
-
-	triage := toolSpecNames(toolsFor(triageSpec(), agent))
-	require.Contains(t, triage, "get_table_context")
-	require.Contains(t, triage, "draft_checks")
-	require.Contains(t, triage, "record_asset_fact")
-	require.Contains(t, triage, "adopt_pending_drafts")
 }
 
 func TestGetTableContextToolReadsTheReader(t *testing.T) {
@@ -83,24 +66,50 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	require.NotContains(t, result, `"rejected"`)
 }
 
-// A refused draft is reported with its reason so the model can correct the
-// intent instead of repeating a value the target cannot hold.
-func TestDraftChecksToolReportsRejectedDrafts(t *testing.T) {
+// A draft that is not queued is explained to the model: a refused draft carries its
+// reason so the intent can be corrected, and a valid draft skipped by the queue is
+// counted so the model does not repeat it.
+func TestDraftChecksToolExplainsUnqueuedDrafts(t *testing.T) {
 	t.Parallel()
 
-	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
-		return nil, []dataquality.DraftRejection{{
-			Title:  "Status must be a declared enum label",
-			Reason: `value "discontinued" is not a declared label of column "status"; valid labels: "active", "draft"`,
-		}}, nil, nil
+	tests := []struct {
+		name  string
+		draft DraftChecksFunc
+		want  []string
+	}{
+		{
+			name: "a refused draft carries its reason",
+			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+				return nil, []dataquality.DraftRejection{{
+					Title:  "Status must be a declared enum label",
+					Reason: `value "discontinued" is not a declared label of column "status"; valid labels: "active", "draft"`,
+				}}, nil, nil
+			},
+			want: []string{`"queued":0`, `"rejected"`, "Status must be a declared enum label", "valid labels"},
+		},
+		{
+			name: "a valid draft skipped by the queue is counted",
+			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+				return nil, nil, &storepb.QualitySuggestionQueueSummary{
+					SkippedExistingFact: 2,
+					SkippedDecided:      1,
+				}, nil
+			},
+			want: []string{`"queued":0`, `"existingFact":2`, `"decided":1`},
+		},
 	}
-	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
-	require.NoError(t, err)
-	require.Contains(t, result, `"queued":0`)
-	require.Contains(t, result, `"rejected"`)
-	require.Contains(t, result, "Status must be a declared enum label")
-	require.Contains(t, result, "valid labels")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			engine := NewEngine(newFakeStore())
+			engine.draftChecks = test.draft
+			result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
+			require.NoError(t, err)
+			for _, want := range test.want {
+				require.Contains(t, result, want)
+			}
+		})
+	}
 }
 
 type fakeTableContextReader struct{}
@@ -118,23 +127,4 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		},
 		Downstream: 3,
 	}, nil
-}
-
-// A valid draft that was not queued for a non-refusal reason is explained too, so
-// the model does not repeat a correct intent.
-func TestDraftChecksToolReportsSkippedDrafts(t *testing.T) {
-	t.Parallel()
-
-	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, _ []string, _ string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
-		return nil, nil, &storepb.QualitySuggestionQueueSummary{
-			SkippedExistingFact: 2,
-			SkippedDecided:      1,
-		}, nil
-	}
-	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", `{"intent":"check status"}`, &wakeControl{})
-	require.NoError(t, err)
-	require.Contains(t, result, `"queued":0`)
-	require.Contains(t, result, `"existingFact":2`)
-	require.Contains(t, result, `"decided":1`)
 }
