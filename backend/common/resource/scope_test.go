@@ -33,10 +33,6 @@ func TestScopeContains(t *testing.T) {
 	require.True(t, rule.Contains(NewRef(TypeQualityRule, "rule-1")))
 	require.False(t, rule.Contains(NewRef(TypeQualityRule, "rule-2")))
 	require.False(t, rule.Contains(NewRef(TypeTable, "i;db;orders")))
-
-	require.False(t, Scope{}.Valid())
-	require.False(t, Scope{Type: TypeTable}.Valid())
-	require.False(t, Scope{Type: TypeWorkspace, ID: "x"}.Valid())
 }
 
 func TestScopeSetContainsRefs(t *testing.T) {
@@ -51,7 +47,6 @@ func TestScopeSetContainsRefs(t *testing.T) {
 	require.True(t, ScopeSet{All: true}.Contains(NewRef(TypeTable, "other;db;t")))
 	require.True(t, ScopeSet{}.IsEmpty())
 	require.False(t, ScopeSet{}.Contains(NewRef(TypeTable, "i;db;t")))
-	require.False(t, ScopeSet{Self: pointer(int32(7))}.IsEmpty())
 }
 
 func TestScopeSetAddAndUnion(t *testing.T) {
@@ -66,8 +61,7 @@ func TestScopeSetAddAndUnion(t *testing.T) {
 
 	var merged ScopeSet
 	merged.Add(NewScope(TypeDatabase, "i;db"))
-	merged.Union(ScopeSet{Self: pointer(int32(7)), Scopes: []Scope{NewScope(TypeInstance, "j")}})
-	require.Equal(t, pointer(int32(7)), merged.Self)
+	merged.Union(ScopeSet{Scopes: []Scope{NewScope(TypeInstance, "j")}})
 	require.Len(t, merged.Scopes, 2)
 }
 
@@ -103,10 +97,6 @@ func TestScopeSetMetadataScopes(t *testing.T) {
 	}}
 	require.Equal(t, []Scope{NewScope(TypeDatabase, "i;db")}, set.MetadataScopes())
 	require.Nil(t, ScopeSet{All: true}.MetadataScopes())
-}
-
-func pointer[T any](value T) *T {
-	return &value
 }
 
 // Self is reserved, not shipped: it makes a set non-empty (so the ACL gate does

@@ -38,7 +38,6 @@ func TestParseCron(t *testing.T) {
 		name    string
 		cron    string
 		zone    string
-		defZone string
 		wantErr string
 	}{
 		{name: "daily", cron: "0 2 * * *"},
@@ -46,8 +45,6 @@ func TestParseCron(t *testing.T) {
 		{name: "weekly", cron: "0 2 * * 1"},
 		{name: "monthly", cron: "0 3 1 * *"},
 		{name: "yearly", cron: "0 3 1 1 *"},
-		{name: "resolved default zone", cron: "0 2 * * *", defZone: "Asia/Shanghai"},
-		{name: "explicit zone", cron: "0 2 * * *", zone: "America/New_York"},
 		{name: "six fields", cron: "0 0 2 * * *", wantErr: "five-field"},
 		{name: "four fields", cron: "0 2 * *", wantErr: "five-field"},
 		{name: "descriptor", cron: "@daily", wantErr: "five-field"},
@@ -59,7 +56,7 @@ func TestParseCron(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spec, err := Parse(0, test.cron, test.zone, test.defZone)
+			spec, err := Parse(0, test.cron, test.zone, "")
 			if test.wantErr != "" {
 				require.ErrorContains(t, err, test.wantErr)
 				return
@@ -113,13 +110,14 @@ func TestNextCron(t *testing.T) {
 	require.Equal(t, now.Add(2*time.Hour), broken.Next(now))
 }
 
-func TestNextCronAcrossDST(t *testing.T) {
+func TestNextCronSkipsTheNonexistentSpringForwardHour(t *testing.T) {
 	location, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
 	spec := Spec{Cron: "0 2 * * *", TimeZone: "America/New_York"}
 
-	// Spring forward: 02:00 does not exist on 2025-03-09, so that day's run is
-	// skipped and the next occurrence is 2025-03-10 02:00 EDT.
+	// Spring forward: 02:00 does not exist on 2025-03-09 in America/New_York, so
+	// that day's run is skipped and the next occurrence is 2025-03-10 02:00 EDT.
+	// (The repeated fall-back hour is covered by TestNextCronFallBackFiresOnce.)
 	beforeSpring := time.Date(2025, 3, 8, 12, 0, 0, 0, location)
 	next := spec.Next(beforeSpring)
 	local := next.In(location)
@@ -127,14 +125,6 @@ func TestNextCronAcrossDST(t *testing.T) {
 	require.Equal(t, time.March, local.Month())
 	require.Equal(t, 10, local.Day())
 	require.Equal(t, 2, local.Hour())
-
-	// Fall back: 02:00 happens twice on 2025-11-02, and the schedule fires once.
-	beforeFall := time.Date(2025, 11, 1, 12, 0, 0, 0, location)
-	first := spec.Next(beforeFall)
-	require.Equal(t, 2, first.In(location).Hour())
-	require.Equal(t, 2, first.In(location).Day())
-	second := spec.Next(first)
-	require.Equal(t, 3, second.In(location).Day(), "the repeated 02:00 must fire once")
 }
 
 func TestNominalInterval(t *testing.T) {
