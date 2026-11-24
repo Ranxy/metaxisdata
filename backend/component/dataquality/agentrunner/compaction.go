@@ -222,11 +222,6 @@ func (e *Engine) maybeCompact(
 	return tokens, true, nil
 }
 
-// balancedCut is the transcript mechanism's balanced cut.
-func balancedCut(messages []*store.QualityAgentTranscriptMessage, cut int) int {
-	return transcript.BalancedCut(transcriptEntries(messages), cut)
-}
-
 // pruneToolResults replaces the middle of old tool results with a marker.
 func pruneToolResults(messages []agent.Message, keepRecent int) []agent.Message {
 	return transcript.PruneToolResults(messages, keepRecent)

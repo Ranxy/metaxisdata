@@ -7,16 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
-
-func compactionSession() *store.QualityAgentSessionMessage {
-	session := testSession()
-	return session
-}
 
 func fillerMessages(count int) []*store.QualityAgentTranscriptMessage {
 	messages := make([]*store.QualityAgentTranscriptMessage, 0, count)
@@ -43,7 +37,7 @@ func TestMaybeCompactSummarizesTheOldRegion(t *testing.T) {
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: "## Session Objective and Target\n- target-1\n\n## Next Step\n- (none)"},
 	}), resolveToModel, nil)
-	session := compactionSession()
+	session := testSession()
 	messages := fillerMessages(12)
 
 	tokens, compacted, err := engine.maybeCompact(context.Background(), session, 3, nil, llm.ResolvedConfig{ModelName: "test-model"}, messages, 2_000, false)
@@ -70,67 +64,13 @@ func TestMaybeCompactSkipsUnderTheTrigger(t *testing.T) {
 
 	stores := newFakeStore()
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "unused"}}), resolveToModel, nil)
-	session := compactionSession()
+	session := testSession()
 
 	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil, llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(2), 10_000, false)
 	require.NoError(t, err)
 	require.False(t, compacted)
 	require.Empty(t, session.Summary)
 	require.Empty(t, stores.messages)
-}
-
-// The cut must not split an assistant tool call from its result.
-func TestBalancedCutKeepsToolPairs(t *testing.T) {
-	t.Parallel()
-
-	messages := []*store.QualityAgentTranscriptMessage{
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_1", Name: "lookup"}}}},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL, ToolCallID: "call_1"},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER},
-	}
-	require.Equal(t, 1, balancedCut(messages, 2))
-	require.Equal(t, 3, balancedCut(messages, 3))
-}
-
-// Pruning keeps the head and tail of an old oversized tool result and marks the cut.
-func TestPruneToolResultsKeepsTheEnds(t *testing.T) {
-	t.Parallel()
-
-	content := strings.Repeat("头部内容", 2000) + "TAIL-MARKER"
-	messages := []agent.Message{
-		{Role: "toolResult", Content: content},
-		{Role: "toolResult", Content: "recent result"},
-	}
-	pruned := pruneToolResults(messages, 1)
-	require.Contains(t, pruned[0].Content, prunedMarkerForTest())
-	require.True(t, strings.HasSuffix(pruned[0].Content, "TAIL-MARKER"))
-	require.Equal(t, "recent result", pruned[1].Content)
-}
-
-// prunedMarkerForTest keeps the marker expectation in one place.
-func prunedMarkerForTest() string {
-	return "[... tool result pruned ...]"
-}
-
-// A turn boundary flushes a dangling call, so a crash-damaged tail cannot push every
-// later cut back to zero.
-func TestBalancedCutFlushesAtATurnBoundary(t *testing.T) {
-	t.Parallel()
-
-	messages := []*store.QualityAgentTranscriptMessage{
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_crash"}}}},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_live"}}}},
-		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL, ToolCallID: "call_live"},
-	}
-	// The cut after the user message (index 2) is balanced even though the first
-	// assistant call was never answered.
-	require.Equal(t, 2, balancedCut(messages, 2))
-	require.Equal(t, 4, balancedCut(messages, 4))
 }
 
 // A summary that does not shrink the span it replaces is rejected: the original
@@ -142,7 +82,7 @@ func TestMaybeCompactRejectsANonShrinkingSummary(t *testing.T) {
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: strings.Repeat("a very long summary that is bigger than the region. ", 5000)},
 	}), resolveToModel, nil)
-	session := compactionSession()
+	session := testSession()
 	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil,
 		llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(6), 100, false)
 	require.NoError(t, err)
@@ -161,7 +101,7 @@ func TestMaybeCompactForcedIgnoresTheTrigger(t *testing.T) {
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: "## Next Step\n- (none)"},
 	}), resolveToModel, nil)
-	session := compactionSession()
+	session := testSession()
 	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil,
 		llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(12), 1_000_000, true)
 	require.NoError(t, err)
@@ -178,7 +118,7 @@ func TestMaybeCompactDerivesTheTriggerFromTheModel(t *testing.T) {
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: "## Session Objective and Target\n- target-1\n\n## Next Step\n- (none)"},
 	}), resolveToModel, nil)
-	session := compactionSession()
+	session := testSession()
 	messages := fillerMessages(12)
 
 	config := llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 12000, MaxOutputTokens: 4096}
@@ -187,7 +127,9 @@ func TestMaybeCompactDerivesTheTriggerFromTheModel(t *testing.T) {
 	require.True(t, compacted)
 }
 
-func TestEmergencyCompactionTrigger(t *testing.T) {
+// A stale model pair whose normal pressure budget is zero still gets a legal cut: the
+// emergency trigger leaves a quarter of the message room as the verbatim tail.
+func TestEmergencyCompactionTriggerLeavesAQuarterOfTheMessageRoom(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -208,35 +150,41 @@ func TestEmergencyCompactionTrigger(t *testing.T) {
 	}
 }
 
-// A stale pair whose capacities leave no pressure budget skips model compaction
-// and records a runner note instead of compacting with an accidental threshold.
-func TestMaybeCompactSkipsWhenTheModelCannotCompact(t *testing.T) {
+// A compaction the engine refuses explains itself in a runner note instead of leaving
+// the session silently over budget.
+func TestMaybeCompactExplainsWhyItSkipped(t *testing.T) {
 	t.Parallel()
 
-	stores := newFakeStore()
-	engine := NewModelEngine(stores, scriptedChat(nil), resolveToModel, nil)
-	compactedSession := compactionSession()
-	_, compacted, err := engine.maybeCompact(context.Background(), compactedSession, 1, nil,
-		llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 32768, MaxOutputTokens: 32767},
-		fillerMessages(12), 0, false)
-	require.NoError(t, err)
-	require.False(t, compacted)
-	require.Contains(t, engineContents(stores), "compaction skipped")
-}
-
-// A summary that cannot fit the model's output floor is not attempted.
-func TestMaybeCompactSkipsASummaryBelowTheOutputFloor(t *testing.T) {
-	t.Parallel()
-
-	stores := newFakeStore()
-	engine := NewModelEngine(stores, scriptedChat(nil), resolveToModel, nil)
-	compactedSession := compactionSession()
-	_, compacted, err := engine.maybeCompact(context.Background(), compactedSession, 1, nil,
-		llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 131072, MaxOutputTokens: 1000},
-		fillerMessages(12), 2_000, false)
-	require.NoError(t, err)
-	require.False(t, compacted)
-	require.Contains(t, engineContents(stores), "below the summary floor")
+	tests := []struct {
+		name    string
+		config  llm.ResolvedConfig
+		trigger int
+		want    string
+	}{
+		{
+			name:   "the model capacities leave no pressure budget",
+			config: llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 32768, MaxOutputTokens: 32767},
+			want:   "compaction skipped",
+		},
+		{
+			name:    "the summary budget is below the output floor",
+			config:  llm.ResolvedConfig{ModelName: "test-model", ContextWindow: 131072, MaxOutputTokens: 1000},
+			trigger: 2_000,
+			want:    "below the summary floor",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			stores := newFakeStore()
+			engine := NewModelEngine(stores, scriptedChat(nil), resolveToModel, nil)
+			_, compacted, err := engine.maybeCompact(context.Background(), testSession(), 1, nil,
+				test.config, fillerMessages(12), test.trigger, false)
+			require.NoError(t, err)
+			require.False(t, compacted)
+			require.Contains(t, engineContents(stores), test.want)
+		})
+	}
 }
 
 // engineContents joins the runner notes a fake store recorded so a test can

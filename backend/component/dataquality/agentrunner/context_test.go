@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
-	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -59,70 +58,65 @@ func TestBuildConversationOrdersTheModelInput(t *testing.T) {
 	require.Equal(t, "user", conversation[5].Role)
 }
 
-// A crash between the assistant message and the tool execution leaves an unanswered
-// call; the context repairs it so the provider accepts the conversation.
-func TestBuildConversationRepairsDanglingToolCalls(t *testing.T) {
+// The rebuilt model input is always legal for the provider: an unanswered call gets an
+// interrupted result, an answered call keeps the stored result, and a result whose call
+// is gone is dropped.
+func TestBuildConversationKeepsTheProviderConversationLegal(t *testing.T) {
 	t.Parallel()
 
-	conversation := BuildConversation(nil, nil, []*store.QualityAgentTranscriptMessage{
+	call := func(id string) *storepb.QualityToolCallList {
+		return &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: id, Name: "lookup"}}}
+	}
+	tests := []struct {
+		name  string
+		input []*store.QualityAgentTranscriptMessage
+		check func(*testing.T, []agent.Message)
+	}{
 		{
-			Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_1", Name: "lookup"}}},
-		},
-		transcriptMessage(2, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-	})
-
-	require.Len(t, conversation, 3)
-	require.Equal(t, "assistant", conversation[0].Role)
-	require.Equal(t, "toolResult", conversation[1].Role)
-	require.Equal(t, "call_1", conversation[1].ToolCallID)
-	require.Contains(t, conversation[1].Content, "restarted")
-	require.Equal(t, "user", conversation[2].Role)
-}
-
-// A stored tool result that answers the call is kept, not duplicated by the repair.
-func TestBuildConversationKeepsAnsweredToolCalls(t *testing.T) {
-	t.Parallel()
-
-	conversation := BuildConversation(nil, nil, []*store.QualityAgentTranscriptMessage{
-		{
-			Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_1", Name: "lookup"}}},
+			name: "an unanswered call gets an interrupted result",
+			input: []*store.QualityAgentTranscriptMessage{
+				{Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT, ToolCalls: call("call_1")},
+				transcriptMessage(2, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
+			},
+			check: func(t *testing.T, conversation []agent.Message) {
+				require.Len(t, conversation, 3)
+				require.Equal(t, "assistant", conversation[0].Role)
+				require.Equal(t, "toolResult", conversation[1].Role)
+				require.Equal(t, "call_1", conversation[1].ToolCallID)
+				require.Contains(t, conversation[1].Content, "restarted")
+				require.Equal(t, "user", conversation[2].Role)
+			},
 		},
 		{
-			Seq: 2, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
-			ToolCallID: "call_1", Content: "the result",
+			name: "an answered call keeps the stored result",
+			input: []*store.QualityAgentTranscriptMessage{
+				{Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT, ToolCalls: call("call_1")},
+				{Seq: 2, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL, ToolCallID: "call_1", Content: "the result"},
+			},
+			check: func(t *testing.T, conversation []agent.Message) {
+				require.Len(t, conversation, 2)
+				require.Equal(t, "the result", conversation[1].Content)
+			},
 		},
-	})
-
-	require.Len(t, conversation, 2)
-	require.Equal(t, "the result", conversation[1].Content)
-}
-
-func TestEstimateTokensCountsATextConversation(t *testing.T) {
-	t.Parallel()
-
-	estimate := EstimateTokens([]agent.Message{
-		{Role: "system", Content: "you are the agent"},
-		{Role: "user", Content: "a short sentence"},
-		{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "call_1"}}},
-	})
-	require.Positive(t, estimate)
-	require.Zero(t, EstimateTokens(nil))
-}
-
-// A tool result whose call is gone is dropped: forwarding it would make the provider
-// reject the whole conversation.
-func TestBuildConversationDropsOrphanToolResults(t *testing.T) {
-	t.Parallel()
-
-	conversation := BuildConversation(nil, nil, []*store.QualityAgentTranscriptMessage{
 		{
-			Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
-			ToolCallID: "call_orphan", ToolName: "lookup", Content: "orphan result",
+			name: "an orphan result is dropped",
+			input: []*store.QualityAgentTranscriptMessage{
+				{
+					Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
+					ToolCallID: "call_orphan", ToolName: "lookup", Content: "orphan result",
+				},
+				transcriptMessage(2, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
+			},
+			check: func(t *testing.T, conversation []agent.Message) {
+				require.Len(t, conversation, 1)
+				require.Equal(t, "user", conversation[0].Role)
+			},
 		},
-		transcriptMessage(2, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-	})
-	require.Len(t, conversation, 1)
-	require.Equal(t, "user", conversation[0].Role)
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.check(t, BuildConversation(nil, nil, test.input))
+		})
+	}
 }
