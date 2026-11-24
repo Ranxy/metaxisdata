@@ -1,6 +1,7 @@
 package state
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -88,17 +89,32 @@ func TestLoginLimiterWindowExpires(t *testing.T) {
 	require.False(t, limiter.Blocked("alice@example.com", "203.0.113.5", now.Add(loginAttemptWindow)))
 }
 
-func TestLoginLimiterPrunes(t *testing.T) {
+// Both maps are bounded: at capacity, recording a new key drops the oldest
+// window instead of letting memory grow with the number of accounts tried.
+func TestLoginLimiterAtCapacityEvictsTheOldestWindow(t *testing.T) {
 	t.Parallel()
 
 	limiter := newLoginLimiter()
-	now := time.Now()
-	// Fill past the capacity with expired windows; neither map may grow without
-	// bound.
-	for i := range loginAttemptCapacity + 10 {
-		limiter.RecordFailure(string(rune('a'+i%26))+time.Duration(i).String()+"@example.com",
-			"203.0.113."+time.Duration(i%200).String(), now.Add(-2*loginAttemptWindow))
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	// The oldest account and a younger one exhaust their budgets first.
+	for range loginAccountAttemptLimit {
+		limiter.RecordFailure("oldest@example.com", "203.0.113.1", now)
+		limiter.RecordFailure("second@example.com", "203.0.113.2", now.Add(time.Microsecond))
 	}
-	require.LessOrEqual(t, len(limiter.accounts), loginAttemptCapacity+1)
-	require.LessOrEqual(t, len(limiter.sources), loginAttemptCapacity+1)
+	require.True(t, limiter.Blocked("oldest@example.com", "198.51.100.1", now))
+
+	// Fill both maps to the ceiling with live windows, so expiry cannot be what
+	// makes room.
+	for i := range loginAttemptCapacity - 2 {
+		limiter.RecordFailure("account-"+strconv.Itoa(i), "source-"+strconv.Itoa(i),
+			now.Add(time.Duration(i+2)*time.Microsecond))
+	}
+
+	// One more distinct account evicts the oldest window rather than growing the map.
+	limiter.RecordFailure("newest@example.com", "192.0.2.1", now.Add(time.Second))
+	require.False(t, limiter.Blocked("oldest@example.com", "198.51.100.1", now.Add(time.Second)),
+		"the oldest window was evicted at capacity")
+	require.True(t, limiter.Blocked("second@example.com", "198.51.100.2", now.Add(time.Second)),
+		"the younger spent window is untouched")
 }

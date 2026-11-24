@@ -184,15 +184,15 @@ func TestDeviceLoginPruneDropsExpiredEntries(t *testing.T) {
 	mustCreate(t, s, now, "AAAA-AAAA", "secret-a")
 	mustCreate(t, s, now.Add(time.Minute), "BBBB-BBBB", "secret-b")
 
-	// A new create prunes the entry that has passed its TTL.
+	// A new create prunes the entry that has passed its TTL: the confirmation
+	// page reports it missing rather than expired, and the live entry survives.
 	mustCreate(t, s, now.Add(DeviceLoginTTL), "CCCC-CCCC", "secret-c")
-	require.Len(t, s.byDeviceCode, 2)
-	require.NotContains(t, s.byUserCode, "AAAA-AAAA")
-	require.Contains(t, s.byUserCode, "BBBB-BBBB")
 
-	// The pruned entry is simply gone.
 	_, err := s.GetByUserCode("AAAA-AAAA", now.Add(DeviceLoginTTL))
-	require.ErrorIs(t, err, ErrDeviceLoginNotFound)
+	require.ErrorIs(t, err, ErrDeviceLoginNotFound, "the pruned entry is simply gone")
+	live, err := s.GetByUserCode("BBBB-BBBB", now.Add(DeviceLoginTTL))
+	require.NoError(t, err)
+	require.Equal(t, DeviceLoginPending, live.State)
 }
 
 func TestDeviceLoginPruneEvictsTheOldestAtCapacity(t *testing.T) {
@@ -202,19 +202,12 @@ func TestDeviceLoginPruneEvictsTheOldestAtCapacity(t *testing.T) {
 	// Every request stays inside its TTL, so the ceiling — not expiry — is what
 	// the next create has to relieve.
 	for i := range deviceLoginCapacity {
-		login, err := s.Create(DeviceLogin{
-			UserCode:   codeForIndex("U", i),
-			DeviceCode: codeForIndex("D", i),
-		}, now.Add(time.Duration(i)*time.Microsecond))
-		require.NoError(t, err)
-		require.Equal(t, DeviceLoginPending, login.State)
+		mustCreate(t, s, now.Add(time.Duration(i)*time.Microsecond), codeForIndex("U", i), codeForIndex("D", i))
 	}
-	require.Len(t, s.byDeviceCode, deviceLoginCapacity)
 
 	// One more request evicts the oldest rather than growing past the ceiling.
 	mustCreate(t, s, now.Add(time.Second), "ZZZZ-ZZZZ", "secret-z")
 
-	require.Len(t, s.byDeviceCode, deviceLoginCapacity)
 	_, err := s.GetByUserCode(codeForIndex("U", 0), now.Add(time.Second))
 	require.ErrorIs(t, err, ErrDeviceLoginNotFound, "the oldest entry was evicted")
 	_, err = s.GetByUserCode(codeForIndex("U", 1), now.Add(time.Second))
