@@ -88,6 +88,27 @@ func TestValidateChannelWebhookLikeKinds(t *testing.T) {
 		secret := &storepb.NotificationChannelSecret{Endpoint: "https://example.com/robot", SigningSecret: "s3cret"}
 		require.NoError(t, ValidateChannel(tc.channel, secret), tc.name)
 	}
+
+	// The endpoint URL itself and the definition's completeness are checked for
+	// these kinds too; the webhook stands in for the shared endpoint check.
+	webhook := cases[0].channel
+	for name, endpoint := range map[string]string{
+		"bad scheme": "ftp://example.com",
+		"no host":    "https://",
+	} {
+		// The secret is otherwise complete, so the failure can only be the endpoint.
+		require.Error(t, ValidateChannel(webhook, &storepb.NotificationChannelSecret{Endpoint: endpoint, SigningSecret: "s3cret"}), name)
+	}
+	secret := &storepb.NotificationChannelSecret{Endpoint: "https://example.com/robot"}
+	require.Error(t, ValidateChannel(&storepb.NotificationChannel{
+		DisplayName: "hook",
+		Kind:        storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK,
+	}, secret), "a webhook needs its config")
+	require.Error(t, ValidateChannel(&storepb.NotificationChannel{DisplayName: "hook"}, secret), "a channel needs a kind")
+	require.Error(t, ValidateChannel(&storepb.NotificationChannel{
+		Kind:   storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WECOM,
+		Config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Wecom{Wecom: &storepb.WeComChannelConfig{}}},
+	}, secret), "a channel needs a display name")
 }
 
 // A config of another kind has no delivery path, so it is refused at write time.

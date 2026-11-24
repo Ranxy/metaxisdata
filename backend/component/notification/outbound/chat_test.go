@@ -75,14 +75,6 @@ func TestDingTalkSignsTheRequest(t *testing.T) {
 	require.Equal(t, base64.StdEncoding.EncodeToString(mac.Sum(nil)), query.Get("sign"))
 }
 
-func TestDingTalkReportsRejectedMessage(t *testing.T) {
-	t.Parallel()
-
-	server, _ := robotServer(t, `{"errcode":310000,"errmsg":"sign not match"}`)
-	_, err := NewDingTalk(server.URL, "s3cret", true).Post(context.Background(), testChatMessage())
-	require.ErrorContains(t, err, "sign not match")
-}
-
 func TestWeComPostsMarkdown(t *testing.T) {
 	t.Parallel()
 
@@ -96,14 +88,6 @@ func TestWeComPostsMarkdown(t *testing.T) {
 	markdown, ok := body["markdown"].(map[string]any)
 	require.True(t, ok)
 	require.Contains(t, markdown["content"], "Data quality: no nulls failed")
-}
-
-func TestWeComReportsRejectedMessage(t *testing.T) {
-	t.Parallel()
-
-	server, _ := robotServer(t, `{"errcode":93000,"errmsg":"invalid webhook url"}`)
-	_, err := NewWeCom(server.URL).Post(context.Background(), testChatMessage())
-	require.ErrorContains(t, err, "invalid webhook url")
 }
 
 func TestFeishuPostsText(t *testing.T) {
@@ -128,14 +112,6 @@ func TestFeishuAcceptsTheLegacyAnswerShape(t *testing.T) {
 	server, _ := robotServer(t, `{"StatusCode":0,"StatusMessage":"success"}`)
 	_, err := NewFeishu(server.URL, "", false).Post(context.Background(), testChatMessage())
 	require.NoError(t, err)
-}
-
-func TestFeishuReportsRejectedMessage(t *testing.T) {
-	t.Parallel()
-
-	server, _ := robotServer(t, `{"code":19021,"msg":"sign match fail"}`)
-	_, err := NewFeishu(server.URL, "s3cret", true).Post(context.Background(), testChatMessage())
-	require.ErrorContains(t, err, "sign match fail")
 }
 
 // Feishu signs with base64(HMAC-SHA256(key="<timestamp>\n<secret>", data="")).
@@ -205,4 +181,31 @@ func TestChatsDoNotFollowRedirects(t *testing.T) {
 		require.Error(t, err, name)
 	}
 	require.Zero(t, targetHits, "the redirect target must never be contacted")
+}
+
+// A robot answers 200 with a protocol code; only code 0 is a delivery, and a
+// rejected message surfaces the provider's own reason.
+func TestChatsReportRejectedMessages(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		answer   string
+		wantErr  string
+		receiver func(endpoint string) Receiver
+	}{
+		{"dingtalk", `{"errcode":310000,"errmsg":"sign not match"}`, "sign not match",
+			func(endpoint string) Receiver { return NewDingTalk(endpoint, "s3cret", true) }},
+		{"wecom", `{"errcode":93000,"errmsg":"invalid webhook url"}`, "invalid webhook url",
+			NewWeCom},
+		{"feishu", `{"code":19021,"msg":"sign match fail"}`, "sign match fail",
+			func(endpoint string) Receiver { return NewFeishu(endpoint, "s3cret", true) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server, _ := robotServer(t, tc.answer)
+			_, err := tc.receiver(server.URL).Post(context.Background(), testChatMessage())
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }

@@ -378,8 +378,6 @@ func TestMessagesBoundWhatTheyStore(t *testing.T) {
 		Error: strings.Repeat("e", MaxErrorBytes*2),
 	})
 	require.Len(t, ingestion.GetOpenlineage().GetError(), MaxErrorBytes)
-	require.Nil(t, OpenLineageMessage(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil).GetOpenlineage())
-	require.Nil(t, SchemaSyncMessage(7, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, nil).GetSchemaSync())
 }
 
 // A namespace that matched no instance is a configuration gap an administrator

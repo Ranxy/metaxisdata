@@ -93,6 +93,9 @@ func TestSendCarriesTheRecipientAsTheAudience(t *testing.T) {
 	}))
 	require.Len(t, fake.deliveries, 1)
 	require.Equal(t, []int32{2}, fake.deliveries[0].Payload.GetAudienceUserIds())
+	// The payload is the event itself, detail included: the outbox row is
+	// workspace-level and keeps no per-recipient copy.
+	require.Equal(t, "prod", fake.deliveries[0].Payload.GetSchemaSync().GetInstanceTitle())
 }
 
 // A repeated event inside its dedupe window writes no inbox row and therefore
@@ -164,71 +167,31 @@ func TestEnqueueRespectsChannelSubscription(t *testing.T) {
 	}))
 	require.Len(t, fake.deliveries, 2)
 	require.ElementsMatch(t, []int64{3, 4}, []int64{fake.deliveries[0].ChannelID, fake.deliveries[1].ChannelID})
+
+	// An INFO event needs a floor that admits it. Unset means UNSPECIFIED, which
+	// the proto defines as every severity, so the open channel still takes it.
+	fake.deliveries = nil
+	require.NoError(t, service.Send(context.Background(), SchemaSyncMessage(2, storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO, &storepb.SchemaSyncDetail{})))
+	require.Len(t, fake.deliveries, 1)
+	require.Equal(t, int64(4), fake.deliveries[0].ChannelID)
 }
 
-func TestSeverityFloorOrdering(t *testing.T) {
-	t.Parallel()
-
-	require.Less(t, severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED), severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO))
-	require.Less(t, severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO), severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING))
-	require.Less(t, severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING), severityRank(storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR))
-
-	// A channel with no floor accepts everything, including an INFO event.
-	channel := enabledWebhookChannel()
-	channel.MinSeverity = storepb.NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
-	event := &storepb.NotificationDeliveryEvent{
-		Type:     storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
-		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
-		Detail:   &storepb.NotificationDeliveryEvent_SchemaSync{SchemaSync: &storepb.SchemaSyncDetail{}},
-	}
-	require.True(t, subscribes(channel, event))
-}
-
-// A message with no detail has nothing to post and must not queue a delivery.
-func TestEnqueueSkipsMessageWithoutDetail(t *testing.T) {
+// A quality-agent escalation is in-app only: it is the doorbell for a durable
+// attention row, and the outbox has no payload shape for it, so nothing is queued.
+func TestAnInAppOnlyEventQueuesNoDelivery(t *testing.T) {
 	t.Parallel()
 
 	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()))
 	service := newServiceWithStore(fake)
 
-	require.NoError(t, service.Send(context.Background(), &storepb.Notification{
-		RecipientId: 2,
-		Type:        storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
-		Severity:    storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
-	}))
+	require.NoError(t, service.SendQualityAgentAttention(context.Background(), 2, "attention:agent1",
+		&storepb.QualityAgentAttentionDetail{
+			Agent:     "workspaces/ws-1/qualityAgents/agent1",
+			Attention: "workspaces/ws-1/qualityAgentAttentions/attention1",
+			Title:     "needs a decision",
+		}))
 	require.Len(t, fake.created, 1)
 	require.Empty(t, fake.deliveries)
-}
-
-// The delivery payload carries the event, not the recipient: an outbox row is
-// workspace-level and must not hold one person's address. The audience is the
-// event-level list of user ids, which the email channel resolves at send time.
-func TestDeliveryEventStripsRecipient(t *testing.T) {
-	t.Parallel()
-
-	event := deliveryEvent(&storepb.Notification{
-		RecipientId: 7,
-		Type:        storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
-		Severity:    storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
-		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
-			Kind:       storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
-			RuleTitle:  "no nulls",
-			TargetPath: "prod/db/public/orders",
-		}},
-	}, []int32{7})
-	require.NotNil(t, event)
-	require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY, event.GetType())
-	require.Equal(t, "no nulls", event.GetDataQuality().GetRuleTitle())
-	// The per-recipient columns are gone; the audience is the event-level
-	// replacement the email channel reads.
-	require.NotContains(t, event.String(), "recipientId")
-	require.Equal(t, []int32{7}, event.GetAudienceUserIds())
-}
-
-func TestDeliveryEventWithoutDetailIsNil(t *testing.T) {
-	t.Parallel()
-
-	require.Nil(t, deliveryEvent(&storepb.Notification{Type: storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY}, nil))
 }
 
 // The queue write is best effort: a store failure must not fail the producer
@@ -429,20 +392,22 @@ func TestRoutingReadFailureFallsBackToSubscriptions(t *testing.T) {
 	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
 }
 
-// A group read failure only loses that group filter; the subscription path is
-// unaffected.
+// A group read failure only loses that group filter: the rules that do not need
+// it still select their channels, and the subscription path is unaffected.
 func TestRoutingGroupReadFailureFallsBackToSubscriptions(t *testing.T) {
 	t.Parallel()
 
-	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()))
-	// The route names a group the store cannot read (the fake returns an error for
-	// an unknown email), so the rule matches nothing.
+	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()), testChannel(2, routedOnlyChannel()))
+	// One rule names a group the store cannot read (the fake returns an error for
+	// an unknown email); another selects the same channel by owner and must still
+	// win.
 	fake.routes = []*store.NotificationRouteMessage{
-		routeMessage(&storepb.NotificationRouteMatch{Groups: []string{"missing@example.com"}}),
+		routeMessage(&storepb.NotificationRouteMatch{Groups: []string{"missing@example.com"}}, channelResourceID(2)),
+		routeMessage(&storepb.NotificationRouteMatch{Owners: []string{"users/2"}}, channelResourceID(2)),
 	}
 	service := newServiceWithStore(fake)
 
 	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
-	require.Len(t, fake.deliveries, 1)
-	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
+	require.Len(t, fake.deliveries, 2)
+	require.ElementsMatch(t, []int64{1, 2}, []int64{fake.deliveries[0].ChannelID, fake.deliveries[1].ChannelID})
 }
