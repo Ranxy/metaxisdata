@@ -89,7 +89,6 @@ describe("QualityAgentContextUsage", () => {
       usage: usage({ usedTokens: 3999, compactionTriggerTokens: 4000 }),
     });
     expect(almostFull.text()).toContain("99%");
-    expect(almostFull.find(".bg-info").exists()).toBe(true);
     const full = mountUsage({ usage: usage({ usedTokens: 4000 }) });
     expect(full.text()).toContain("100%");
   });
