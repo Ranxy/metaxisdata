@@ -287,7 +287,8 @@ func TestOpenReferenceSessionReleasesTheLeaseOnce(t *testing.T) {
 
 // TestBuildExecutionMessageStoresReferenceExecutedSQL is the evidence contract: the
 // reference-side statement the executor ran reaches the row FinishQualityExecution
-// writes.
+// writes. The sibling batch's build test covers ExecutedSQL; the reference side is
+// only recorded here.
 func TestBuildExecutionMessageStoresReferenceExecutedSQL(t *testing.T) {
 	t.Parallel()
 

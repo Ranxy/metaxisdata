@@ -11,12 +11,13 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// TestFailedExecutionRecordsTheExecutedRevision pins the audit trail of a failed
-// check. The planned row carries the revision and target the due scan saw, which
-// may be minutes old by the time the execution runs; once the runner has loaded
-// the rule's snapshot, a failure must record what it actually read — the L2
-// explanation and the contract diff both read RuleRevision back.
-func TestFailedExecutionRecordsTheExecutedRevision(t *testing.T) {
+// TestFailureExecutionRecordsWhatItRead pins the audit trail of a failed check. The
+// planned row carries the revision and target the due scan saw, which may be minutes
+// old by the time the execution runs; once the runner has loaded the rule's snapshot,
+// a failure must record what it actually read — the L2 explanation and the contract
+// diff both read RuleRevision back — while a failure before the snapshot read can
+// only name the planned values.
+func TestFailureExecutionRecordsWhatItRead(t *testing.T) {
 	t.Parallel()
 
 	planned := &store.QualityExecutionMessage{
@@ -28,7 +29,7 @@ func TestFailedExecutionRecordsTheExecutedRevision(t *testing.T) {
 		TargetType:   storepb.MetaType_TABLE,
 		TargetPath:   &storepb.QualityTargetPath{Instance: "i", Database: "db", Schema: "public", Object: "planned"},
 	}
-	snapshot := &dataquality.RuleSnapshot{
+	executed := &dataquality.RuleSnapshot{
 		Revision: 5,
 		Target: dataquality.Target{
 			GUID:     "instances/i;db;public;executed",
@@ -37,26 +38,43 @@ func TestFailedExecutionRecordsTheExecutedRevision(t *testing.T) {
 		},
 	}
 
-	got := failureExecutionMessage(planned, snapshot, time.Now().UTC(),
-		storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, "boom")
-
-	require.Equal(t, int32(5), got.RuleRevision)
-	require.Equal(t, "instances/i;db;public;executed", got.TargetGUID)
-	require.Equal(t, storepb.MetaType_VIEW, got.TargetType)
-	require.Equal(t, "executed", got.TargetPath.GetObject())
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, got.Status)
-}
-
-// TestFailedExecutionWithoutSnapshotKeepsThePlan covers the paths that fail before
-// a snapshot is read: the planned revision is all the row can name.
-func TestFailedExecutionWithoutSnapshotKeepsThePlan(t *testing.T) {
-	t.Parallel()
-
-	planned := &store.QualityExecutionMessage{ID: 1, RuleRevision: 3, TargetGUID: "instances/i;db;public;planned"}
-
-	got := failureExecutionMessage(planned, nil, time.Now().UTC(),
-		storepb.QualityStatus_QUALITY_STATUS_SKIPPED, "", "retired")
-
-	require.Equal(t, int32(3), got.RuleRevision)
-	require.Equal(t, "instances/i;db;public;planned", got.TargetGUID)
+	tests := []struct {
+		name         string
+		snapshot     *dataquality.RuleSnapshot
+		status       storepb.QualityStatus
+		wantRevision int32
+		wantGUID     string
+		wantType     storepb.MetaType
+		wantObject   string
+	}{
+		{
+			name:         "after the snapshot read it records what it read",
+			snapshot:     executed,
+			status:       storepb.QualityStatus_QUALITY_STATUS_ERROR,
+			wantRevision: 5,
+			wantGUID:     "instances/i;db;public;executed",
+			wantType:     storepb.MetaType_VIEW,
+			wantObject:   "executed",
+		},
+		{
+			name:         "before the snapshot read it keeps the planned row",
+			status:       storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+			wantRevision: 3,
+			wantGUID:     "instances/i;db;public;planned",
+			wantType:     storepb.MetaType_TABLE,
+			wantObject:   "planned",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := failureExecutionMessage(planned, test.snapshot, time.Now().UTC(), test.status,
+				dataquality.ErrCodeExecution, "boom")
+			require.Equal(t, test.wantRevision, got.RuleRevision)
+			require.Equal(t, test.wantGUID, got.TargetGUID)
+			require.Equal(t, test.wantType, got.TargetType)
+			require.Equal(t, test.wantObject, got.TargetPath.GetObject())
+			require.Equal(t, test.status, got.Status)
+		})
+	}
 }

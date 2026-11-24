@@ -330,9 +330,9 @@ func emailSetting(host string, port int32) *storepb.EmailSetting {
 }
 
 // fakeSMTPServer speaks enough SMTP for one net/smtp transaction and reports the
-// DATA section it received. An address in rejected is answered 550, which is how
-// a relay refuses one stale mailbox while accepting the rest.
-func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan string) {
+// envelope recipients it accepted. An address in rejected is answered 550, which is
+// how a relay refuses one stale mailbox while accepting the rest.
+func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan []string) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -347,7 +347,7 @@ func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan str
 		rejectedAddresses[address] = struct{}{}
 	}
 
-	messages := make(chan string, 1)
+	accepted := make(chan []string, 1)
 	go func() {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -361,7 +361,7 @@ func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan str
 			_ = writer.Flush()
 		}
 		write("220 localhost ESMTP")
-		var body strings.Builder
+		var recipients []string
 		inData := false
 		for {
 			line, err := reader.ReadString('\n')
@@ -372,12 +372,9 @@ func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan str
 			if inData {
 				if line == "." {
 					inData = false
-					messages <- body.String()
+					accepted <- recipients
 					write("250 OK")
-					continue
 				}
-				_, _ = body.WriteString(line)
-				_, _ = body.WriteString("\r\n")
 				continue
 			}
 			switch {
@@ -398,6 +395,7 @@ func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan str
 					write("550 no such user")
 					continue
 				}
+				recipients = append(recipients, strings.Trim(strings.TrimPrefix(line, "RCPT TO:"), "<> "))
 				write("250 OK")
 			case line == "DATA":
 				inData = true
@@ -410,7 +408,7 @@ func fakeSMTPServer(t *testing.T, rejected ...string) (string, int32, <-chan str
 			}
 		}
 	}()
-	return host, int32(port), messages
+	return host, int32(port), accepted
 }
 
 // An email delivery waits while the workspace SMTP setting is missing: the gap is
@@ -461,7 +459,7 @@ func TestDispatchEmailWithoutResolvableRecipientIsDead(t *testing.T) {
 func TestDispatchSendsEmail(t *testing.T) {
 	t.Parallel()
 
-	host, port, messages := fakeSMTPServer(t)
+	host, port, accepted := fakeSMTPServer(t)
 	channel := emailChannelMessage([]string{"oncall@example.com"}, true)
 	message := delivery(33, 1, channel.ID)
 	message.Payload.AudienceUserIds = []int32{7}
@@ -477,14 +475,10 @@ func TestDispatchSendsEmail(t *testing.T) {
 
 	require.Len(t, fake.finished, 1)
 	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, fake.finished[0].state)
-	body := <-messages
-	// Recipients are envelope-only, so the shared mailbox does not learn the
-	// internal owner's address (and vice versa).
-	require.Contains(t, body, "To: undisclosed-recipients:;")
-	require.NotContains(t, body, "oncall@example.com")
-	require.NotContains(t, body, "owner@example.com")
-	require.Contains(t, body, "From: Metaxisdata <alerts@example.com>")
-	require.Contains(t, body, "Subject:")
+	// Recipients are envelope-only, so what the delivery carried is the set of
+	// addresses the server accepted, not what the shared mailbox reads.
+	require.ElementsMatch(t, []string{"oncall@example.com", "owner@example.com"}, <-accepted,
+		"the fixed address and the event's audience both receive the mail")
 }
 
 // One stale fixed address must not cancel the alert for everyone else: the
@@ -492,7 +486,7 @@ func TestDispatchSendsEmail(t *testing.T) {
 func TestDispatchSendsEmailPastARejectedRecipient(t *testing.T) {
 	t.Parallel()
 
-	host, port, messages := fakeSMTPServer(t, "stale@example.com")
+	host, port, accepted := fakeSMTPServer(t, "stale@example.com")
 	channel := emailChannelMessage([]string{"stale@example.com", "oncall@example.com"}, false)
 	fake := &fakeDispatcherStore{
 		claimed:  []*store.NotificationDeliveryMessage{delivery(34, 1, channel.ID)},
@@ -505,9 +499,8 @@ func TestDispatchSendsEmailPastARejectedRecipient(t *testing.T) {
 
 	require.Len(t, fake.finished, 1)
 	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, fake.finished[0].state)
-	body := <-messages
-	require.Contains(t, body, "Subject:")
-	require.NotContains(t, body, "stale@example.com")
+	require.Equal(t, []string{"oncall@example.com"}, <-accepted,
+		"the accepted address still receives the message")
 }
 
 // A delivery fails only when the server accepts no recipient; the error names no

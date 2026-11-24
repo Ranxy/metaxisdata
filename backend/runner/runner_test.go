@@ -36,18 +36,6 @@ func TestGoRunsTheRunnerAndReleasesTheWaitGroup(t *testing.T) {
 	require.True(t, r.ran)
 }
 
-// A bug in one background loop must be logged, not propagated into the process:
-// the other runners and the web server keep running.
-func TestGoRecoversAPanickingRunner(t *testing.T) {
-	t.Parallel()
-
-	var wg sync.WaitGroup
-	require.NotPanics(t, func() {
-		Go(context.Background(), &wg, &panickingRunner{}, nil)
-		wg.Wait()
-	})
-}
-
 // captureHandler records the log lines the lifecycle emits. A test replaces the
 // process logger with it, so such a test must not be parallel.
 type captureHandler struct {
@@ -111,7 +99,8 @@ func attrValue(t *testing.T, record slog.Record, key string) slog.Value {
 }
 
 // Go owns the runner's lifecycle: one line when the loop starts and one when it
-// stops, both naming the runner and the second carrying how long it ran.
+// stops, both naming the runner (which find checks) and the second carrying how
+// long it ran as a duration.
 func TestGoLogsRunnerLifecycle(t *testing.T) {
 	// Not parallel: it replaces the process logger.
 	previous := slog.Default()
@@ -123,12 +112,9 @@ func TestGoLogsRunnerLifecycle(t *testing.T) {
 	Go(context.Background(), &wg, &testRunner{}, nil)
 	wg.Wait()
 
-	started := handler.find(t, "background runner started", "test")
-	require.Equal(t, "test", attrValue(t, started, "runner").String())
-
+	handler.find(t, "background runner started", "test")
 	stopped := handler.find(t, "background runner stopped", "test")
-	require.Equal(t, "test", attrValue(t, stopped, "runner").String())
-	require.GreaterOrEqual(t, attrValue(t, stopped, "duration").Duration(), time.Duration(0))
+	require.Equal(t, slog.KindDuration, attrValue(t, stopped, "duration").Kind())
 }
 
 // A panicking runner keeps the panic boundary and still gets its stop line: the

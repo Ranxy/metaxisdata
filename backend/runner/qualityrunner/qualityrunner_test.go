@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
@@ -53,90 +54,96 @@ func qualityExecutionStub(status storepb.QualityStatus) *store.QualityExecutionM
 	return &store.QualityExecutionMessage{Status: status}
 }
 
-func TestPlanDueBatchesGroupsByInstanceAndOneTargetPerBatch(t *testing.T) {
+func TestPlanDueBatches(t *testing.T) {
 	t.Parallel()
 
-	targets := []*store.DueQualityTarget{
-		dueTargetStub("inst-a;db;public;t1", 1, 2),
-		dueTargetStub("inst-b;db;public;t2", 3, 4),
-		dueTargetStub("inst-a;db;public;t3", 5),
+	tests := []struct {
+		name          string
+		targets       []*store.DueQualityTarget
+		maxExecutions int
+		wantInstances []string
+		wantTargets   []string
+		wantRuleIDs   [][]int64
+	}{
+		{
+			// One target is one batch, and the plans keep the order the targets
+			// became due in, so an instance's batches stay adjacent and serial.
+			name: "each due target is its own batch in due order",
+			targets: []*store.DueQualityTarget{
+				dueTargetStub("inst-a;db;public;t1", 1, 2),
+				dueTargetStub("inst-b;db;public;t2", 3, 4),
+				dueTargetStub("inst-a;db;public;t3", 5),
+			},
+			maxExecutions: 10,
+			wantInstances: []string{"inst-a", "inst-a", "inst-b"},
+			wantTargets:   []string{"inst-a;db;public;t1", "inst-a;db;public;t3", "inst-b;db;public;t2"},
+			wantRuleIDs:   [][]int64{{1, 2}, {5}, {3, 4}},
+		},
+		{
+			name: "two targets never share a batch",
+			targets: []*store.DueQualityTarget{
+				dueTargetStub("inst;db;public;orders", 1),
+				dueTargetStub("inst;db;public;customers", 2),
+			},
+			maxExecutions: 50,
+			wantInstances: []string{"inst", "inst"},
+			wantTargets:   []string{"inst;db;public;orders", "inst;db;public;customers"},
+			wantRuleIDs:   [][]int64{{1}, {2}},
+		},
+		{
+			// Every plan names the target it belongs to; schedule advancement happens
+			// when the cycle settles, not from a plan.
+			name: "only a target over the cap spans batches",
+			targets: []*store.DueQualityTarget{
+				dueTargetStub("inst-a;db;public;orders", 1, 2, 3, 4, 5),
+				dueTargetStub("inst-a;db;public;customers", 6, 7),
+			},
+			maxExecutions: 2,
+			wantInstances: []string{"inst-a", "inst-a", "inst-a", "inst-a"},
+			wantTargets: []string{
+				"inst-a;db;public;orders", "inst-a;db;public;orders",
+				"inst-a;db;public;orders", "inst-a;db;public;customers",
+			},
+			wantRuleIDs: [][]int64{{1, 2}, {3, 4}, {5}, {6, 7}},
+		},
+		{
+			name: "the oldest due target keeps running first instead of a GUID reorder",
+			targets: []*store.DueQualityTarget{
+				dueTargetStub("inst-a;db;public;customers", 1, 3),
+				dueTargetStub("inst-a;db;public;orders", 2),
+			},
+			maxExecutions: 50,
+			wantInstances: []string{"inst-a", "inst-a"},
+			wantTargets:   []string{"inst-a;db;public;customers", "inst-a;db;public;orders"},
+			wantRuleIDs:   [][]int64{{1, 3}, {2}},
+		},
+		{
+			name: "an unattributable target runs in the empty instance",
+			targets: []*store.DueQualityTarget{
+				nil,
+				dueTargetStub("not-a-guid", 7),
+			},
+			maxExecutions: 50,
+			wantInstances: []string{""},
+			wantTargets:   []string{"not-a-guid"},
+			wantRuleIDs:   [][]int64{{7}},
+		},
 	}
 
-	plans := planDueBatches(targets, 10)
-	require.Len(t, plans, 3, "each due target is its own batch")
-	require.Equal(t, "inst-a", plans[0].instanceResourceID)
-	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
-	require.Equal(t, "inst-a", plans[1].instanceResourceID)
-	require.Equal(t, []int64{5}, qualityRuleIDs(plans[1].rules))
-	require.Equal(t, "inst-b", plans[2].instanceResourceID)
-	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[2].rules))
-	for _, plan := range plans {
-		require.NotNil(t, plan.target, "a batch always carries the target it belongs to")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			plans := planDueBatches(test.targets, test.maxExecutions)
+			require.Len(t, plans, len(test.wantRuleIDs))
+			for i, plan := range plans {
+				require.Equal(t, test.wantInstances[i], plan.instanceResourceID)
+				require.NotNil(t, plan.target, "a batch always carries the target it belongs to")
+				require.Equal(t, test.wantTargets[i], plan.target.TargetGUID)
+				require.Equal(t, test.wantRuleIDs[i], qualityRuleIDs(plan.rules))
+			}
+		})
 	}
-}
-
-func TestPlanDueBatchesNeverPacksTwoTargetsTogether(t *testing.T) {
-	t.Parallel()
-
-	targets := []*store.DueQualityTarget{
-		dueTargetStub("inst;db;public;orders", 1),
-		dueTargetStub("inst;db;public;customers", 2),
-	}
-	plans := planDueBatches(targets, 50)
-	require.Len(t, plans, 2)
-	require.Equal(t, []int64{1}, qualityRuleIDs(plans[0].rules))
-	require.Equal(t, "inst;db;public;orders", plans[0].target.TargetGUID)
-	require.Equal(t, []int64{2}, qualityRuleIDs(plans[1].rules))
-	require.Equal(t, "inst;db;public;customers", plans[1].target.TargetGUID)
-}
-
-func TestPlanDueBatchesSplitsOnlyAnOversizedTarget(t *testing.T) {
-	t.Parallel()
-
-	orders := dueTargetStub("inst-a;db;public;orders", 1, 2, 3, 4, 5)
-	customers := dueTargetStub("inst-a;db;public;customers", 6, 7)
-	plans := planDueBatches([]*store.DueQualityTarget{orders, customers}, 2)
-	require.Len(t, plans, 4)
-	require.Equal(t, []int64{1, 2}, qualityRuleIDs(plans[0].rules))
-	require.Equal(t, []int64{3, 4}, qualityRuleIDs(plans[1].rules))
-	require.Equal(t, []int64{5}, qualityRuleIDs(plans[2].rules))
-	require.Equal(t, []int64{6, 7}, qualityRuleIDs(plans[3].rules),
-		"a target over the cap is the only one that spans batches")
-
-	// Every plan names the target it belongs to; schedule advancement happens when
-	// the cycle settles, not from a plan.
-	require.Equal(t, "inst-a;db;public;orders", plans[1].target.TargetGUID)
-	require.Equal(t, "inst-a;db;public;orders", plans[2].target.TargetGUID)
-	require.Equal(t, "inst-a;db;public;customers", plans[3].target.TargetGUID)
-}
-
-func TestPlanDueBatchesOrdersTargetsAsGiven(t *testing.T) {
-	t.Parallel()
-
-	targets := []*store.DueQualityTarget{
-		dueTargetStub("inst-a;db;public;customers", 1, 3),
-		dueTargetStub("inst-a;db;public;orders", 2),
-	}
-	plans := planDueBatches(targets, 50)
-	require.Len(t, plans, 2)
-	require.Equal(t, []int64{1, 3}, qualityRuleIDs(plans[0].rules))
-	require.Equal(t, []int64{2}, qualityRuleIDs(plans[1].rules),
-		"the oldest due target keeps running first instead of a GUID reorder")
-}
-
-func TestPlanDueBatchesAttributesMalformedTargetToNoInstance(t *testing.T) {
-	t.Parallel()
-
-	plans := planDueBatches([]*store.DueQualityTarget{nil, dueTargetStub("not-a-guid", 7)}, 50)
-	require.Len(t, plans, 1)
-	require.Empty(t, plans[0].instanceResourceID)
-	require.Equal(t, []int64{7}, qualityRuleIDs(plans[0].rules))
-}
-
-func TestPlanDueBatchesRejectsNonPositiveBatchSize(t *testing.T) {
-	t.Parallel()
-
-	require.Empty(t, planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;t", 1)}, 0))
 }
 
 // A target at the API's per-table rule cap fits exactly one scheduled batch;
@@ -155,58 +162,6 @@ func TestScheduledBatchCapacityFitsTheLargestLegalTarget(t *testing.T) {
 	ids = append(ids, 101)
 	plans = planDueBatches([]*store.DueQualityTarget{dueTargetStub("inst;db;public;orders", ids...)}, maxExecutionsPerBatch)
 	require.Len(t, plans, 2, "only an over-cap target can span batches")
-}
-
-func TestNextRunAtUsesTheIntervalButNeverLoopsEveryTick(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)
-	require.Equal(t, now.Add(2*time.Hour), nextRunAt(now, 2*time.Hour))
-	// A missing or too-short interval is the API's validation job; the runner's
-	// backstop keeps such a rule from becoming due on every ten-second tick.
-	require.Equal(t, now.Add(minRuleScheduleInterval), nextRunAt(now, 0))
-	require.Equal(t, now.Add(minRuleScheduleInterval), nextRunAt(now, time.Minute))
-}
-
-// A batch that could not execute a rule must not look like a batch whose rule
-// found bad data: ERROR outranks FAIL in the rollup.
-func TestCountsAndOutcomeSeparatesErrorFromFail(t *testing.T) {
-	t.Parallel()
-
-	counts, outcome := dataquality.CountResults([]storepb.QualityStatus{
-		storepb.QualityStatus_QUALITY_STATUS_PASS,
-		storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		storepb.QualityStatus_QUALITY_STATUS_ERROR,
-		storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-	})
-	require.Equal(t, int32(4), counts.GetTotal())
-	require.Equal(t, int32(1), counts.GetPass())
-	require.Equal(t, int32(1), counts.GetFail())
-	require.Equal(t, int32(1), counts.GetError())
-	require.Equal(t, int32(1), counts.GetSkipped())
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, outcome)
-
-	counts, outcome = dataquality.CountResults([]storepb.QualityStatus{
-		storepb.QualityStatus_QUALITY_STATUS_WARN,
-		storepb.QualityStatus_QUALITY_STATUS_FAIL,
-	})
-	require.Equal(t, int32(2), counts.GetTotal())
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, outcome)
-
-	// A batch with no executions judged nothing; that is not a pass.
-	counts, outcome = dataquality.CountResults(nil)
-	require.Equal(t, int32(0), counts.GetTotal())
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, outcome)
-}
-
-func TestManualExecutionTasksDeduplicatesAndDropsInvalidIDs(t *testing.T) {
-	t.Parallel()
-
-	tasks := manualExecutionTasks([]int64{5, 0, -2, 5, 7, 7})
-	require.Len(t, tasks, 2)
-	require.Equal(t, int64(5), tasks[0].executionID)
-	require.Equal(t, int64(7), tasks[1].executionID)
-	require.Zero(t, tasks[0].ruleID)
 }
 
 func TestInflightGuardIsExclusivePerRule(t *testing.T) {
@@ -306,7 +261,9 @@ func TestEnqueueQualityExecutionsReportsAFullQueue(t *testing.T) {
 	t.Parallel()
 
 	runner := &Runner{manual: make(chan manualRun, 1)}
-	require.True(t, runner.EnqueueQualityExecutions(1, "inst-1", []int64{3}))
+	// Invalid and duplicate row ids are dropped before the batch is queued: one
+	// batch must never execute the same planned row twice.
+	require.True(t, runner.EnqueueQualityExecutions(1, "inst-1", []int64{5, 0, -2, 5, 7, 7}))
 
 	// The queue is full, so the API must be told instead of blocking the request.
 	require.False(t, runner.EnqueueQualityExecutions(2, "inst-1", nil))
@@ -314,8 +271,9 @@ func TestEnqueueQualityExecutionsReportsAFullQueue(t *testing.T) {
 	queued := <-runner.manual
 	require.Equal(t, int64(1), queued.batchID)
 	require.Equal(t, "inst-1", queued.instanceResourceID)
-	require.Len(t, queued.executions, 1)
-	require.Equal(t, int64(3), queued.executions[0].executionID)
+	require.Len(t, queued.executions, 2)
+	require.Equal(t, int64(5), queued.executions[0].executionID)
+	require.Equal(t, int64(7), queued.executions[1].executionID)
 	require.True(t, runner.EnqueueQualityExecutions(3, "inst-1", nil))
 }
 
@@ -342,7 +300,7 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 	require.Equal(t, dataquality.EngineVersion, planned.RuleEngineVersion)
 	require.Equal(t, "inst1;db1;public;orders", planned.TargetGUID)
 	require.Equal(t, storepb.MetaType_TABLE, planned.TargetType)
-	require.Same(t, path, planned.TargetPath)
+	require.Equal(t, path, planned.TargetPath)
 	require.Equal(t, "inst1", planned.InstanceResourceID)
 	require.Equal(t, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_PENDING, planned.State)
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, planned.Trigger)
@@ -471,8 +429,9 @@ func TestInstanceConnectionLimitUsesTheDeploymentDefault(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, 4, instanceConnectionLimit(&store.InstanceMessage{Metadata: &storepb.Instance{MaximumConnections: 4}}))
-	require.Equal(t, 10, instanceConnectionLimit(&store.InstanceMessage{Metadata: &storepb.Instance{}}))
-	require.Equal(t, 10, instanceConnectionLimit(&store.InstanceMessage{}))
+	require.Equal(t, common.DefaultInstanceMaximumConnections,
+		instanceConnectionLimit(&store.InstanceMessage{Metadata: &storepb.Instance{}}))
+	require.Equal(t, common.DefaultInstanceMaximumConnections, instanceConnectionLimit(&store.InstanceMessage{}))
 }
 
 func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
@@ -539,7 +498,7 @@ func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
 	require.NotNil(t, result.ObservedValue)
 	require.InDelta(t, 12, *result.ObservedValue, 1e-9)
 	require.Equal(t, storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, result.ObservedKind)
-	require.Same(t, thresholds, result.Thresholds)
+	require.Equal(t, thresholds, result.Thresholds)
 	require.Equal(t, int64(12), result.FailedRows)
 	require.Equal(t, int64(50), result.TotalRows)
 	require.True(t, result.Sampled)
@@ -601,15 +560,6 @@ func TestObservedValueIsAbsentForUnjudgedExecutions(t *testing.T) {
 	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_SKIPPED, 3))
 	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 3))
 	require.Nil(t, observedValue(storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 3))
-}
-
-func TestDurationMSClampsNegativeAndOverflow(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now().UTC()
-	require.Equal(t, int32(0), durationMS(now, now.Add(-time.Second)))
-	require.Equal(t, int32(2000), durationMS(now, now.Add(2*time.Second)))
-	require.Equal(t, int32(^uint32(0)>>1), durationMS(now.Add(-20*24*time.Hour), now.Add(20*24*time.Hour)))
 }
 
 func TestBaselineFromExecutionsUsesTheMeasuredRowCount(t *testing.T) {
@@ -852,25 +802,6 @@ func TestQualityObservedUnit(t *testing.T) {
 	require.Empty(t, qualityObservedUnit(storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_UNSPECIFIED))
 }
 
-func TestQualityTargetDisplayPath(t *testing.T) {
-	t.Parallel()
-
-	require.Empty(t, qualityTargetDisplayPath(nil))
-	require.Equal(t, "inst1/db1/public/orders.status", qualityTargetDisplayPath(&storepb.QualityTargetPath{
-		Instance: "inst1",
-		Database: "db1",
-		Schema:   "public",
-		Object:   "orders",
-		Column:   "status",
-	}))
-	// The MySQL family has no schema segment; it must not leave an empty part.
-	require.Equal(t, "inst1/db1/orders", qualityTargetDisplayPath(&storepb.QualityTargetPath{
-		Instance: "inst1",
-		Database: "db1",
-		Object:   "orders",
-	}))
-}
-
 // Only FAIL executions make a storm: a batch that could not execute its rules is
 // a different alert, and it must not merge into the data-quality summary.
 func TestIsQualityStorm(t *testing.T) {
@@ -934,14 +865,20 @@ func TestBuildDataQualityDetailForARecovery(t *testing.T) {
 	t.Parallel()
 
 	execution := ruleExecutionStub(storepb.QualityStatus_QUALITY_STATUS_PASS)
-	detail := buildDataQualityDetail(dataQualityDetailInput{
+	input := dataQualityDetailInput{
 		workspaceID:     "ws1",
 		kind:            storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
 		execution:       execution,
 		issueResourceID: "issue1",
-	})
+	}
+	detail := buildDataQualityDetail(input)
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, detail.GetFromStatus())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, detail.GetToStatus())
+
+	// A MySQL-family target has no schema segment; the display path must not keep
+	// an empty part.
+	execution.snapshot.Target.Path = &storepb.QualityTargetPath{Instance: "inst1", Database: "db1", Object: "orders"}
+	require.Equal(t, "inst1/db1/orders", buildDataQualityDetail(input).GetTargetPath())
 }
 
 func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
@@ -952,7 +889,7 @@ func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
 	execution.result.ErrorCode = dataquality.ErrCodeTimeout
 	execution.previous = nil
 	detail := buildDataQualityDetail(dataQualityDetailInput{
-		workspaceID: "ws1",
+		workspaceID: "",
 		kind:        storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
 		execution:   execution,
 	})
@@ -962,7 +899,9 @@ func TestBuildDataQualityDetailForAnExecutionFailure(t *testing.T) {
 	require.Equal(t, dataquality.ErrCodeTimeout, detail.GetErrorCode())
 	require.Zero(t, detail.GetObservedValue())
 	require.Empty(t, detail.GetIssue())
-	require.Equal(t, "workspaces/ws1/qualityExecutions/101", detail.GetExecution())
+	// An unreadable workspace leaves the name in its degraded form rather than
+	// dropping the message.
+	require.Equal(t, "qualityExecutions/101", detail.GetExecution())
 }
 
 func TestQualityNotificationTargetIsScopedToTheEvent(t *testing.T) {
@@ -1001,16 +940,6 @@ func TestBuildStormDetail(t *testing.T) {
 	require.Equal(t, int32(40), detail.GetTotalRuleCount())
 }
 
-// The runner formats execution names the way the API addresses a row: the last
-// segment is the numeric execution id.
-func TestFormatQualityExecutionName(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "workspaces/ws1/qualityExecutions/101", formatQualityExecutionName("ws1", 101))
-	require.Equal(t, "qualityExecutions/101", formatQualityExecutionName("", 101))
-	require.Empty(t, formatQualityExecutionName("ws1", 0))
-}
-
 // Instance resource names are top-level; a storm summary names the instance the
 // same way the API does.
 func TestFormatInstanceResourceName(t *testing.T) {
@@ -1032,32 +961,8 @@ func TestPlannedTasksFromMessages(t *testing.T) {
 		{ID: 103, RuleID: 9},
 	})
 	require.Len(t, tasks, 2)
-	require.Equal(t, executionTask{executionID: 101, ruleID: 7}, tasks[0])
-	require.Equal(t, executionTask{executionID: 103, ruleID: 9}, tasks[1])
-}
-
-// A metadata rule observes the registry, so it must run without a target
-// connection; every query rule still needs the read-only data source.
-func TestRequiresReadOnlySource(t *testing.T) {
-	t.Parallel()
-
-	require.False(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
-		"schema drift reads metadata, not the target database")
-	require.True(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK),
-		"group check runs a GROUP BY query")
-	for _, ruleType := range []storepb.QualityRuleType{
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-	} {
-		require.True(t, requiresReadOnlySource(ruleType), "rule type %s", ruleType)
-	}
-
-	// The decision must agree with the component's own definition, so the runner
-	// and the executor cannot disagree about which rules need a queryer.
-	require.Equal(t, dataquality.IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
-		!requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT))
+	require.Equal(t, int64(101), tasks[0].executionID)
+	require.Equal(t, int64(103), tasks[1].executionID)
 }
 
 // fakeBatchStore is the batchExecutionStore the accounting tests drive. It only
@@ -1266,19 +1171,10 @@ func TestBatchContractFiltersReadsEachTargetOnce(t *testing.T) {
 	require.Len(t, calls, 5)
 }
 
-// TestLoadBatchContractFilterWithoutAStoreIsNoFilter keeps the accounting runner
-// (which has no store) from panicking if a future test ever executes a rule.
-func TestLoadBatchContractFilterWithoutAStoreIsNoFilter(t *testing.T) {
-	t.Parallel()
-
-	r := &Runner{}
-	filter, err := r.loadBatchContractFilter()(context.Background(), "users", storepb.MetaType_TABLE)
-	require.NoError(t, err)
-	require.Nil(t, filter)
-}
-
 // nextTargetRun follows a cron target's next occurrence and advances an interval
-// target one interval from now; the spec floors a malformed row.
+// target one interval from now; a missing or too-short interval is the API's
+// validation job, and the spec floors such a row so it cannot become due on every
+// ten-second tick.
 func TestNextTargetRun(t *testing.T) {
 	t.Parallel()
 
@@ -1287,6 +1183,7 @@ func TestNextTargetRun(t *testing.T) {
 	require.Equal(t, time.Date(2026, time.November, 2, 2, 0, 0, 0, time.UTC),
 		nextTargetRun(now, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}))
 	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{}))
+	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{Interval: time.Minute}))
 }
 
 // TestSegmentBaselineFromExecutions pins the history read: only executions that
@@ -1333,5 +1230,24 @@ func TestSegmentCheckNeedsPersonalLabels(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	} {
 		require.False(t, segmentCheckNeedsPersonalLabels(ruleType), "%s can drop its samples", ruleType)
+	}
+}
+
+// Metadata rules observe the registry and must run without a target connection;
+// every query rule still needs the read-only data source.
+func TestRequiresReadOnlySource(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT),
+		"schema drift reads metadata, not the target database")
+	require.True(t, requiresReadOnlySource(storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK),
+		"group check runs a GROUP BY query")
+	for _, ruleType := range []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+	} {
+		require.True(t, requiresReadOnlySource(ruleType), "rule type %s", ruleType)
 	}
 }

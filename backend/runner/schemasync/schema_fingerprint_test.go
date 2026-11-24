@@ -26,27 +26,6 @@ func fingerprintResource(guid string, columns ...string) *store.CreateMetaRegist
 	}
 }
 
-func TestSupportsSchemaFingerprint(t *testing.T) {
-	t.Parallel()
-
-	cases := map[storepb.MetaType]bool{
-		storepb.MetaType_TABLE:             true,
-		storepb.MetaType_EXTERNAL_TABLE:    true,
-		storepb.MetaType_VIEW:              true,
-		storepb.MetaType_MATERIALIZED_VIEW: true,
-		storepb.MetaType_COLUMN:            false,
-		storepb.MetaType_SCHEMA:            false,
-		storepb.MetaType_DATABASE:          false,
-		storepb.MetaType_SEQUENCE:          false,
-		storepb.MetaType_FUNCTION:          false,
-		storepb.MetaType_PROCEDURE:         false,
-		storepb.MetaType_UNSPECIFIED:       false,
-	}
-	for metaType, want := range cases {
-		require.Equal(t, want, supportsSchemaFingerprint(metaType), metaType.String())
-	}
-}
-
 // The write set is what the sync sends to the database: a stored row that is
 // already current is dropped, and only a row that existed before and now differs
 // is reported as a change a monitor should hear about.
@@ -100,12 +79,23 @@ func TestCollectSchemaFingerprintsDeduplicatesCollidingResources(t *testing.T) {
 	require.Len(t, diffSchemaFingerprints(items, fingerprints, nil).writes, 1)
 }
 
-// A resource the type says has a shape but whose metadata does not is skipped
-// instead of failing the database's sync.
+// A resource whose type carries a shape is fingerprinted; a type with no shape
+// and a resource whose metadata does not match its type are skipped instead of
+// failing the database's sync.
 func TestCollectSchemaFingerprintsSkipsResourcesWithoutAShape(t *testing.T) {
 	t.Parallel()
 
 	table := fingerprintResource("inst;db;;orders", "id")
+	view := &store.CreateMetaRegistryResourceMessage{
+		MetaRegistryResource: store.MetaRegistryResource{
+			GUID:       "inst;db;;orders_view",
+			ObjectType: storepb.MetaType_VIEW,
+			Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{
+				Name:    "orders_view",
+				Columns: []*storepb.ColumnMetadata{{Name: "id"}},
+			}}},
+		},
+	}
 	column := &store.CreateMetaRegistryResourceMessage{
 		MetaRegistryResource: store.MetaRegistryResource{
 			GUID:       "inst;db;;orders;id",
@@ -121,10 +111,11 @@ func TestCollectSchemaFingerprintsSkipsResourcesWithoutAShape(t *testing.T) {
 		},
 	}
 
-	items, fingerprints, keys := collectSchemaFingerprints([]*store.CreateMetaRegistryResourceMessage{column, malformed, table})
-	require.Len(t, items, 1)
-	require.Len(t, keys, 1)
+	items, fingerprints, keys := collectSchemaFingerprints([]*store.CreateMetaRegistryResourceMessage{column, malformed, view, table})
+	require.Len(t, items, 2)
+	require.Len(t, keys, 2)
 	require.Contains(t, fingerprints, table.GUIDKey())
+	require.Contains(t, fingerprints, view.GUIDKey())
 }
 
 // A monitored object whose structure moved produces one message for every check

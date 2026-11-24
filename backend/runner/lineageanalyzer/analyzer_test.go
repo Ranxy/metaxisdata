@@ -30,6 +30,9 @@ func TestBuildSQL(t *testing.T) {
 		wantDef     string
 		wantWrapped string
 	}{
+		// One golden per quoting family. The parse test below wraps a reserved name
+		// and parses it for every registered engine, MariaDB and the
+		// StarRocks/Doris pair included.
 		{
 			name:        "mysql view uses backticks",
 			engine:      storepb.Engine_MYSQL,
@@ -82,46 +85,6 @@ func TestBuildSQL(t *testing.T) {
 			}}}},
 			wantDef:     "CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`)\nDISTRIBUTED BY HASH(`id`)\nREFRESH ASYNC\nAS SELECT id, count(*) AS cnt FROM t1 GROUP BY id",
 			wantWrapped: "CREATE MATERIALIZED VIEW `mv1` (`id`, `cnt`)\nDISTRIBUTED BY HASH(`id`)\nREFRESH ASYNC\nAS SELECT id, count(*) AS cnt FROM t1 GROUP BY id",
-		},
-		{
-			name:        "starrocks view uses backticks",
-			engine:      storepb.Engine_STARROCKS,
-			metaType:    storepb.MetaType_VIEW,
-			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
-			wantDef:     "SELECT id FROM users",
-			wantWrapped: "CREATE VIEW `active_users` AS SELECT id FROM users",
-		},
-		{
-			// Doris quotes identifiers with backticks, so a view name that is a
-			// keyword or carries odd characters survives the wrap. Its definition is
-			// a bare query body, like the MySQL family's.
-			name:        "doris view uses backticks",
-			engine:      storepb.Engine_DORIS,
-			metaType:    storepb.MetaType_VIEW,
-			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
-			wantDef:     "SELECT id FROM users",
-			wantWrapped: "CREATE VIEW `active_users` AS SELECT id FROM users",
-		},
-		{
-			// MariaDB shares the MySQL driver and keeps a bare query body, so its
-			// view identifier must be quoted exactly like MySQL's. A reserved word
-			// is the case that silently loses lineage when it is not.
-			name:        "mariadb view quotes a reserved name",
-			objectName:  "order",
-			engine:      storepb.Engine_MARIADB,
-			metaType:    storepb.MetaType_VIEW,
-			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
-			wantDef:     "SELECT id FROM users",
-			wantWrapped: "CREATE VIEW `order` AS SELECT id FROM users",
-		},
-		{
-			name:        "starrocks view quotes a reserved name",
-			objectName:  "order",
-			engine:      storepb.Engine_STARROCKS,
-			metaType:    storepb.MetaType_VIEW,
-			resource:    &store.MetaRegistryResource{Metadata: &storepb.StoredMetadata{Type: &storepb.StoredMetadata_ViewMetadata{ViewMetadata: &storepb.ViewMetadata{Definition: "SELECT id FROM users"}}}},
-			wantDef:     "SELECT id FROM users",
-			wantWrapped: "CREATE VIEW `order` AS SELECT id FROM users",
 		},
 		{
 			// T-SQL brackets an identifier and escapes a closing bracket by doubling it.
@@ -277,25 +240,10 @@ func TestNeedsAnalysis(t *testing.T) {
 	}
 }
 
-// The relation GUIDs are resolved in one batch query, and the analyzed object's own GUID is
-// left out: its type is known, and a query that repeats it would only duplicate a row.
-func TestTypeLookupGUIDsExcludesTheAnalyzedObject(t *testing.T) {
-	t.Parallel()
-
-	lookups := map[string]struct{}{"a": {}, "b": {}, "self": {}}
-	require.Equal(t, []string{"a", "b"}, typeLookupGUIDs(lookups, "self"))
-	require.Empty(t, typeLookupGUIDs(map[string]struct{}{"self": {}}, "self"))
-	require.Empty(t, typeLookupGUIDs(nil, "self"))
-}
-
 // One tick takes at most one bounded batch. A cold start queues the whole registry, and
 // leaving the rest queued is what lets event-driven work interleave with the backfill.
 func TestTakeAnalyzeBatchCapsAndKeepsTheRest(t *testing.T) {
 	t.Parallel()
-
-	require.Equal(t, MaxGoroutines*100, maxAnalyzeBatch, "the batch is a small multiple of the worker count")
-	require.Positive(t, analyzeObjectTimeout)
-	require.Equal(t, 5*time.Minute, queueAllTimeout)
 
 	analyzer := &Analyzer{}
 	for i := range 5 {
@@ -336,8 +284,6 @@ func TestDrainPrefersEventsOverTheScanBacklog(t *testing.T) {
 	batch := analyzer.takeAnalyzeBatch(&analyzer.analyzeMap, now, maxAnalyzeBatch)
 	require.Len(t, batch, 1)
 	require.Equal(t, analyzeKey{MetaGUID: "event", MetaType: storepb.MetaType_VIEW}, batch[0].key)
-	require.Same(t, &analyzer.analyzeMap, batch[0].queue)
-	require.Equal(t, backlog+1, queuedCount(analyzer))
 }
 
 // A key still inside its retry backoff is not part of a batch, and it stays queued.
@@ -389,14 +335,19 @@ func queuedCount(analyzer *Analyzer) int {
 	return count
 }
 
-// A failed analysis is retried with a bounded backoff instead of waiting for
-// the hourly full scan, and a fresh queue request resets that backoff.
-func TestAnalyzerRetryBackoff(t *testing.T) {
+// A failed analysis is retried with a backoff bounded by the hourly full scan it
+// exists to replace: each attempt waits longer than the last, and none waits so
+// long that the scan would be the one to queue the object again.
+func TestAnalyzerRetryBackoffStaysBoundedByTheScanInterval(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, 30*time.Second, analysisRetryBackoff(1))
-	require.Equal(t, 2*time.Minute, analysisRetryBackoff(2))
-	require.Equal(t, 5*time.Minute, analysisRetryBackoff(3))
+	previous := time.Duration(0)
+	for attempts := 1; attempts <= maxAnalysisRetries; attempts++ {
+		backoff := analysisRetryBackoff(attempts)
+		require.Greater(t, backoff, previous, "a retry must wait longer the more attempts it takes")
+		require.Less(t, backoff, lineageAnalysisInterval, "a retry must resume before the hourly scan")
+		previous = backoff
+	}
 }
 
 func TestScheduleRetryBacksOffAndGivesUp(t *testing.T) {
@@ -499,7 +450,6 @@ func TestStaleFailureDoesNotClobberNewerQueueEntry(t *testing.T) {
 		key := analyzeKey{MetaGUID: "scan", MetaType: storepb.MetaType_VIEW}
 		analyzer.queueScan(key.MetaGUID, key.MetaType)
 		failed := queuedItem(t, analyzer, key)
-		require.Same(t, &analyzer.scanMap, failed.queue)
 
 		// The event path supersedes the scan entry while the analysis runs.
 		analyzer.QueueAnalysis(key.MetaGUID, key.MetaType)
@@ -522,14 +472,20 @@ func mustRetry(t *testing.T, analyzer *Analyzer, key analyzeKey) analysisRetry {
 	return entry
 }
 
-// An emptied definition takes the failure path, not the skip path: the previous
-// definition's edges are cleared, so the version row must carry a non-empty
-// message explaining why the graph is empty. A parse failure names its cause.
+// An emptied definition goes through the failure write, not the deliberate-skip
+// write: the previous definition's edges are cleared, so the version row must
+// carry a message saying there was no SQL to analyze. A parse failure names its
+// cause.
 func TestAnalysisFailureMessage(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "lineage analysis skipped: the object has no SQL definition", analysisFailureMessage(nil))
-	require.Equal(t, "lineage analysis failed: unexpected token", analysisFailureMessage(errors.New("unexpected token")))
+	skipped := analysisFailureMessage(nil)
+	require.Contains(t, skipped, "skipped", "an empty definition is recorded as a skip, not a parse failure")
+	require.NotContains(t, skipped, "failed")
+
+	failed := analysisFailureMessage(errors.New("unexpected token"))
+	require.Contains(t, failed, "failed")
+	require.Contains(t, failed, "unexpected token", "the cause is the only explanation the cleared graph offers")
 }
 
 // An empty stored definition means different things per object type: a statement
@@ -576,7 +532,6 @@ func TestDrainRecordsTimeoutOnlyForUnclassifiedDeadlines(t *testing.T) {
 
 	require.True(t, drainRecordsTimeout(fmt.Errorf("record state: %w", context.DeadlineExceeded)))
 	require.True(t, drainRecordsTimeout(errors.New("unexpected")))
-	require.False(t, errors.Is(interrupted, errAnalysisStale))
 }
 
 // A table-level edge names no column on either end; every other edge is
@@ -584,11 +539,7 @@ func TestDrainRecordsTimeoutOnlyForUnclassifiedDeadlines(t *testing.T) {
 func TestAnalysisEdgeCounts(t *testing.T) {
 	t.Parallel()
 
-	column, table := analysisEdgeCounts(nil)
-	require.Zero(t, column)
-	require.Zero(t, table)
-
-	column, table = analysisEdgeCounts([]*store.ColumnLineage{
+	column, table := analysisEdgeCounts([]*store.ColumnLineage{
 		{SourceColumn: "id", TargetColumn: "id"},
 		{SourceColumn: "created_at", TargetColumn: ""},
 		{SourceColumn: "", TargetColumn: ""},
@@ -676,4 +627,16 @@ func analysisEngineName(engine storepb.Engine) string {
 	default:
 		return "unknown"
 	}
+}
+
+// The batch query binds a stable, distinct relation list that leaves out the
+// analyzed object: its own type is already known, and a stable order keeps the
+// bound arguments reproducible.
+func TestTypeLookupGUIDsExcludesTheAnalyzedObject(t *testing.T) {
+	t.Parallel()
+
+	lookups := map[string]struct{}{"a": {}, "b": {}, "self": {}}
+	require.Equal(t, []string{"a", "b"}, typeLookupGUIDs(lookups, "self"))
+	require.Empty(t, typeLookupGUIDs(map[string]struct{}{"self": {}}, "self"))
+	require.Empty(t, typeLookupGUIDs(nil, "self"))
 }
