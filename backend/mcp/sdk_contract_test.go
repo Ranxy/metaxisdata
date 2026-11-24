@@ -200,14 +200,7 @@ type captureTransport struct {
 	base http.RoundTripper
 
 	mu   sync.Mutex
-	seen []exchange
-}
-
-type exchange struct {
-	URL      string
-	Status   int
-	Body     string
-	Response http.Header
+	seen []string
 }
 
 func (c *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -226,7 +219,7 @@ func (c *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	resp.Body = io.NopCloser(strings.NewReader(string(body)))
 
 	c.mu.Lock()
-	c.seen = append(c.seen, exchange{URL: req.URL.String(), Status: resp.StatusCode, Body: string(body), Response: resp.Header.Clone()})
+	c.seen = append(c.seen, string(body))
 	c.mu.Unlock()
 	return resp, nil
 }
@@ -235,8 +228,8 @@ func (c *captureTransport) lastResult() (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.seen) - 1; i >= 0; i-- {
-		if strings.Contains(c.seen[i].Body, `"result"`) {
-			return c.seen[i].Body, true
+		if strings.Contains(c.seen[i], `"result"`) {
+			return c.seen[i], true
 		}
 	}
 	return "", false
@@ -309,7 +302,7 @@ func TestStatelessServerDeliversTheVerifiedIdentityToTheToolHandler(t *testing.T
 	t.Parallel()
 
 	s := newSpikeServer(t)
-	session := connect(t, s.endpoint, spikeToken, protocolStateless, &captureTransport{})
+	session := connect(t, s.endpoint, spikeToken, protocolStateless, nil)
 	result := callTool(t, session, whoamiTool)
 
 	require.False(t, result.IsError)
@@ -337,7 +330,8 @@ func TestCredentialsAreRejectedAtTheTransportNotInsideTheTool(t *testing.T) {
 	require.Contains(t, scoped, "scope=", "the 403 must name the scope a step-up authorization would need")
 	// Observed on SDK v1.8.0: the 403 carries scope= but not
 	// error="insufficient_scope", which RFC 6750 and the MCP spec call a SHOULD.
-	// Recorded in the plan; wrap the handler if a client ever needs it.
+	// The server's challengeWriter completes the challenge on the real handler;
+	// this pins only what the SDK contributes.
 	t.Logf("401 challenge: %s", challenge)
 	t.Logf("403 challenge: %s", scoped)
 }
@@ -351,7 +345,7 @@ func TestOneStatelessHandlerServesBothProtocolModels(t *testing.T) {
 		t.Run(protocol, func(t *testing.T) {
 			t.Parallel()
 
-			session := connect(t, s.endpoint, spikeToken, protocol, &captureTransport{})
+			session := connect(t, s.endpoint, spikeToken, protocol, nil)
 			result := callTool(t, session, whoamiTool)
 			require.False(t, result.IsError)
 			// Logged rather than asserted: this is the value a text-only fallback
@@ -429,31 +423,6 @@ func splitResult(t *testing.T, body string) (content, structured string) {
 	contentBytes, err := json.Marshal(envelope.Result.Content)
 	require.NoError(t, err)
 	return string(contentBytes), string(envelope.Result.StructuredContent)
-}
-
-// TestClientWithTheStandaloneSSEStreamEnabled records whether a client that
-// does not disable the optional standalone SSE stream still works against a
-// stateless handler (where GET returns 405). It asserts nothing on purpose: it
-// exists to decide what our own integration tests and the client-side guidance
-// should say.
-func TestClientWithTheStandaloneSSEStreamEnabled(t *testing.T) {
-	t.Parallel()
-
-	s := newSpikeServer(t)
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "spike-client", Version: "v0"}, nil)
-	session, err := client.Connect(context.Background(), &mcpsdk.StreamableClientTransport{
-		Endpoint:   s.endpoint,
-		HTTPClient: &http.Client{Transport: &headerTransport{base: http.DefaultTransport, token: spikeToken}},
-		MaxRetries: -1,
-	}, &mcpsdk.ClientSessionOptions{ProtocolVersion: protocolStateless})
-	if err != nil {
-		t.Logf("connect failed with the standalone SSE stream enabled: %v", err)
-		return
-	}
-	defer func() { _ = session.Close() }()
-
-	result, err := session.CallTool(context.Background(), &mcpsdk.CallToolParams{Name: whoamiTool, Arguments: map[string]any{}})
-	t.Logf("standalone SSE stream enabled: call err=%v, result nil=%t", err, result == nil)
 }
 
 func TestProtectedResourceMetadataSupportsDiscovery(t *testing.T) {

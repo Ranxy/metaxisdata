@@ -17,7 +17,6 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/lineage"
-	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -377,6 +376,27 @@ func oneDatabase() func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse
 	}
 }
 
+// TestObjectToolsRequireAMetaTypeForABareGUID is the one owner of the shared
+// refusal: the registry cannot infer an object's type from its guid, and a tool
+// that guessed would answer about the wrong kind of object.
+func TestObjectToolsRequireAMetaTypeForABareGUID(t *testing.T) {
+	t.Parallel()
+
+	for _, tool := range []string{"get_metadata", "get_ddl", "get_quality_signal", "get_quality_target", "get_quality_impact"} {
+		t.Run(tool, func(t *testing.T) {
+			t.Parallel()
+			// No reader is configured: the refusal must not reach the registry.
+			server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+			_, err := callTool(t, server, tool, map[string]any{
+				"object": map[string]string{"guid": "1;shop;;orders"},
+			})
+			failure := failureOf(t, err)
+			require.Equal(t, codeInvalidArgument, failure.Code)
+			require.NotEmpty(t, failure.Hint)
+		})
+	}
+}
+
 // --- scopes ---
 
 func TestAnalyzeSQLNeedsAScopeAndListsWhatExists(t *testing.T) {
@@ -709,16 +729,6 @@ func TestGetQualitySignalOmitsWhatHasNotBeenJudged(t *testing.T) {
 	require.NotContains(t, payload, "recentPassRate")
 }
 
-func TestGetQualitySignalNeedsAMetaTypeForABareGUID(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	_, err := callTool(t, server, "get_quality_signal", map[string]any{
-		"object": map[string]string{"guid": "1;shop;;orders"},
-	})
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
-}
-
 // TestGetQualitySignalReportsAllPaused covers a target whose checks all exist but
 // are paused. The aggregate still carries the paused checks' last verdict, which is
 // history rather than a health claim: the answer names the state and omits the
@@ -755,24 +765,31 @@ func TestGetQualitySignalReportsAllPaused(t *testing.T) {
 	require.Equal(t, float64(0), payload["coveredColumnCount"], "a paused check covers no column")
 }
 
-// TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType covers the object
-// types no rule can watch: the quality RPC refuses such a key, so the tool answers
-// the truthful signal — nothing monitors it — instead of asking.
-func TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType(t *testing.T) {
+// TestQualitySignalToolsAnswerUnmonitoredForAnUnwatchableType is the one owner of
+// the object types no rule can watch: the quality RPC refuses such a key, so the
+// tools answer the truthful signal — nothing monitors it — instead of asking.
+func TestQualitySignalToolsAnswerUnmonitoredForAnUnwatchableType(t *testing.T) {
 	t.Parallel()
 
-	// No quality reader is configured: any RPC call at all fails the test.
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	value, err := callTool(t, server, "get_quality_signal", map[string]any{
-		"object":    map[string]string{"guid": "1;shop;;amount"},
-		"meta_type": "COLUMN",
-	})
-	require.NoError(t, err)
+	for _, tool := range []string{"get_quality_signal", "get_quality_target"} {
+		t.Run(tool, func(t *testing.T) {
+			t.Parallel()
+			// No quality reader is configured: an unwatchable object must not reach the RPC.
+			server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+			value, err := callTool(t, server, tool, map[string]any{
+				"object":    map[string]string{"guid": "1;shop;;amount"},
+				"meta_type": "COLUMN",
+			})
+			require.NoError(t, err)
 
-	payload := asMap(t, value)
-	require.Equal(t, false, payload["monitored"])
-	require.Equal(t, "COLUMN", payload["metaType"])
-	require.NotContains(t, payload, "enabledRuleCount")
+			payload := asMap(t, value)
+			require.Equal(t, false, payload["monitored"])
+			require.Equal(t, "COLUMN", payload["metaType"])
+			require.NotContains(t, payload, "enabledRuleCount")
+			require.NotContains(t, payload, "rules")
+			require.NotContains(t, payload, "worstStatus")
+		})
+	}
 }
 
 // --- quality read models ---
@@ -972,26 +989,6 @@ func TestGetQualityTargetProjectsACheck(t *testing.T) {
 	issue := firstOf(t, payload, "openIssues")
 	require.Equal(t, "QUALITY_ISSUE_STATUS_ACKNOWLEDGED", issue["status"])
 	require.NotNil(t, asObject(t, issue["target"])["path"], "an open issue names its table from the workspace path")
-}
-
-func TestGetQualityTargetRequiresATypeAndSkipsUnwatchableObjects(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	_, err := callTool(t, server, "get_quality_target", map[string]any{
-		"object": map[string]string{"guid": "1;shop;;orders"},
-	})
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
-
-	// No quality reader is configured: an unwatchable object must not reach the RPC.
-	value, err := callTool(t, server, "get_quality_target", map[string]any{
-		"object":    map[string]string{"guid": "1;shop;;amount"},
-		"meta_type": "COLUMN",
-	})
-	require.NoError(t, err)
-	payload := asMap(t, value)
-	require.Equal(t, false, payload["monitored"])
-	require.NotContains(t, payload, "rules")
 }
 
 func TestGetQualityTargetReportsATargetWithNoLiveCheck(t *testing.T) {
@@ -1594,7 +1591,10 @@ func TestDispatchRequiresIdentityAndPermission(t *testing.T) {
 	})
 }
 
-func TestDispatchReturnsOnlyStructuredContentAndRendersErrorsInBand(t *testing.T) {
+// TestDispatchReturnsOnlyStructuredContent pins the choice not to use the SDK's
+// generic AddTool: that path appends a text copy of the same JSON, and a listing
+// does not need to cross the wire twice.
+func TestDispatchReturnsOnlyStructuredContent(t *testing.T) {
 	t.Parallel()
 
 	readers := &fakeReaders{listInstances: oneInstance()}
@@ -1680,15 +1680,26 @@ func TestDispatchAuditsARefusedCall(t *testing.T) {
 	require.Nil(t, rows[0].user)
 }
 
-func TestErrorResultCarriesTheEnvelope(t *testing.T) {
+// TestToolHandlerRendersAFailureInBand is the model-facing contract: a failed call
+// comes back as a normal result with isError set and the envelope in both the text
+// copy and structuredContent, so a model reads what went wrong and can correct
+// itself instead of seeing a protocol-level error.
+func TestToolHandlerRendersAFailureInBand(t *testing.T) {
 	t.Parallel()
 
-	result := errorResult(newToolError(codeNotFound, "no object matches", "search first"))
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: false})
+	definition := toolByName(t, server, "list_instances")
+	result, err := server.toolHandler(definition)(context.Background(), requestFor(t, testUser(), definition.Name, `{}`))
+	require.NoError(t, err, "the transport reports the failure in band, not as a protocol error")
 	require.True(t, result.IsError)
 	require.Len(t, result.Content, 1)
+
 	text := result.Content[0].(*mcpsdk.TextContent).Text
-	require.Contains(t, text, codeNotFound)
-	require.Contains(t, text, "search first")
+	structured, err := json.Marshal(result.StructuredContent)
+	require.NoError(t, err)
+	require.JSONEq(t, text, string(structured), "the text copy and structuredContent carry the same envelope")
+	require.Contains(t, text, codePermissionDenied)
+	require.Contains(t, text, permission.InstancesList)
 }
 
 // fakeCallLimiter spends a fixed budget and remembers who was counted.
@@ -1713,25 +1724,51 @@ func requestFor(t *testing.T, user *store.UserMessage, name, args string) *mcpsd
 	}
 }
 
-// --- small helpers ---
+// --- lineage arguments ---
 
-func TestParseDirectionMapsTheTransportWords(t *testing.T) {
+// TestGetLineageGraphMapsTheRequest keeps the words a model writes and the
+// transport's defaults on the public path: the RPC takes a LineageType and a hop
+// count, neither of which crosses the wire as the model wrote it. The direction
+// words themselves stay with lineage's own ParseDirection test.
+func TestGetLineageGraphMapsTheRequest(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, v1pb.LineageType_SOURCE, mustDirection(t, "up"))
-	require.Equal(t, v1pb.LineageType_TARGET, mustDirection(t, "down"))
-	require.Equal(t, v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED, mustDirection(t, ""))
-	_, directionErr := lineage.ParseDirection("sideways")
-	failure := metadata.AsError(directionErr)
-	require.NotNil(t, failure)
-	require.Equal(t, metadata.CodeInvalidArgument, failure.Code)
-}
+	var seen []*v1pb.GetLineageGraphRequest
+	readers := &fakeReaders{getLineageGraph: func(request *v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error) {
+		seen = append(seen, request)
+		return &v1pb.GetLineageGraphResponse{}, nil
+	}}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	object := map[string]string{"guid": "1;shop;;orders"}
+	cases := []struct {
+		args    map[string]any
+		lineage v1pb.LineageType
+		depth   int32
+	}{
+		{args: map[string]any{"object": object, "direction": "up"}, lineage: v1pb.LineageType_SOURCE, depth: 3},
+		{args: map[string]any{"object": object, "direction": "down"}, lineage: v1pb.LineageType_TARGET, depth: 3},
+		{args: map[string]any{"object": object}, lineage: v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED, depth: 3},
+		{args: map[string]any{"object": object, "direction": "both", "depth": 5}, lineage: v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED, depth: 5},
+	}
+	for _, testCase := range cases {
+		_, err := callTool(t, server, "get_lineage_graph", testCase.args)
+		require.NoError(t, err)
+	}
+	require.Len(t, seen, len(cases))
+	for i, testCase := range cases {
+		require.Equal(t, testCase.lineage, seen[i].GetLineageType(), "direction mapping")
+		require.Equal(t, testCase.depth, seen[i].GetDepth(), "no depth means three hops, and a requested one travels")
+	}
 
-func mustDirection(t *testing.T, value string) v1pb.LineageType {
-	t.Helper()
-	direction, err := lineage.ParseDirection(value)
-	require.NoError(t, err)
-	return direction
+	// A direction or depth the transport cannot honor is refused before the
+	// registry is read, so no reader is configured.
+	for _, args := range []map[string]any{
+		{"object": object, "direction": "sideways"},
+		{"object": object, "depth": 11},
+	} {
+		_, err := callTool(t, server, "get_lineage_graph", args)
+		require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+	}
 }
 
 func TestGetQualityImpactPassesTheWalkThrough(t *testing.T) {
