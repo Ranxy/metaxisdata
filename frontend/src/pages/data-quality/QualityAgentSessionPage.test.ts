@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import {
@@ -174,6 +174,10 @@ async function mountPage() {
 }
 
 describe("QualityAgentSessionPage", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     setActivePinia(createPinia());
     i18n.global.locale.value = "en-US";
@@ -284,9 +288,13 @@ describe("QualityAgentSessionPage", () => {
         nextPageToken: "offset:1",
       })
       .mockResolvedValueOnce({ messages: [older], nextPageToken: "" });
-    const wrapper = await mountPage();
-    // Let the initial landing finish before scrolling away from it.
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    // Drive the initial landing loop to its early stop, then scroll. Timers are
+    // fake from mount on, so every step below is ordered, not timed.
+    vi.useFakeTimers();
+    const pending = mountPage();
+    await vi.advanceTimersByTimeAsync(0);
+    const wrapper = await pending;
+    await vi.advanceTimersByTimeAsync(200);
     expect(intersectionCallback).toBeDefined();
     // The reader has scrolled back from the newest message.
     const pane = wrapper.get('[role="region"]').element as HTMLElement;
@@ -305,20 +313,25 @@ describe("QualityAgentSessionPage", () => {
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver
     );
-    await flushPromises();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(mocks.listQualityAgentSessionMessages).toHaveBeenLastCalledWith(
       SESSION,
       expect.objectContaining({ beforeSeq: 1n })
     );
     expect(wrapper.text()).toContain("an older answer");
+    vi.useRealTimers();
     wrapper.unmount();
   });
 
   it("offers a jump back to the newest message after scrolling up", async () => {
-    const wrapper = await mountPage();
-    // Let the initial landing loop finish; it owns the scroll position until then.
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    // Drive the initial landing loop to its early stop; it owns the scroll
+    // position until then.
+    vi.useFakeTimers();
+    const pending = mountPage();
+    await vi.advanceTimersByTimeAsync(0);
+    const wrapper = await pending;
+    await vi.advanceTimersByTimeAsync(200);
     const region = wrapper.get('[role="region"]');
     const pane = region.element as HTMLElement;
     Object.defineProperty(pane, "scrollHeight", {
@@ -338,10 +351,11 @@ describe("QualityAgentSessionPage", () => {
       .findAll("button")
       .find((button) => button.text().includes("Jump to latest"));
     await jump?.trigger("click");
-    await flushPromises();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(pane.scrollTop).toBe(1000);
     expect(wrapper.text()).not.toContain("Jump to latest");
+    vi.useRealTimers();
     wrapper.unmount();
   });
 });
