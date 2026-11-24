@@ -90,30 +90,27 @@ describe("TargetRuleHistoryStrip", () => {
     );
   });
 
-  it("keeps only the newest executions when limit truncates", async () => {
+  it("shows only the newest executions, 10 by default", async () => {
     const fixtures = [0, 1, 2, 3, 4].map((minute) =>
       execution(`e-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = await mountStrip({ executions: fixtures, limit: 3 });
+    const limited = await mountStrip({ executions: fixtures, limit: 3 });
 
     // The oldest two executions are dropped, then the window is reversed.
-    expect(squares(wrapper).map((item) => item.attributes("title"))).toEqual([
+    expect(squares(limited).map((item) => item.attributes("title"))).toEqual([
       squareLabel(fixtures[2]),
       squareLabel(fixtures[1]),
       squareLabel(fixtures[0]),
     ]);
-  });
 
-  it("shows at most 10 executions by default", async () => {
-    const fixtures = Array.from({ length: 12 }, (_, minute) =>
+    const cappedFixtures = Array.from({ length: 12 }, (_, minute) =>
       execution(`e-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = await mountStrip({ executions: fixtures });
-
-    const labels = squares(wrapper).map((item) => item.attributes("title"));
+    const capped = await mountStrip({ executions: cappedFixtures });
+    const labels = squares(capped).map((item) => item.attributes("title"));
     expect(labels).toHaveLength(10);
-    expect(labels[0]).toBe(squareLabel(fixtures[9]));
-    expect(labels[9]).toBe(squareLabel(fixtures[0]));
+    expect(labels[0]).toBe(squareLabel(cappedFixtures[9]));
+    expect(labels[9]).toBe(squareLabel(cappedFixtures[0]));
   });
 
   it("links every square to its execution detail", async () => {

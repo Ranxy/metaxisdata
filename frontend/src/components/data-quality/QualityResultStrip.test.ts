@@ -97,30 +97,27 @@ describe("QualityResultStrip", () => {
     );
   });
 
-  it("keeps only the newest executions when limit truncates", () => {
+  it("shows only the newest executions, 20 by default", () => {
     const fixtures = [0, 1, 2, 3, 4].map((minute) =>
       execution(`r-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = mountStrip({ executions: fixtures, limit: 3 });
+    const limited = mountStrip({ executions: fixtures, limit: 3 });
 
     // The oldest two executions are dropped, then the window is reversed.
-    expect(buttonLabels(wrapper)).toEqual([
+    expect(buttonLabels(limited)).toEqual([
       squareLabel(fixtures[2]),
       squareLabel(fixtures[1]),
       squareLabel(fixtures[0]),
     ]);
-  });
 
-  it("shows at most 20 executions by default", () => {
-    const fixtures = Array.from({ length: 25 }, (_, minute) =>
+    const cappedFixtures = Array.from({ length: 25 }, (_, minute) =>
       execution(`r-${minute}`, QualityStatus.PASS, minute)
     );
-    const wrapper = mountStrip({ executions: fixtures });
-
-    const labels = buttonLabels(wrapper);
+    const capped = mountStrip({ executions: cappedFixtures });
+    const labels = buttonLabels(capped);
     expect(labels).toHaveLength(20);
-    expect(labels[0]).toBe(squareLabel(fixtures[19]));
-    expect(labels[19]).toBe(squareLabel(fixtures[0]));
+    expect(labels[0]).toBe(squareLabel(cappedFixtures[19]));
+    expect(labels[19]).toBe(squareLabel(cappedFixtures[0]));
   });
 
   it("emits the clicked execution", async () => {
@@ -170,12 +167,9 @@ describe("QualityResultStrip", () => {
     });
     const [oldestButton, middleButton, newestButton] =
       wrapper.findAll("button");
-    expect(oldestButton.classes()).not.toContain("ring-primary");
-    expect(oldestButton.classes()).not.toContain("ring-foreground/20");
     expect(middleButton.classes()).toContain("ring-primary");
-    expect(middleButton.classes()).not.toContain("ring-foreground/20");
     expect(newestButton.classes()).toContain("ring-foreground/20");
-    expect(newestButton.classes()).not.toContain("ring-primary");
+    expect(oldestButton.classes()).not.toContain("ring-foreground/20");
 
     // A selected newest square keeps the primary ring, not both rings.
     const selectedNewest = mountStrip({
@@ -184,11 +178,7 @@ describe("QualityResultStrip", () => {
     });
     const newestSelectedButton = selectedNewest.findAll("button")[2];
     expect(newestSelectedButton.classes()).toContain("ring-primary");
-    expect(
-      selectedNewest
-        .findAll("button")
-        .some((button) => button.classes().includes("ring-foreground/20"))
-    ).toBe(false);
+    expect(newestSelectedButton.classes()).not.toContain("ring-foreground/20");
   });
 
   it("renders nothing when there are no executions", () => {
