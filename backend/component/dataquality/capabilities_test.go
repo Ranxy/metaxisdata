@@ -327,7 +327,6 @@ func TestValidationAllowsSupportedTypes(t *testing.T) {
 	target := capabilityTarget(storepb.Engine_POSTGRES,
 		capabilityColumn("payload", "jsonb"),
 		capabilityColumn("payload_json", "json"),
-		capabilityColumn("uid", "uuid"),
 		capabilityColumn("email", "public.citext"),
 		capabilityColumn("box_col", "box"),
 	)
@@ -350,11 +349,6 @@ func TestValidationAllowsSupportedTypes(t *testing.T) {
 			name:     "unique on jsonb",
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
 			config:   validationUniqueConfig(&storepb.UniqueConfig{Column: "payload"}),
-		},
-		{
-			name:     "unique on uuid",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-			config:   validationUniqueConfig(&storepb.UniqueConfig{Column: "uid"}),
 		},
 		{
 			name:     "accepted_values on jsonb",

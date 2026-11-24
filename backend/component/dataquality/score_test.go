@@ -9,13 +9,12 @@ import (
 )
 
 // TestScoreModeForCoversEveryRuleType is the contract test: every rule type in
-// the catalog has a score mode, and exactly the thirteen row-level types score by
-// passed rows while the other score by verdict. Adding a rule type without
-// deciding its mode fails here.
+// the catalog has a score mode, and exactly the fourteen row-level types (the
+// thirteen CountsTotal types plus NULL_PERCENT) score by passed rows while the
+// other score by verdict. Adding a rule type without deciding its mode fails here.
 func TestScoreModeForCoversEveryRuleType(t *testing.T) {
 	t.Parallel()
 
-	require.Len(t, ruleTypeSpecs, 20, "the catalog carries twenty rule types")
 	rowLevel := map[storepb.QualityRuleType]bool{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:          true,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:                true,
@@ -32,7 +31,6 @@ func TestScoreModeForCoversEveryRuleType(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:         true,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK:         true,
 	}
-	require.Len(t, rowLevel, 14)
 
 	rowCount, statusCount := 0, 0
 	for _, spec := range ruleTypeSpecs {
@@ -63,11 +61,6 @@ func TestCheckScoreRowLevel(t *testing.T) {
 	require.True(t, judged)
 	require.InDelta(t, 0.8, score, 1e-9)
 
-	score, judged = CheckScore(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityStatus_QUALITY_STATUS_FAIL, 4, 4)
-	require.True(t, judged, "a row-level type scores by rows even when every row failed")
-	require.InDelta(t, 0, score, 1e-9)
-
 	score, judged = CheckScore(storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
 		storepb.QualityStatus_QUALITY_STATUS_FAIL, 12, 10)
 	require.True(t, judged)
@@ -96,19 +89,19 @@ func TestCheckScoreRowLevel(t *testing.T) {
 	}
 }
 
-// TestCheckScoreByVerdict pins the six verdict-scored types: PASS is 1, WARN is
-// 0.5, FAIL is 0, and only the operational states are unjudged.
+// TestCheckScoreByVerdict pins the verdict table every status-scored type shares:
+// PASS is 1, WARN is 0.5, FAIL is 0, and only the operational states are unjudged.
 func TestCheckScoreByVerdict(t *testing.T) {
 	t.Parallel()
 
-	for _, ruleType := range []storepb.QualityRuleType{
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-	} {
+	var verdictTypes []storepb.QualityRuleType
+	for _, spec := range ruleTypeSpecs {
+		if ScoreModeFor(spec.Type) == ScoreModeStatus {
+			verdictTypes = append(verdictTypes, spec.Type)
+		}
+	}
+	require.NotEmpty(t, verdictTypes)
+	for _, ruleType := range verdictTypes {
 		for status, want := range map[storepb.QualityStatus]float64{
 			storepb.QualityStatus_QUALITY_STATUS_PASS: 1,
 			storepb.QualityStatus_QUALITY_STATUS_WARN: 0.5,

@@ -129,32 +129,6 @@ func TestCompileRejectsAContractFilterOnAMissingColumn(t *testing.T) {
 	require.Contains(t, err.Error(), `"missing"`)
 }
 
-// TestMergeFilters pins the combination rules directly, including the two-budget
-// case: each filter may fill MaxFilterClauses, so the merged predicate may carry
-// twice as many clauses.
-func TestMergeFilters(t *testing.T) {
-	t.Parallel()
-
-	ruleFilter := Filter{Clauses: []FilterClause{{Column: "status", Op: FilterEQ, Values: []string{"paid"}}}}
-	contract := Filter{Clauses: []FilterClause{{Column: "amount", Op: FilterGTE, Values: []string{"10"}}}}
-
-	require.Empty(t, mergeFilters(Filter{}, Filter{}).Clauses)
-	require.Equal(t, ruleFilter, mergeFilters(ruleFilter, Filter{}))
-	require.Equal(t, contract, mergeFilters(Filter{}, contract))
-	require.Equal(t, []FilterClause{ruleFilter.Clauses[0], contract.Clauses[0]},
-		mergeFilters(ruleFilter, contract).Clauses)
-
-	tenClauses := func(column string) Filter {
-		clauses := make([]FilterClause, 0, MaxFilterClauses)
-		for range MaxFilterClauses {
-			clauses = append(clauses, FilterClause{Column: column, Op: FilterISNotNull})
-		}
-		return Filter{Clauses: clauses}
-	}
-	merged := mergeFilters(tenClauses("status"), tenClauses("email"))
-	require.Len(t, merged.Clauses, 2*MaxFilterClauses)
-}
-
 // TestCompileRendersTwoFilterBudgets runs the merged predicate through the
 // compiler: a rule filter and a contract filter that each fill MaxFilterClauses
 // render together, with every clause bound in order.

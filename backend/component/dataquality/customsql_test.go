@@ -160,15 +160,11 @@ func TestValidateCustomSQLRejectsUnsupportedEngines(t *testing.T) {
 	}
 }
 
-// A custom SQL that the compiler will then wrap must not be rewritten here: the
-// same text is accepted with a trailing semicolon and with its own filter in the
-// SQL (which is how custom SQL expresses filtering; the rule-level filter does not
-// apply to it).
-func TestValidateCustomSQLKeepsTheStatementAsWritten(t *testing.T) {
+// A semicolon that is part of the statement text — inside a string literal — is
+// not a statement separator: the parser, not a text scan, decides the shape. The
+// trailing-semicolon shape is already accepted by the matrix above.
+func TestValidateCustomSQLKeepsSemicolonsInsideStrings(t *testing.T) {
 	t.Parallel()
 
-	for _, engine := range []storepb.Engine{storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_MSSQL} {
-		requireCustomSQLValid(t, engine, "SELECT id FROM orders WHERE created_at < CURRENT_TIMESTAMP;")
-	}
 	requireCustomSQLValid(t, storepb.Engine_MYSQL, "SELECT id FROM orders WHERE name = ';'")
 }

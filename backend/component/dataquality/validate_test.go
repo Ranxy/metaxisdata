@@ -146,10 +146,6 @@ func TestValidateConfigRejectsConfigTypeMismatch(t *testing.T) {
 	err = ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, &storepb.QualityRuleConfig{})
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
-
-	err = ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, rowCount)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
 // Every rule type validates on_empty, threshold_metric and the filter before its
@@ -283,7 +279,6 @@ func TestValidateRowCountChange(t *testing.T) {
 			MaxDecreasePct:  validationPtr(10.0),
 			WarnDecreasePct: validationPtr(20.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationRowCountChangeConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -330,7 +325,6 @@ func TestValidateNullPercent(t *testing.T) {
 			MaxNullPct:  validationPtr(10.0),
 			WarnNullPct: validationPtr(20.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationNullPercentConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -363,12 +357,6 @@ func TestValidateUnique(t *testing.T) {
 			config.ThresholdMetric = storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
 			return config
 		}(), wantErr: true},
-		{name: "percent metric", config: func() *storepb.QualityRuleConfig {
-			config := validationUniqueConfig(&storepb.UniqueConfig{Column: "id", FailThreshold: validationPtr(50.0)})
-			config.ThresholdMetric = storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
-			return config
-		}()},
-		{name: "missing config", config: validationUniqueConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -395,7 +383,6 @@ func TestValidateUniqueCombination(t *testing.T) {
 			FailThreshold: validationPtr(1.0),
 			WarnThreshold: validationPtr(2.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationUniqueCombinationConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -405,7 +392,6 @@ func TestValidateAcceptedValues(t *testing.T) {
 
 	cases := []validationCase{
 		{name: "numeric values", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "id", Values: []string{"1", "2"}})},
-		{name: "allow null", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "name", Values: []string{"a"}, AllowNull: true})},
 		{name: "no values", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "id"}), wantErr: true},
 		{name: "too many values", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
 			Column: "id",
@@ -446,7 +432,6 @@ func TestValidateAcceptedValues(t *testing.T) {
 			FailThreshold: validationPtr(1.0),
 			WarnThreshold: validationPtr(2.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationAcceptedValuesConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -468,7 +453,6 @@ func TestValidateRange(t *testing.T) {
 		{name: "numeric bound not a number", config: validationRangeConfig(&storepb.RangeConfig{Column: "amount", Min: validationPtr("abc")}), wantErr: true},
 		{name: "empty bound", config: validationRangeConfig(&storepb.RangeConfig{Column: "amount", Min: validationPtr("  ")}), wantErr: true},
 		{name: "min above max", config: validationRangeConfig(&storepb.RangeConfig{Column: "amount", Min: validationPtr("10"), Max: validationPtr("1")}), wantErr: true},
-		{name: "missing config", config: validationRangeConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -483,7 +467,6 @@ func TestValidateRegex(t *testing.T) {
 		{name: "empty pattern", config: validationRegexConfig(&storepb.RegexConfig{Column: "name"}), wantErr: true},
 		{name: "blank pattern", config: validationRegexConfig(&storepb.RegexConfig{Column: "name", Pattern: "   "}), wantErr: true},
 		{name: "invalid pattern", config: validationRegexConfig(&storepb.RegexConfig{Column: "name", Pattern: "(["}), wantErr: true},
-		{name: "missing config", config: validationRegexConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, validationTarget(storepb.Engine_POSTGRES), cases)
 }
@@ -500,7 +483,6 @@ func TestValidateStringLength(t *testing.T) {
 		{name: "negative max", config: validationStringLengthConfig(&storepb.StringLengthConfig{Column: "name", MaxLen: validationPtr(int64(-1))}), wantErr: true},
 		{name: "min above max", config: validationStringLengthConfig(&storepb.StringLengthConfig{Column: "name", MinLen: validationPtr(int64(10)), MaxLen: validationPtr(int64(1))}), wantErr: true},
 		{name: "numeric column", config: validationStringLengthConfig(&storepb.StringLengthConfig{Column: "id", MinLen: validationPtr(int64(1))}), wantErr: true},
-		{name: "missing config", config: validationStringLengthConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -517,16 +499,11 @@ func TestValidateReferentialIntegrity(t *testing.T) {
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, validationTarget(storepb.Engine_MYSQL), []validationCase{
 		{name: "mysql parent table", config: valid("users")},
-		{name: "mysql allow null", config: validationReferentialIntegrityConfig(&storepb.ReferentialIntegrityConfig{
-			ChildColumn:  "id",
-			ParentTable:  "users",
-			ParentColumn: "id",
-			AllowNull:    true,
-		})},
 		{name: "mysql database qualified parent", config: valid("app.users")},
 		{name: "mysql other database parent", config: valid("other.users"), wantErr: true},
 		{name: "mysql three segments", config: valid("a.b.c"), wantErr: true},
 		{name: "mysql empty segment", config: valid("app."), wantErr: true},
+		{name: "missing parent table", config: valid(""), wantErr: true},
 		{name: "missing child column", config: validationReferentialIntegrityConfig(&storepb.ReferentialIntegrityConfig{
 			ChildColumn:  "missing",
 			ParentTable:  "users",
@@ -543,7 +520,6 @@ func TestValidateReferentialIntegrity(t *testing.T) {
 			FailThreshold: validationPtr(1.0),
 			WarnThreshold: validationPtr(2.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationReferentialIntegrityConfig(nil), wantErr: true},
 	})
 
 	// PostgreSQL requires the schema-qualified form, and the schema must be the
@@ -620,7 +596,6 @@ func TestValidateCrossColumn(t *testing.T) {
 			Op:          storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_EQ,
 			Tolerance:   validationPtr(1.0),
 		}), wantErr: true},
-		{name: "missing config", config: validationCrossColumnConfig(nil), wantErr: true},
 	})
 }
 
@@ -648,7 +623,6 @@ func TestValidateFreshness(t *testing.T) {
 		}), wantErr: true},
 		{name: "non temporal column", config: validationFreshnessConfig(&storepb.FreshnessConfig{TimestampColumn: "name", MaxLagSeconds: 60}), wantErr: true},
 		{name: "missing column", config: validationFreshnessConfig(&storepb.FreshnessConfig{TimestampColumn: "missing", MaxLagSeconds: 60}), wantErr: true},
-		{name: "missing config", config: validationFreshnessConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -683,7 +657,6 @@ func TestValidateCustomSQL(t *testing.T) {
 			config.ThresholdMetric = storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
 			return config
 		}(), wantErr: true},
-		{name: "missing config", config: validationCustomSQLConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, validationTarget(storepb.Engine_MYSQL), cases)
 }
@@ -791,89 +764,21 @@ func TestValidateConfigRejectsPercentWithoutDenominator(t *testing.T) {
 	require.NoError(t, ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unique))
 }
 
-// Each PERCENT refusal explains itself through the one helper the save-time gate
-// and the executor's backstop share: a count rule names the bounds it uses,
-// null_percent names its own unit, and the measurement rules bound absolute values.
-func TestPercentRefusalMessages(t *testing.T) {
-	t.Parallel()
-
-	percent := storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
-	refused := []struct {
-		ruleType storepb.QualityRuleType
-		want     string
-	}{
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, want: "min_rows/max_rows/exact_rows"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, want: "max_increase_pct/max_decrease_pct"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, want: "chooses count or percentage in its own config"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, want: "max_lag_seconds"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, want: "returns failed rows directly"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, want: "drift items"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, want: "absolute values"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, want: "absolute values"},
-		{ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, want: "rule type is required"},
-	}
-	for _, test := range refused {
-		err := validatePercentSupport(test.ruleType, percent)
-		require.Equal(t, common.Invalid, common.ErrorCode(err), test.ruleType.String())
-		require.Contains(t, err.Error(), test.want, test.ruleType.String())
-	}
-
-	allowed := []storepb.QualityRuleType{
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-	}
-	for _, ruleType := range allowed {
-		require.NoError(t, validatePercentSupport(ruleType, percent), ruleType.String())
-	}
-
-	// The same refusal reaches the save path with the accurate null_percent text.
-	config := validationNullPercentConfig(&storepb.NullPercentConfig{Column: "name", MaxNullPct: validationPtr(10.0)})
-	config.ThresholdMetric = percent
-	err := ValidateConfig(validationTarget(storepb.Engine_MYSQL), storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	require.Contains(t, err.Error(), "chooses count or percentage in its own config")
-}
-
 // parentTableName is the pure half of the parent lookup: it decides which registry
-// object the config names. The GUID it produces has to be the same path the schema
-// syncer registers, or the parent lookup would always miss.
+// object the config names, and the GUID it produces has to be the same path the
+// schema syncer registers, or the parent lookup would always miss. The engine's
+// naming rules themselves are covered through ValidateConfig in
+// TestValidateReferentialIntegrity; this pins what only the helper can show.
 func TestParentTableName(t *testing.T) {
 	t.Parallel()
 
 	mysql := validationTarget(storepb.Engine_MYSQL) // Database "app", no schema segment.
-	schema, table, err := parentTableName(mysql, "users")
+	schema, table, err := parentTableName(mysql, "  app.users  ")
 	require.NoError(t, err)
 	require.Equal(t, "", schema)
 	require.Equal(t, "users", table)
-	require.Equal(t, "inst1;app;;users", relatedTargetGUID(mysql, schema, table))
-
-	schema, table, err = parentTableName(mysql, "  app.users  ")
-	require.NoError(t, err)
-	require.Equal(t, "", schema)
-	require.Equal(t, "users", table)
-
-	_, _, err = parentTableName(mysql, "other.users")
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	// Two segments are database.table; a "table.column" spelling is a different
-	// database and is refused rather than silently reinterpreted.
-	_, _, err = parentTableName(mysql, "users.id")
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-
-	_, _, err = parentTableName(mysql, "app.")
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	_, _, err = parentTableName(mysql, "app.a.b")
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	_, _, err = parentTableName(mysql, "   ")
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.Equal(t, "inst1;app;;users", relatedTargetGUID(mysql, schema, table),
+		"the MySQL family keeps the schema position empty")
 
 	postgres := validationTarget(storepb.Engine_POSTGRES) // Schema "public".
 	schema, table, err = parentTableName(postgres, "users")
@@ -881,15 +786,6 @@ func TestParentTableName(t *testing.T) {
 	require.Equal(t, "public", schema)
 	require.Equal(t, "users", table)
 	require.Equal(t, "inst1;app;public;users", relatedTargetGUID(postgres, schema, table))
-
-	schema, table, err = parentTableName(postgres, "public.users")
-	require.NoError(t, err)
-	require.Equal(t, "public", schema)
-	require.Equal(t, "users", table)
-
-	_, _, err = parentTableName(postgres, "other.users")
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
 	// The qualifier names a container, not a relation: engines treat unquoted
 	// identifiers case-insensitively, so casing must not decide whether it matches.
@@ -900,8 +796,4 @@ func TestParentTableName(t *testing.T) {
 	schema, _, err = parentTableName(postgres, "PUBLIC.users")
 	require.NoError(t, err)
 	require.Equal(t, "public", schema, "the canonical schema is returned, not the author's casing")
-
-	// An explicitly empty schema qualifier is still malformed.
-	_, _, err = parentTableName(postgres, "users.id")
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }

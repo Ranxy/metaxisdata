@@ -9,28 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func llmQuotaCounts(q *LLMQuota) (analyses, columnAnalyses, inFlight int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.analyses, q.columnAnalyses, q.inFlight
-}
-
-func setLLMQuotaCounts(q *LLMQuota, analyses, columnAnalyses int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.analyses = analyses
-	q.columnAnalyses = columnAnalyses
-}
-
 // testLimits is the quota policy most tests run under: generous daily ceilings and
 // a small concurrency bound so waiting is observable.
 func testLimits(daily, columnDaily, concurrency int) LLMLimits {
 	return LLMLimits{DailyAnalyses: daily, DailyColumnAnalyses: columnDaily, Concurrency: concurrency}
 }
 
-func TestLLMQuotaDay(t *testing.T) {
+// NextReset is when the day's counters roll over: the next 00:00 UTC, whatever the
+// caller's own time zone is.
+func TestLLMQuotaNextReset(t *testing.T) {
 	t.Parallel()
 
+	quota := NewLLMQuota(nil)
 	tests := []struct {
 		name string
 		now  time.Time
@@ -39,70 +29,35 @@ func TestLLMQuotaDay(t *testing.T) {
 		{
 			name: "utc afternoon",
 			now:  time.Date(2026, time.October, 20, 15, 4, 5, 6, time.UTC),
+			want: time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a moment just after midnight resets at the next midnight, not today's",
+			now:  time.Date(2026, time.October, 20, 0, 0, 1, 0, time.UTC),
+			want: time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "the last minute of the utc day resets at the next midnight",
+			now:  time.Date(2026, time.October, 20, 23, 59, 0, 0, time.UTC),
+			want: time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a local morning still inside the previous utc day resets at that day's midnight",
+			now:  time.Date(2026, time.October, 20, 1, 0, 0, 0, time.FixedZone("CST", 8*60*60)),
 			want: time.Date(2026, time.October, 20, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			name: "local time before utc midnight belongs to the previous utc day",
-			now:  time.Date(2026, time.October, 20, 1, 0, 0, 0, time.FixedZone("CST", 8*60*60)),
-			want: time.Date(2026, time.October, 19, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name: "local time after utc midnight belongs to the next utc day",
+			name: "a local evening already past utc midnight resets the following day",
 			now:  time.Date(2026, time.October, 20, 23, 0, 0, 0, time.FixedZone("EST", -5*60*60)),
-			want: time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
+			want: time.Date(2026, time.October, 22, 0, 0, 0, 0, time.UTC),
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, test.want, llmQuotaDay(test.now))
+			require.Equal(t, test.want, quota.NextReset(test.now))
 		})
 	}
-}
-
-// NextReset is when the day's counters roll over: the next 00:00 UTC.
-func TestLLMQuotaNextReset(t *testing.T) {
-	t.Parallel()
-
-	quota := NewLLMQuota(nil)
-	require.Equal(t, time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
-		quota.NextReset(time.Date(2026, time.October, 20, 23, 59, 0, 0, time.UTC)))
-	// A moment just after midnight resets at the next midnight, not today's.
-	require.Equal(t, time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC),
-		quota.NextReset(time.Date(2026, time.October, 20, 0, 0, 1, 0, time.UTC)))
-}
-
-func TestNewLLMQuotaInitialState(t *testing.T) {
-	t.Parallel()
-
-	quota := NewLLMQuota(nil)
-	require.Equal(t, time.UTC, quota.day.Location(), "the counter day is a UTC day")
-	require.Zero(t, quota.day.Hour())
-	require.Zero(t, quota.day.Minute())
-	require.Zero(t, quota.day.Second())
-	require.NotNil(t, quota.cond)
-	analyses, columnAnalyses, inFlight := llmQuotaCounts(quota)
-	require.Zero(t, analyses)
-	require.Zero(t, columnAnalyses)
-	require.Zero(t, inFlight)
-}
-
-func TestLLMQuotaCountsKindsSeparately(t *testing.T) {
-	t.Parallel()
-
-	quota := NewLLMQuota(nil)
-	limits := testLimits(10, 10, 2)
-	analysisRelease, err := quota.Begin(context.Background(), LLMAnalysisQuota, limits)
-	require.NoError(t, err)
-	analysisRelease()
-	columnRelease, err := quota.Begin(context.Background(), LLMColumnAnalysisQuota, limits)
-	require.NoError(t, err)
-	columnRelease()
-
-	analyses, columnAnalyses, inFlight := llmQuotaCounts(quota)
-	require.Equal(t, 1, analyses)
-	require.Equal(t, 1, columnAnalyses)
-	require.Zero(t, inFlight, "a released analysis no longer holds a slot")
 }
 
 func TestLLMQuotaResetsOnNewUTCDay(t *testing.T) {
@@ -119,10 +74,9 @@ func TestLLMQuotaResetsOnNewUTCDay(t *testing.T) {
 	require.NoError(t, err, "a new UTC day starts with an empty quota")
 	release()
 
-	analyses, columnAnalyses, _ := llmQuotaCounts(quota)
+	analyses, columnAnalyses, _ := quota.Usage()
 	require.Equal(t, 1, analyses)
 	require.Zero(t, columnAnalyses)
-	require.Equal(t, llmQuotaDay(time.Now()), quota.day)
 }
 
 // The daily ceiling comes from the caller's limits, so a settings change applies
@@ -156,12 +110,17 @@ func TestLLMQuotaEnforcesTheColumnLimit(t *testing.T) {
 	t.Parallel()
 
 	quota := NewLLMQuota(nil)
-	setLLMQuotaCounts(quota, 0, 2)
-	_, err := quota.Begin(context.Background(), LLMColumnAnalysisQuota, testLimits(10, 2, 8))
+	limits := testLimits(10, 2, 8)
+	for range 2 {
+		release, err := quota.Begin(context.Background(), LLMColumnAnalysisQuota, limits)
+		require.NoError(t, err)
+		release()
+	}
+	_, err := quota.Begin(context.Background(), LLMColumnAnalysisQuota, limits)
 	require.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
 
 	// The L1/L2 bucket is unaffected by the column bucket's limit.
-	release, err := quota.Begin(context.Background(), LLMAnalysisQuota, testLimits(10, 2, 8))
+	release, err := quota.Begin(context.Background(), LLMAnalysisQuota, limits)
 	require.NoError(t, err)
 	release()
 }
@@ -239,7 +198,7 @@ func TestLLMQuotaSerializesConcurrencyAndBroadcastsOnRelease(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the release did not wake the waiter")
 	}
-	_, _, inFlight := llmQuotaCounts(quota)
+	_, _, inFlight := quota.Usage()
 	require.Zero(t, inFlight)
 }
 
@@ -260,10 +219,6 @@ func TestLLMQuotaCancelledWaiterConsumesNothing(t *testing.T) {
 		_, err := quota.Begin(ctx, LLMAnalysisQuota, limits)
 		done <- err
 	}()
-	require.Eventually(t, func() bool {
-		_, _, inFlight := llmQuotaCounts(quota)
-		return inFlight == 1 // the waiter is queued behind the held slot
-	}, 2*time.Second, time.Millisecond)
 	cancel()
 	select {
 	case err := <-done:
@@ -271,7 +226,7 @@ func TestLLMQuotaCancelledWaiterConsumesNothing(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("a cancelled waiter was not woken")
 	}
-	analyses, _, inFlight := llmQuotaCounts(quota)
+	analyses, _, inFlight := quota.Usage()
 	require.Equal(t, 1, analyses, "a cancelled waiter consumes no quota")
 	require.Equal(t, 1, inFlight, "only the held analysis owns a slot")
 
@@ -298,7 +253,7 @@ func TestLLMQuotaDeadlineWhileWaiting(t *testing.T) {
 	defer cancel()
 	_, err = quota.Begin(ctx, LLMAnalysisQuota, limits)
 	require.Equal(t, connect.CodeDeadlineExceeded, connect.CodeOf(err))
-	analyses, _, _ := llmQuotaCounts(quota)
+	analyses, _, _ := quota.Usage()
 	require.Equal(t, 1, analyses)
 }
 
@@ -320,7 +275,7 @@ func TestLLMQuotaReleaseIsIdempotent(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("a second release tried to take another slot")
 	}
-	_, _, inFlight := llmQuotaCounts(quota)
+	_, _, inFlight := quota.Usage()
 	require.Zero(t, inFlight, "the analysis held exactly one slot")
 
 	// Both slots are still usable, which they would not be after an extra release.
@@ -338,7 +293,7 @@ func TestLLMQuotaRejectsUnknownKind(t *testing.T) {
 	quota := NewLLMQuota(nil)
 	_, err := quota.Begin(context.Background(), LLMQuotaKind(99), testLimits(10, 10, 2))
 	require.Equal(t, connect.CodeInternal, connect.CodeOf(err))
-	_, _, inFlight := llmQuotaCounts(quota)
+	_, _, inFlight := quota.Usage()
 	require.Zero(t, inFlight)
 }
 
@@ -368,9 +323,13 @@ func TestLLMQuotaRemainingAndUsage(t *testing.T) {
 	require.Equal(t, 1, columnAnalyses)
 	require.Zero(t, inFlight)
 
-	// The remaining budget is clamped at zero, and the counters roll over with the
-	// new day before the answer.
-	setLLMQuotaCounts(quota, 5, 0)
+	// Spend the rest of the day's analysis budget: the remaining count clamps at
+	// zero, and the counters roll over with the new day before the answer.
+	for range 4 {
+		release, err := quota.Begin(context.Background(), LLMAnalysisQuota, limits)
+		require.NoError(t, err)
+		release()
+	}
 	require.Zero(t, quota.RemainingAnalyses(limits))
 	quota.mu.Lock()
 	quota.day = llmQuotaDay(time.Now()).AddDate(0, 0, -1)

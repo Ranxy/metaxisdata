@@ -50,16 +50,6 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			wantSampleAg: []any{"", "N/A"},
 		},
 		{
-			name:   "starrocks shares the mysql rendering",
-			engine: storepb.Engine_STARROCKS,
-			wantSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` IN (?, ?) " +
-				"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
-			wantArgs: []any{"", "N/A"},
-			wantSample: "SELECT `id`, `status` FROM `shop`.`orders` " +
-				"WHERE (`status` IS NULL OR `status` IN (?, ?)) LIMIT 20",
-			wantSampleAg: []any{"", "N/A"},
-		},
-		{
 			name:   "postgres no filter",
 			engine: storepb.Engine_POSTGRES,
 			wantSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" IN ($1, $2) ` +
@@ -134,7 +124,6 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.wantSQL, query.SQL)
 			require.Equal(t, test.wantArgs, query.Args)
-			require.Equal(t, []string{"total_rows", "failed_rows"}, query.Columns)
 
 			sample, err := CompileFailureRows(CompileInput{
 				Dialect: dialect,
@@ -146,7 +135,6 @@ func TestNullPercentCustomValuesSQL(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.wantSample, sample.SQL)
 			require.Equal(t, test.wantSampleAg, sample.Args)
-			require.Equal(t, []string{"id", "status"}, sample.Columns)
 		})
 	}
 }

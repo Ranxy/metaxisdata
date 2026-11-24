@@ -377,8 +377,6 @@ func TestNormalizePromptLanguage(t *testing.T) {
 	require.Equal(t, "zh-CN", NormalizePromptLanguage("zh-CN"))
 	require.Equal(t, "zh-CN", NormalizePromptLanguage(" zh-cn "))
 	require.Equal(t, "en-US", NormalizePromptLanguage("fr-FR"), "an unsupported language reads as the default")
-	require.Equal(t, "English", promptLanguageName("en"))
-	require.Equal(t, "Simplified Chinese", promptLanguageName("zh"))
 }
 
 // The cache key carries every input the answer depends on, and normalizes the
@@ -386,19 +384,20 @@ func TestNormalizePromptLanguage(t *testing.T) {
 func TestExplainCacheKey(t *testing.T) {
 	t.Parallel()
 
-	key := ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en-US", "profiles/openai", "gpt-4")
-	require.Contains(t, key, "execution:7")
-	require.Contains(t, key, "rev:3")
-	require.Contains(t, key, "status:3")
-	require.Contains(t, key, "prompt:"+ExplainPromptVersion)
-	require.Contains(t, key, "provider:profiles/openai")
-	require.Contains(t, key, "model:gpt-4")
-	require.Contains(t, key, "lang:en-US")
-	require.Equal(t, key, ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en", "profiles/openai", "gpt-4"))
-	require.NotEqual(t, key, ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "zh", "profiles/openai", "gpt-4"))
-	require.NotEqual(t, key, ExplainCacheKey(8, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en-US", "profiles/openai", "gpt-4"))
-	require.NotEqual(t, key, ExplainCacheKey(7, 4, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en-US", "profiles/openai", "gpt-4"))
-	require.NotEqual(t, key, ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_FAIL, "en-US", "profiles/other", "gpt-4"))
+	const english = "en-US"
+	answered := storepb.QualityStatus_QUALITY_STATUS_FAIL
+	key := ExplainCacheKey(7, 3, answered, english, "profiles/openai", "gpt-4")
+	require.Equal(t, key, ExplainCacheKey(7, 3, answered, "en", "profiles/openai", "gpt-4"),
+		"a bare language subtag asks the same question")
+	require.Contains(t, key, ExplainPromptVersion,
+		"a prompt change must not read an answer the old prompt produced")
+	// A change to any other input is a different question.
+	require.NotEqual(t, key, ExplainCacheKey(7, 3, answered, "zh", "profiles/openai", "gpt-4"))
+	require.NotEqual(t, key, ExplainCacheKey(8, 3, answered, english, "profiles/openai", "gpt-4"))
+	require.NotEqual(t, key, ExplainCacheKey(7, 4, answered, english, "profiles/openai", "gpt-4"))
+	require.NotEqual(t, key, ExplainCacheKey(7, 3, storepb.QualityStatus_QUALITY_STATUS_PASS, english, "profiles/openai", "gpt-4"))
+	require.NotEqual(t, key, ExplainCacheKey(7, 3, answered, english, "profiles/other", "gpt-4"))
+	require.NotEqual(t, key, ExplainCacheKey(7, 3, answered, english, "profiles/openai", "gpt-4o"))
 }
 
 // The draft vocabulary is closed and complete: every spec names a real rule type,

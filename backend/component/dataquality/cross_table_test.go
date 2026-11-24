@@ -155,8 +155,10 @@ func TestCrossTableSQLGoldens(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+		// The MySQL family (MySQL, StarRocks) shares one rendering, so the matrix
+		// runs the three dialect families.
 		for _, engine := range []storepb.Engine{
-			storepb.Engine_MYSQL, storepb.Engine_STARROCKS, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
+			storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
 		} {
 			t.Run(test.name+"/"+engine.String(), func(t *testing.T) {
 				t.Parallel()
@@ -171,7 +173,7 @@ func TestCrossTableSQLGoldens(t *testing.T) {
 				case storepb.Engine_MSSQL:
 					wantSQL = test.mssqlSQL
 				default:
-					// The MySQL family (MySQL, StarRocks) shares one rendering.
+					// The MySQL family shares one rendering.
 				}
 				require.Equal(t, wantSQL, query.SQL)
 				require.Equal(t, test.wantArgs, query.Args)
@@ -184,7 +186,9 @@ func TestCrossTableSQLGoldens(t *testing.T) {
 
 // TestCrossTableReferenceFilter pins the reference-side filter: it bounds the
 // reference side only, and in a shared statement its placeholders continue after
-// the target side's arguments instead of restarting at 1.
+// the target side's arguments instead of restarting at 1. The target contract's
+// filter binds after the rule's filter, so a numbered statement continues after
+// both.
 func TestCrossTableReferenceFilter(t *testing.T) {
 	t.Parallel()
 
@@ -202,10 +206,11 @@ func TestCrossTableReferenceFilter(t *testing.T) {
 	)
 
 	tests := []struct {
-		name     string
-		engine   storepb.Engine
-		wantSQL  string
-		wantArgs []any
+		name           string
+		engine         storepb.Engine
+		contractFilter Filter
+		wantSQL        string
+		wantArgs       []any
 	}{
 		{
 			name:   "mysql positional args follow the statement order",
@@ -228,57 +233,29 @@ func TestCrossTableReferenceFilter(t *testing.T) {
 				"(SELECT COUNT(*) FROM [public].[customers] WHERE [status] = @p2) AS right_value",
 			wantArgs: []any{"paid", "active"},
 		},
+		{
+			name:   "postgres numbered args continue past the rule and contract filters",
+			engine: storepb.Engine_POSTGRES,
+			contractFilter: Filter{Clauses: []FilterClause{
+				{Column: "amount", Op: FilterGT, Values: []string{"10"}},
+			}},
+			wantSQL: `SELECT (SELECT COUNT(*) FROM "public"."orders" WHERE "status" = $1 AND "amount" > $2) AS left_value, ` +
+				`(SELECT COUNT(*) FROM "public"."customers" WHERE "status" = $3) AS right_value`,
+			wantArgs: []any{"paid", int64(10), "active"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			input := crossCompileInput(test.engine, config,
 				crossReferenceTarget(test.engine, "instances/ins1", "shop"), leftFilter)
+			input.ContractFilter = test.contractFilter
 			query, err := Compile(input)
 			require.NoError(t, err)
 			require.Equal(t, test.wantSQL, query.SQL)
 			require.Equal(t, test.wantArgs, query.Args)
 		})
 	}
-}
-
-// TestCrossTableReferenceFilterAfterContractFilter pins the argument order when the
-// target side already binds the rule's filter and the target contract's filter: the
-// reference-side placeholders must continue after both, not restart at 1.
-func TestCrossTableReferenceFilterAfterContractFilter(t *testing.T) {
-	t.Parallel()
-
-	reference := crossReferenceTarget(storepb.Engine_POSTGRES, "instances/ins1", "shop")
-	config := withRightFilter(crossTableConfig(crossReferenceGUID,
-		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
-		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil),
-		&storepb.QualityFilterClause{
-			Column: "status",
-			Op:     storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
-			Values: []string{"active"},
-		},
-	)
-	dialect, err := DialectFor(storepb.Engine_POSTGRES)
-	require.NoError(t, err)
-	query, err := Compile(CompileInput{
-		Dialect: dialect,
-		Target:  compileTestTarget(storepb.Engine_POSTGRES),
-		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		Config:  config,
-		Filter: Filter{Clauses: []FilterClause{
-			{Column: "status", Op: FilterEQ, Values: []string{"paid"}},
-		}},
-		ContractFilter: Filter{Clauses: []FilterClause{
-			{Column: "amount", Op: FilterGT, Values: []string{"10"}},
-		}},
-		Reference: &reference,
-	})
-	require.NoError(t, err)
-	require.Equal(t,
-		`SELECT (SELECT COUNT(*) FROM "public"."orders" WHERE "status" = $1 AND "amount" > $2) AS left_value, `+
-			`(SELECT COUNT(*) FROM "public"."customers" WHERE "status" = $3) AS right_value`,
-		query.SQL)
-	require.Equal(t, []any{"paid", int64(10), "active"}, query.Args)
 }
 
 // TestCrossTableSeparateConnection pins the two-statement form: the reference is
@@ -708,9 +685,20 @@ func TestValidateCrossTableConfig(t *testing.T) {
 	t.Parallel()
 
 	pgTarget := compileTestTarget(storepb.Engine_POSTGRES)
-	require.NoError(t, ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		crossTableConfig(crossReferenceGUID, storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
-			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil)))
+	// A reference is only read, so a view or an external table may be one; the
+	// rule's own target keeps its table-only restriction.
+	for _, metaType := range []storepb.MetaType{
+		storepb.MetaType_TABLE,
+		storepb.MetaType_EXTERNAL_TABLE,
+		storepb.MetaType_VIEW,
+		storepb.MetaType_MATERIALIZED_VIEW,
+	} {
+		config := crossTableConfig(crossReferenceGUID,
+			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
+			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil)
+		config.GetCrossTable().Reference.MetaType = metaType
+		require.NoError(t, ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, config), metaType.String())
+	}
 	require.NoError(t, ValidateConfig(pgTarget, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		withRightFilter(crossTableConfig(crossReferenceGUID,
 			storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, "amount",
@@ -905,31 +893,6 @@ func TestCrossTableSupport(t *testing.T) {
 	require.True(t, RuleTypeForTarget(storepb.MetaType_EXTERNAL_TABLE, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE))
 	require.False(t, RuleTypeForTarget(storepb.MetaType_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE))
 	require.False(t, RuleTypeForTarget(storepb.MetaType_MATERIALIZED_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE))
-}
-
-// TestCrossTableReferenceMetaTypes pins which registry objects may be a reference:
-// a view or an external table may, because the reference side is only read; the
-// rule's own target keeps its table-only restriction (above).
-func TestCrossTableReferenceMetaTypes(t *testing.T) {
-	t.Parallel()
-
-	for _, metaType := range []storepb.MetaType{
-		storepb.MetaType_TABLE,
-		storepb.MetaType_EXTERNAL_TABLE,
-		storepb.MetaType_VIEW,
-		storepb.MetaType_MATERIALIZED_VIEW,
-	} {
-		require.NoError(t, validateReferenceMetaType(metaType), metaType.String())
-	}
-	for _, metaType := range []storepb.MetaType{
-		storepb.MetaType_UNSPECIFIED,
-		storepb.MetaType_COLUMN,
-		storepb.MetaType_SCHEMA,
-		storepb.MetaType_DATABASE,
-		storepb.MetaType_INSTANCE,
-	} {
-		require.Error(t, validateReferenceMetaType(metaType), metaType.String())
-	}
 }
 
 // TestCrossTableExecutionRejectsPercentMetric pins the runtime backstop: a

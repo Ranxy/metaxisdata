@@ -121,6 +121,8 @@ func TestEnumValueValidationStaysSilentWhenLabelsAreUnknown(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// A large enum type must not make the stored/structured error unbounded, and the
+// label list has to survive the caps.
 func TestEnumValueErrorBoundsTheNamedLabels(t *testing.T) {
 	t.Parallel()
 
@@ -131,6 +133,21 @@ func TestEnumValueErrorBoundsTheNamedLabels(t *testing.T) {
 	column := ColumnInfo{Name: "status", Type: "public.status", Kind: ColumnKindString, EnumValues: labels}
 	_, err := convertFilterValue(column, "missing")
 	require.ErrorContains(t, err, "(2 more)")
+
+	// Hundreds of labels still keep the error text short enough for a stored error
+	// and a draft-rejection reason.
+	many := make([]string, 0, 300)
+	for index := 0; index < 300; index++ {
+		many = append(many, fmt.Sprintf("label_%03d", index))
+	}
+	_, err = convertFilterValue(ColumnInfo{
+		Name: "status", Kind: ColumnKindString,
+		Type:       "enum('" + strings.Join(many, "','") + "')",
+		EnumValues: many,
+	}, "missing")
+	require.ErrorContains(t, err, "valid labels")
+	require.Less(t, len(err.Error()), 1024)
+	require.NotContains(t, err.Error(), "label_299")
 }
 
 func TestEnrichColumnEnumValuesFromInlineTypes(t *testing.T) {
@@ -231,26 +248,6 @@ func TestEnumValueComparisonFollowsTheEngine(t *testing.T) {
 	postgres := enumValidationColumn()
 	_, err = convertFilterValue(postgres, "Draft")
 	require.ErrorContains(t, err, "valid labels")
-}
-
-// A large enum type must not make the stored/structured error unbounded, and the
-// label list has to survive the caps.
-func TestEnumValueErrorStaysBounded(t *testing.T) {
-	t.Parallel()
-
-	labels := make([]string, 0, 300)
-	for index := 0; index < 300; index++ {
-		labels = append(labels, fmt.Sprintf("label_%03d", index))
-	}
-	column := ColumnInfo{
-		Name: "status", Kind: ColumnKindString,
-		Type:       "enum('" + strings.Join(labels, "','") + "')",
-		EnumValues: labels,
-	}
-	err := enumValueError(column, "missing")
-	require.ErrorContains(t, err, "valid labels")
-	require.Less(t, len(err.Error()), 1024)
-	require.NotContains(t, err.Error(), "label_299")
 }
 
 // The PostgreSQL enrichment maps each column to the schema its type names, and

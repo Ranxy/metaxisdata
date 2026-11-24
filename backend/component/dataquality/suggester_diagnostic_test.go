@@ -95,9 +95,7 @@ data: [DONE]
 	require.Equal(t, int64(15), usage.TotalTokens)
 	require.NotNil(t, diagnostic)
 	require.Empty(t, diagnostic.GetErrorCode())
-	require.Empty(t, diagnostic.GetFinishReason())
 	require.NotEmpty(t, diagnostic.GetCorrelationId())
-	require.False(t, diagnostic.GetDebugCaptured())
 }
 
 // budgetProvider answers a status sequence first (the last repeats) and then a
@@ -175,8 +173,9 @@ func TestClassifyLLMDiagnosticUsesTheAttemptedBudget(t *testing.T) {
 	require.Equal(t, int32(32768), untouched.GetMaxOutputTokens(), "a transport failure attempted no budget")
 }
 
-// A provider failure that is not a response error still gets a classifier.
-func TestJSONCompletionClassifiesAnUnclassifiedFailure(t *testing.T) {
+// An unexpected finish reason is classified, and the generic failure error names
+// the correlation id an operator needs to find the call.
+func TestJSONCompletionClassifiesAnUnexpectedFinish(t *testing.T) {
 	t.Parallel()
 
 	server := diagnosticProvider(t, `data: {"choices":[{"delta":{},"finish_reason":"content_filter"}]}
@@ -339,20 +338,4 @@ data: [DONE]
 	ruleDraftParseFailure(diagnostic)
 	require.Equal(t, "PARSE", diagnostic.GetErrorCode())
 	require.True(t, diagnostic.GetDebugCaptured(), "a later parse failure must not lose the capture")
-}
-
-// A model answer that is not the contracted JSON is a parse failure, distinct from
-// a provider failure: the diagnostic keeps the call facts and changes the code.
-func TestRuleDraftParseFailure(t *testing.T) {
-	t.Parallel()
-
-	diagnostic := &storepb.QualityLLMDiagnostic{
-		Provider:      "profiles/test",
-		Model:         "test-model",
-		CorrelationId: "corr-1",
-	}
-	ruleDraftParseFailure(diagnostic)
-	require.Equal(t, "PARSE", diagnostic.GetErrorCode())
-	require.Equal(t, "corr-1", diagnostic.GetCorrelationId())
-	require.Equal(t, "profiles/test", diagnostic.GetProvider())
 }

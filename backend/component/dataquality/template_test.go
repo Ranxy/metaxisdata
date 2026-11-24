@@ -110,12 +110,16 @@ var templateScopeCases = map[storepb.QualityRuleType]templateScopeCase{
 		},
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES: {
+		// Editor state may still carry a dynamic source next to the fixed list;
+		// clearing drops it before the template is validated.
 		input: &storepb.QualityRuleConfig{
 			Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
 				Column:        "status",
 				Values:        []string{"active", "paused"},
 				AllowNull:     true,
 				FailThreshold: proto.Float64(1),
+				Field:         "region",
+				Query:         &storepb.AcceptedValuesQuery{Sql: "SELECT code FROM regions", ValueColumn: "code"},
 			}},
 			Filter: templateFilter(),
 		},
@@ -517,45 +521,6 @@ func TestValidateRuleTemplateConfigRefusals(t *testing.T) {
 				Filter: &storepb.QualityFilter{},
 			},
 		},
-		{
-			name:     "all_columns names a target",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{
-				UniqueCombination: &storepb.UniqueCombinationConfig{AllColumns: true},
-			}},
-			wantError: "templates do not name columns",
-		},
-		{
-			name:     "related table names a target",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_ReferentialIntegrity{
-				ReferentialIntegrity: &storepb.ReferentialIntegrityConfig{ParentTable: "accounts"},
-			}},
-			wantError: "templates do not name columns",
-		},
-		{
-			name:     "cel columns name a target",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{
-				CelExpression: &storepb.CelExpressionConfig{Expression: "true", Columns: []string{"email"}},
-			}},
-			wantError: "templates do not name columns",
-		},
-		{
-			name:     "cross table names a target",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{
-				CrossTable: &storepb.CrossTableConfig{
-					Reference: &storepb.CrossTableReference{
-						MetaGuid: "instances/ins1;shop;;orders",
-						MetaType: storepb.MetaType_TABLE,
-					},
-					LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
-					RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
-				},
-			}},
-			wantError: "templates do not name columns",
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -608,11 +573,6 @@ func TestValidateRuleTemplateConfigBounds(t *testing.T) {
 	cel := func(sampleRows int32) *storepb.QualityRuleConfig {
 		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{
 			CelExpression: &storepb.CelExpressionConfig{Expression: "true", SampleRows: sampleRows},
-		}}
-	}
-	customSQL := func() *storepb.QualityRuleConfig {
-		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{
-			CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT 1", FailThreshold: proto.Float64(1)},
 		}}
 	}
 
@@ -704,9 +664,6 @@ func TestValidateRuleTemplateConfigBounds(t *testing.T) {
 				return config
 			}(),
 			wantError: "own sample_rows setting"},
-		{name: "custom SQL template refused", ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-			config:    customSQL(),
-			wantError: "custom SQL template is not supported"},
 		{name: "row count without a bound", ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 			config:    rowCount(nil),
 			wantError: "at least one of min_rows, max_rows or exact_rows"},

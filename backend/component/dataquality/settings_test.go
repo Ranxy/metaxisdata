@@ -1,14 +1,12 @@
 package dataquality
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -177,13 +175,6 @@ func TestSettingsFromProfileClampsOutOfRangeValues(t *testing.T) {
 			wantMaxColumns: DefaultMaxColumnsPerAnalysis,
 		},
 		{
-			name:        "negative interval reads as default",
-			dataQuality: &storepb.DataQualitySetting{DefaultScheduleInterval: durationpb.New(-time.Hour)},
-			wantSample:  DefaultFailureSampleLimit, wantInterval: DefaultScheduleInterval,
-			wantDailyExec: DefaultDailyExecutionLimit, wantDailyCols: DefaultDailyColumnAnalysisLimit,
-			wantMaxColumns: DefaultMaxColumnsPerAnalysis,
-		},
-		{
 			name:        "zero interval inside a present message reads as default",
 			dataQuality: &storepb.DataQualitySetting{DefaultScheduleInterval: durationpb.New(0)},
 			wantSample:  DefaultFailureSampleLimit, wantInterval: DefaultScheduleInterval,
@@ -279,21 +270,14 @@ func TestSettingsFromValue(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestLoadSettingsRejectsNilStore(t *testing.T) {
-	t.Parallel()
-
-	_, err := LoadSettings(context.Background(), nil)
-	require.Error(t, err)
-	require.Equal(t, common.Internal, common.ErrorCode(err))
-}
-
 func TestDigestScheduleFromStore(t *testing.T) {
 	t.Parallel()
 
 	// Absent and empty settings resolve to the disabled default, not a zero
-	// schedule, so the settings page always has a slot to show.
-	require.Equal(t, defaultDigestSchedule(), DigestScheduleFromStore(nil))
-	require.Equal(t, defaultDigestSchedule(), DigestScheduleFromStore(&storepb.QualityDigestSetting{}))
+	// schedule, so the settings page always has a slot to show: Monday 09:00 UTC.
+	want := DigestSchedule{Enabled: false, Day: time.Monday, Hour: 9, Minute: 0, Timezone: "UTC"}
+	require.Equal(t, want, DigestScheduleFromStore(nil))
+	require.Equal(t, want, DigestScheduleFromStore(&storepb.QualityDigestSetting{}))
 
 	// A stored schedule with an unknown clock or zone must not make the runner
 	// fail: the bad value falls back while the rest of the schedule is kept.

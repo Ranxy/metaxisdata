@@ -33,6 +33,38 @@ func schemaDriftConfig(expected []*storepb.SchemaDriftColumn) *storepb.QualityRu
 	}}
 }
 
+// driftSample is one reviewer-visible drift item: the affected column and why.
+type driftSample struct {
+	Column string
+	Reason string
+}
+
+// executeSchemaDrift runs a drift rule over the given live columns and returns the
+// evidence items the reviewer sees. The live columns replace the target's snapshot,
+// as a schema sync would have left them; a metadata rule needs no queryer.
+func executeSchemaDrift(t *testing.T, current []ColumnInfo, config *storepb.SchemaDriftConfig) []driftSample {
+	t.Helper()
+
+	target := compileTestTarget(storepb.Engine_POSTGRES)
+	resolution := &Resolution{Target: target}
+	resolution.Target.Columns = current
+	ruleConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: config}}
+	execution, err := NewExecutor().Execute(context.Background(), nil, resolution,
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, ruleConfig),
+		ExecOptions{StoreSamples: true, SampleLimit: 20})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(config.GetExpectedColumns())), execution.Observation.TotalRows)
+	require.Equal(t, int64(len(execution.Evidence.GetSamples())), execution.Observation.FailedRows)
+
+	var samples []driftSample
+	for _, sample := range execution.Evidence.GetSamples() {
+		cells := sample.GetColumns()
+		require.Len(t, cells, 1)
+		samples = append(samples, driftSample{Column: cells[0].GetColumn(), Reason: cells[0].GetValue()})
+	}
+	return samples
+}
+
 // TestCompileSchemaDriftEmitsNoSQL pins the metadata-rule contract: the compiler
 // returns an empty statement and the QueryMetadata kind so no executor runs SQL
 // against the target and the preview has nothing to show.
@@ -77,9 +109,10 @@ func TestCompileSchemaDriftEmitsNoSQL(t *testing.T) {
 	require.Empty(t, sample.SQL)
 }
 
-// TestCompareSchemaDrift pins the comparison semantics: missing columns, changed
-// types and nullability (check_types), changed order among shared columns
-// (check_order) and extra columns (allow_extra_columns), with stable item order.
+// TestCompareSchemaDrift pins the comparison semantics the reviewer sees in the
+// failure sample: missing columns, changed types and nullability (check_types),
+// changed order among shared columns (check_order) and extra columns
+// (allow_extra_columns), with stable item order.
 func TestCompareSchemaDrift(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +123,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 		name    string
 		current []ColumnInfo
 		mutate  func(*storepb.SchemaDriftConfig)
-		want    []schemaDriftItem
+		want    []driftSample
 	}{
 		{
 			name:    "no drift",
@@ -100,12 +133,12 @@ func TestCompareSchemaDrift(t *testing.T) {
 		{
 			name:    "missing column",
 			current: withoutColumn(target.Columns, "email"),
-			want:    []schemaDriftItem{{Column: "email", Reason: "missing"}},
+			want:    []driftSample{{Column: "email", Reason: "missing"}},
 		},
 		{
 			name:    "extra column",
 			current: append(append([]ColumnInfo{}, target.Columns...), ColumnInfo{Name: "surprise", Type: "text", Kind: ColumnKindString}),
-			want:    []schemaDriftItem{{Column: "surprise", Reason: "extra"}},
+			want:    []driftSample{{Column: "surprise", Reason: "extra"}},
 		},
 		{
 			name:    "extra column allowed",
@@ -121,7 +154,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 			mutate: func(config *storepb.SchemaDriftConfig) {
 				config.CheckTypes = proto.Bool(true)
 			},
-			want: []schemaDriftItem{{Column: "email", Reason: "type: varchar(255) -> text"}},
+			want: []driftSample{{Column: "email", Reason: "type: varchar(255) -> text"}},
 		},
 		{
 			name:    "type changed but check_types off",
@@ -137,7 +170,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 			mutate: func(config *storepb.SchemaDriftConfig) {
 				config.CheckOrder = true
 			},
-			want: []schemaDriftItem{
+			want: []driftSample{
 				{Column: "id", Reason: "order"},
 				{Column: "email", Reason: "order"},
 			},
@@ -153,7 +186,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 			mutate: func(config *storepb.SchemaDriftConfig) {
 				config.CheckOrder = true
 			},
-			want: []schemaDriftItem{
+			want: []driftSample{
 				{Column: "email", Reason: "missing"},
 				{Column: "surprise", Reason: "extra"},
 			},
@@ -165,7 +198,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 				config.CheckTypes = proto.Bool(true)
 				config.CheckOrder = true
 			},
-			want: []schemaDriftItem{
+			want: []driftSample{
 				{Column: "email", Reason: "missing"},
 				{Column: "surprise", Reason: "extra"},
 			},
@@ -178,7 +211,7 @@ func TestCompareSchemaDrift(t *testing.T) {
 			if test.mutate != nil {
 				test.mutate(config)
 			}
-			require.Equal(t, test.want, compareSchemaDrift(test.current, config))
+			require.Equal(t, test.want, executeSchemaDrift(t, test.current, config))
 		})
 	}
 }
@@ -256,19 +289,19 @@ func TestSchemaDriftNullability(t *testing.T) {
 		name    string
 		config  *storepb.SchemaDriftConfig
 		current []ColumnInfo
-		want    []schemaDriftItem
+		want    []driftSample
 	}{
 		{
 			name:    "explicit not-null snapshot sees a gained null",
 			config:  explicitSnapshot(false),
 			current: setColumnNullable(target.Columns, "email", true),
-			want:    []schemaDriftItem{{Column: "email", Reason: "nullable: NOT NULL -> NULL"}},
+			want:    []driftSample{{Column: "email", Reason: "nullable: NOT NULL -> NULL"}},
 		},
 		{
 			name:    "explicit nullable snapshot sees a lost null",
 			config:  explicitSnapshot(true),
 			current: target.Columns,
-			want:    []schemaDriftItem{{Column: "email", Reason: "nullable: NULL -> NOT NULL"}},
+			want:    []driftSample{{Column: "email", Reason: "nullable: NULL -> NOT NULL"}},
 		},
 		{
 			name:    "explicit and equal",
@@ -297,7 +330,7 @@ func TestSchemaDriftNullability(t *testing.T) {
 			config: explicitSnapshot(false),
 			current: setColumnNullable(
 				replaceColumnType(target.Columns, "email", "text"), "email", true),
-			want: []schemaDriftItem{
+			want: []driftSample{
 				{Column: "email", Reason: "type: varchar(255) -> text"},
 				{Column: "email", Reason: "nullable: NOT NULL -> NULL"},
 			},
@@ -306,30 +339,9 @@ func TestSchemaDriftNullability(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, test.want, compareSchemaDrift(test.current, test.config))
+			require.Equal(t, test.want, executeSchemaDrift(t, test.current, test.config))
 		})
 	}
-}
-
-// TestSchemaDriftSamples pins the sample shape: one row per drift item, the column
-// in the column field and the reason in the value field, capped by the limit.
-func TestSchemaDriftSamples(t *testing.T) {
-	t.Parallel()
-
-	items := []schemaDriftItem{
-		{Column: "email", Reason: "missing"},
-		{Column: "amount", Reason: "type: decimal(10,2) -> text"},
-		{Column: "surprise", Reason: "extra"},
-	}
-	samples := schemaDriftSamples(items, 2)
-	require.NotNil(t, samples)
-	require.Len(t, samples.GetSamples(), 2)
-	require.Equal(t, "email", samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	require.Equal(t, "missing", samples.GetSamples()[0].GetColumns()[0].GetValue())
-	require.Equal(t, "amount", samples.GetSamples()[1].GetColumns()[0].GetColumn())
-
-	require.Nil(t, schemaDriftSamples(nil, 20))
-	require.Nil(t, schemaDriftSamples(items, 0))
 }
 
 // TestExecuteSchemaDriftWithoutQueryer pins that a metadata rule runs with no

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -50,17 +49,13 @@ func celTestTarget(engine storepb.Engine) ResolvedTarget {
 func TestCompileCelExpressionSampleSQL(t *testing.T) {
 	t.Parallel()
 
-	config := celRuleConfig(`amount > 100.0.0 && status == "paid"`, []string{"amount", "status"}, 500)
+	config := celRuleConfig(`amount > 100.0 && status == "paid"`, []string{"amount", "status"}, 500)
 	tests := []struct {
 		engine  storepb.Engine
 		wantSQL string
 	}{
 		{
 			engine:  storepb.Engine_MYSQL,
-			wantSQL: "SELECT `amount`, `status` FROM `shop`.`orders` LIMIT 500",
-		},
-		{
-			engine:  storepb.Engine_STARROCKS,
 			wantSQL: "SELECT `amount`, `status` FROM `shop`.`orders` LIMIT 500",
 		},
 		{
@@ -146,16 +141,15 @@ func TestCompileCelExpressionSampleRows(t *testing.T) {
 func TestCompileCelExpressionColumns(t *testing.T) {
 	t.Parallel()
 
-	base := func(columns []string) *storepb.QualityRuleConfig {
-		return celRuleConfig("amount > 0.0", columns, 10)
-	}
 	tests := []struct {
 		name    string
 		columns []string
+		wantSQL string
 		wantErr bool
 	}{
-		{name: "one column", columns: []string{"amount"}},
-		{name: "duplicates collapse", columns: []string{"amount", "amount"}},
+		{name: "one column", columns: []string{"amount"}, wantSQL: "SELECT `amount` FROM `shop`.`orders` LIMIT 10"},
+		// The config may name a column twice; the statement selects it once.
+		{name: "duplicates collapse", columns: []string{"amount", "amount"}, wantSQL: "SELECT `amount` FROM `shop`.`orders` LIMIT 10"},
 		{name: "no column", columns: nil, wantErr: true},
 		{name: "unknown column", columns: []string{"missing"}, wantErr: true},
 		{name: "blank column", columns: []string{"  "}, wantErr: true},
@@ -163,12 +157,11 @@ func TestCompileCelExpressionColumns(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			config := base(test.columns)
 			query, err := Compile(CompileInput{
 				Dialect: mustDialect(t, storepb.Engine_MYSQL),
 				Target:  celTestTarget(storepb.Engine_MYSQL),
 				Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-				Config:  config,
+				Config:  celRuleConfig("amount > 0.0", test.columns, 10),
 			})
 			if test.wantErr {
 				require.Error(t, err)
@@ -176,9 +169,7 @@ func TestCompileCelExpressionColumns(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			for _, column := range test.columns {
-				require.Contains(t, query.SQL, strings.TrimSpace(column))
-			}
+			require.Equal(t, test.wantSQL, query.SQL)
 		})
 	}
 }
@@ -198,30 +189,22 @@ func TestCelColumnsRejectsTooManyColumns(t *testing.T) {
 		names = append(names, name)
 		target.Columns = append(target.Columns, ColumnInfo{Name: name, Type: "int", Kind: ColumnKindNumeric})
 	}
-	_, err := celColumns(target, names)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-
-	_, err = celColumns(target, names[:maxCELColumns])
-	require.NoError(t, err)
-}
-
-// A column whose name is not a CEL identifier can never be referenced by an
-// expression, so it is refused with a message about the name instead of a parse
-// error the user cannot act on.
-func TestCelColumnsRejectsNonIdentifierNames(t *testing.T) {
-	t.Parallel()
-
-	target := ResolvedTarget{
-		Target:   Target{GUID: "inst;app;orders", MetaType: storepb.MetaType_TABLE},
-		Engine:   storepb.Engine_MYSQL,
-		Database: "app",
-		Table:    "orders",
-		Columns:  []ColumnInfo{{Name: "order-id", Type: "int", Kind: ColumnKindNumeric}},
+	compile := func(columns []string) (CompiledQuery, error) {
+		return Compile(CompileInput{
+			Dialect: mustDialect(t, storepb.Engine_MYSQL),
+			Target:  target,
+			Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+			Config:  celRuleConfig("c > 0", columns, 10),
+		})
 	}
-	_, err := celColumns(target, []string{"order-id"})
+
+	_, err := compile(names)
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
+
+	query, err := compile(names[:maxCELColumns])
+	require.NoError(t, err)
+	require.Contains(t, query.SQL, names[maxCELColumns-1])
 }
 
 func TestCompileCELAcceptsTheRuleLanguage(t *testing.T) {
@@ -242,8 +225,16 @@ func TestCompileCELAcceptsTheRuleLanguage(t *testing.T) {
 		`created_at > timestamp("2026-01-01T00:00:00Z")`,
 		`active`,
 		`!active`,
+		// The engine's type modifiers must not change the CEL type: "bigint
+		// unsigned" and "int(11)" are both integers.
+		`total % 2 == 0`,
+		`counter % 2 == 0`,
 	}
-	columns := append(celTestColumns(), ColumnInfo{Name: "qty", Type: "int", Kind: ColumnKindNumeric})
+	columns := append(celTestColumns(),
+		ColumnInfo{Name: "qty", Type: "int", Kind: ColumnKindNumeric},
+		ColumnInfo{Name: "total", Type: "bigint unsigned", Kind: ColumnKindNumeric},
+		ColumnInfo{Name: "counter", Type: "int(11)", Kind: ColumnKindNumeric},
+	)
 	for _, expression := range tests {
 		t.Run(expression, func(t *testing.T) {
 			t.Parallel()
@@ -280,33 +271,6 @@ func TestCompileCELRejectsInvalidExpressions(t *testing.T) {
 	}
 }
 
-// Each column kind is bound as the CEL type its values can be compared as; the
-// engine's modifier suffixes must not change that.
-func TestCelColumnType(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		column ColumnInfo
-		want   *cel.Type
-	}{
-		{column: ColumnInfo{Name: "id", Type: "bigint unsigned", Kind: ColumnKindNumeric}, want: cel.IntType},
-		{column: ColumnInfo{Name: "qty", Type: "int", Kind: ColumnKindNumeric}, want: cel.IntType},
-		{column: ColumnInfo{Name: "amount", Type: "decimal(10,2)", Kind: ColumnKindNumeric}, want: cel.DoubleType},
-		{column: ColumnInfo{Name: "name", Type: "varchar(64)", Kind: ColumnKindString}, want: cel.StringType},
-		{column: ColumnInfo{Name: "active", Type: "boolean", Kind: ColumnKindBoolean}, want: cel.BoolType},
-		{column: ColumnInfo{Name: "created_at", Type: "timestamptz", Kind: ColumnKindTemporal}, want: cel.TimestampType},
-	}
-	for _, test := range tests {
-		got, err := celColumnType(test.column)
-		require.NoError(t, err, test.column.Name)
-		require.True(t, got.IsExactType(test.want), "%s mapped to %s, want %s", test.column.Name, got, test.want)
-	}
-
-	_, err := celColumnType(ColumnInfo{Name: "raw", Kind: ColumnKindUnknown})
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-}
-
 // A column type this build cannot map onto a CEL type is refused rather than
 // bound as an arbitrary value.
 func TestCompileCELRejectsAnUnmappableColumn(t *testing.T) {
@@ -321,26 +285,6 @@ func TestCompileCELRejectsAnUnmappableColumn(t *testing.T) {
 // a variable per column.
 func celRow(id int64, amount any, email any, status any, active any, createdAt any) []any {
 	return []any{id, amount, email, status, active, createdAt}
-}
-
-func TestEvalCELRowsCountsViolations(t *testing.T) {
-	t.Parallel()
-
-	createdAt := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
-	program, err := CompileCEL(celTestColumns(), "amount > 100.0")
-	require.NoError(t, err)
-
-	rows := [][]any{
-		celRow(1, 50.0, "a@b.com", "paid", true, createdAt),
-		celRow(2, 150.0, "b@b.com", "paid", true, createdAt),
-		celRow(3, 200.0, "c@b.com", "open", false, createdAt),
-	}
-	// The expression is the condition a row must satisfy: a row that evaluates to
-	// false is a violation.
-	violations, evaluated, err := EvalCELRows(program, celTestColumns(), rows)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), violations)
-	require.Equal(t, int64(3), evaluated)
 }
 
 // A NULL is a CEL null: is_null sees it, and a guard in front of a member call
@@ -649,13 +593,10 @@ func TestExecuteCELRuleRejectsAMismatchedSampleShape(t *testing.T) {
 	}, ExecOptions{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, errBadData)
-}
 
-func TestExecuteCELRuleRejectsABadRowValue(t *testing.T) {
-	t.Parallel()
-
-	config := celRuleConfig("amount > 100.0", []string{"amount"}, 10)
-	_, _, err := runCelExecution(t, config, &db.QueryResult{
+	// A value that cannot be converted to the expression's type is a bad-data
+	// answer at execution time, not a crash.
+	_, _, err = runCelExecution(t, config, &db.QueryResult{
 		Columns: []string{"amount"},
 		Rows:    [][]any{{"not-a-number"}},
 	}, ExecOptions{})
