@@ -26,25 +26,38 @@ func executeTool(t *testing.T, meta Meta, body func(context.Context, Call, *Invo
 	return set
 }
 
-func TestExecuteRendersTheStructuredValue(t *testing.T) {
+func TestExecuteRendersTheResultContent(t *testing.T) {
 	t.Parallel()
 
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Value: map[string]any{"answer": 42}}, nil
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.False(t, result.IsError)
-	require.JSONEq(t, `{"answer":42}`, result.Content)
-}
-
-func TestExecuteKeepsAnExplicitContent(t *testing.T) {
-	t.Parallel()
-
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "already rendered"}, nil
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.Equal(t, "already rendered", result.Content)
+	cases := []struct {
+		name string
+		body func(context.Context, Call, *Invocation) (Result, error)
+		want string
+	}{
+		{
+			name: "a structured value becomes compact JSON",
+			body: func(context.Context, Call, *Invocation) (Result, error) {
+				return Result{Value: map[string]any{"answer": 42}}, nil
+			},
+			want: `{"answer":42}`,
+		},
+		{
+			name: "an explicit content is kept verbatim",
+			body: func(context.Context, Call, *Invocation) (Result, error) {
+				return Result{Content: "already rendered"}, nil
+			},
+			want: "already rendered",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			set := executeTool(t, validTool("one").Meta, tc.body)
+			result := set.Execute(context.Background(), Call{Name: "one"}, nil)
+			require.False(t, result.IsError)
+			require.Equal(t, tc.want, result.Content)
+		})
+	}
 }
 
 func TestExecuteUnknownToolIsAnErrorResult(t *testing.T) {
@@ -59,52 +72,60 @@ func TestExecuteUnknownToolIsAnErrorResult(t *testing.T) {
 	require.Equal(t, `error: unknown tool "missing"`, result.Content)
 }
 
-func TestExecuteNormalizesAPlainError(t *testing.T) {
+func TestExecuteNormalizesExecutionFailures(t *testing.T) {
 	t.Parallel()
 
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{}, errors.New("boom")
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.True(t, result.IsError)
-	require.Equal(t, CodeInternal, result.Error.Code)
-	require.Equal(t, "error: boom", result.Content)
+	cases := []struct {
+		name        string
+		err         error
+		wantCode    ErrorCode
+		wantContent string
+	}{
+		{name: "a plain error is an internal failure", err: errors.New("boom"), wantCode: CodeInternal, wantContent: "error: boom"},
+		{name: "a structured error keeps its code", err: NewError(CodeInvalidArgument, "the intent is required"), wantCode: CodeInvalidArgument, wantContent: "error: the intent is required"},
+		// A cancelled call keeps its own meaning, so a caller can tell a cancelled
+		// tool from a broken one.
+		{name: "a cancelled call is unavailable", err: context.Canceled, wantCode: CodeUnavailable, wantContent: "error: the tool was cancelled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
+				return Result{}, tc.err
+			})
+			result := set.Execute(context.Background(), Call{Name: "one"}, nil)
+			require.True(t, result.IsError)
+			require.Equal(t, tc.wantCode, result.Error.Code)
+			require.Equal(t, tc.wantContent, result.Content)
+		})
+	}
 }
 
-func TestExecuteKeepsAStructuredError(t *testing.T) {
+func TestExecuteAppliesTheResultBudget(t *testing.T) {
 	t.Parallel()
 
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{}, NewError(CodeInvalidArgument, "the intent is required")
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.True(t, result.IsError)
-	require.Equal(t, CodeInvalidArgument, result.Error.Code)
-	require.Equal(t, "error: the intent is required", result.Content)
-}
-
-func TestExecuteTruncatesAtTheResultBudget(t *testing.T) {
-	t.Parallel()
-
-	meta := validTool("one").Meta
-	meta.MaxResultBytes = 5
-	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "abcdefgh"}, nil
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.Equal(t, "abcde", result.Content)
-	require.True(t, result.Truncated)
-}
-
-func TestExecuteDoesNotTruncateWithoutABudget(t *testing.T) {
-	t.Parallel()
-
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "abcdefgh"}, nil
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.Equal(t, "abcdefgh", result.Content)
-	require.False(t, result.Truncated)
+	cases := []struct {
+		name           string
+		maxResultBytes int
+		wantContent    string
+		wantTruncated  bool
+	}{
+		{name: "content longer than the budget is cut", maxResultBytes: 5, wantContent: "abcde", wantTruncated: true},
+		{name: "a zero budget means no cap", maxResultBytes: 0, wantContent: "abcdefgh", wantTruncated: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			meta := validTool("one").Meta
+			meta.MaxResultBytes = tc.maxResultBytes
+			set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+				return Result{Content: "abcdefgh"}, nil
+			})
+			result := set.Execute(context.Background(), Call{Name: "one"}, nil)
+			require.Equal(t, tc.wantContent, result.Content)
+			require.Equal(t, tc.wantTruncated, result.Truncated)
+		})
+	}
 }
 
 func TestExecuteTimesOut(t *testing.T) {
@@ -141,10 +162,12 @@ func TestExecutePassesTheInvocation(t *testing.T) {
 		got = inv
 		return Result{Content: "ok"}, nil
 	})
-	inv := &Invocation{Workspace: "workspaces/-"}
-	set.Execute(context.Background(), Call{Name: "one"}, inv)
-	require.Same(t, inv, got)
-	// A nil invocation is replaced, never passed through.
+	set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Workspace: "workspaces/-"})
+	require.NotNil(t, got)
+	require.Equal(t, "workspaces/-", got.Workspace)
+
+	// A product with no checker, metrics or audit sink passes a nil invocation; the
+	// body must still get one it can read.
 	set.Execute(context.Background(), Call{Name: "one"}, nil)
 	require.NotNil(t, got)
 }
@@ -199,6 +222,7 @@ func TestExecuteRefusesADeniedPermissionWithoutRunningTheBody(t *testing.T) {
 	})
 	require.True(t, result.IsError)
 	require.Equal(t, CodePermissionDenied, result.Error.Code)
+	require.Equal(t, "error: the caller does not hold metaxisdata.test.read", result.Content)
 	require.False(t, bodyRan, "a refused call must not run the tool body")
 }
 
@@ -246,39 +270,37 @@ func (o *fakeObserver) ObserveToolCall(tool, outcome string, duration time.Durat
 	o.calls = append(o.calls, observedToolCall{tool: tool, outcome: outcome, duration: duration, bytes: resultBytes})
 }
 
-func TestExecuteReportsEveryFinishedCall(t *testing.T) {
+func TestExecuteReportsEachCallOutcome(t *testing.T) {
 	t.Parallel()
 
-	observer := &fakeObserver{}
-	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "ok"}, nil
-	})
-	set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Observer: observer})
+	cases := []struct {
+		name        string
+		allowed     bool
+		wantOutcome string
+	}{
+		{name: "a completed call is a success", allowed: true, wantOutcome: "success"},
+		{name: "a denied call is an error outcome", allowed: false, wantOutcome: "error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			observer := &fakeObserver{}
+			set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
+				return Result{Content: "ok"}, nil
+			})
+			result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+				Principal: &store.UserMessage{ID: 7},
+				Checker:   &fakePermissionChecker{allowed: tc.allowed},
+				Observer:  observer,
+			})
 
-	require.Len(t, observer.calls, 1)
-	require.Equal(t, "one", observer.calls[0].tool)
-	require.Equal(t, "success", observer.calls[0].outcome)
-	require.Equal(t, 2, observer.calls[0].bytes)
-	require.NotZero(t, observer.calls[0].duration)
-}
-
-func TestExecuteReportsADenialAsAnErrorOutcome(t *testing.T) {
-	t.Parallel()
-
-	meta := validTool("one").Meta
-	meta.Permission = "metaxisdata.test.read"
-	observer := &fakeObserver{}
-	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "ok"}, nil
-	})
-	set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
-		Principal: &store.UserMessage{ID: 7},
-		Checker:   &fakePermissionChecker{allowed: false},
-		Observer:  observer,
-	})
-
-	require.Len(t, observer.calls, 1)
-	require.Equal(t, "error", observer.calls[0].outcome)
+			require.Len(t, observer.calls, 1)
+			require.Equal(t, "one", observer.calls[0].tool)
+			require.Equal(t, tc.wantOutcome, observer.calls[0].outcome)
+			require.Equal(t, len(result.Content), observer.calls[0].bytes)
+			require.NotZero(t, observer.calls[0].duration)
+		})
+	}
 }
 
 // fakeAuditSink records the calls the pipeline audited.
@@ -362,20 +384,4 @@ func TestErrorModelContentCarriesTheActionableParts(t *testing.T) {
 	require.Contains(t, content, "hint: search first, then address the result")
 	require.Contains(t, content, "candidates: orders_a, orders_b")
 	require.Contains(t, content, "retryable: yes")
-}
-
-func TestExecuteDeniedPermissionLogsAndKeepsTheModelMessageShort(t *testing.T) {
-	t.Parallel()
-
-	meta := validTool("one").Meta
-	meta.Permission = "metaxisdata.test.read"
-	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
-		return Result{Content: "ok"}, nil
-	})
-	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
-		Principal: &store.UserMessage{ID: 7},
-		Checker:   &fakePermissionChecker{allowed: false},
-	})
-	require.Equal(t, CodePermissionDenied, result.Error.Code)
-	require.Equal(t, "error: the caller does not hold metaxisdata.test.read", result.Content)
 }

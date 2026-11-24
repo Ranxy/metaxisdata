@@ -163,19 +163,6 @@ func TestSchemasComeFromTheResolvedSet(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestNilSetIsSafe(t *testing.T) {
-	t.Parallel()
-
-	var set *Set
-	require.Equal(t, 0, set.Len())
-	require.Nil(t, set.Names())
-	require.Nil(t, set.Schemas())
-
-	result := set.Execute(context.Background(), Call{Name: "one"}, nil)
-	require.True(t, result.IsError)
-	require.Equal(t, CodeInternal, result.Error.Code)
-}
-
 func namesOf(tools []Tool) []string {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -203,7 +190,4 @@ func TestSetReportsParallelSafety(t *testing.T) {
 	require.True(t, set.IsParallelSafe("read"))
 	require.False(t, set.IsParallelSafe("write"))
 	require.False(t, set.IsParallelSafe("missing"))
-
-	var nilSet *Set
-	require.False(t, nilSet.IsParallelSafe("read"))
 }

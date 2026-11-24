@@ -12,11 +12,15 @@ import (
 
 // toolCall is one assistant tool call with an id and a name.
 func toolCall(id string) llm.ToolCall {
+	return toolCallWithArguments(id, "{}")
+}
+
+func toolCallWithArguments(id, arguments string) llm.ToolCall {
 	var call llm.ToolCall
 	call.ID = id
 	call.Type = "function"
 	call.Function.Name = "lookup"
-	call.Function.Arguments = "{}"
+	call.Function.Arguments = arguments
 	return call
 }
 
@@ -58,17 +62,19 @@ func TestRepairToolCallsClosesDanglingCallsAndDropsOrphans(t *testing.T) {
 	require.Equal(t, "user", conversation[2].Role)
 }
 
-func TestEstimateTokensCountsTextAndToolArguments(t *testing.T) {
+// The estimate sizes a conversation against the model's budget, so it must count
+// the tool-call arguments — a turn of large argument JSON is what overflows — and
+// must not undercount a script whose characters are one or two bytes.
+func TestEstimateTokensCountsArgumentsAndShortRunes(t *testing.T) {
 	t.Parallel()
 
-	plain := EstimateTokens([]agent.Message{{Role: "user", Content: strings.Repeat("x", 400)}})
-	withCall := EstimateTokens([]agent.Message{{
-		Role:      "assistant",
-		ToolCalls: []llm.ToolCall{toolCall("call-1")},
-	}})
-	require.Greater(t, plain, 0)
-	require.Greater(t, withCall, 0)
-	require.Zero(t, EstimateTokens(nil))
+	small := []agent.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{toolCallWithArguments("call-1", "{}")}}}
+	large := []agent.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{toolCallWithArguments("call-1", strings.Repeat("x", 400))}}}
+	require.Greater(t, EstimateTokens(large), EstimateTokens(small), "the arguments must count, not only the call name")
+
+	latin := strings.Repeat("é", 400)
+	require.Greater(t, EstimateTextTokens(latin), len(latin)/4,
+		"a one-byte-per-token guess would undercount a script with two-byte characters")
 }
 
 func TestPruneToolResultsKeepsTheHeadAndTail(t *testing.T) {
@@ -140,4 +146,12 @@ func TestPlanCompactionSummarizesTheOldestLegalRegion(t *testing.T) {
 	require.NotEmpty(t, plan.Region)
 	require.Equal(t, plan.Region[len(plan.Region)-1].Seq, plan.ThroughSeq)
 	require.Less(t, plan.ThroughSeq, int64(10))
+
+	// A leading stored system message is never summarized: the builder prepends the
+	// live prompt, so a summary of the stored copy would be wasted.
+	withSystem := append([]Entry{{Seq: 0, Role: RoleSystem, Content: "stored system"}}, entries...)
+	plan, ok = PlanCompaction(withSystem, 500, false)
+	require.True(t, ok)
+	require.Equal(t, RoleUser, plan.Region[0].Role)
+	require.Equal(t, int64(1), plan.Region[0].Seq)
 }
