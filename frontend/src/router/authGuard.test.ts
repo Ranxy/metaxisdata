@@ -26,6 +26,7 @@ function setAuth(
     reset?: boolean;
     expired?: boolean;
     permissions?: string[];
+    scopedPermissions?: string[];
   } = {}
 ) {
   setActivePinia(createPinia());
@@ -33,7 +34,10 @@ function setAuth(
   auth.isAuthenticated = options.authenticated ?? true;
   auth.requireResetPassword = options.reset ?? false;
   auth.sessionExpired = options.expired ?? false;
-  auth.user = create(UserSchema, { permissions: options.permissions ?? [] });
+  auth.user = create(UserSchema, {
+    permissions: options.permissions ?? [],
+    scopedPermissions: options.scopedPermissions ?? [],
+  });
   // Stubbed: the profile request itself is the store's business, not the
   // guard's, which only has to ask for it at the right moment.
   auth.ensurePermissionsLoaded = vi.fn().mockResolvedValue(undefined);
@@ -144,6 +148,17 @@ describe("auth guard", () => {
     await expect(
       guard("/login?redirect=/%09/evil.example.com")
     ).resolves.toEqual({ name: "Home" });
+  });
+
+  // A scoped grant is a union with the workspace policy; a page it reaches must
+  // open even when the workspace grants nothing.
+  it("lets a scoped grant open its page without a workspace permission", async () => {
+    setAuth({
+      permissions: [],
+      scopedPermissions: ["metaxisdata.dataQuality.suggest"],
+    });
+
+    await expect(guard("/data-quality/suggestions")).resolves.toBeUndefined();
   });
 
   it("sends a caller missing the page permission home", async () => {
