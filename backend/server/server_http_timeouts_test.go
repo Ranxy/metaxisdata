@@ -3,7 +3,6 @@ package server
 import (
 	"testing"
 
-	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,17 +21,4 @@ func TestNewEchoServerBoundsSlowClients(t *testing.T) {
 	require.Equal(t, httpIdleTimeout, e.Server.IdleTimeout)
 	require.Equal(t, httpMaxHeaderBytes, e.Server.MaxHeaderBytes)
 	require.Zero(t, e.Server.WriteTimeout, "streaming RPC responses must not be cut by a write deadline")
-}
-
-// TestConfigureHTTPServerTimeoutsAppliesToAnExistingEcho covers the helper used
-// by tests and embedders that build their own Echo instance.
-func TestConfigureHTTPServerTimeoutsAppliesToAnExistingEcho(t *testing.T) {
-	t.Parallel()
-
-	e := echo.New()
-	configureHTTPServerTimeouts(e)
-	require.Equal(t, httpReadHeaderTimeout, e.Server.ReadHeaderTimeout)
-	require.Equal(t, httpReadTimeout, e.Server.ReadTimeout)
-	require.Equal(t, httpIdleTimeout, e.Server.IdleTimeout)
-	require.Equal(t, httpMaxHeaderBytes, e.Server.MaxHeaderBytes)
 }

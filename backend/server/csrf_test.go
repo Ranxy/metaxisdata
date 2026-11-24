@@ -45,6 +45,11 @@ func TestCSRFProtectionMiddleware(t *testing.T) {
 			map[string]string{"Cookie": "access-token=x", "Origin": "https://evil.example.com"}, http.StatusForbidden},
 		{"allowlisted origin passes", http.MethodPost,
 			map[string]string{"Cookie": "access-token=x", "Origin": "http://localhost:3000"}, http.StatusOK},
+		{"same-host origin passes without an allowlist entry", http.MethodPost,
+			map[string]string{"Cookie": "access-token=x", "Origin": "http://example.com"}, http.StatusOK},
+		// "null" is the opaque origin of sandboxed iframes and data: URLs.
+		{"opaque origin is rejected", http.MethodPost,
+			map[string]string{"Cookie": "access-token=x", "Origin": "null"}, http.StatusForbidden},
 		{"cross-site referer is rejected", http.MethodPost,
 			map[string]string{"Cookie": "access-token=x", "Referer": "https://evil.example.com/form"}, http.StatusForbidden},
 		{"read is never blocked", http.MethodGet,
@@ -53,6 +58,10 @@ func TestCSRFProtectionMiddleware(t *testing.T) {
 			map[string]string{"Cookie": "access-token=x", "Authorization": "Bearer t", "Sec-Fetch-Site": "cross-site"}, http.StatusOK},
 		{"no session cookie is exempt", http.MethodPost,
 			map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusOK},
+		// A non-browser client sends neither Origin nor Referer and cannot be a
+		// CSRF vector; bearer tokens are checked separately.
+		{"a non-browser client with no origin passes", http.MethodPost,
+			map[string]string{"Cookie": "access-token=x"}, http.StatusOK},
 	}
 
 	e := csrfTestServer()
@@ -69,25 +78,4 @@ func TestCSRFProtectionMiddleware(t *testing.T) {
 			require.Equal(t, tc.wantStatus, recorder.Code, "body: %s", recorder.Body.String())
 		})
 	}
-}
-
-func TestIsTrustedRequestOriginFallsBackToTheHost(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodPost, "http://metaxis.example.com/write", nil)
-	req.Host = "metaxis.example.com"
-	req.Header.Set("Origin", "http://metaxis.example.com")
-	require.True(t, isTrustedRequestOrigin(req, nil))
-
-	req.Header.Set("Origin", "http://other.example.com")
-	require.False(t, isTrustedRequestOrigin(req, nil))
-
-	// The opaque origin of sandboxed iframes and data: URLs is never trusted.
-	req.Header.Set("Origin", "null")
-	require.False(t, isTrustedRequestOrigin(req, nil))
-
-	// Non-browser clients send neither Origin nor Referer; they cannot be CSRF
-	// vectors, and bearer tokens are checked separately.
-	req.Header.Del("Origin")
-	require.True(t, isTrustedRequestOrigin(req, nil))
 }

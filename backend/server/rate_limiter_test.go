@@ -61,11 +61,15 @@ func TestBoundedRateLimiterStoreEvictsAtCapacity(t *testing.T) {
 }
 
 // Rotating identifiers is the M14 attack on memory: the map must stay at the
-// ceiling no matter how many the caller invents.
-func TestBoundedRateLimiterStoreHoldsTheCeilingUnderRotation(t *testing.T) {
+// ceiling no matter how many the caller invents. The ceiling bounds memory, not
+// the rate of a caller that rotates identifiers — every invented identifier gets
+// its own full burst. That gap is deliberate: the routes that cannot afford it
+// add an address dimension the caller cannot choose (see
+// openLineageIngestionMiddleware).
+func TestBoundedRateLimiterStoreHoldsTheCeilingWithoutBoundingRate(t *testing.T) {
 	t.Parallel()
 
-	store := newBoundedRateLimiterStore(rate.Limit(1), 1)
+	store := newFrozenRateLimiterStore(1, 1)
 	store.capacity = 8
 
 	for i := 0; i < 100; i++ {
@@ -73,31 +77,7 @@ func TestBoundedRateLimiterStoreHoldsTheCeilingUnderRotation(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, allowed, "a new identifier always gets its own full burst")
 	}
-	require.Len(t, store.visitors, 8)
-}
-
-// The identifier ceiling bounds memory, not the rate of a caller that rotates
-// identifiers. Every store therefore hands a rotating caller a fresh bucket,
-// which is exactly why the routes that cannot afford that key on something the
-// caller cannot choose: see openLineageIngestionMiddleware and its address
-// dimension. This test pins the property the ceiling does *not* provide, so the
-// gap is deliberate and visible rather than assumed away.
-func TestBoundedRateLimiterStoreDoesNotBoundARotatingCaller(t *testing.T) {
-	t.Parallel()
-
-	store := newFrozenRateLimiterStore(1, 1)
-	store.capacity = 1024
-
-	allowed := 0
-	for i := 0; i < 100; i++ {
-		ok, err := store.Allow("rotated-" + strconv.Itoa(i))
-		require.NoError(t, err)
-		if ok {
-			allowed++
-		}
-	}
-	require.Equal(t, 100, allowed, "every invented identifier gets its own burst")
-	require.Len(t, store.visitors, 100)
+	require.Len(t, store.visitors, 8, "the ceiling must hold under rotation")
 }
 
 // An idle bucket is swept instead of being kept until eviction, so a caller that

@@ -94,6 +94,7 @@ func TestParseAuthorizationRequest(t *testing.T) {
 		{name: "another resource", mutate: func(v url.Values) { v.Set("resource", "https://other.example.com/mcp") }, wantCode: "invalid_request"},
 		{name: "no resource", mutate: func(v url.Values) { v.Del("resource") }, wantCode: "invalid_request"},
 		{name: "an unknown scope", mutate: func(v url.Values) { v.Set("scope", "admin") }, wantCode: "invalid_scope"},
+		{name: "a scope list with one unsupported scope", mutate: func(v url.Values) { v.Set("scope", MCPReadScope+" admin") }, wantCode: "invalid_scope"},
 		// Both of these are held with the pending request for ten minutes and
 		// echoed back on every answer, so a caller-chosen size is memory and an
 		// unbounded Location header.
@@ -163,15 +164,6 @@ func TestTokenEndpointRejectsBadRequestsBeforeTheStore(t *testing.T) {
 
 	server := NewServer(ServerConfig{Endpoints: testEndpoints})
 
-	t.Run("a GET is refused", func(t *testing.T) {
-		t.Parallel()
-
-		recorder := httptest.NewRecorder()
-		server.TokenHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/oauth/token", nil))
-		require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
-		require.Equal(t, http.MethodPost, recorder.Header().Get("Allow"))
-	})
-
 	t.Run("a grant type this server does not run is refused", func(t *testing.T) {
 		t.Parallel()
 
@@ -213,15 +205,30 @@ func TestTokenEndpointRejectsBadRequestsBeforeTheStore(t *testing.T) {
 	})
 }
 
-// TestAuthorizeEndpointRejectsANonGet covers the one authorization-endpoint
-// check that needs no client lookup.
-func TestAuthorizeEndpointRejectsANonGet(t *testing.T) {
+// Each protocol endpoint is exactly one verb and says so; the wrong method must
+// not reach a handler that assumes its request was parsed.
+func TestProtocolEndpointsRejectTheWrongMethod(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(ServerConfig{Endpoints: testEndpoints})
-	recorder := httptest.NewRecorder()
-	server.AuthorizeHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/oauth/authorize", nil))
+	tests := []struct {
+		name   string
+		handle http.Handler
+		method string
+		allow  string
+	}{
+		{name: "the authorization endpoint is a GET", handle: server.AuthorizeHandler(), method: http.MethodPost, allow: http.MethodGet},
+		{name: "the completion endpoint is a GET", handle: server.CompletionHandler(), method: http.MethodPost, allow: http.MethodGet},
+		{name: "the token endpoint is a POST", handle: server.TokenHandler(), method: http.MethodGet, allow: http.MethodPost},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
-	require.Equal(t, http.MethodGet, recorder.Header().Get("Allow"))
+			recorder := httptest.NewRecorder()
+			tc.handle.ServeHTTP(recorder, httptest.NewRequest(tc.method, "/oauth/x", nil))
+			require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+			require.Equal(t, tc.allow, recorder.Header().Get("Allow"))
+		})
+	}
 }

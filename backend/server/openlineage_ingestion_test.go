@@ -129,39 +129,6 @@ func TestOpenLineageIngestionMiddlewareBoundsOneAddressWhateverKeyItPresents(t *
 		"one caller spending its address must not refuse every other producer on the route")
 }
 
-// The F2 regression: a caller that invents an ingestion key per request must not
-// be able to refuse *other* producers. A deployment-wide bucket shared by every
-// identifier did exactly that — the rotating caller exhausted it and every
-// producer on the route got 429 — so what bounds the caller is its own address,
-// and a producer elsewhere is untouched. This runs the production constructor,
-// so it measures the shipped budgets.
-func TestOpenLineageIngestionMiddlewareOneCallerCannotDenyAnotherProducer(t *testing.T) {
-	t.Parallel()
-
-	// The address budget is driven by a frozen clock. Its bucket refills at two
-	// thousand tokens a second, and this loop spends four thousand: on an idle
-	// machine the refill is nothing and the budget is exhausted, but on a loaded CI
-	// runner the loop takes long enough that the bucket refills as fast as the loop
-	// spends it and never refuses — which is how this test failed there. With the
-	// clock frozen the refill cannot happen, so the burst is exactly what the loop
-	// has to spend.
-	keyStore := unfrozenRateLimiterStore()
-	sourceStore := newFrozenRateLimiterStore(openLineageIngestionSourceRate, openLineageIngestionSourceBurst)
-	e := openLineageIngestionTestServer(keyStore, sourceStore, nil)
-
-	refused := 0
-	for i := 0; i <= openLineageIngestionSourceBurst; i++ {
-		if ingestOpenLineageEventFrom(e, fmt.Sprintf("forged-%d", i), "203.0.113.9:5555", "") == http.StatusTooManyRequests {
-			refused++
-		}
-	}
-	require.Equal(t, 1, refused,
-		"the address budget must refuse the request after its burst, however many keys the caller invents")
-
-	require.Equal(t, http.StatusOK, ingestOpenLineageEventFrom(e, "real-key", "198.51.100.9:5555", ""),
-		"one caller spending its own address budget must not refuse another producer")
-}
-
 // The address dimension is the only thing that bounds a caller inventing keys, so
 // its key has to be the resolved address and never a header the caller writes.
 // Pinned on the source store with a rotating X-Forwarded-For: Echo's RealIP would

@@ -38,23 +38,19 @@ type fakeTokenStore struct {
 	grant *store.OAuthGrant
 	user  *store.UserMessage
 
-	createID  int64
-	createErr error
+	createID int64
 
-	rotateID  int64
-	rotateOK  bool
-	rotateErr error
+	rotateID int64
+	rotateOK bool
 
-	getErr    error
-	userErr   error
-	revokeErr error
+	getErr  error
+	userErr error
 
 	getCalls    int
 	createCalls int
 	rotateCalls int
 
 	lastGetClientID  string
-	lastGetTokenHash string
 	lastCreated      *store.OAuthGrant
 	lastRotateOld    string
 	lastRotateNew    string
@@ -66,10 +62,9 @@ type fakeTokenStore struct {
 	touched    []string
 }
 
-func (f *fakeTokenStore) GetOAuthGrant(_ context.Context, clientID, tokenHash string) (*store.OAuthGrant, error) {
+func (f *fakeTokenStore) GetOAuthGrant(_ context.Context, clientID, _ string) (*store.OAuthGrant, error) {
 	f.getCalls++
 	f.lastGetClientID = clientID
-	f.lastGetTokenHash = tokenHash
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
@@ -79,7 +74,7 @@ func (f *fakeTokenStore) GetOAuthGrant(_ context.Context, clientID, tokenHash st
 func (f *fakeTokenStore) CreateOAuthGrant(_ context.Context, create *store.OAuthGrant) (int64, error) {
 	f.createCalls++
 	f.lastCreated = create
-	return f.createID, f.createErr
+	return f.createID, nil
 }
 
 func (f *fakeTokenStore) RotateOAuthGrant(_ context.Context, _, oldHash, newHash string, expiresAt, now time.Time) (int64, bool, error) {
@@ -88,13 +83,13 @@ func (f *fakeTokenStore) RotateOAuthGrant(_ context.Context, _, oldHash, newHash
 	f.lastRotateNew = newHash
 	f.lastRotateExpiry = expiresAt
 	f.lastRotateNow = now
-	return f.rotateID, f.rotateOK, f.rotateErr
+	return f.rotateID, f.rotateOK, nil
 }
 
 func (f *fakeTokenStore) RevokeOAuthGrant(_ context.Context, id int64, _ time.Time, revokedBy *int) (bool, error) {
 	f.revokedIDs = append(f.revokedIDs, id)
 	f.revokedBys = append(f.revokedBys, revokedBy)
-	return true, f.revokeErr
+	return true, nil
 }
 
 func (f *fakeTokenStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {

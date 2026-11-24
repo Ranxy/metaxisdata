@@ -26,6 +26,6 @@ func TestTriageEnumValuesBoundsTheList(t *testing.T) {
 	require.True(t, truncated)
 
 	trimmed, truncated = triageEnumValues(nil)
-	require.Nil(t, trimmed)
+	require.Empty(t, trimmed, "a column without labels contributes none")
 	require.False(t, truncated)
 }

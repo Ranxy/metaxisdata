@@ -55,16 +55,6 @@ func (u *countingUsers) IsTokenRevoked(ctx context.Context, tokenID string) (boo
 	return u.fakeUsers.IsTokenRevoked(ctx, tokenID)
 }
 
-func TestResolveKeepsAudiencesApart(t *testing.T) {
-	t.Parallel()
-
-	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
-	require.NoError(t, err)
-
-	_, _, err = NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), token, mcpTestResource)
-	require.ErrorIs(t, err, ErrTokenInvalid, "a user-API token must not resolve for another audience")
-}
-
 func TestMCPTokensAreNotInterchangeableWithUserTokens(t *testing.T) {
 	t.Parallel()
 
@@ -133,21 +123,37 @@ func TestMCPTokensKeepARevocationPath(t *testing.T) {
 	require.Error(t, err, "a token this server did not sign must never reach the revocation cache")
 }
 
-func TestResolveReportsAnExpiredTokenAsRevoked(t *testing.T) {
+// Resolve's sentinel errors are the classification every entry point maps onto
+// its transport, so the refusal reasons must stay distinct: a request with no
+// token, a token past its expiry, and a token minted for another audience are
+// three different events.
+func TestResolveReportsWhyItRefusedAToken(t *testing.T) {
 	t.Parallel()
 
-	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, -time.Hour)
+	expired, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, -time.Hour)
+	require.NoError(t, err)
+	otherAudience, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 
-	_, _, err = NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
-	require.ErrorIs(t, err, ErrTokenRevoked)
-}
+	tests := []struct {
+		name     string
+		token    string
+		audience string
+		wantErr  error
+	}{
+		{name: "no token at all", audience: AccessTokenAudience(common.ReleaseModeDev), wantErr: ErrTokenMissing},
+		{name: "expired token is reported as revoked", token: expired, audience: AccessTokenAudience(common.ReleaseModeDev), wantErr: ErrTokenRevoked},
+		{name: "a user-API token is invalid on another audience", token: otherAudience, audience: mcpTestResource, wantErr: ErrTokenInvalid},
+	}
 
-func TestResolveRejectsAMissingToken(t *testing.T) {
-	t.Parallel()
-
-	_, _, err := NewTokenAuthenticator(nil, nil, audienceTestSecret, nil).Resolve(context.Background(), "", AccessTokenAudience(common.ReleaseModeDev))
-	require.ErrorIs(t, err, ErrTokenMissing)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			authenticator := NewTokenAuthenticator(nil, nil, audienceTestSecret, nil)
+			_, _, err := authenticator.Resolve(context.Background(), tc.token, tc.audience)
+			require.ErrorIs(t, err, tc.wantErr)
+		})
+	}
 }
 
 // M4: revocation is keyed by the token's jti and read from the persistent table,
@@ -244,17 +250,21 @@ func TestMCPTokenResolvesOnlyWhileItsConnectedAppIsLive(t *testing.T) {
 	require.NotErrorIs(t, err, ErrGrantRevoked, "a read failure is not a revocation decision")
 }
 
-func TestMCPTokenWithoutAGrantSkipsTheConnectedAppCheck(t *testing.T) {
+// Every web and API token carries no grant id, so the connected-app check must
+// not fire for them: the common login path would otherwise be judged against a
+// grant that does not exist and refuse every session.
+func TestUserTokensSkipTheConnectedAppCheck(t *testing.T) {
 	t.Parallel()
 
 	users := fakeUsers{user: &store.UserMessage{ID: 7, Email: "user@example.com"}}
 	grants := &fakeGrants{live: true}
 	authenticator := NewTokenAuthenticator(users, grants, audienceTestSecret, nil)
-	token, err := GenerateMCPAccessToken("user@example.com", 7, mcpTestClient, 0, mcpTestResource, mcpTestScope, audienceTestSecret, time.Hour)
+	token, err := GenerateAccessToken("user@example.com", 7, common.ReleaseModeDev, audienceTestSecret, time.Hour)
 	require.NoError(t, err)
 
-	_, identity, err := authenticator.Resolve(context.Background(), token, mcpTestResource)
+	user, identity, err := authenticator.Resolve(context.Background(), token, AccessTokenAudience(common.ReleaseModeDev))
 	require.NoError(t, err)
+	require.Equal(t, 7, user.ID)
 	require.Zero(t, identity.GrantID)
 	require.Zero(t, grants.lookups, "a token without a grant id cannot be checked against a connection")
 }

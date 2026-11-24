@@ -14,7 +14,10 @@ func TestRefreshTokensAreStoredAsDigests(t *testing.T) {
 
 	token, err := GenerateRefreshToken()
 	require.NoError(t, err)
-	require.Len(t, token, refreshTokenLength, "43 base62 characters carry the entropy the token needs")
+	// At least 43 base62 characters are what make the token unguessable: a
+	// shorter token is a security regression, while every digest assertion below
+	// would still pass.
+	require.GreaterOrEqual(t, len(token), 43, "43 base62 characters carry more than 256 bits")
 
 	digest := HashToken(token)
 	require.NotEqual(t, token, digest, "the plaintext must never be what is stored")

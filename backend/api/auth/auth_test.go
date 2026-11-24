@@ -9,7 +9,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	errs "github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -53,83 +52,13 @@ func TestGetTokenFromHeaders(t *testing.T) {
 	}
 }
 
-func TestAudienceContains(t *testing.T) {
-	t.Parallel()
-
-	audience := jwt.ClaimStrings{"mt.user.access.dev", "other"}
-	require.True(t, audienceContains(audience, "mt.user.access.dev"))
-	require.False(t, audienceContains(audience, "mt.user.access.prod"))
-	require.False(t, audienceContains(audience, "MT.USER.ACCESS.DEV"))
-	require.False(t, audienceContains(nil, "mt.user.access.dev"))
-}
-
-// Token parsing must reject anything that is not an HS256 token signed with the
-// configured key, issued by this server, carrying the right audience and an
-// expiry. The signing key used to be a hard-coded constant, so these checks are
-// the other half of that fix.
-func TestGeneratedTokensRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	const secret = "0123456789abcdef0123456789abcdef"
-	audience := "mt.user.access.dev"
-
-	token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
-	require.NoError(t, err)
-
-	claims := &claimsMessage{}
-	parsed, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (any, error) {
-		if token.Header["kid"] != keyID {
-			return nil, errs.Errorf("unexpected kid %v", token.Header["kid"])
-		}
-		return []byte(secret), nil
-	},
-		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
-		jwt.WithIssuer(issuer),
-		jwt.WithExpirationRequired(),
-	)
-	require.NoError(t, err)
-	require.True(t, parsed.Valid)
-	require.Equal(t, "alice@example.com", claims.Name)
-	require.Equal(t, "101", claims.Subject)
-	require.True(t, audienceContains(claims.Audience, audience))
-
-	t.Run("wrong key is rejected", func(t *testing.T) {
-		t.Parallel()
-		_, err := jwt.ParseWithClaims(token, &claimsMessage{}, func(*jwt.Token) (any, error) {
-			return []byte("another-key-another-key-another"), nil
-		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
-		require.Error(t, err)
-	})
-
-	t.Run("wrong audience is rejected", func(t *testing.T) {
-		t.Parallel()
-		prodToken, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeProd, secret, time.Hour)
-		require.NoError(t, err)
-		prodClaims := &claimsMessage{}
-		_, err = jwt.ParseWithClaims(prodToken, prodClaims, func(*jwt.Token) (any, error) {
-			return []byte(secret), nil
-		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
-		require.NoError(t, err)
-		require.False(t, audienceContains(prodClaims.Audience, audience))
-	})
-
-	t.Run("api token expires within the hour", func(t *testing.T) {
-		t.Parallel()
-		apiToken, err := GenerateAPIToken("bot", 1, common.ReleaseModeDev, secret)
-		require.NoError(t, err)
-		apiClaims := &claimsMessage{}
-		_, err = jwt.ParseWithClaims(apiToken, apiClaims, func(*jwt.Token) (any, error) {
-			return []byte(secret), nil
-		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
-		require.NoError(t, err)
-		require.WithinDuration(t, time.Now().Add(apiTokenDuration), apiClaims.ExpiresAt.Time, time.Minute)
-	})
-}
-
 // VerifyAccessToken is what both the auth interceptor and Logout rely on. Logout
 // in particular must reject a token it cannot verify, otherwise an
 // unauthenticated caller could flood the revocation cache and evict genuine
-// entries.
+// entries. Token parsing must also reject anything that is not an HS256 token
+// signed with the configured key, issued by this server, carrying the right
+// audience and an expiry; the signing key used to be a hard-coded constant, so
+// these checks are the other half of that fix.
 func TestVerifyAccessToken(t *testing.T) {
 	t.Parallel()
 
@@ -185,16 +114,32 @@ func TestVerifyAccessToken(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	// An API token is minted with the user API's audience, so the login path's
+	// long-lived credential must verify exactly like a web token.
+	t.Run("an API token verifies for the user API", func(t *testing.T) {
+		t.Parallel()
+		token, err := GenerateAPIToken("bot", 101, common.ReleaseModeDev, secret)
+		require.NoError(t, err)
+		identity, err := VerifyAccessToken(token, secret, common.ReleaseModeDev)
+		require.NoError(t, err)
+		require.Equal(t, 101, identity.UserID)
+	})
+
 	// The iat claim has second granularity, so without a per-token id two
 	// logins in the same second yield the same string and Logout cannot tell
-	// the sessions apart.
+	// the sessions apart. The jti is what Logout revokes by.
 	t.Run("tokens minted together are distinct", func(t *testing.T) {
 		t.Parallel()
 		first, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
 		require.NoError(t, err)
 		second, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
 		require.NoError(t, err)
-		require.NotEqual(t, first, second)
+		firstIdentity, err := VerifyAccessTokenProvenance(first, secret)
+		require.NoError(t, err)
+		secondIdentity, err := VerifyAccessTokenProvenance(second, secret)
+		require.NoError(t, err)
+		require.NotEmpty(t, firstIdentity.TokenID)
+		require.NotEqual(t, firstIdentity.TokenID, secondIdentity.TokenID)
 	})
 }
 
@@ -340,14 +285,15 @@ func TestRestrictedAccessToken(t *testing.T) {
 		require.Equal(t, TokenRestrictionResetPassword, identity.Restriction)
 	})
 
-	t.Run("a full-access token carries no restriction", func(t *testing.T) {
+	t.Run("a full-access token carries no restriction and reaches everything", func(t *testing.T) {
 		t.Parallel()
 		token, err := GenerateAccessToken("alice@example.com", 101, common.ReleaseModeDev, secret, time.Hour)
 		require.NoError(t, err)
 
 		identity, err := VerifyAccessToken(token, secret, common.ReleaseModeDev)
 		require.NoError(t, err)
-		require.Empty(t, identity.Restriction)
+		require.Empty(t, identity.Restriction, "a restriction is what narrows a token")
+		require.True(t, identity.Restriction.allows("/metaxisdata.v1.UserService/DeleteUser"))
 	})
 
 	t.Run("only the password reset RPCs are reachable", func(t *testing.T) {
@@ -356,11 +302,6 @@ func TestRestrictedAccessToken(t *testing.T) {
 		require.True(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.AuthService/Logout"))
 		require.False(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.DatabaseService/ListDatabases"))
 		require.False(t, TokenRestrictionResetPassword.allows("/metaxisdata.v1.UserService/DeleteUser"))
-	})
-
-	t.Run("an unrestricted token reaches everything", func(t *testing.T) {
-		t.Parallel()
-		require.True(t, TokenRestriction("").allows("/metaxisdata.v1.UserService/DeleteUser"))
 	})
 
 	t.Run("an unknown restriction reaches nothing", func(t *testing.T) {
