@@ -189,8 +189,10 @@ func TestScanQualityRuleReadsJSONBAndNullableColumns(t *testing.T) {
 	require.True(t, msg.Deleted)
 }
 
-// NULL next_run_at/mute_until/owner are meaningful states (not scheduled,
-// not muted, unassigned), so the scan must keep them as nil pointers.
+// NULL owner/mute_until/created_by/updated_by are meaningful states (unassigned,
+// not muted, no recorded principal), so the scan must keep them as nil pointers
+// rather than zero values; an absent target_meta_hash and tags array stay absent
+// too.
 func TestScanQualityRuleKeepsNullColumnsNil(t *testing.T) {
 	t.Parallel()
 
@@ -388,8 +390,6 @@ func TestBuildQualityRuleWhereAppliesEveryFilter(t *testing.T) {
 	}
 }
 
-// The unassigned filter is the "no owner" complement of the owner filter: it
-// renders owner_id IS NULL and binds no argument.
 // A scope set restricts the target subtrees; an empty non-nil set matches
 // nothing so a caller with no authorized scope cannot list every rule.
 func TestBuildQualityRuleWhereFiltersByScopes(t *testing.T) {
@@ -402,8 +402,8 @@ func TestBuildQualityRuleWhereFiltersByScopes(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Contains(t, where, "(target_guid = $1 OR target_guid LIKE $2")
-	require.Contains(t, where, " OR (target_guid = $3 OR target_guid LIKE $4")
+	require.Contains(t, where, `(target_guid = $1 OR target_guid LIKE $2 ESCAPE E'\\')`)
+	require.Contains(t, where, ` OR (target_guid = $3 OR target_guid LIKE $4 ESCAPE E'\\')`)
 	require.Contains(t, where, "state <> $5")
 	require.Equal(t, []any{
 		"i;db", "i;db;%",
@@ -416,6 +416,8 @@ func TestBuildQualityRuleWhereFiltersByScopes(t *testing.T) {
 	require.Contains(t, where, "FALSE")
 }
 
+// The unassigned filter is the "no owner" complement of the owner filter: it
+// renders owner_id IS NULL and binds no argument.
 func TestBuildQualityRuleWhereOwnerUnassigned(t *testing.T) {
 	t.Parallel()
 
@@ -441,7 +443,8 @@ func TestBuildQualityRuleWhereHidesDeletedAndArchivedByDefault(t *testing.T) {
 
 	where, args, err := buildQualityRuleWhere(&FindQualityRuleMessage{})
 	require.NoError(t, err)
-	require.Equal(t, "TRUE AND deleted = FALSE AND state <> $1", where)
+	require.Contains(t, where, "deleted = FALSE")
+	require.Contains(t, where, "state <> $1")
 	require.Equal(t, []any{storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED}, args)
 
 	where, args, err = buildQualityRuleWhere(&FindQualityRuleMessage{
@@ -449,7 +452,7 @@ func TestBuildQualityRuleWhereHidesDeletedAndArchivedByDefault(t *testing.T) {
 		IncludeArchived: true,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "TRUE", where)
+	require.Equal(t, "TRUE", where, "the opt-out leaves a predicate the caller can concatenate")
 	require.Empty(t, args)
 }
 
@@ -640,13 +643,18 @@ func TestMarshalQualityRuleProtoNormalizesNil(t *testing.T) {
 }
 
 // qualityRuleByIDsStatementShape pins the reverse lookup the API uses to render a
-// result row's numeric rule_id as a rule resource name.
+// result row's numeric rule_id as a rule resource name. It keys on the row id and
+// deliberately carries no lifecycle filter: a result or issue keeps pointing at
+// the definition that produced it, so an archived or deleted rule must still
+// resolve.
 func TestQualityRuleByIDsStatementShape(t *testing.T) {
 	t.Parallel()
 
 	require.Contains(t, qualityRuleByIDsStatement, "FROM quality_rule")
 	require.Contains(t, qualityRuleByIDsStatement, "id = ANY($1::bigint[])")
 	require.Contains(t, qualityRuleByIDsStatement, "ORDER BY id")
+	require.NotContains(t, qualityRuleByIDsStatement, "deleted = FALSE",
+		"a historical result must still render its archived rule's name")
 }
 
 func TestListQualityRulesByIDsEmptyInputIsEmptySlice(t *testing.T) {

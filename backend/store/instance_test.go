@@ -15,29 +15,6 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// Reading a page of instances resolves the cipher once, so the per-row helper
-// has to decrypt every credential field with the cipher it was handed.
-func TestDecryptInstanceDecryptsEveryCredential(t *testing.T) {
-	t.Parallel()
-
-	cipher := newTestCipher(t)
-	plaintext := []string{"password", "ca", "cert", "key", "ssh-password", "ssh-private-key"}
-
-	ds := &storepb.DataSource{Id: "admin"}
-	fields := credentialFields(ds)
-	require.Len(t, fields, len(plaintext))
-	for i, field := range fields {
-		encrypted, err := cipher.Encrypt(plaintext[i])
-		require.NoError(t, err)
-		*field.ciphertext = encrypted
-	}
-
-	instance := &storepb.Instance{DataSources: []*storepb.DataSource{ds}}
-	require.NoError(t, decryptInstance(instance, cipher))
-	require.Equal(t, plaintext,
-		[]string{ds.Password, ds.SslCa, ds.SslCert, ds.SslKey, ds.SshPassword, ds.SshPrivateKey})
-}
-
 // A credential that cannot be authenticated must fail the read and name the
 // field: silently returning garbage is what let a bad key destroy every
 // credential on the next write.

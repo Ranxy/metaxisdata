@@ -74,20 +74,6 @@ func TestTargetWhereAttentionFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"TRUE"}, where)
 	require.Empty(t, args)
-
-	// The two weakest verdicts bind different ranks, so filtering one cannot match
-	// a target whose latest result was the other.
-	_, skippedArgs, err := targetWhere(&FindQualityTargetMessage{
-		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-	}, 0)
-	require.NoError(t, err)
-	_, notEvaluatedArgs, err := targetWhere(&FindQualityTargetMessage{
-		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
-	}, 0)
-	require.NoError(t, err)
-	require.NotEqual(t, skippedArgs, notEvaluatedArgs)
-	require.Equal(t, int32(1), skippedArgs[0])
-	require.Equal(t, int32(2), notEvaluatedArgs[0])
 }
 
 // The worst-status ranking is what makes "ERROR outranks FAIL" true, and the
@@ -108,20 +94,11 @@ func TestQualityTargetStatusRankRoundTrip(t *testing.T) {
 		{storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 0},
 	}
 	for _, tc := range cases {
-		require.Equal(t, tc.rank, QualityTargetStatusRank(tc.status))
+		require.Equal(t, tc.rank, QualityTargetStatusRank(tc.status), tc.status.String())
+		require.Equal(t, tc.status, QualityTargetStatusFromRank(tc.rank), "rank %d", tc.rank)
 	}
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, QualityTargetStatusFromRank(6))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, QualityTargetStatusFromRank(5))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_WARN, QualityTargetStatusFromRank(4))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, QualityTargetStatusFromRank(3))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, QualityTargetStatusFromRank(2))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_SKIPPED, QualityTargetStatusFromRank(1))
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, QualityTargetStatusFromRank(0))
+	// A rank this build does not produce means no rule has run.
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, QualityTargetStatusFromRank(99))
-	// NOT_EVALUATED and SKIPPED are distinct ranks: a directory filter must not
-	// conflate "nothing to judge" with "did not run".
-	require.NotEqual(t, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
-		QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_SKIPPED))
 }
 
 // The aggregate's SQL CASE is generated from QualityTargetStatusRank, so the

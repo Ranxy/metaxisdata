@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/common"
 )
 
 func TestBuildApplicationSQLGUID(t *testing.T) {
@@ -14,7 +16,7 @@ func TestBuildApplicationSQLGUID(t *testing.T) {
 	require.Equal(t, "instance_1;db1;public;__application_sql__/abc123", guid)
 	// The statement segment must keep its prefix so it cannot collide with a schema object
 	// of the same name.
-	require.NotEqual(t, guid, buildApplicationSQLGUID("instance_1", "db1", "public", "orders"))
+	require.NotEqual(t, guid, common.BuildMetaGUID("instance_1", "db1", "public", "abc123"))
 }
 
 func TestStatementLabel(t *testing.T) {

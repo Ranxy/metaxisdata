@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -234,48 +235,41 @@ func TestBuildQualityRunWhere(t *testing.T) {
 	require.Contains(t, joined, "r.started_at < $8")
 }
 
-// The run slice outcome is ranked by the same CASE the target directory uses, with
-// the placeholders starting where the slice query binds them ($2..$7).
-func TestQualityTargetWorstRankCaseAtRunSlice(t *testing.T) {
+// qualityTargetWorstRankCaseAt renders the worst-status CASE for a caller whose
+// status arguments start at a given placeholder. The caller binds the statuses in
+// the documented order (ERROR, FAIL, WARN, PASS, SKIPPED, NOT_EVALUATED), so a WHEN
+// arm that moves relative to that order silently mis-ranks every result.
+func TestQualityTargetWorstRankCaseAtShiftsItsPlaceholderBase(t *testing.T) {
 	t.Parallel()
 
-	expr := qualityTargetWorstRankCaseAt("e.status", 2)
+	const base = 5
+	expr := qualityTargetWorstRankCaseAt("e.status", base)
 	require.Contains(t, expr, "CASE e.status")
-	require.Contains(t, expr, "WHEN $2 THEN 6", "ERROR")
-	require.Contains(t, expr, "WHEN $3 THEN 5", "FAIL")
-	require.Contains(t, expr, "WHEN $4 THEN 4", "WARN")
-	require.Contains(t, expr, "WHEN $5 THEN 3", "PASS")
-	require.Contains(t, expr, "WHEN $6 THEN 1", "SKIPPED")
-	require.Contains(t, expr, "WHEN $7 THEN 2", "NOT_EVALUATED")
+	statuses := []storepb.QualityStatus{
+		storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		storepb.QualityStatus_QUALITY_STATUS_WARN,
+		storepb.QualityStatus_QUALITY_STATUS_PASS,
+		storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+	}
+	for offset, status := range statuses {
+		require.Contains(t, expr, fmt.Sprintf("WHEN $%d THEN %d", base+offset, QualityTargetStatusRank(status)))
+	}
 	require.Contains(t, expr, "ELSE 0")
 }
 
 // qualifyQualityRunColumns prefixes every selected column so a query that joins
-// quality_run can read it without an ambiguous column reference.
+// quality_run can read it without an ambiguous column reference. The expectation
+// is derived from qualityRunColumns: a column added to the projection must not
+// force this test red, but a column left unqualified must.
 func TestQualifyQualityRunColumns(t *testing.T) {
 	t.Parallel()
 
-	qualified := qualifyQualityRunColumns("r")
-	require.Equal(t, "r.id, r.resource_id, r.instance_resource_id, r.target_guid, r.target_type, r.target_path, r.trigger, r.status, r.outcome, r.counts, r.initiator_id, r.started_at, r.finished_at", qualified)
-	require.Len(t, strings.Split(qualified, ", "), len(strings.Split(qualityRunColumns, ",")))
-}
-
-// The per-target run summary row adapter appends the target key and run count to
-// the destinations scanQualityRun expects, so one query can read both.
-func TestQualityTargetRunSummaryRowAppendsKeyAndCount(t *testing.T) {
-	t.Parallel()
-
-	// The adapter's Scan forwards to *sql.Rows; a nil rows value would panic, so
-	// this test only pins the shape via the run scan stub and checks the summary
-	// struct it feeds.
-	summary := &QualityTargetRunSummaryMessage{
-		TargetGUID: "instance_1;shop;public;orders",
-		TargetType: storepb.MetaType_TABLE,
-		Run:        &QualityRunMessage{ID: 42},
-		RunCount:   3,
+	qualified := strings.Split(qualifyQualityRunColumns("r"), ", ")
+	columns := strings.Split(qualityRunColumns, ",")
+	require.Len(t, qualified, len(columns))
+	for index, column := range columns {
+		require.Equal(t, "r."+strings.TrimSpace(column), qualified[index])
 	}
-	require.Equal(t, "instance_1;shop;public;orders", summary.TargetGUID)
-	require.Equal(t, storepb.MetaType_TABLE, summary.TargetType)
-	require.Equal(t, int64(42), summary.Run.ID)
-	require.Equal(t, int32(3), summary.RunCount)
 }

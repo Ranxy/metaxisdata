@@ -76,22 +76,17 @@ func TestScanQualityAgentWithoutOwnerOrCreator(t *testing.T) {
 	require.Equal(t, QualityAgentStateDraft, agent.State)
 }
 
-func TestQualityAgentJSONRoundTrip(t *testing.T) {
+// A nil list must encode as a JSON array, not as JSON null: capabilities and
+// adoption_rule_types are NOT NULL JSONB columns defaulting to '[]', so a row
+// written without a list still has to read back as an empty list.
+func TestMarshalQualityAgentListsEncodeNilAsEmptyArray(t *testing.T) {
 	t.Parallel()
 
-	capabilities, err := marshalStrings([]string{"suggest", "patrol"})
+	capabilities, err := marshalStrings(nil)
 	require.NoError(t, err)
-	decoded, err := unmarshalStrings(capabilities)
-	require.NoError(t, err)
-	require.Equal(t, []string{"suggest", "patrol"}, decoded)
+	require.Equal(t, []byte("[]"), capabilities)
 
-	ruleTypes, err := marshalInt16s([]int16{3, 12})
+	ruleTypes, err := marshalInt16s(nil)
 	require.NoError(t, err)
-	decodedTypes, err := unmarshalInt16s(ruleTypes)
-	require.NoError(t, err)
-	require.Equal(t, []int16{3, 12}, decodedTypes)
-
-	empty, err := marshalStrings(nil)
-	require.NoError(t, err)
-	require.Equal(t, []byte("[]"), empty)
+	require.Equal(t, []byte("[]"), ruleTypes)
 }

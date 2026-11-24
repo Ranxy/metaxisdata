@@ -48,21 +48,40 @@ func TestIdentityProviderSecretIsEncryptedAtRest(t *testing.T) {
 		"the non-secret half of the config must survive the round trip")
 }
 
-// An empty secret is a state, not a value: it stays empty so "keep the stored
-// secret" can be represented by an absent one.
-func TestIdentityProviderEmptySecretStaysEmpty(t *testing.T) {
+// A config with no credential to protect is passed through unchanged: an empty
+// secret is a state, not a value, and a config with no OAuth2 half is not this
+// helper's to reject (the type check constraint keeps those rows out). Neither
+// shape may make a caller need a cipher it has no credential for.
+func TestIdentityProviderConfigWithNothingToEncryptIsPassedThrough(t *testing.T) {
 	t.Parallel()
 
 	s := &Store{}
 	s.SetCipher(newTestCipher(t))
 
-	encrypted, err := s.encryptIdentityProviderConfig(oauth2IdentityProviderConfig(""))
-	require.NoError(t, err)
-	require.Empty(t, encrypted.GetOauth2Config().GetClientSecret())
+	t.Run("empty secret", func(t *testing.T) {
+		t.Parallel()
 
-	decrypted, err := s.decryptIdentityProviderConfig(oauth2IdentityProviderConfig(""))
-	require.NoError(t, err)
-	require.Empty(t, decrypted.GetOauth2Config().GetClientSecret())
+		encrypted, err := s.encryptIdentityProviderConfig(oauth2IdentityProviderConfig(""))
+		require.NoError(t, err)
+		require.Empty(t, encrypted.GetOauth2Config().GetClientSecret())
+
+		decrypted, err := s.decryptIdentityProviderConfig(oauth2IdentityProviderConfig(""))
+		require.NoError(t, err)
+		require.Empty(t, decrypted.GetOauth2Config().GetClientSecret())
+	})
+
+	t.Run("no OAuth2 half", func(t *testing.T) {
+		t.Parallel()
+
+		config := &storepb.IdentityProviderConfig{}
+		encrypted, err := s.encryptIdentityProviderConfig(config)
+		require.NoError(t, err)
+		require.Nil(t, encrypted.GetOauth2Config())
+
+		decrypted, err := s.decryptIdentityProviderConfig(config)
+		require.NoError(t, err)
+		require.Nil(t, decrypted.GetOauth2Config())
+	})
 }
 
 // A secret that is not a ciphertext this deployment can open is an error. The
@@ -85,24 +104,6 @@ func TestIdentityProviderSecretReadFailsClosed(t *testing.T) {
 		_, err := s.decryptIdentityProviderConfig(oauth2IdentityProviderConfig("v1:whatever"))
 		require.Error(t, err)
 	})
-}
-
-// A config with no OAuth2 half is returned untouched rather than rejected: the
-// type check constraint is what keeps non-OAuth2 rows out, not this helper.
-func TestIdentityProviderConfigWithoutOAuth2IsPassedThrough(t *testing.T) {
-	t.Parallel()
-
-	s := &Store{}
-	s.SetCipher(newTestCipher(t))
-
-	config := &storepb.IdentityProviderConfig{}
-	encrypted, err := s.encryptIdentityProviderConfig(config)
-	require.NoError(t, err)
-	require.Nil(t, encrypted.GetOauth2Config())
-
-	decrypted, err := s.decryptIdentityProviderConfig(config)
-	require.NoError(t, err)
-	require.Nil(t, decrypted.GetOauth2Config())
 }
 
 // An update that names no field must fail before it reaches the database: the

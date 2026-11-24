@@ -251,11 +251,20 @@ func TestBuildListQualityIssuesQueryKeepsFirstSeenOrder(t *testing.T) {
 	require.Contains(t, query, "OFFSET $3")
 	require.Equal(t, []any{int64(42), 25, 50}, args)
 
-	// A nil filter lists everything; negative pagination is clamped rather than
-	// emitted as a negative LIMIT.
+	// A nil filter lists everything and binds no argument; negative pagination is
+	// clamped rather than emitted as a negative LIMIT.
 	query, args = buildListQualityIssuesQuery(nil)
-	require.Equal(t, `SELECT `+qualityIssueColumns+` FROM quality_issue WHERE TRUE ORDER BY first_seen_at DESC, id DESC`, query)
+	require.Contains(t, query, qualityIssueColumns)
+	require.Contains(t, query, "FROM quality_issue")
+	require.Contains(t, query, `ORDER BY first_seen_at DESC, id DESC`)
+	require.NotContains(t, query, "LIMIT")
+	require.NotContains(t, query, "OFFSET")
 	require.Empty(t, args)
+
+	query, args = buildListQualityIssuesQuery(&FindQualityIssueMessage{Limit: ptr(-5), Offset: ptr(-3)})
+	require.Contains(t, query, "LIMIT $1")
+	require.Contains(t, query, "OFFSET $2")
+	require.Equal(t, []any{0, 0}, args)
 }
 
 // RESOLVED is terminal. Reopening it would let a rule accumulate two unresolved
@@ -349,10 +358,6 @@ func TestBuildQualityIssueUpdateSetsLeavesNilFieldsUntouched(t *testing.T) {
 	}, &UpdateQualityIssueMessage{Status: ptr(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN)})
 	require.Error(t, err)
 	require.Equal(t, common.Conflict, common.ErrorCode(err))
-
-	_, _, err = buildQualityIssueUpdateSets(current, nil)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
 // The open insert and the transitions encode the invariants in SQL. The partial

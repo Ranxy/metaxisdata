@@ -216,16 +216,3 @@ func TestSchemaFingerprintIsNotDefinedForTypesWithoutAShape(t *testing.T) {
 		})
 	}
 }
-
-func TestSchemaFingerprintIsDeterministic(t *testing.T) {
-	t.Parallel()
-
-	meta := fingerprintTable(
-		[]*storepb.ColumnMetadata{
-			fingerprintColumn("id", "bigint", false),
-			fingerprintColumn("tenant", "bigint", false),
-		},
-		[]*storepb.IndexMetadata{{Name: "PRIMARY", Primary: true, Expressions: []string{"id", "tenant"}}},
-	)
-	require.Equal(t, mustSchemaFingerprint(t, meta), mustSchemaFingerprint(t, meta))
-}

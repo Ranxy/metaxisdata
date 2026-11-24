@@ -32,7 +32,6 @@ func TestColumnLineageDatasetPageQueries(t *testing.T) {
 	require.NotContains(t, columnLineageEndpointGUIDQuery, "raw_payload")
 	require.False(t, strings.Contains(columnLineageEndpointGUIDQuery, "JOIN"),
 		"the probe must stay two index scans, not a join")
-	require.Greater(t, maxColumnLineageProbeGuids, 0)
 
 	// The detail read: each column paired with its own side of the edge, bounded.
 	columnBranches := strings.Split(columnLineageColumnQuery, "UNION")

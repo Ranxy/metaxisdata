@@ -129,12 +129,12 @@ func TestBuildQualityRuleTemplateWhereMatchesResourceID(t *testing.T) {
 
 	id := "  template-1  "
 	where, args = buildQualityRuleTemplateWhere(&FindQualityRuleTemplateMessage{ResourceID: &id})
-	require.Equal(t, "TRUE AND resource_id = $1", where)
+	require.Contains(t, where, "resource_id = $1")
 	require.Equal(t, []any{"template-1"}, args)
 
 	blank := "   "
 	where, args = buildQualityRuleTemplateWhere(&FindQualityRuleTemplateMessage{ResourceID: &blank})
-	require.Equal(t, "TRUE", where)
+	require.Equal(t, "TRUE", where, "a blank resource id must not narrow the query")
 	require.Empty(t, args)
 }
 

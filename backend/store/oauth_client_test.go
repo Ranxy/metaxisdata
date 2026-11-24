@@ -44,18 +44,6 @@ func TestOAuthRedirectURIsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeOAuthRedirectURIsHandlesNullAndRejectsNonArray(t *testing.T) {
-	t.Parallel()
-
-	// A pre-existing row with a NULL column must not crash the read path.
-	decoded, err := decodeOAuthRedirectURIs(nil)
-	require.NoError(t, err)
-	require.Empty(t, decoded)
-
-	_, err = decodeOAuthRedirectURIs([]byte(`{"uri": "https://example.com"}`))
-	require.Error(t, err)
-}
-
 func TestOAuthClientFromScan(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +71,9 @@ func TestOAuthClientFromScan(t *testing.T) {
 	require.Nil(t, client.LastUsedTime)
 	require.Empty(t, client.RedirectURIs)
 
-	_, err = oauthClientFromScan("client-3", "", []byte(`not json`), "none", created, nil)
+	// The column stores a JSON array. A row that holds another shape must fail the
+	// read instead of silently yielding an empty list, which would drop a
+	// registration's redirect URIs on the way to the authorization check.
+	_, err = oauthClientFromScan("client-3", "", []byte(`{"uri": "https://example.com"}`), "none", created, nil)
 	require.Error(t, err)
 }
