@@ -86,44 +86,38 @@ func TestParallelSafeToolCallsOverlap(t *testing.T) {
 	require.Equal(t, int32(2), running.Load())
 }
 
+// An exclusive call is a barrier: the model's calls are chunked so a read never
+// shares a batch with a write. The event stream shows the chunking because a
+// batch's starts are emitted before its calls run and its ends after.
 func TestExclusiveToolCallsAreBarriers(t *testing.T) {
 	t.Parallel()
 
 	server := batchProvider(t, []llm.ToolCall{
 		call("call_1", "read"), call("call_2", "write"), call("call_3", "read"),
 	})
-	var mu sync.Mutex
-	var order []string
-	record := func(value string) {
-		mu.Lock()
-		defer mu.Unlock()
-		order = append(order, value)
-	}
 	cfg := Config{
 		Provider:             llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
 		MaxTurns:             3,
 		MaxParallelToolCalls: 4,
 		ParallelSafe:         func(name string) bool { return name == "read" },
-		Executor: func(tc llm.ToolCall) ([]llm.ToolResult, error) {
-			record("start:" + tc.ID)
-			record("end:" + tc.ID)
-			return []llm.ToolResult{{Content: "ok"}}, nil
-		},
+		Executor:             func(llm.ToolCall) ([]llm.ToolResult, error) { return []llm.ToolResult{{Content: "ok"}}, nil },
 	}
 	events := collectEvents(t, RunLoop(context.Background(), cfg))
 
-	var ends int
+	var order []string
 	for _, event := range events {
+		if event.Type == EventToolStart {
+			order = append(order, "start:"+event.ToolCall.ID)
+		}
 		if event.Type == EventToolEnd {
-			ends++
+			order = append(order, "end:"+event.ToolCall.ID)
 		}
 	}
-	require.Equal(t, 3, ends)
 	require.Equal(t, []string{
 		"start:call_1", "end:call_1",
 		"start:call_2", "end:call_2",
 		"start:call_3", "end:call_3",
-	}, order, "an exclusive call is a barrier: reads never overlap it")
+	}, order, "an exclusive call is a barrier: reads never share its batch")
 }
 
 func TestMaxParallelToolCallsBoundsConcurrency(t *testing.T) {
@@ -133,6 +127,22 @@ func TestMaxParallelToolCallsBoundsConcurrency(t *testing.T) {
 		call("call_1", "read"), call("call_2", "read"), call("call_3", "read"),
 	})
 	var running, peak atomic.Int32
+	started := make(chan struct{}, 3)
+	release := make(chan struct{})
+	// The first batch fills every slot and blocks there; the gate opens only once
+	// both slots are occupied, so the overlap is the configured bound rather than a
+	// scheduling accident.
+	go func() {
+		for i := 0; i < 2; i++ {
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				close(release)
+				return
+			}
+		}
+		close(release)
+	}()
 	cfg := Config{
 		Provider:             llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
 		MaxTurns:             3,
@@ -146,14 +156,15 @@ func TestMaxParallelToolCallsBoundsConcurrency(t *testing.T) {
 					break
 				}
 			}
-			time.Sleep(20 * time.Millisecond)
+			started <- struct{}{}
+			<-release
 			running.Add(-1)
 			return []llm.ToolResult{{Content: "ok"}}, nil
 		},
 	}
 	collectEvents(t, RunLoop(context.Background(), cfg))
-	require.LessOrEqual(t, peak.Load(), int32(2))
-	require.Greater(t, peak.Load(), int32(1), "the parallel-safe calls should have overlapped")
+	require.LessOrEqual(t, peak.Load(), int32(2), "concurrency must respect MaxParallelToolCalls")
+	require.Equal(t, int32(2), peak.Load(), "the parallel-safe calls should have overlapped")
 }
 
 // A structured tool failure reaches the model with its hint and candidates, not

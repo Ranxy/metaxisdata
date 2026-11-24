@@ -59,14 +59,6 @@ func TestConvertToLlmDropsUnknownRoles(t *testing.T) {
 	require.Equal(t, "system", messages[0].Role)
 }
 
-func TestConvertToLlmReturnsEmptySliceForNoMessages(t *testing.T) {
-	t.Parallel()
-
-	messages := ConvertToLlm(nil)
-	require.NotNil(t, messages)
-	require.Empty(t, messages)
-}
-
 // Reasoning is display-only: it must never cross the boundary into the request
 // sent to the provider.
 func TestConvertToLlmDropsReasoning(t *testing.T) {

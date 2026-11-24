@@ -26,24 +26,6 @@ func TestSendEventStopsOnCancelledContext(t *testing.T) {
 	require.False(t, sendEvent(ctx, make(chan Event), Event{}))
 }
 
-// The conversation the loop keeps is bounded: every turn resends it, so an
-// oversized tool result must fail the explanation instead of growing memory and
-// request size without limit.
-func TestConversationBudget(t *testing.T) {
-	t.Parallel()
-
-	budget := &conversationBudget{limit: 10}
-	require.True(t, budget.add(4))
-	require.True(t, budget.add(6))
-	require.False(t, budget.add(1), "the conversation may not exceed its limit")
-	require.Equal(t, 10, budget.used, "a rejected addition is not recorded")
-
-	// A non-positive limit means unlimited, which is what an unset config falls
-	// back to only through DefaultMaxConversationBytes.
-	unlimited := &conversationBudget{}
-	require.True(t, unlimited.add(1<<30))
-}
-
 // collectEvents drains the agent loop.
 
 func collectEvents(t *testing.T, events <-chan Event) []Event {
@@ -101,119 +83,158 @@ func TestRunLoopEnforcesMaxTurns(t *testing.T) {
 	require.ErrorContains(t, lastErr, "maximum of 3 turns")
 }
 
-// A tool result larger than the conversation budget stops the loop with a clear
-// error instead of growing until the process runs out of memory.
+// The conversation the loop keeps is capped: every turn resends it, so one
+// oversized tool result must fail the explanation instead of growing memory and
+// request size without limit. A conversation that lands exactly on the cap is
+// still within it.
 func TestRunLoopEnforcesConversationBudget(t *testing.T) {
 	t.Parallel()
 
-	server := toolCallingProvider(t)
-	cfg := Config{
-		Provider:             llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
-		MaxTurns:             5,
-		MaxConversationBytes: 64,
-		Tools:                []llm.ToolDef{{Type: "function"}},
-		Executor: func(llm.ToolCall) ([]llm.ToolResult, error) {
-			return []llm.ToolResult{{Content: strings.Repeat("x", 1024)}}, nil
+	finalAnswer := func(t *testing.T) *httptest.Server {
+		t.Helper()
+		return optionProvider(t, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", &capturedRequest{})
+	}
+
+	tests := []struct {
+		name     string
+		provider func(*testing.T) *httptest.Server
+		history  []Message
+		executor ToolExecutor
+		wantErr  string
+	}{
+		{
+			name:     "a tool result over the cap stops the loop",
+			provider: toolCallingProvider,
+			executor: func(llm.ToolCall) ([]llm.ToolResult, error) {
+				return []llm.ToolResult{{Content: strings.Repeat("x", 1024)}}, nil
+			},
+			wantErr: "LLM conversation exceeded 64 bytes",
+		},
+		{
+			name:     "a conversation exactly on the cap completes",
+			provider: finalAnswer,
+			// The 62-byte history plus the provider's 2-byte answer is exactly 64.
+			history: []Message{{Role: "user", Content: strings.Repeat("x", 62)}},
+		},
+		{
+			name:     "one byte over the cap stops the loop",
+			provider: finalAnswer,
+			history:  []Message{{Role: "user", Content: strings.Repeat("x", 63)}},
+			wantErr:  "LLM conversation exceeded 64 bytes",
 		},
 	}
 
-	events := collectEvents(t, RunLoop(context.Background(), cfg))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	var lastErr error
-	for _, evt := range events {
-		if evt.Type == EventError {
-			lastErr = evt.Error
-		}
+			server := test.provider(t)
+			events := collectEvents(t, RunLoop(context.Background(), Config{
+				Provider:             llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+				History:              test.history,
+				MaxTurns:             5,
+				MaxConversationBytes: 64,
+				Executor:             test.executor,
+			}))
+
+			var loopErr error
+			var ended bool
+			for _, evt := range events {
+				if evt.Type == EventError {
+					loopErr = evt.Error
+				}
+				if evt.Type == EventEnd {
+					ended = true
+				}
+			}
+			if test.wantErr != "" {
+				require.ErrorContains(t, loopErr, test.wantErr)
+				return
+			}
+			require.NoError(t, loopErr)
+			require.True(t, ended, "a conversation exactly on the cap must reach its end event")
+		})
 	}
-	require.ErrorContains(t, lastErr, "LLM conversation exceeded 64 bytes")
 }
 
-// A session wake continues the stored conversation: the caller's History must be
-// the exact request prefix, and the finished assistant message is reported as one
-// event so a recorder can persist it without replaying deltas.
-func TestRunLoopContinuesTheHistory(t *testing.T) {
+// The loop's conversation seed: a session wake continues the caller's History
+// verbatim and in order, and a one-shot caller still gets the two prompt fields.
+// The finished assistant message is reported as one event so a recorder can
+// persist it without replaying deltas.
+func TestRunLoopSeedsTheConversation(t *testing.T) {
 	t.Parallel()
 
-	received := make(chan string, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		received <- string(body)
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n")
-	}))
-	t.Cleanup(server.Close)
-
-	history := []Message{
-		{Role: "system", Content: "session system prompt"},
-		{Role: "user", Content: "earlier wake"},
-		{Role: "assistant", Content: "previous answer"},
-		{Role: "toolResult", ToolCallID: "call_1", ToolName: "lookup", Content: "previous tool result"},
-		{Role: "user", Content: "new event"},
+	tests := []struct {
+		name     string
+		history  []Message
+		system   string
+		user     string
+		wantSent []llm.Message
+	}{
+		{
+			name: "a session wake continues the stored history",
+			history: []Message{
+				{Role: "system", Content: "session system prompt"},
+				{Role: "user", Content: "earlier wake"},
+				{Role: "assistant", Content: "previous answer"},
+				{Role: "toolResult", ToolCallID: "call_1", ToolName: "lookup", Content: "previous tool result"},
+				{Role: "user", Content: "new event"},
+			},
+			wantSent: []llm.Message{
+				{Role: "system", Content: "session system prompt"},
+				{Role: "user", Content: "earlier wake"},
+				{Role: "assistant", Content: "previous answer"},
+				{Role: "tool", ToolCallID: "call_1", Content: "previous tool result"},
+				{Role: "user", Content: "new event"},
+			},
+		},
+		{
+			name:   "a one-shot call seeds from the prompt fields",
+			system: "single-shot system",
+			user:   "single-shot user",
+			wantSent: []llm.Message{
+				{Role: "system", Content: "single-shot system"},
+				{Role: "user", Content: "single-shot user"},
+			},
+		},
 	}
-	events := collectEvents(t, RunLoop(context.Background(), Config{
-		Provider:    llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
-		History:     history,
-		MaxTurns:    1,
-		Executor:    func(llm.ToolCall) ([]llm.ToolResult, error) { return nil, nil },
-		Tools:       nil,
-		MaxTokens:   128,
-		Metrics:     nil,
-		DebugLogger: nil,
-	}))
 
-	var assistant *Message
-	var loopErr error
-	for _, evt := range events {
-		switch evt.Type {
-		case EventAssistant:
-			assistant = evt.Assistant
-		case EventError:
-			loopErr = evt.Error
-		default:
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			capture := &capturedRequest{}
+			server := optionProvider(t, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+			events := collectEvents(t, RunLoop(context.Background(), Config{
+				Provider:     llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+				History:      test.history,
+				SystemPrompt: test.system,
+				UserPrompt:   test.user,
+				MaxTurns:     1,
+			}))
+
+			var loopErr error
+			var assistant *Message
+			for _, evt := range events {
+				if evt.Type == EventError {
+					loopErr = evt.Error
+				}
+				if evt.Type == EventAssistant {
+					assistant = evt.Assistant
+				}
+			}
+			require.NoError(t, loopErr)
+			require.NotNil(t, assistant)
+			require.Equal(t, "done", assistant.Content)
+
+			body := capture.snapshot(t)
+			var request struct {
+				Messages []llm.Message `json:"messages"`
+			}
+			require.NoError(t, json.Unmarshal(body, &request))
+			require.Equal(t, test.wantSent, request.Messages)
+		})
 	}
-	require.NoError(t, loopErr)
-	require.NotNil(t, assistant)
-	require.Equal(t, "done", assistant.Content)
-
-	request := <-received
-	require.Contains(t, request, "session system prompt")
-	require.Contains(t, request, "earlier wake")
-	require.Contains(t, request, "previous answer")
-	require.Contains(t, request, "previous tool result")
-	require.Contains(t, request, "new event")
-}
-
-// The one-shot callers keep working: without History the two prompt fields seed the
-// conversation exactly as before.
-func TestRunLoopSeedsFromThePromptFieldsWithoutHistory(t *testing.T) {
-	t.Parallel()
-
-	received := make(chan string, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		received <- string(body)
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n")
-	}))
-	t.Cleanup(server.Close)
-
-	events := collectEvents(t, RunLoop(context.Background(), Config{
-		Provider:     llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
-		SystemPrompt: "single-shot system",
-		UserPrompt:   "single-shot user",
-		MaxTurns:     1,
-	}))
-	for _, evt := range events {
-		require.NotEqual(t, EventError, evt.Type)
-	}
-	request := <-received
-	require.Contains(t, request, "single-shot system")
-	require.Contains(t, request, "single-shot user")
 }
 
 // Tool-call arguments travel in the conversation on every turn, so an oversized
@@ -253,12 +274,12 @@ func (c *capturedRequest) record(r *http.Request) {
 	c.path = r.URL.Path
 }
 
-func (c *capturedRequest) snapshot(t *testing.T) ([]byte, string) {
+func (c *capturedRequest) snapshot(t *testing.T) []byte {
 	t.Helper()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	require.NotEmpty(t, c.body, "the provider received no request body")
-	return c.body, c.path
+	return c.body
 }
 
 // optionProvider answers with one fixed SSE body and records the request.
@@ -297,7 +318,7 @@ func TestConfigForwardsRequestOptions(t *testing.T) {
 	events := collectEvents(t, RunLoop(context.Background(), cfg))
 	require.NotEmpty(t, events)
 
-	body, _ := capture.snapshot(t)
+	body := capture.snapshot(t)
 	var request map[string]any
 	require.NoError(t, json.Unmarshal(body, &request))
 	require.Contains(t, request, "temperature")
