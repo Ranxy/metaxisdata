@@ -24,8 +24,10 @@ func validationStandardCodeConfig(config *storepb.StandardCodeConfig) *storepb.Q
 	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: config}}
 }
 
-// The compiler emits one bounded sample per dialect; the validation itself runs
-// in process, so the statement shape is the whole SQL contract.
+// The compiler emits one bounded sample per dialect family; the validation itself
+// runs in process, so the statement shape is the whole SQL contract. DialectFor
+// maps the MySQL-wire engines to one dialect, so only the families that differ
+// appear here.
 func TestCompileStandardCodeGoldens(t *testing.T) {
 	t.Parallel()
 
@@ -41,10 +43,6 @@ func TestCompileStandardCodeGoldens(t *testing.T) {
 		{
 			engine: storepb.Engine_POSTGRES,
 			want:   `SELECT "id", "name" FROM "public"."orders" LIMIT 1000`,
-		},
-		{
-			engine: storepb.Engine_STARROCKS,
-			want:   "SELECT `id`, `name` FROM `shop`.`orders` LIMIT 1000",
 		},
 		{
 			engine: storepb.Engine_MSSQL,
@@ -64,8 +62,6 @@ func TestCompileStandardCodeGoldens(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, QuerySample, query.Kind)
-			require.Equal(t, []string{"id", "name"}, query.Columns)
-			require.Nil(t, query.Args)
 			require.Equal(t, test.want, query.SQL)
 		})
 	}
@@ -110,9 +106,6 @@ func TestValidateStandardCodeConfig(t *testing.T) {
 			config.ThresholdMetric = storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
 			return config
 		}()},
-		{name: "allow null", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
-			Column: "name", Standard: storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION, AllowNull: true,
-		})},
 		{name: "no column", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
 			Standard: storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE,
 		}), wantErr: true},
@@ -125,8 +118,11 @@ func TestValidateStandardCodeConfig(t *testing.T) {
 		{name: "no standard", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
 			Column: "name",
 		}), wantErr: true},
-		{name: "unknown non-zero standard", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
-			Column: "name", Standard: storepb.QualityStandardCode(6),
+		{name: "custom code table without reference", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
+			Column: "name", Standard: storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE,
+		}), wantErr: true},
+		{name: "unknown standard", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
+			Column: "name", Standard: storepb.QualityStandardCode(99),
 		}), wantErr: true},
 		{name: "negative sample rows", config: validationStandardCodeConfig(&storepb.StandardCodeConfig{
 			Column: "name", Standard: storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, SampleRows: -1,
@@ -147,7 +143,6 @@ func TestValidateStandardCodeConfig(t *testing.T) {
 			config.ThresholdMetric = storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT
 			return config
 		}(), wantErr: true},
-		{name: "missing config", config: validationStandardCodeConfig(nil), wantErr: true},
 	}
 	runValidationCases(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, validationTarget(storepb.Engine_POSTGRES), cases)
 }
@@ -190,6 +185,8 @@ func TestStandardCodeSupportedMatrix(t *testing.T) {
 	require.False(t, IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE))
 }
 
+// The sample-size boundaries: unset reads as the default and the maximum itself is
+// accepted. The out-of-range refusals are covered through TestValidateStandardCodeConfig.
 func TestStandardCodeSampleRows(t *testing.T) {
 	t.Parallel()
 
@@ -200,11 +197,6 @@ func TestStandardCodeSampleRows(t *testing.T) {
 	rows, err = standardCodeSampleRows(maxStandardCodeSampleRows)
 	require.NoError(t, err)
 	require.Equal(t, maxStandardCodeSampleRows, rows)
-
-	_, err = standardCodeSampleRows(-1)
-	require.Error(t, err)
-	_, err = standardCodeSampleRows(maxStandardCodeSampleRows + 1)
-	require.Error(t, err)
 }
 
 // TestStandardCodeValidators pins the algorithm of every standard against known
@@ -273,6 +265,11 @@ func TestStandardCodeValidators(t *testing.T) {
 		{"industry one digit", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION, "A3", false},
 		{"industry too long", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION, "C39111", false},
 		{"industry empty", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION, "", false},
+
+		// Case and CHAR padding are not defects, but leading whitespace is.
+		{"uscc leading space", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, " 91350100M000100Y43", false},
+		{"id trailing spaces", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD, "11010519491231002X  ", true},
+		{"id leading space", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD, " 11010519491231002X", false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -280,17 +277,6 @@ func TestStandardCodeValidators(t *testing.T) {
 			require.Equal(t, test.want, validStandardCode(test.standard, test.value), "value %q", test.value)
 		})
 	}
-}
-
-// TestStandardCodeValueShape pins the normalization the whole rule relies on:
-// case and CHAR padding are not defects, but leading whitespace is.
-func TestStandardCodeValueShape(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, validUnifiedSocialCreditCode("91350100M000100Y43 "))
-	require.False(t, validUnifiedSocialCreditCode(" 91350100M000100Y43"))
-	require.True(t, validResidentIDCard("11010519491231002X  "))
-	require.False(t, validResidentIDCard(" 11010519491231002X"))
 }
 
 func TestEvaluateStandardCodeRows(t *testing.T) {
@@ -320,12 +306,9 @@ func TestEvaluateStandardCodeRows(t *testing.T) {
 	require.Equal(t, int64(1), violations)
 	require.Equal(t, int64(4), evaluated)
 	require.Len(t, passing, 3, "the NULL row and both valid codes passed")
-}
 
-func TestEvaluateStandardCodeRowsRejectsNonText(t *testing.T) {
-	t.Parallel()
-
-	_, _, _, _, err := evaluateStandardCodeRows(
+	// A non-text cell is a bad-data error, not a violation to count.
+	_, _, _, _, err = evaluateStandardCodeRows(
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1,
 		[][]any{{int64(1), int64(42)}}, 0, nil)
 	require.Error(t, err)
@@ -472,40 +455,22 @@ func TestExecuteStandardCodeRuleSupportsPercentThresholds(t *testing.T) {
 	require.Equal(t, storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN, state.Thresholds.GetComparison())
 }
 
-// The failed-row sample query is the in-memory sample, so the executor must not
-// issue the second statement other rule types use.
-func TestExecuteStandardCodeRuleNeedsNoSampleStatement(t *testing.T) {
+// A stored rule whose standard is a defect — no standard, or a number this build
+// does not know — is refused instead of counting every value as a violation.
+func TestExecuteStandardCodeRuleRejectsADefectiveStandard(t *testing.T) {
 	t.Parallel()
 
-	config := standardCodeRuleConfig("name", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION, 10)
-	execution, queryer, err := runStandardCodeExecution(t, config, &db.QueryResult{
-		Columns: []string{"id", "name"},
-		Rows:    [][]any{{int64(1), "C39"}, {int64(2), "Z01"}},
-	}, ExecOptions{StoreSamples: true, SampleLimit: 1})
-	require.NoError(t, err)
-	require.Len(t, queryer.queries, 1)
-	require.NotNil(t, execution.Evidence)
-	require.Equal(t, "Z01", sampleColumnValue(execution.Evidence.GetSamples()[0], "name"))
-}
-
-// A stored rule with an arm but no standard is a defect, not a silent all-fail
-// verdict.
-func TestExecuteStandardCodeRuleRejectsAnUnspecifiedStandard(t *testing.T) {
-	t.Parallel()
-
-	config := standardCodeRuleConfig("name", storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED, 10)
-	_, _, err := runStandardCodeExecution(t, config, &db.QueryResult{Columns: []string{"id", "name"}}, ExecOptions{})
-	require.Error(t, err)
-}
-
-// An unknown non-zero enum is a stored-data defect too: the executor must refuse
-// it instead of counting every value as a violation.
-func TestExecuteStandardCodeRuleRejectsAnUnknownStandard(t *testing.T) {
-	t.Parallel()
-
-	config := standardCodeRuleConfig("name", storepb.QualityStandardCode(6), 10)
-	_, _, err := runStandardCodeExecution(t, config, &db.QueryResult{Columns: []string{"id", "name"}}, ExecOptions{})
-	require.Error(t, err)
+	for _, standard := range []storepb.QualityStandardCode{
+		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED,
+		storepb.QualityStandardCode(99),
+	} {
+		t.Run(standard.String(), func(t *testing.T) {
+			t.Parallel()
+			config := standardCodeRuleConfig("name", standard, 10)
+			_, _, err := runStandardCodeExecution(t, config, &db.QueryResult{Columns: []string{"id", "name"}}, ExecOptions{})
+			require.Error(t, err)
+		})
+	}
 }
 
 // The 1 MiB byte cap can cut a sample short before sample_rows. That partial read

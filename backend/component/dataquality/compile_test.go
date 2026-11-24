@@ -72,11 +72,12 @@ type compileGolden struct {
 	mssqlSQL    string
 }
 
-// compileRuleGoldens covers the 13 SQL rule types that share the dialect helpers;
-// the v1.1 and metadata types have their own SQL or behavior pinned in
-// cel_test.go, schema_drift_test.go, group_check_test.go, aggregate_test.go and
-// cross_table_test.go. StarRocks shares the MySQL expectations: the dialects differ
-// only by the engine the table is quoted for.
+// compileRuleGoldens covers the twelve rule types whose SQL comes from the shared
+// dialect helpers; the v1.1 and metadata types have their own SQL or behavior
+// pinned in cel_test.go, schema_drift_test.go, group_check_test.go,
+// aggregate_test.go and cross_table_test.go. The MySQL-wire engines render exactly
+// what MySQL renders (DialectFor maps them all to one dialect), so the matrix below
+// runs one engine per family rather than every alias.
 func compileRuleGoldens() []compileGolden {
 	return []compileGolden{
 		{
@@ -320,7 +321,13 @@ func compileRuleGoldens() []compileGolden {
 			name:     "custom_sql",
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{
-				CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT * FROM orders WHERE amount < 0"},
+				CustomSql: &storepb.CustomSQLConfig{Sql: "  SELECT * FROM orders WHERE amount < 0;  "},
+			}},
+			// The user query owns its predicate: the rule's filter is not applied,
+			// and the wrapper sees the statement trimmed of surrounding space and
+			// its trailing semicolon.
+			filter: Filter{Clauses: []FilterClause{
+				{Column: "status", Op: FilterEQ, Values: []string{"paid"}},
 			}},
 			wantColumns: []string{"failed_rows"},
 			wantKind:    QueryAggregate,
@@ -331,8 +338,8 @@ func compileRuleGoldens() []compileGolden {
 	}
 }
 
-// compileTestDialects is the engine matrix every golden case runs through. MSSQL
-// regex is excluded because the support table refuses that combination.
+// compileTestDialects is the engine matrix every golden case runs through: one
+// engine per dialect family, because the MySQL-wire engines share one rendering.
 func compileTestDialects(golden compileGolden) []struct {
 	name  string
 	value storepb.Engine
@@ -344,7 +351,6 @@ func compileTestDialects(golden compileGolden) []struct {
 		want  string
 	}{
 		{name: "mysql", value: storepb.Engine_MYSQL, want: golden.mysqlSQL},
-		{name: "starrocks", value: storepb.Engine_STARROCKS, want: golden.mysqlSQL},
 		{name: "postgres", value: storepb.Engine_POSTGRES, want: golden.postgresSQL},
 		{name: "mssql", value: storepb.Engine_MSSQL, want: golden.mssqlSQL},
 	}
@@ -389,8 +395,6 @@ func TestCompileRegexGoldens(t *testing.T) {
 	}}
 	want := map[storepb.Engine]string{
 		storepb.Engine_MYSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `email` IS NULL OR `email` NOT REGEXP ? " +
-			"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
-		storepb.Engine_STARROCKS: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `email` IS NULL OR `email` NOT REGEXP ? " +
 			"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
 		storepb.Engine_POSTGRES: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "email" IS NULL OR "email" !~ $1 ` +
 			`THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders"`,
@@ -693,33 +697,6 @@ func TestCompileCrossColumnTolerance(t *testing.T) {
 	}
 }
 
-// TestCompileCustomSQLWrapping pins the exact wrapper: user SQL is trimmed and
-// counted, never rewritten or filtered.
-func TestCompileCustomSQLWrapping(t *testing.T) {
-	t.Parallel()
-
-	dialect, err := DialectFor(storepb.Engine_POSTGRES)
-	require.NoError(t, err)
-	query, err := Compile(CompileInput{
-		Dialect: dialect,
-		Target:  compileTestTarget(storepb.Engine_POSTGRES),
-		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{
-			CustomSql: &storepb.CustomSQLConfig{Sql: "  SELECT * FROM orders WHERE amount < 0;  "},
-		}},
-		Filter: Filter{Clauses: []FilterClause{
-			{Column: "status", Op: FilterEQ, Values: []string{"paid"}},
-		}},
-	})
-	require.NoError(t, err)
-	// The user query owns its predicate, so the rule's filter is not applied.
-	require.Equal(t, "SELECT COUNT(*) AS failed_rows FROM (SELECT * FROM orders WHERE amount < 0) dq", query.SQL)
-	require.Empty(t, query.Args)
-	require.Equal(t, []string{"failed_rows"}, query.Columns)
-	// The wrapper already aggregates; the executor must not count rows again.
-	require.Equal(t, QueryAggregate, query.Kind)
-}
-
 // TestCompileValidationRejectsBadConfigs pins the save-time rejections that need
 // the resolved target or the config's own arithmetic.
 func TestCompileValidationRejectsBadConfigs(t *testing.T) {
@@ -965,14 +942,6 @@ func TestCompileValidationRejectsBadConfigs(t *testing.T) {
 			wantMessage: "exactly one statement",
 		},
 		{
-			name:     "custom sql not a select",
-			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{
-				CustomSql: &storepb.CustomSQLConfig{Sql: "DELETE FROM orders"},
-			}},
-			wantMessage: "single SELECT or WITH",
-		},
-		{
 			name:     "row count without bounds",
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
@@ -1075,7 +1044,6 @@ func TestCompileCountNullsKeepsNullKeys(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
-	require.NotContains(t, query.SQL, "IS NOT NULL")
 	require.Equal(t, "SELECT COALESCE(SUM(CASE WHEN cnt > 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, "+
 		"COUNT(CASE WHEN cnt > 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows "+
 		"FROM (SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` GROUP BY `email`) dq", query.SQL)

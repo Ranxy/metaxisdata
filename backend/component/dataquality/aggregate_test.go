@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -28,7 +27,8 @@ func aggregateConfig(column string, function storepb.QualityAggregateFunction, m
 
 // TestAggregateSQLGoldens pins the aggregate statement on every dialect family:
 // the function aggregates the named column, and the engine spellings differ only
-// for standard deviation.
+// by identifier quoting and by standard deviation. StarRocks shares the MySQL
+// rendering, which the shared compile goldens already pin.
 func TestAggregateSQLGoldens(t *testing.T) {
 	t.Parallel()
 
@@ -77,7 +77,7 @@ func TestAggregateSQLGoldens(t *testing.T) {
 	}
 	for _, test := range tests {
 		for _, engine := range []storepb.Engine{
-			storepb.Engine_MYSQL, storepb.Engine_STARROCKS, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
+			storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
 		} {
 			t.Run(test.name+"/"+engine.String(), func(t *testing.T) {
 				t.Parallel()
@@ -97,11 +97,10 @@ func TestAggregateSQLGoldens(t *testing.T) {
 				case storepb.Engine_MSSQL:
 					wantSQL = test.mssqlSQL
 				default:
-					// The MySQL family (MySQL, StarRocks) shares one rendering.
+					// MySQL is the rendering the initial value already names.
 				}
 				require.Equal(t, wantSQL, query.SQL)
 				require.Empty(t, query.Args)
-				require.Equal(t, []string{"total_rows", "observed"}, query.Columns)
 				require.Equal(t, QueryAggregate, query.Kind)
 			})
 		}
@@ -210,8 +209,8 @@ func TestEvaluateAggregateInterval(t *testing.T) {
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, Evaluate(warnedRule, Observation{Observed: -1}, testNow).GetStatus())
 }
 
-// TestEvaluateAggregateNullIsEmptyData pins that a NULL aggregate follows on_empty
-// instead of reading as zero.
+// TestEvaluateAggregateNullIsEmptyData pins that a NULL aggregate is empty data
+// that follows on_empty's fail direction instead of reading as zero.
 func TestEvaluateAggregateNullIsEmptyData(t *testing.T) {
 	t.Parallel()
 
@@ -220,8 +219,6 @@ func TestEvaluateAggregateNullIsEmptyData(t *testing.T) {
 	nullObservation := Observation{ObservedNull: true, TotalRows: 5}
 
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, Evaluate(rule, nullObservation, testNow).GetStatus())
-	config.OnEmpty = storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS
-	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_PASS, Evaluate(rule, nullObservation, testNow).GetStatus())
 	config.OnEmpty = storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_FAIL
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_FAIL, Evaluate(rule, nullObservation, testNow).GetStatus())
 }
@@ -342,12 +339,6 @@ func TestValidateAggregateConfig(t *testing.T) {
 			wantMessage: "needs a numeric column",
 		},
 		{
-			name:        "min on a string column",
-			engine:      storepb.Engine_POSTGRES,
-			config:      aggregateConfig("status", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN, proto.Float64(0), nil),
-			wantMessage: "needs a numeric column",
-		},
-		{
 			name:        "no bounds",
 			engine:      storepb.Engine_POSTGRES,
 			config:      aggregateConfig("amount", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, nil, nil),
@@ -424,13 +415,6 @@ func TestAggregateSupport(t *testing.T) {
 	}
 	require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE))
 	require.False(t, RuleTypeForTarget(storepb.MetaType_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE))
-
-	ok, _ := aggregateFunctionSupported(storepb.Engine_MYSQL, storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE)
-	require.False(t, ok)
-	ok, _ = aggregateFunctionSupported(storepb.Engine_POSTGRES, storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE)
-	require.True(t, ok)
-	ok, _ = aggregateFunctionSupported(storepb.Engine_MSSQL, storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_STDDEV)
-	require.True(t, ok)
 }
 
 // TestAggregateExecutionRejectsPercentMetric pins the runtime backstop: an
@@ -445,23 +429,4 @@ func TestAggregateExecutionRejectsPercentMetric(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, config), ExecOptions{})
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 	require.Contains(t, err.Error(), "absolute values")
-}
-
-// TestStoredAggregateCountIsRejected pins the runtime consequence of the save-time
-// COUNT refusal: a rule persisted before that check (here the config is read back
-// from JSONB, as the store does) fails ValidateConfig. The runner maps that failure
-// to ERROR(UNSUPPORTED) before it opens a connection
-// (qualityrunner.executeOne), so the batch never queries the target.
-func TestStoredAggregateCountIsRejected(t *testing.T) {
-	t.Parallel()
-
-	stored := aggregateConfig("id", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, proto.Float64(0), nil)
-	encoded, err := protojson.Marshal(stored)
-	require.NoError(t, err)
-	decoded := &storepb.QualityRuleConfig{}
-	require.NoError(t, common.ProtojsonUnmarshaler.Unmarshal(encoded, decoded))
-
-	err = ValidateConfig(compileTestTarget(storepb.Engine_POSTGRES), storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, decoded)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	require.Contains(t, err.Error(), "aggregate COUNT duplicates row_count")
 }

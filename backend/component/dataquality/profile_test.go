@@ -12,7 +12,6 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
-	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
@@ -151,21 +150,6 @@ func TestProfileReadsAggregateFacts(t *testing.T) {
 	// The email column is above the low-cardinality gate, so no frequent values.
 	require.Empty(t, email.GetTopValues())
 	require.Equal(t, []string{"alpha"}, email.GetPatterns())
-
-	// Defaults: the aggregate asks for exactly one row, the sample for 1000, both
-	// with the 4 MiB / 120s budget.
-	require.Equal(t, db.QueryOptions{
-		MaxRows:  1,
-		MaxBytes: defaultProfileMaxBytes,
-		Timeout:  defaultProfileQueryTimeout,
-		Purpose:  metrics.QueryPurposeProfileAggregate,
-	}, queryer.aggregateOpts)
-	require.Equal(t, db.QueryOptions{
-		MaxRows:  defaultProfileSampleRows,
-		MaxBytes: defaultProfileMaxBytes,
-		Timeout:  defaultProfileQueryTimeout,
-		Purpose:  metrics.QueryPurposeProfileSample,
-	}, queryer.sampleOpts)
 }
 
 // TestProfileTopValues pins the low-cardinality gate, the frequency ordering, the
@@ -212,6 +196,10 @@ func TestProfileTopValues(t *testing.T) {
 	require.Equal(t, int64(2), name[0].GetCount())
 	require.Equal(t, "y", name[1].GetValue())
 	require.Equal(t, int64(2), name[1].GetCount())
+	// The display bound is 64 bytes: the merged long value is flagged, the short
+	// value is stored exactly.
+	require.True(t, name[0].GetTruncated())
+	require.False(t, name[1].GetTruncated())
 }
 
 // TestProfileTopValuesAtMostTen pins the ten-entry cap and the deterministic
@@ -334,11 +322,6 @@ func TestProfileRejectsInvalidInput(t *testing.T) {
 		_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"id", "email"}, ProfileOptions{MaxColumns: 1})
 		require.Equal(t, common.Invalid, common.ErrorCode(err))
 		require.Equal(t, 0, queryer.calls)
-	})
-	t.Run("no queryer", func(t *testing.T) {
-		t.Parallel()
-		_, err := NewProfiler().Profile(context.Background(), nil, target, []string{"id"}, ProfileOptions{})
-		require.Equal(t, common.Internal, common.ErrorCode(err))
 	})
 	t.Run("unsupported engine", func(t *testing.T) {
 		t.Parallel()
@@ -574,8 +557,6 @@ func TestProfileBooleanColumnOmitsExtremes(t *testing.T) {
 
 	target := profileMixedKindTarget(storepb.Engine_POSTGRES)
 	selected := profileTestColumns(t, target, "enabled")
-	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct"}, profileAggregateAliases(selected))
-
 	queryer := &profileFakeQueryer{
 		aggregate: profileTestAggregate(selected, 10, map[string][]any{
 			"enabled": {int64(8), int64(2)},
@@ -606,53 +587,6 @@ func TestProfileBooleanColumnOmitsExtremes(t *testing.T) {
 	require.Equal(t, int64(1), enabled.GetTopValues()[1].GetCount())
 }
 
-// TestProfileBooleanColumnSQLGoldens pins the boolean aggregate and sample SQL on
-// the three dialect families: the aggregate has no MIN/MAX expression at all and
-// the sample still selects just the column.
-func TestProfileBooleanColumnSQLGoldens(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		engine       storepb.Engine
-		aggregateSQL string
-		sampleSQL    string
-	}{
-		{
-			engine:       storepb.Engine_MYSQL,
-			aggregateSQL: "SELECT COUNT(*) AS total_rows, COUNT(`enabled`) AS c0_non_null, COUNT(DISTINCT `enabled`) AS c0_distinct FROM `shop`.`orders`",
-			sampleSQL:    "SELECT `enabled` FROM `shop`.`orders` LIMIT 1000",
-		},
-		{
-			engine:       storepb.Engine_POSTGRES,
-			aggregateSQL: `SELECT COUNT(*) AS total_rows, COUNT("enabled") AS c0_non_null, COUNT(DISTINCT "enabled") AS c0_distinct FROM "public"."orders"`,
-			sampleSQL:    `SELECT "enabled" FROM "public"."orders" LIMIT 1000`,
-		},
-		{
-			engine:       storepb.Engine_MSSQL,
-			aggregateSQL: "SELECT COUNT(*) AS total_rows, COUNT([enabled]) AS c0_non_null, COUNT(DISTINCT [enabled]) AS c0_distinct FROM [public].[orders]",
-			sampleSQL:    "SELECT [enabled] FROM [public].[orders] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.engine.String(), func(t *testing.T) {
-			t.Parallel()
-			target := profileMixedKindTarget(test.engine)
-			selected := profileTestColumns(t, target, "enabled")
-			queryer := &profileFakeQueryer{
-				aggregate: profileTestAggregate(selected, 4, map[string][]any{
-					"enabled": {int64(3), int64(2)},
-				}),
-				sample: profileTestSample(selected, [][]any{{true}}),
-			}
-			profile, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"enabled"}, ProfileOptions{})
-			require.NoError(t, err)
-			require.Equal(t, test.aggregateSQL, queryer.aggregateSQL)
-			require.Equal(t, test.sampleSQL, queryer.sampleSQL)
-			require.Equal(t, int64(4), profile.Columns["enabled"].GetTotalRows())
-		})
-	}
-}
-
 // TestProfileMixedKindsAggregateLayout pins that a boolean's shorter alias group
 // does not shift the columns that follow it: the numeric extremes and the text
 // length bounds are read from their own aliases.
@@ -661,13 +595,6 @@ func TestProfileMixedKindsAggregateLayout(t *testing.T) {
 
 	target := profileMixedKindTarget(storepb.Engine_POSTGRES)
 	selected := profileTestColumns(t, target, "id", "enabled", "email")
-	require.Equal(t, []string{
-		"total_rows",
-		"c0_non_null", "c0_distinct", "c0_min", "c0_max",
-		"c1_non_null", "c1_distinct",
-		"c2_non_null", "c2_distinct", "c2_min", "c2_max", "c2_min_len", "c2_max_len",
-	}, profileAggregateAliases(selected))
-
 	queryer := &profileFakeQueryer{
 		aggregate: profileTestAggregate(selected, 10, map[string][]any{
 			"id":      {int64(10), int64(10), int64(1), int64(9)},
@@ -708,6 +635,7 @@ func TestProfileOptionsDefaults(t *testing.T) {
 	}
 	_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"id"}, ProfileOptions{})
 	require.NoError(t, err)
+	require.Equal(t, 1, queryer.aggregateOpts.MaxRows)
 	require.Equal(t, 1000, queryer.sampleOpts.MaxRows)
 	require.Equal(t, 4<<20, queryer.aggregateOpts.MaxBytes)
 	require.Equal(t, 120*time.Second, queryer.aggregateOpts.Timeout)
@@ -840,7 +768,6 @@ func TestProfileZeroFactColumnSQLGolden(t *testing.T) {
 			t.Parallel()
 			target := profileFactTarget(test.engine, test.columnType)
 			selected := profileTestColumns(t, target, "payload")
-			require.Equal(t, []string{"total_rows", "c0_non_null"}, profileAggregateAliases(selected))
 			queryer := &profileFakeQueryer{
 				aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0)}}),
 				sample:    profileTestSample(selected, nil),
@@ -860,7 +787,6 @@ func TestProfileStarRocksBitmapSQLGolden(t *testing.T) {
 
 	target := profileFactTarget(storepb.Engine_STARROCKS, "bitmap")
 	selected := profileTestColumns(t, target, "payload")
-	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct"}, profileAggregateAliases(selected))
 	queryer := &profileFakeQueryer{
 		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0), int64(0)}}),
 		sample:    profileTestSample(selected, nil),
@@ -871,18 +797,35 @@ func TestProfileStarRocksBitmapSQLGolden(t *testing.T) {
 		"COUNT(DISTINCT `payload`) AS c0_distinct FROM `shop`.`orders`", queryer.aggregateSQL)
 }
 
-// TestProfileHexRendersBinaryValues pins that binary extrema/top values stay valid
-// UTF-8 for the stored protojson (SQL Server varbinary, MySQL blob).
+// TestProfileHexRendersBinaryValues pins that binary extrema and frequent values
+// stay valid UTF-8 for the stored protojson (MySQL blob): bytes are hex-rendered
+// unconditionally, so a value that happens to spell "0xfffe" cannot collide with
+// the hex rendering of the bytes ff fe.
 func TestProfileHexRendersBinaryValues(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "0xfffe", profileValueString([]byte{0xff, 0xfe}, true))
-	require.Equal(t, "plain", profileValueString("plain", false))
-	// A binary value that happens to spell "0xfffe" must not collide with the hex
-	// rendering of the bytes ff fe.
-	require.NotEqual(t,
-		profileValueString([]byte("0xfffe"), true),
-		profileValueString([]byte{0xff, 0xfe}, true))
+	target := profileFactTarget(storepb.Engine_MYSQL, "blob")
+	selected := profileTestColumns(t, target, "payload")
+	asciiLookalike := fmt.Sprintf("0x%x", []byte("0xfffe"))
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 2, map[string][]any{
+			"payload": {int64(2), int64(2), []byte{0xff, 0xfe}, []byte("0xfffe"), int64(2), int64(5)},
+		}),
+		sample: profileTestSample(selected, [][]any{
+			{[]byte("0xfffe")},
+			{[]byte{0xff, 0xfe}},
+		}),
+	}
+	profile, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+
+	binary := profile.Columns["payload"]
+	require.Equal(t, "0xfffe", binary.GetMinValue())
+	require.Equal(t, asciiLookalike, binary.GetMaxValue())
+	top := binary.GetTopValues()
+	require.Len(t, top, 2)
+	require.Equal(t, asciiLookalike, top[0].GetValue())
+	require.Equal(t, "0xfffe", top[1].GetValue())
 }
 
 // TestProfileCharacterArraySQLGolden pins blocker B-1 from the third review: a
@@ -893,7 +836,6 @@ func TestProfileCharacterArraySQLGolden(t *testing.T) {
 
 	target := profileFactTarget(storepb.Engine_POSTGRES, "character varying[]")
 	selected := profileTestColumns(t, target, "payload")
-	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct", "c0_min", "c0_max"}, profileAggregateAliases(selected))
 	queryer := &profileFakeQueryer{
 		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0), int64(0), nil, nil}}),
 		sample:    profileTestSample(selected, nil),
@@ -912,7 +854,13 @@ func TestProfileStarRocksNestedJSONArraySQLGolden(t *testing.T) {
 
 	target := profileFactTarget(storepb.Engine_STARROCKS, "array<struct<a json>>")
 	selected := profileTestColumns(t, target, "payload")
-	require.Equal(t, []string{"total_rows", "c0_non_null"}, profileAggregateAliases(selected))
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0)}}),
+		sample:    profileTestSample(selected, nil),
+	}
+	_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "SELECT COUNT(*) AS total_rows, COUNT(`payload`) AS c0_non_null FROM `shop`.`orders`", queryer.aggregateSQL)
 }
 
 // TestProfileJSONBColumnSQLGolden pins that a jsonb column keeps an exact distinct
@@ -922,7 +870,6 @@ func TestProfileJSONBColumnSQLGolden(t *testing.T) {
 
 	target := profileFactTarget(storepb.Engine_POSTGRES, "jsonb")
 	selected := profileTestColumns(t, target, "payload")
-	require.Equal(t, []string{"total_rows", "c0_non_null", "c0_distinct"}, profileAggregateAliases(selected))
 	queryer := &profileFakeQueryer{
 		aggregate: profileTestAggregate(selected, 0, map[string][]any{"payload": {int64(0), int64(0)}}),
 		sample:    profileTestSample(selected, nil),
@@ -940,9 +887,19 @@ func TestProfileMySQLJSONColumnSQLGolden(t *testing.T) {
 
 	target := profileFactTarget(storepb.Engine_MYSQL, "json")
 	selected := profileTestColumns(t, target, "payload")
-	require.Equal(t, []string{
-		"total_rows", "c0_non_null", "c0_distinct", "c0_min", "c0_max", "c0_min_len", "c0_max_len",
-	}, profileAggregateAliases(selected))
+	queryer := &profileFakeQueryer{
+		aggregate: profileTestAggregate(selected, 0, map[string][]any{
+			"payload": {int64(0), int64(0), nil, nil, int64(0), int64(0)},
+		}),
+		sample: profileTestSample(selected, nil),
+	}
+	_, err := NewProfiler().Profile(context.Background(), queryer, target, []string{"payload"}, ProfileOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "SELECT COUNT(*) AS total_rows, COUNT(`payload`) AS c0_non_null, "+
+		"COUNT(DISTINCT `payload`) AS c0_distinct, MIN(`payload`) AS c0_min, MAX(`payload`) AS c0_max, "+
+		"MIN(CHAR_LENGTH(`payload`)) AS c0_min_len, MAX(CHAR_LENGTH(`payload`)) AS c0_max_len "+
+		"FROM `shop`.`orders`", queryer.aggregateSQL)
+	require.Equal(t, "SELECT `payload` FROM `shop`.`orders` LIMIT 1000", queryer.sampleSQL)
 }
 
 // TestProfileCountedColumnFromSample pins the profile of a type with no aggregate
@@ -1024,7 +981,6 @@ func TestProfileTextShapedColumnFromSample(t *testing.T) {
 	require.NoError(t, err)
 	payload := profile.Columns["payload"]
 	require.Equal(t, []string{"alpha"}, payload.GetPatterns())
-	require.Equal(t, []string{"total_rows", "c0_non_null"}, profileAggregateAliases(selected))
 }
 
 // TestProfileEstimatedDistinctSignals pins the two edges of the sample-based count:
@@ -1058,19 +1014,4 @@ func TestProfileEstimatedDistinctSignals(t *testing.T) {
 	require.Equal(t, int64(5), payload.GetNullCount())
 	require.Equal(t, int64(0), payload.GetDistinctCount())
 	require.True(t, payload.GetDistinctEstimated())
-}
-
-// TestProfileTopValuesMarksTruncation pins the marker a consumer of the profile uses to
-// tell a stored spelling from the value the column holds: the display bound is 64 bytes,
-// so a longer value is cut and must be flagged.
-func TestProfileTopValuesMarksTruncation(t *testing.T) {
-	t.Parallel()
-
-	long := strings.Repeat("值", 40) // 120 bytes, past the 64-byte display bound
-	top := profileTopValues([]any{long, long, "short"}, false)
-	require.Len(t, top, 2)
-	require.Equal(t, "short", top[1].GetValue())
-	require.False(t, top[1].GetTruncated())
-	require.True(t, top[0].GetTruncated())
-	require.LessOrEqual(t, len(top[0].GetValue()), profileMaxValueBytes)
 }

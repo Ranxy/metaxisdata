@@ -11,39 +11,31 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
-// passingSampleFor builds the passing-row statement of one rule type, failing the
-// test when the type has none.
-func passingSampleFor(t *testing.T, ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig, engine storepb.Engine) CompiledQuery {
+// passingRowsFor compiles one rule type's passing-row statement through the same
+// runner path the executor uses, failing the test when the type keeps none.
+func passingRowsFor(t *testing.T, ruleType storepb.QualityRuleType, config *storepb.QualityRuleConfig, engine storepb.Engine) *CompiledQuery {
 	t.Helper()
-	spec, ok := ruleTypeSpecFor(ruleType)
-	require.True(t, ok)
-	require.NotNil(t, spec.Passing, "%s has no passing-row statement", ruleType)
-	dialect, err := DialectFor(engine)
-	require.NoError(t, err)
-	query, err := spec.Passing(CompileInput{
-		Dialect: dialect,
+	execution := &Execution{Observation: Observation{FailedRows: 1}}
+	require.NoError(t, compilePassingRows(CompileInput{
+		Dialect: mustDialect(t, engine),
 		Target:  compileTestTarget(engine),
 		Type:    ruleType,
 		Config:  config,
-	}, 20)
-	require.NoError(t, err)
-	return query
+	}, execution, ExecOptions{SampleLimit: 20}))
+	require.NotNil(t, execution.PassingRows, "%s keeps no passing rows", ruleType)
+	return execution.PassingRows
 }
 
-// TestCompilePassingRowsCoversEveryTypeWithOne pins that the passing statement is
-// the failing predicate negated for the single-relation row checks: the two
-// statements read the same relation with complementary WHERE clauses.
-func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
+// TestCompilePassingRowsNegatesTheFailingPredicate pins that a passing row is the
+// one the failing predicate does not match: the statement reads the same relation
+// and columns, and only the predicate's polarity differs.
+func TestCompilePassingRowsNegatesTheFailingPredicate(t *testing.T) {
 	t.Parallel()
 
-	dialect, err := DialectFor(storepb.Engine_MYSQL)
-	require.NoError(t, err)
-	target := compileTestTarget(storepb.Engine_MYSQL)
 	tests := []struct {
 		name     string
 		ruleType storepb.QualityRuleType
 		config   *storepb.QualityRuleConfig
-		failing  string
 		passing  string
 	}{
 		{
@@ -52,7 +44,6 @@ func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
 				NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullCount: int64Ptr(0)},
 			}},
-			failing: "SELECT `id`, `email` FROM `shop`.`orders` WHERE (`email` IS NULL) LIMIT 20",
 			passing: "SELECT `id`, `email` FROM `shop`.`orders` WHERE (NOT (`email` IS NULL)) LIMIT 20",
 		},
 		{
@@ -61,7 +52,6 @@ func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
 				Range: &storepb.RangeConfig{Column: "amount", Min: validationPtr("0"), Max: validationPtr("100")},
 			}},
-			failing: "SELECT `id`, `amount` FROM `shop`.`orders` WHERE (`amount` <= ? OR `amount` >= ?) LIMIT 20",
 			passing: "SELECT `id`, `amount` FROM `shop`.`orders` WHERE (NOT (`amount` <= ? OR `amount` >= ?)) LIMIT 20",
 		},
 		{
@@ -70,8 +60,6 @@ func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
 				AcceptedValues: &storepb.AcceptedValuesConfig{Column: "status", Field: "name"},
 			}},
-			failing: "SELECT `id`, `status` FROM `shop`.`orders` WHERE (`status` IS NULL OR `status` NOT IN " +
-				"(SELECT `name` FROM `shop`.`orders` WHERE `name` IS NOT NULL)) LIMIT 20",
 			passing: "SELECT `id`, `status` FROM `shop`.`orders` WHERE (NOT (`status` IS NULL OR `status` NOT IN " +
 				"(SELECT `name` FROM `shop`.`orders` WHERE `name` IS NOT NULL))) LIMIT 20",
 		},
@@ -85,19 +73,13 @@ func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
 					Op:          storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_GTE,
 				},
 			}},
-			failing: "SELECT `id`, `qty`, `amount` FROM `shop`.`orders` WHERE (NOT (`qty` >= `amount`)) LIMIT 20",
 			passing: "SELECT `id`, `qty`, `amount` FROM `shop`.`orders` WHERE (NOT (NOT (`qty` >= `amount`))) LIMIT 20",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			failing, err := CompileFailureRows(CompileInput{
-				Dialect: dialect, Target: target, Type: test.ruleType, Config: test.config,
-			}, 20)
-			require.NoError(t, err)
-			require.Equal(t, test.failing, failing.SQL)
-			require.Equal(t, test.passing, passingSampleFor(t, test.ruleType, test.config, storepb.Engine_MYSQL).SQL)
+			require.Equal(t, test.passing, passingRowsFor(t, test.ruleType, test.config, storepb.Engine_MYSQL).SQL)
 		})
 	}
 }
@@ -116,24 +98,31 @@ func TestCompilePassingRowsReferentialUsesExists(t *testing.T) {
 			ParentColumn: "id",
 		},
 	}}
-	query := passingSampleFor(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, config, storepb.Engine_MYSQL)
+	query := passingRowsFor(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, config, storepb.Engine_MYSQL)
 	require.Contains(t, query.SQL, "EXISTS (SELECT 1 FROM `shop`.`customers` p WHERE p.`id` = c.`id`)")
 	require.NotContains(t, query.SQL, "JOIN")
 }
 
-// TestCompilePassingRowsSkipsMeasuredTypes pins that the types whose failure is a
-// measurement or a value keep no passing rows.
-func TestCompilePassingRowsSkipsMeasuredTypes(t *testing.T) {
+// TestCompilePassingRowsKeepsNoStatementForMeasuredOrGroupedTypes pins the
+// exclusion list: a measurement (row_count, aggregate, freshness), a grouped or
+// whole-table check, a metadata check or an in-process CEL rule has no complement
+// row to compare against, so the runner must not compile a passing statement.
+func TestCompilePassingRowsKeepsNoStatementForMeasuredOrGroupedTypes(t *testing.T) {
 	t.Parallel()
 
 	for _, ruleType := range []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
 	} {
 		spec, ok := ruleTypeSpecFor(ruleType)
@@ -203,20 +192,4 @@ func TestAttachPassingRowsStoresAndRedacts(t *testing.T) {
 	DropPassingRows(execution)
 	require.Empty(t, execution.Evidence.GetPassingSamples())
 	require.Len(t, execution.Evidence.GetSamples(), 1)
-}
-
-// TestCompilePassingRowsSkipsEveryOtherType pins the remaining types that keep no
-// passing rows, so the deliberate exclusion list cannot shrink silently.
-func TestCompilePassingRowsSkipsEveryOtherType(t *testing.T) {
-	t.Parallel()
-
-	for _, ruleType := range []storepb.QualityRuleType{
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-	} {
-		spec, ok := ruleTypeSpecFor(ruleType)
-		require.True(t, ok)
-		require.Nil(t, spec.Passing, "%s must not keep passing rows", ruleType)
-	}
 }

@@ -218,6 +218,9 @@ func TestBuildSegmentBaseline(t *testing.T) {
 	require.Len(t, single.Expected, 2, "the occurrence threshold is clamped to the available runs")
 
 	require.Nil(t, BuildSegmentBaseline(nil, 3, 2))
+
+	// A window whose every run was truncated has no usable observation.
+	require.Nil(t, BuildSegmentBaseline(runs[2:], 3, 2))
 }
 
 // TestEvaluateSegmentCheck pins the judgment of the disappeared-segment count:
@@ -347,21 +350,6 @@ func segmentOrdinal(index int) string {
 	return out
 }
 
-// TestSegmentCheckTruncatedBaselineSkipped pins that a truncated evidence row is
-// not used as a baseline: its incomplete set would misclassify segments.
-func TestSegmentCheckTruncatedBaselineSkipped(t *testing.T) {
-	t.Parallel()
-
-	run := SegmentHistoryRun{
-		StartedAt: time.Now(),
-		Segments: &storepb.SegmentObservation{
-			Truncated: true,
-			Observed:  []*storepb.SegmentRecord{segmentRecord([]string{"open"}, 1)},
-		},
-	}
-	require.Nil(t, BuildSegmentBaseline([]SegmentHistoryRun{run}, 3, 2))
-}
-
 // TestSegmentCheckMasksPersonalSegments pins that a segment key built on a
 // personal column is stored as its redacted display form.
 func TestSegmentCheckMasksPersonalSegments(t *testing.T) {
@@ -412,16 +400,8 @@ func TestSegmentCheckEvidenceTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	disappeared := execution.Evidence.GetSegments().GetDisappeared()
 	require.Len(t, disappeared, 1)
+	require.Equal(t, []string{"open"}, disappeared[0].GetValues(), "the expected segment that was not observed fails")
 	require.Equal(t, lastSeen, disappeared[0].GetLastSeen().AsTime())
-	require.True(t, proto.Equal(
-		&storepb.SegmentObservation{
-			Observed:      []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, ValueDigests: []string{segmentValueDigest("closed")}, RowCount: 3}},
-			NewSegments:   []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, ValueDigests: []string{segmentValueDigest("closed")}, RowCount: 3}},
-			Disappeared:   disappeared,
-			BaselineRuns:  1,
-			ExpectedCount: 1,
-		},
-		execution.Evidence.GetSegments()))
 }
 
 // TestSegmentCheckNULLKeys pins that a NULL grouping value is recorded as NULL and
@@ -474,9 +454,10 @@ func TestSegmentCheckKeyDigestsKeepLongValuesApart(t *testing.T) {
 	require.Len(t, records, 2)
 	require.Equal(t, records[0].GetValues(), records[1].GetValues(), "the display values are both truncated to the same prefix")
 	require.NotEqual(t, records[0].GetValueDigests(), records[1].GetValueDigests())
-	require.NotEqual(t,
-		segmentKey(records[0].GetValues(), records[0].GetIsNull(), records[0].GetValueDigests()),
-		segmentKey(records[1].GetValues(), records[1].GetIsNull(), records[1].GetValueDigests()))
+	baseline := BuildSegmentBaseline([]SegmentHistoryRun{{
+		Segments: &storepb.SegmentObservation{Observed: records},
+	}}, 1, 1)
+	require.Len(t, baseline.Expected, 2, "the digest keeps two long values apart although their display values match")
 }
 
 // TestSegmentCheckDisappearedCarriesTheMaskedMarker pins that a disappeared

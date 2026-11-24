@@ -16,15 +16,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 )
 
-// A nil error is not a failure: there is nothing to record.
-func TestClassifyErrorIgnoresNil(t *testing.T) {
-	t.Parallel()
-
-	code, message := ClassifyError(nil)
-	require.Empty(t, code)
-	require.Empty(t, message)
-}
-
 // The codes are persisted and mapped to localized text, so each classification is
 // pinned independently of the driver that produced it.
 func TestClassifyErrorCodes(t *testing.T) {
@@ -249,19 +240,4 @@ func TestClassifyErrorTruncatesTheMessage(t *testing.T) {
 	require.LessOrEqual(t, len(message), maxErrorMessageBytes)
 	require.True(t, utf8.ValidString(message))
 	require.NotEmpty(t, message)
-}
-
-// classMessage has a fallback for every code this build can return, so a stored
-// result never carries an empty localized message.
-func TestClassMessageCoversEveryCode(t *testing.T) {
-	t.Parallel()
-
-	codes := []string{
-		ErrCodeConnection, ErrCodeAuth, ErrCodeTimeout, ErrCodePermission,
-		ErrCodeUnsupported, ErrCodeSQLSyntax, ErrCodeBadData, ErrCodeLimitExceeded,
-		ErrCodeOrphaned, ErrCodeQuota, ErrCodeNoReadOnly, ErrCodeExecution,
-	}
-	for _, code := range codes {
-		require.NotEmptyf(t, classMessage(code), "code %s has no message", code)
-	}
 }

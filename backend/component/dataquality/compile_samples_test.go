@@ -20,7 +20,7 @@ type sampleTestEngine struct {
 }
 
 // sampleTestEngines covers the three dialect families; StarRocks and TiDB share
-// the MySQL one, which the compiler goldens already pin.
+// the MySQL-wire dialect, whose rendering the compiler goldens already pin.
 func sampleTestEngines() []sampleTestEngine {
 	return []sampleTestEngine{
 		{name: "mysql", engine: storepb.Engine_MYSQL, tableSQL: "`shop`.`orders`"},
@@ -246,6 +246,21 @@ func TestCompileFailureRowsShapes(t *testing.T) {
 				"WHERE (NOT (`qty` >= `amount`)) LIMIT 20",
 		},
 		{
+			name:   "range",
+			golden: goldens["range"],
+			engine: storepb.Engine_MYSQL,
+			want: "SELECT `id`, `amount` FROM `shop`.`orders` " +
+				"WHERE (`amount` <= ? OR `amount` >= ?) LIMIT 20",
+		},
+		{
+			name:   "accepted values from a field",
+			golden: goldens["accepted_values_field"],
+			engine: storepb.Engine_MYSQL,
+			want: "SELECT `id`, `status` FROM `shop`.`orders` " +
+				"WHERE (`status` IS NULL OR `status` NOT IN " +
+				"(SELECT `name` FROM `shop`.`orders` WHERE `name` IS NOT NULL)) LIMIT 20",
+		},
+		{
 			name:   "custom sql wraps the user statement",
 			golden: goldens["custom_sql"],
 			engine: storepb.Engine_MYSQL,
@@ -282,8 +297,8 @@ func compileRegexGolden() compileGolden {
 	}
 }
 
-// regex sample: the postgres operator differs from the MySQL family's, and MSSQL
-// refuses even though validation already rejects the combination.
+// The regex sample's operator is the dialect's; the mssql refusal is pinned by
+// TestCompileMSSQLRegexRejected because Compile runs before the sample compiles.
 func TestCompileFailureRowsRegex(t *testing.T) {
 	t.Parallel()
 
@@ -304,17 +319,6 @@ func TestCompileFailureRowsRegex(t *testing.T) {
 			require.Contains(t, query.SQL, " IS NULL OR ")
 		})
 	}
-
-	dialect, err := DialectFor(storepb.Engine_MSSQL)
-	require.NoError(t, err)
-	_, err = CompileFailureRows(CompileInput{
-		Dialect: dialect,
-		Target:  compileTestTarget(storepb.Engine_MSSQL),
-		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		Config:  compileRegexGolden().config,
-	}, 20)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }
 
 // The rule's filter narrows the sample exactly like it narrows the aggregate, and
@@ -391,42 +395,20 @@ func TestCompileFailureRowsNormalizesTheLimit(t *testing.T) {
 	}
 }
 
-// A rule type that cannot produce a failed-row statement either returns a zero
-// query (the executor builds the sample another way) or is refused so a caller
-// cannot silently store an empty sample.
-func TestCompileFailureRowsUnsupportedTypes(t *testing.T) {
+// A rule type this build has no compiler for is refused: the zero query for a type
+// without failing rows (a measurement, or a CEL rule the executor samples itself)
+// is pinned by TestCompileFailureRowsCoversEveryRuleType.
+func TestCompileFailureRowsRejectsAnUnknownRuleType(t *testing.T) {
 	t.Parallel()
 
-	// A CEL rule's failing rows are the sampled rows its predicate rejected, so the
-	// executor builds that sample itself and there is no second statement.
-	cel := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{
-		CelExpression: &storepb.CelExpressionConfig{Expression: "amount > 0.0", Columns: []string{"amount"}},
-	}}
-	base := CompileInput{
+	_, err := CompileFailureRows(CompileInput{
 		Dialect: mustDialect(t, storepb.Engine_MYSQL),
 		Target:  compileTestTarget(storepb.Engine_MYSQL),
-		Config:  cel,
-		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-	}
-	query, err := CompileFailureRows(base, 20)
-	require.NoError(t, err)
-	require.Empty(t, query.SQL)
-
-	unspecified := base
-	unspecified.Type = storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
-	_, err = CompileFailureRows(unspecified, 20)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-
-	nilDialect := base
-	nilDialect.Dialect = nil
-	_, err = CompileFailureRows(nilDialect, 20)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
-
-	nilConfig := base
-	nilConfig.Config = nil
-	_, err = CompileFailureRows(nilConfig, 20)
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED,
+		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+			RowCount: &storepb.RowCountConfig{MinRows: proto.Int64(1)},
+		}},
+	}, 20)
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }

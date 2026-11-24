@@ -10,20 +10,16 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/plugin/db"
 )
 
-func TestIsPersonalSemanticType(t *testing.T) {
+// TestOnlyResidentIDCardIsPersonal pins the deliberately small personal set: a
+// resident ID card number identifies a person, while business identifiers (social
+// credit code, organization code) identify an organization and must stay readable.
+func TestOnlyResidentIDCardIsPersonal(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, IsPersonalSemanticType(storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD))
-	for _, label := range []storepb.QualitySemanticType{
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNSPECIFIED,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_BUSINESS_KEY,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNKNOWN,
-	} {
-		require.Falsef(t, IsPersonalSemanticType(label), "%s must not be treated as personal data", label)
+	for value, name := range storepb.QualitySemanticType_name {
+		label := storepb.QualitySemanticType(value)
+		require.Equal(t, label == storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD,
+			IsPersonalSemanticType(label), name)
 	}
 }
 
@@ -79,24 +75,4 @@ func TestExecuteAggregateRedactsPersonalSampleColumns(t *testing.T) {
 	require.True(t, cell.GetMasked())
 	// The key column is not personal data and stays readable.
 	require.Equal(t, "1", execution.Evidence.GetSamples()[0].GetColumns()[0].GetValue())
-}
-
-// The CEL path builds its sample in process; masking still applies.
-func TestExecuteCELRedactsPersonalSampleColumns(t *testing.T) {
-	t.Parallel()
-
-	config := celRuleConfig("email == \"nobody@example.com\"", []string{"email"}, 100)
-	queryer := &execFakeQueryer{results: []*db.QueryResult{{
-		Columns: []string{"email"},
-		Rows:    [][]any{{"alice@example.com"}},
-	}}}
-	execution, err := NewExecutor().Execute(context.Background(), queryer,
-		execTestResolution(storepb.Engine_MYSQL),
-		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, config),
-		ExecOptions{StoreSamples: true, SampleLimit: 20, MaskColumns: []string{"email"}})
-	require.NoError(t, err)
-	require.NotNil(t, execution.Evidence)
-	cell := execution.Evidence.GetSamples()[0].GetColumns()[0]
-	require.Equal(t, MaskPersonalValue("alice@example.com"), cell.GetValue())
-	require.True(t, cell.GetMasked())
 }

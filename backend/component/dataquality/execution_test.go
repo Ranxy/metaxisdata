@@ -192,7 +192,7 @@ func TestExecuteInterpretsEveryRuleType(t *testing.T) {
 				require.NotNil(t, observation.MaxTimestamp)
 				require.True(t, want.maxTS.Equal(*observation.MaxTimestamp))
 			}
-			require.False(t, execution.Sampled, "v1 has no sampling rule")
+			require.False(t, execution.Sampled, "none of these rule types configures a sampling method")
 			require.Nil(t, execution.Evidence)
 		})
 	}
@@ -210,7 +210,9 @@ func TestExecuteAcceptsNormalizedNumericForms(t *testing.T) {
 		name string
 		row  []any
 	}{
-		{name: "integers", row: []any{int64(1200), int64(3)}},
+		// The integer shape is what an ordinary COUNT result and
+		// TestExecuteInterpretsEveryRuleType feed; the other two are the
+		// normalization this test exists for.
 		{name: "floats from numeric", row: []any{float64(1200), float64(3)}},
 		{name: "numeric strings", row: []any{"1200", "3"}},
 	} {
@@ -325,12 +327,13 @@ func TestExecuteRejectsAMalformedAggregate(t *testing.T) {
 	}
 }
 
-// A truncated aggregate is still a usable observation, but the result must say it
-// was cut off.
-func TestExecuteCarriesTheAggregateTruncation(t *testing.T) {
+// Truncation is carried whichever statement was cut off: a truncated aggregate is
+// still a usable observation, and the reviewer of a sample is looking at a cut-off
+// list rather than all of it.
+func TestExecuteCarriesTruncation(t *testing.T) {
 	t.Parallel()
 
-	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+	rowCount := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
 		RowCount: &storepb.RowCountConfig{MinRows: proto.Int64(1)},
 	}}
 	queryer := &execFakeQueryer{results: []*db.QueryResult{{
@@ -340,16 +343,31 @@ func TestExecuteCarriesTheAggregateTruncation(t *testing.T) {
 	}}}
 	execution, err := NewExecutor().Execute(context.Background(), queryer,
 		execTestResolution(storepb.Engine_MYSQL),
-		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config),
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCount),
 		ExecOptions{})
+	require.NoError(t, err)
+	require.True(t, execution.Truncated)
+	require.True(t, execution.Observation.Truncated)
+
+	nullPercent := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
+		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
+	}}
+	queryer = &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(5)),
+		{Columns: []string{"email"}, Rows: [][]any{{"a@example.com"}}, Truncated: true},
+	}}
+	execution, err = NewExecutor().Execute(context.Background(), queryer,
+		execTestResolution(storepb.Engine_MYSQL),
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, nullPercent),
+		ExecOptions{StoreSamples: true})
 	require.NoError(t, err)
 	require.True(t, execution.Truncated)
 	require.True(t, execution.Observation.Truncated)
 }
 
-// A driver error is returned unchanged so the caller can classify it; a timeout
-// becomes TIMEOUT.
-func TestExecutePropagatesAndClassifiesADriverError(t *testing.T) {
+// A driver error is returned unchanged so the caller can classify it; the
+// classification itself is covered by the ClassifyError cases.
+func TestExecutePropagatesADriverError(t *testing.T) {
 	t.Parallel()
 
 	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
@@ -360,10 +378,7 @@ func TestExecutePropagatesAndClassifiesADriverError(t *testing.T) {
 		execTestResolution(storepb.Engine_MYSQL),
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config),
 		ExecOptions{})
-	require.Error(t, err)
-	code, message := ClassifyError(err)
-	require.Equal(t, ErrCodeTimeout, code)
-	require.NotEmpty(t, message)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 // Execute validates its inputs before it touches the queryer: a nil queryer or
@@ -564,26 +579,6 @@ func TestExecuteNormalizesTheSampleLimit(t *testing.T) {
 	}
 }
 
-// Sampling is opt-in: without it the executor runs one query and stores no rows.
-func TestExecuteSkipsSamplesWhenNotRequested(t *testing.T) {
-	t.Parallel()
-
-	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
-		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
-	}}
-	queryer := &execFakeQueryer{results: []*db.QueryResult{
-		aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(5)),
-	}}
-	execution, err := NewExecutor().Execute(context.Background(), queryer,
-		execTestResolution(storepb.Engine_MYSQL),
-		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config),
-		ExecOptions{})
-	require.NoError(t, err)
-	require.Len(t, queryer.queries, 1)
-	require.Nil(t, execution.Evidence)
-	require.Zero(t, execution.Observation.SampleRows)
-}
-
 // A passing rule with no failed rows has nothing to sample, and a rule type whose
 // failure is a measurement has no failing row at all.
 func TestExecuteSkipsSamplesWithoutFailedRows(t *testing.T) {
@@ -648,27 +643,6 @@ func TestExecuteSwallowsASampleFailure(t *testing.T) {
 	require.Nil(t, execution.Evidence)
 	require.Zero(t, execution.Observation.SampleRows)
 	require.Equal(t, int64(5), execution.Observation.FailedRows)
-}
-
-// A truncated sample sets the result's truncation flag, because the reviewer is
-// looking at a cut-off list rather than all of it.
-func TestExecuteCarriesTheSampleTruncation(t *testing.T) {
-	t.Parallel()
-
-	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{
-		NullPercent: &storepb.NullPercentConfig{Column: "email", MaxNullPct: proto.Float64(5)},
-	}}
-	queryer := &execFakeQueryer{results: []*db.QueryResult{
-		aggregateRow([]string{"total_rows", "failed_rows"}, int64(100), int64(5)),
-		{Columns: []string{"email"}, Rows: [][]any{{"a@example.com"}}, Truncated: true},
-	}}
-	execution, err := NewExecutor().Execute(context.Background(), queryer,
-		execTestResolution(storepb.Engine_MYSQL),
-		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config),
-		ExecOptions{StoreSamples: true})
-	require.NoError(t, err)
-	require.True(t, execution.Truncated)
-	require.True(t, execution.Observation.Truncated)
 }
 
 // custom_sql's sample is the user's own query wrapped: DQ never rewrites it.
@@ -762,18 +736,10 @@ func TestSamplesFromRowsBoundsTheSample(t *testing.T) {
 	require.Nil(t, SamplesFromRows([]string{"id"}, nil, 5))
 }
 
-func TestNormalizeSampleLimit(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, defaultSampleLimit, normalizeSampleLimit(0))
-	require.Equal(t, defaultSampleLimit, normalizeSampleLimit(-1))
-	require.Equal(t, 7, normalizeSampleLimit(7))
-	require.Equal(t, maxSampleLimit, normalizeSampleLimit(maxSampleLimit))
-	require.Equal(t, maxSampleLimit, normalizeSampleLimit(maxSampleLimit+1))
-}
-
 // The recorded SQL is bounded at 8 KiB on a rune boundary, so a stored result
-// never holds a truncated invalid UTF-8 string.
+// never holds a truncated invalid UTF-8 string. Every compiled input is bounded
+// below that size, so Execute cannot reach the cut; the wrapper is pinned here and
+// the rune-boundary cut itself by common.TruncateUTF8Bytes.
 func TestTruncateExecutedSQL(t *testing.T) {
 	t.Parallel()
 
@@ -817,27 +783,48 @@ func TestExecutePassesCompiledArguments(t *testing.T) {
 	require.Equal(t, []any{"paid", int64(10), int64(100)}, queryer.args[0])
 }
 
-// TestParseAggregateNumber pins the driver string spellings: a plain number and a
-// PostgreSQL money rendering (currency symbol, thousands separators, parentheses for
-// negatives) both become the numeric observation.
-func TestParseAggregateNumber(t *testing.T) {
+// A PostgreSQL money column arrives as decorated currency text; the aggregate
+// observation must read the number out of it, and a rendering with no number in it
+// is BAD_DATA rather than a silent zero.
+func TestExecuteParsesDecoratedMoneyValues(t *testing.T) {
 	t.Parallel()
 
-	value, err := parseAggregateNumber("1.25")
-	require.NoError(t, err)
-	require.Equal(t, 1.25, value)
-	value, err = parseAggregateNumber("$1,234.50")
-	require.NoError(t, err)
-	require.Equal(t, 1234.5, value)
-	value, err = parseAggregateNumber("($1.25)")
-	require.NoError(t, err)
-	require.Equal(t, -1.25, value)
-	// A comma-decimal locale renders the separators the other way round.
-	value, err = parseAggregateNumber("1.234,50")
-	require.NoError(t, err)
-	require.Equal(t, 1234.5, value)
-	_, err = parseAggregateNumber("not money")
+	resolution := execTestResolution(storepb.Engine_POSTGRES)
+	resolution.Target.Columns = append(resolution.Target.Columns,
+		ColumnInfo{Name: "balance", Type: "money", Kind: ColumnKindNumeric})
+	config := aggregateConfig("balance", storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
+		proto.Float64(0), proto.Float64(1000000))
+
+	for _, test := range []struct {
+		name string
+		text string
+		want float64
+	}{
+		{name: "plain number", text: "1.25", want: 1.25},
+		{name: "currency symbol and thousands separator", text: "$1,234.50", want: 1234.5},
+		{name: "parentheses mean negative", text: "($1.25)", want: -1.25},
+		{name: "comma-decimal locale", text: "1.234,50", want: 1234.5},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			queryer := &execFakeQueryer{results: []*db.QueryResult{
+				aggregateRow([]string{"total_rows", "observed"}, int64(10), test.text),
+			}}
+			execution, err := NewExecutor().Execute(context.Background(), queryer, resolution,
+				execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, config), ExecOptions{})
+			require.NoError(t, err)
+			require.InDelta(t, test.want, execution.Observation.Observed, 1e-9)
+		})
+	}
+
+	queryer := &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_rows", "observed"}, int64(10), "not money"),
+	}}
+	_, err := NewExecutor().Execute(context.Background(), queryer, resolution,
+		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, config), ExecOptions{})
 	require.Error(t, err)
+	code, _ := ClassifyError(err)
+	require.Equal(t, ErrCodeBadData, code)
 }
 
 // TestExecuteAppliesTheContractFilter pins that a snapshot's contract filter

@@ -52,10 +52,9 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 			mssqlSQL: "SELECT COUNT(*) AS total_groups, SUM(CASE WHEN cnt < @p1 OR cnt > @p2 THEN 1 ELSE 0 END) " +
 				"AS failed_groups FROM (SELECT [status], COUNT(*) AS cnt FROM [public].[orders] GROUP BY [status]) dq",
 			wantArgs: map[storepb.Engine][]any{
-				storepb.Engine_MYSQL:     {int64(1), int64(10)},
-				storepb.Engine_STARROCKS: {int64(1), int64(10)},
-				storepb.Engine_POSTGRES:  {int64(1), int64(10)},
-				storepb.Engine_MSSQL:     {int64(1), int64(10)},
+				storepb.Engine_MYSQL:    {int64(1), int64(10)},
+				storepb.Engine_POSTGRES: {int64(1), int64(10)},
+				storepb.Engine_MSSQL:    {int64(1), int64(10)},
 			},
 		},
 		{
@@ -67,10 +66,9 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 			mssqlSQL: "SELECT COUNT(*) AS total_groups, SUM(CASE WHEN cnt < @p1 THEN 1 ELSE 0 END) AS failed_groups " +
 				"FROM (SELECT [status], COUNT(*) AS cnt FROM [public].[orders] GROUP BY [status]) dq",
 			wantArgs: map[storepb.Engine][]any{
-				storepb.Engine_MYSQL:     {int64(3)},
-				storepb.Engine_STARROCKS: {int64(3)},
-				storepb.Engine_POSTGRES:  {int64(3)},
-				storepb.Engine_MSSQL:     {int64(3)},
+				storepb.Engine_MYSQL:    {int64(3)},
+				storepb.Engine_POSTGRES: {int64(3)},
+				storepb.Engine_MSSQL:    {int64(3)},
 			},
 		},
 		{
@@ -82,10 +80,9 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 			mssqlSQL: "SELECT COUNT(*) AS total_groups, SUM(CASE WHEN cnt > @p1 THEN 1 ELSE 0 END) AS failed_groups " +
 				"FROM (SELECT [status], COUNT(*) AS cnt FROM [public].[orders] GROUP BY [status]) dq",
 			wantArgs: map[storepb.Engine][]any{
-				storepb.Engine_MYSQL:     {int64(100)},
-				storepb.Engine_STARROCKS: {int64(100)},
-				storepb.Engine_POSTGRES:  {int64(100)},
-				storepb.Engine_MSSQL:     {int64(100)},
+				storepb.Engine_MYSQL:    {int64(100)},
+				storepb.Engine_POSTGRES: {int64(100)},
+				storepb.Engine_MSSQL:    {int64(100)},
 			},
 		},
 		{
@@ -101,10 +98,9 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 				"AS failed_groups FROM (SELECT [amount], [status], COUNT(*) AS cnt FROM [public].[orders] " +
 				"GROUP BY [amount], [status]) dq",
 			wantArgs: map[storepb.Engine][]any{
-				storepb.Engine_MYSQL:     {int64(1), int64(5)},
-				storepb.Engine_STARROCKS: {int64(1), int64(5)},
-				storepb.Engine_POSTGRES:  {int64(1), int64(5)},
-				storepb.Engine_MSSQL:     {int64(1), int64(5)},
+				storepb.Engine_MYSQL:    {int64(1), int64(5)},
+				storepb.Engine_POSTGRES: {int64(1), int64(5)},
+				storepb.Engine_MSSQL:    {int64(1), int64(5)},
 			},
 		},
 		{
@@ -123,8 +119,7 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 			wantArgs: map[storepb.Engine][]any{
 				// A positional dialect binds in text order: the bounds precede the
 				// filter's WHERE clause in the statement.
-				storepb.Engine_MYSQL:     {int64(1), int64(10), "paid"},
-				storepb.Engine_STARROCKS: {int64(1), int64(10), "paid"},
+				storepb.Engine_MYSQL: {int64(1), int64(10), "paid"},
 				// A numbered dialect binds the filter first and numbers the bounds
 				// after it, so the argument slice stays filter-first.
 				storepb.Engine_POSTGRES: {"paid", int64(1), int64(10)},
@@ -133,8 +128,10 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+		// The MySQL family (MySQL, StarRocks) shares one rendering, so the matrix
+		// runs the three dialect families.
 		for _, engine := range []storepb.Engine{
-			storepb.Engine_MYSQL, storepb.Engine_STARROCKS, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
+			storepb.Engine_MYSQL, storepb.Engine_POSTGRES, storepb.Engine_MSSQL,
 		} {
 			t.Run(test.name+"/"+engine.String(), func(t *testing.T) {
 				t.Parallel()
@@ -155,7 +152,7 @@ func TestGroupCheckSQLGoldens(t *testing.T) {
 				case storepb.Engine_MSSQL:
 					wantSQL = test.mssqlSQL
 				default:
-					// The MySQL family (MySQL, StarRocks) shares one rendering.
+					// The MySQL family shares one rendering.
 				}
 				require.Equal(t, wantSQL, query.SQL)
 				require.Equal(t, test.wantArgs[engine], query.Args)
@@ -183,12 +180,6 @@ func TestGroupCheckSampleSQL(t *testing.T) {
 	}{
 		{
 			engine: storepb.Engine_MYSQL,
-			wantSQL: "SELECT `status`, group_rows FROM (SELECT `status`, COUNT(*) AS group_rows " +
-				"FROM `shop`.`orders` WHERE `status` = ? GROUP BY `status`) dq " +
-				"WHERE group_rows < ? OR group_rows > ? ORDER BY group_rows DESC, `status` LIMIT 20",
-		},
-		{
-			engine: storepb.Engine_STARROCKS,
 			wantSQL: "SELECT `status`, group_rows FROM (SELECT `status`, COUNT(*) AS group_rows " +
 				"FROM `shop`.`orders` WHERE `status` = ? GROUP BY `status`) dq " +
 				"WHERE group_rows < ? OR group_rows > ? ORDER BY group_rows DESC, `status` LIMIT 20",

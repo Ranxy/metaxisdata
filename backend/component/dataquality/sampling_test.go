@@ -24,16 +24,17 @@ func TestDialectSamplingRelations(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		engine      storepb.Engine
-		table       string
-		maxRows     string
-		percent     string
-		wantSample  bool
-		percentErr  string
-		boundedErr  string
-		description string
+		engine     storepb.Engine
+		table      string
+		maxRows    string
+		percent    string
+		wantSample bool
+		percentErr string
 	}{
 		{
+			// Doris and StarRocks share the MySQL-wire dialect; one representative
+			// row pins the family's LIMIT rendering and its refusal of a percentage
+			// sample.
 			engine:     storepb.Engine_MYSQL,
 			table:      "`shop`.`orders`",
 			maxRows:    "(SELECT * FROM `shop`.`orders` LIMIT 1000) dq",
@@ -53,22 +54,6 @@ func TestDialectSamplingRelations(t *testing.T) {
 			maxRows:    "(SELECT TOP (1000) * FROM [public].[orders]) dq",
 			percent:    "[public].[orders] TABLESAMPLE (10.5 PERCENT)",
 			wantSample: true,
-		},
-		{
-			// Doris' TABLESAMPLE samples tablets and reads every row while tablet
-			// statistics are missing (right after a load), so it is not offered.
-			engine:     storepb.Engine_DORIS,
-			table:      "`shop`.`orders`",
-			maxRows:    "(SELECT * FROM `shop`.`orders` LIMIT 1000) dq",
-			wantSample: false,
-			percentErr: "has no table sampling clause",
-		},
-		{
-			engine:     storepb.Engine_STARROCKS,
-			table:      "`shop`.`orders`",
-			maxRows:    "(SELECT * FROM `shop`.`orders` LIMIT 1000) dq",
-			wantSample: false,
-			percentErr: "has no table sampling clause",
 		},
 	}
 	for _, test := range tests {

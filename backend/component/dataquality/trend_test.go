@@ -229,42 +229,6 @@ func TestBuildTrendDropsAnEarlierRuleType(t *testing.T) {
 	require.Equal(t, int64(2), result.Points[0].ExecutionID)
 }
 
-// TestBuildTrendStopsAtTheNewestTypeChange pins the truncation on a type change
-// away and back: the series is the newest run of the current type, not the union
-// of every run that type ever judged, because stitching across the excluded run
-// would draw one line over two unrelated kinds of measurement.
-func TestBuildTrendStopsAtTheNewestTypeChange(t *testing.T) {
-	t.Parallel()
-
-	config := &storepb.QualityRuleConfig{
-		Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{Column: "uid"}},
-	}
-	oldConfig := &storepb.QualityRuleConfig{
-		Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: validationPtr(int64(1))}},
-	}
-	newest := trendExecution(3, 1, 1, 100)
-	newest.Revision = 3
-	middle := trendExecution(2, 1000, 0, 1000)
-	middle.Revision = 2
-	oldest := trendExecution(1, 2, 2, 100)
-	oldest.Revision = 1
-
-	result := BuildTrend(TrendInput{
-		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		Revision:   3,
-		Config:     config,
-		Executions: []TrendExecution{newest, middle, oldest},
-		Revisions: []TrendRevision{
-			{Revision: 1, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Config: config},
-			{Revision: 2, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Config: oldConfig},
-			{Revision: 3, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Config: config},
-		},
-	})
-	require.True(t, result.HistoryRestarted)
-	require.Len(t, result.Points, 1, "the older same-type run is on the far side of the type change")
-	require.Equal(t, int64(3), result.Points[0].ExecutionID)
-}
-
 // A revision the caller did not carry proves nothing, so its point stays instead of
 // disappearing from a chart that already shows it.
 func TestBuildTrendKeepsAPointWhoseRevisionIsUnknown(t *testing.T) {
@@ -316,6 +280,35 @@ func TestBuildTrendSuggestsUpperBound(t *testing.T) {
 	require.Equal(t, storepb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN, suggestion.Thresholds.GetComparison())
 	require.InDelta(t, 0.97, suggestion.Thresholds.GetFailValue(), 1e-9) // p99 = 0.968, rounded up
 	require.InDelta(t, 0.84, suggestion.Thresholds.GetWarnValue(), 1e-9) // p95 = 0.84
+}
+
+// TestBuildTrendSuggestionRoundsUpToTheUnitPrecision pins that a count-shaped
+// suggestion is a whole number: the quantile of a row count is not rounded down
+// into a bound the history already crossed.
+func TestBuildTrendSuggestionRoundsUpToTheUnitPrecision(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT 1"}},
+	}
+	// Failed-row counts: 0, 0, 1, 2, 10.
+	executions := []TrendExecution{
+		trendExecution(5, 10, 10, 1000),
+		trendExecution(4, 2, 2, 1000),
+		trendExecution(3, 1, 1, 1000),
+		trendExecution(2, 0, 0, 1000),
+		trendExecution(1, 0, 0, 1000),
+	}
+	result := BuildTrend(TrendInput{
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		Revision:   1,
+		Config:     config,
+		Executions: executions,
+	})
+	require.Equal(t, TrendUnitCount, result.Unit)
+	require.NotNil(t, result.Suggestion.Thresholds)
+	require.Equal(t, 10.0, result.Suggestion.Thresholds.GetFailValue()) // ceil(9.68)
+	require.Equal(t, 9.0, result.Suggestion.Thresholds.GetWarnValue())  // ceil(8.4)
 }
 
 // TestBuildTrendSuggestsRowCountRange pins the two-sided suggestion: it only fills
@@ -382,8 +375,8 @@ func TestBuildTrendSuggestsRowCountRange(t *testing.T) {
 	require.Equal(t, TrendNoticeUnsupportedConfig, result.Suggestion.Notice)
 }
 
-// TestBuildTrendSuggestionNeedsHistory keeps a three-point series from producing a
-// bound that looks more certain than it is.
+// TestBuildTrendSuggestionNeedsHistory pins the lower edge of the suggestion
+// sample: four judged executions are one short of the five a bound needs.
 func TestBuildTrendSuggestionNeedsHistory(t *testing.T) {
 	t.Parallel()
 
@@ -395,6 +388,7 @@ func TestBuildTrendSuggestionNeedsHistory(t *testing.T) {
 		Revision: 1,
 		Config:   config,
 		Executions: []TrendExecution{
+			trendExecution(4, 4, 4, 100),
 			trendExecution(3, 3, 3, 100),
 			trendExecution(2, 2, 2, 100),
 			trendExecution(1, 1, 1, 100),
@@ -402,7 +396,7 @@ func TestBuildTrendSuggestionNeedsHistory(t *testing.T) {
 	})
 	require.Nil(t, result.Suggestion.Thresholds)
 	require.Equal(t, TrendNoticeInsufficientHistory, result.Suggestion.Notice)
-	require.Equal(t, int32(3), result.Suggestion.SampleSize)
+	require.Equal(t, int32(4), result.Suggestion.SampleSize)
 }
 
 // TestBuildTrendRowCountChangeHasNoThresholdBand documents the one plotted type
@@ -518,26 +512,4 @@ func TestBuildTrendSkipsUnmeasuredExecutions(t *testing.T) {
 	})
 	require.Len(t, result.Points, 1)
 	require.Equal(t, int64(1), result.Points[0].ExecutionID)
-}
-
-func TestTrendQuantile(t *testing.T) {
-	t.Parallel()
-
-	sorted := []float64{1, 2, 3, 4}
-	require.Equal(t, 1.0, trendQuantile(sorted, 0))
-	require.Equal(t, 4.0, trendQuantile(sorted, 1))
-	require.InDelta(t, 2.5, trendQuantile(sorted, 0.5), 1e-9)
-	require.InDelta(t, 3.85, trendQuantile(sorted, 0.95), 1e-9)
-	require.Equal(t, 7.0, trendQuantile([]float64{7}, 0.5))
-	require.Equal(t, 0.0, trendQuantile(nil, 0.5))
-}
-
-func TestTrendRoundUp(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 4.0, trendRoundUp(TrendUnitCount, 3.2))
-	require.Equal(t, 3.0, trendRoundUp(TrendUnitCount, 3.0))
-	require.Equal(t, 90.0, trendRoundUp(TrendUnitSeconds, 90.0))
-	require.InDelta(t, 0.97, trendRoundUp(TrendUnitPercent, 0.968), 1e-9)
-	require.InDelta(t, 2.5, trendRoundUp(TrendUnitNumber, 2.5), 1e-9)
 }

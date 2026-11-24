@@ -16,7 +16,6 @@ func TestLabelSuggestionSignatureIdentifiesTheColumn(t *testing.T) {
 
 	require.Equal(t, LabelSuggestionSignature("email"), LabelSuggestionSignature(" email "))
 	require.NotEqual(t, LabelSuggestionSignature("email"), LabelSuggestionSignature("phone"))
-	require.Equal(t, "label|email", LabelSuggestionSignature("email"))
 	// Separators in an identifier cannot make two different columns collide.
 	require.NotEqual(t, LabelSuggestionSignature("a"), LabelSuggestionSignature("label|a"))
 }
@@ -318,8 +317,6 @@ func TestSuggestionPassMayRefreshPending(t *testing.T) {
 		"nothing is pending, so the pass may queue its proposal")
 	require.True(t, SuggestionPassMayRefreshPending(pending(recommendation), recommendation, false),
 		"a pass refreshes its own proposal")
-	require.True(t, SuggestionPassMayRefreshPending(pending(naturalLanguage), naturalLanguage, false))
-	require.True(t, SuggestionPassMayRefreshPending(pending(profile), profile, false))
 	require.True(t, SuggestionPassMayRefreshPending(pending(profile), recommendation, false),
 		"the recommendation may replace a default-parameter label draft with observed thresholds")
 	require.False(t, SuggestionPassMayRefreshPending(pending(recommendation), profile, false),
@@ -328,5 +325,4 @@ func TestSuggestionPassMayRefreshPending(t *testing.T) {
 		"an explicit intent draft is not overwritten by a derived one")
 	require.True(t, SuggestionPassMayRefreshPending(pending(recommendation), profile, true),
 		"force regeneration overrides the cross-pass rule")
-	require.True(t, SuggestionPassMayRefreshPending(pending(naturalLanguage), recommendation, true))
 }

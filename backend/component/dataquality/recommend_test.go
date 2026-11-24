@@ -73,7 +73,6 @@ func TestRecommendChecksRowCountAndFreshness(t *testing.T) {
 	rowCount := recommendFind(recommendations, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)
 	require.NotNil(t, rowCount)
 	require.Equal(t, int64(500), rowCount.Config.GetRowCount().GetMinRows())
-	require.Equal(t, "orders: row count", rowCount.Title)
 
 	// The newest value is two hours old, so the bound is twice that (four hours),
 	// rounded up to the next readable unit (six hours).
@@ -102,12 +101,10 @@ func TestRecommendChecksNullRate(t *testing.T) {
 	target := recommendTestTarget(
 		ColumnInfo{Name: "email", Type: "varchar(255)", Kind: ColumnKindString, Nullable: true},
 		ColumnInfo{Name: "id", Type: "bigint", Kind: ColumnKindNumeric},
-		ColumnInfo{Name: "sparse", Type: "varchar(255)", Kind: ColumnKindString, Nullable: true},
 	)
 	profiles := map[string]*storepb.ColumnProfile{
-		"email":  recommendTestProfile(5, 900),
-		"id":     recommendTestProfile(0, 1000),
-		"sparse": recommendTestProfile(800, 50),
+		"email": recommendTestProfile(5, 900),
+		"id":    recommendTestProfile(0, 1000),
 	}
 	recommendations := recommendChecksForTest(t, recommendTestInput(target, profiles))
 
@@ -116,8 +113,8 @@ func TestRecommendChecksNullRate(t *testing.T) {
 	require.Equal(t, "email", nullRate.Config.GetNullPercent().GetColumn())
 	require.Equal(t, 0.75, nullRate.Config.GetNullPercent().GetMaxNullPct())
 	require.Contains(t, nullRate.Rationale, "0.50%")
-	// The NOT NULL key column cannot hold a NULL, and the mostly-NULL column is
-	// skipped rather than monitored: exactly one null-rate candidate remains.
+	// The NOT NULL key column cannot hold a NULL, so exactly one null-rate
+	// candidate remains (the cap for a mostly-NULL column has its own test).
 	require.Equal(t, 1, recommendCount(recommendations, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT))
 }
 

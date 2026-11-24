@@ -93,12 +93,24 @@ func TestAnalysisGroupSeparatesDistinctCalls(t *testing.T) {
 	require.Equal(t, int32(3), calls.Load())
 }
 
-// A caller whose context gives up stops waiting; the call itself keeps going for
-// the callers that are still alive.
+// A caller whose context gives up while it waits stops waiting; the call itself
+// keeps going for the callers that are still alive.
 func TestAnalysisGroupFollowerCanStopWaiting(t *testing.T) {
 	t.Parallel()
 
 	group := newAnalysisGroup()
+
+	// A caller whose context is already done returns before starting any work.
+	canceled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	var ran atomic.Bool
+	_, _, _, err := group.Do(canceled, "key", func(context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
+		ran.Store(true)
+		return analysisResult("unexpected")
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, ran.Load(), "a canceled caller must not start the work")
+
 	release := make(chan struct{})
 	started := make(chan struct{}, 1)
 	run := func(context.Context) (string, *llm.Usage, *storepb.QualityLLMDiagnostic, error) {
@@ -106,14 +118,30 @@ func TestAnalysisGroupFollowerCanStopWaiting(t *testing.T) {
 		<-release
 		return analysisResult("done")
 	}
-	go func() { _, _, _, _ = group.Do(context.Background(), "key", run) }()
+	leaderDone := make(chan string, 1)
+	go func() {
+		text, _, _, _ := group.Do(context.Background(), "key", run)
+		leaderDone <- text
+	}()
 	<-started
 
+	// The follower joins the in-flight call and then gives up on its own context.
 	ctx, cancel := context.WithCancel(context.Background())
+	followerEntered := make(chan struct{})
+	followerErr := make(chan error, 1)
+	go func() {
+		close(followerEntered)
+		_, _, _, err := group.Do(ctx, "key", run)
+		followerErr <- err
+	}()
+	<-followerEntered
+	require.Eventually(t, func() bool { return group.waiters("key") == 1 }, time.Second, time.Millisecond)
 	cancel()
-	_, _, _, err := group.Do(ctx, "key", run)
-	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, <-followerErr, context.Canceled)
+
+	// The leader still alive is unaffected by the follower leaving.
 	close(release)
+	require.Equal(t, "done", <-leaderDone)
 }
 
 // When the leader's request is canceled, a follower that is still alive retries
