@@ -326,7 +326,7 @@ describe("BatchCreateRulesDialog", () => {
     wrapper.unmount();
   });
 
-  it("keeps the draft's severity and interval when the common settings say so", async () => {
+  it("keeps the draft's severity when no common override is chosen", async () => {
     const wrapper = await mountDialog([draftSuggestion(DRAFT_ONE, "Only one")]);
     await flushPromises();
 
