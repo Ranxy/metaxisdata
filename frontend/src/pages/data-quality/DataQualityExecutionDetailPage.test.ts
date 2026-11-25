@@ -235,9 +235,11 @@ describe("DataQualityExecutionDetailPage", () => {
     // A sample recorded before the marker existed cannot be either: it says so,
     // with the explanation on the cell.
     expect(text).toContain(i18n.global.t("dataQuality.sampleAmbiguous"));
-    expect(wrapper.html()).toContain(
-      i18n.global.t("dataQuality.sampleLegacyHint")
-    );
+    expect(
+      wrapper
+        .find(`[title="${i18n.global.t("dataQuality.sampleLegacyHint")}"]`)
+        .exists()
+    ).toBe(true);
     expect(wrapper.text()).toContain("SELECT COUNT(*) FROM public.orders");
     // A finished execution does not poll.
     expect(text).not.toContain(i18n.global.t("dataQuality.polling"));
