@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
+import { Badge } from "@/components/ui/badge";
 import { i18n } from "@/locales";
 import {
   type ConnectedApp,
@@ -43,9 +44,6 @@ function mountTable(
   });
 }
 
-const badges = (wrapper: ReturnType<typeof mountTable>) =>
-  wrapper.findAll(".rounded-full");
-
 describe("ConnectedAppTable", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -54,18 +52,14 @@ describe("ConnectedAppTable", () => {
 
   // The registered name is self-reported; when it is missing the opaque client
   // id is the only honest label.
-  it("falls back to the client id when the client name is empty", () => {
-    const wrapper = mountTable([app({ clientName: "" })]);
+  it("shows the client name and id, falling back to the id alone", () => {
+    const named = mountTable([app()]);
+    expect(named.text()).toContain("Claude Code");
+    expect(named.text()).toContain("client-abc");
 
-    expect(wrapper.text()).toContain("client-abc");
-    expect(wrapper.text()).not.toContain("Claude Code");
-  });
-
-  it("shows the client id under the name when both exist", () => {
-    const wrapper = mountTable([app()]);
-
-    expect(wrapper.text()).toContain("Claude Code");
-    expect(wrapper.text()).toContain("client-abc");
+    const unnamed = mountTable([app({ clientName: "" })]);
+    expect(unnamed.text()).toContain("client-abc");
+    expect(unnamed.text()).not.toContain("Claude Code");
   });
 
   it("renders the user column only for administrators", () => {
@@ -77,25 +71,30 @@ describe("ConnectedAppTable", () => {
     expect(withoutUser.text()).not.toContain("users/11");
   });
 
-  // Red is reserved for failures, so each state is a tone, not an error.
-  it("maps every state to its label and badge variant", () => {
+  // Red is reserved for failures, so each state is a tone, not an error. The
+  // assertion is the badge's variant, not the Tailwind class it resolves to: a
+  // palette change must not fail a test that is about which tone a state gets.
+  it("maps every state to its label and tone", () => {
     const cases: Array<[ConnectedApp_State, string, string]> = [
-      [ConnectedApp_State.ACTIVE, "Active", "bg-success-subtle"],
-      [ConnectedApp_State.EXPIRED, "Expired", "bg-warning-subtle"],
+      [ConnectedApp_State.ACTIVE, "Active", "success"],
+      [ConnectedApp_State.EXPIRED, "Expired", "warning"],
       [
         ConnectedApp_State.REAUTH_REQUIRED,
         "Reauthorization required",
-        "bg-warning-subtle",
+        "warning",
       ],
-      [ConnectedApp_State.REVOKED, "Revoked", "bg-secondary"],
-      [ConnectedApp_State.INACTIVE, "Inactive", "text-foreground"],
-      [ConnectedApp_State.STATE_UNSPECIFIED, "Unknown", "text-foreground"],
+      [ConnectedApp_State.REVOKED, "Revoked", "secondary"],
+      [ConnectedApp_State.INACTIVE, "Inactive", "outline"],
+      [ConnectedApp_State.STATE_UNSPECIFIED, "Unknown", "outline"],
     ];
 
-    for (const [state, label, variantClass] of cases) {
+    for (const [state, label, variant] of cases) {
       const wrapper = mountTable([app({ state })]);
-      expect(wrapper.text()).toContain(label);
-      expect(badges(wrapper)[0].classes()).toContain(variantClass);
+      expect(wrapper.text(), `state ${state}`).toContain(label);
+      expect(
+        wrapper.findComponent(Badge).props("variant"),
+        `state ${state}`
+      ).toBe(variant);
     }
   });
 

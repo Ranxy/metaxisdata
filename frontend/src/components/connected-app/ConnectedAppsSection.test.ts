@@ -101,29 +101,30 @@ describe("ConnectedAppsSection", () => {
     document.body.innerHTML = "";
   });
 
-  it("loads the first page on mount", async () => {
-    await mountSection("admin");
+  it("loads the first page on mount and hands its rows to the table", async () => {
+    mocks.listConnectedApps.mockResolvedValue(page([app()]));
+
+    const wrapper = await mountSection("admin");
 
     expect(mocks.listConnectedApps).toHaveBeenCalledWith(
       expect.objectContaining({ pageSize: 50, pageToken: "", user: "" })
     );
+    expect(wrapper.text()).toContain("Claude Code");
+    expect(wrapper.text()).toContain("Active");
   });
 
-  it("pins the self-service page to the signed-in user and hides filters", async () => {
-    const wrapper = await mountSection("self");
+  it.each([
+    { scope: "self" as const, user: "users/1", filters: false },
+    { scope: "admin" as const, user: "", filters: true },
+  ])(
+    "queries the $scope view as its audience and offers filters: $filters",
+    async ({ scope, user, filters }) => {
+      const wrapper = await mountSection(scope);
 
-    expect(mocks.listConnectedApps).toHaveBeenCalledWith(
-      expect.objectContaining({ user: "users/1" })
-    );
-    expect(wrapper.findComponent(AdvancedSearchBar).exists()).toBe(false);
-  });
-
-  it("keeps the workspace view for administrators", async () => {
-    const wrapper = await mountSection("admin");
-
-    expect(lastListCall().user).toBe("");
-    expect(wrapper.findComponent(AdvancedSearchBar).exists()).toBe(true);
-  });
+      expect(lastListCall().user).toBe(user);
+      expect(wrapper.findComponent(AdvancedSearchBar).exists()).toBe(filters);
+    }
+  );
 
   it("explains an empty list differently to each audience", async () => {
     const admin = await mountSection("admin");
@@ -141,15 +142,6 @@ describe("ConnectedAppsSection", () => {
     const wrapper = await mountSection("admin");
 
     expect(wrapper.text()).toContain("The server hit an internal error.");
-  });
-
-  it("renders the rows the server returned", async () => {
-    mocks.listConnectedApps.mockResolvedValue(page([app()]));
-
-    const wrapper = await mountSection("self");
-
-    expect(wrapper.text()).toContain("Claude Code");
-    expect(wrapper.text()).toContain("Active");
   });
 
   it("revokes through the dialog, then reloads the list and toasts", async () => {
@@ -290,22 +282,27 @@ describe("ConnectedAppsSection", () => {
     const wrapper = await mountSection("admin");
     mocks.listConnectedApps.mockClear();
 
-    wrapper.findComponent(AdvancedSearchBar).vm.$emit("update:filters", [
-      {
-        id: "name-search",
-        type: "name",
-        label: "Name",
-        value: "claude",
-        displayValue: "claude",
-      },
-    ]);
-    await flushPromises();
-    // The bar emits per keystroke; the page debounces before restarting.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // The bar emits per keystroke; the page debounces before restarting. The
+    // timer is driven, not slept through, so the case cannot flake on a busy CI.
+    vi.useFakeTimers();
+    try {
+      wrapper.findComponent(AdvancedSearchBar).vm.$emit("update:filters", [
+        {
+          id: "name-search",
+          type: "name",
+          label: "Name",
+          value: "claude",
+          displayValue: "claude",
+        },
+      ]);
+      await vi.advanceTimersByTimeAsync(300);
 
-    expect(lastListCall().filter).toContain('client.matches("claude")');
-    expect(lastListCall().filter).toContain('client_id.matches("claude")');
-    expect(lastListCall().filter).toContain('user_email.matches("claude")');
+      expect(lastListCall().filter).toContain('client.matches("claude")');
+      expect(lastListCall().filter).toContain('client_id.matches("claude")');
+      expect(lastListCall().filter).toContain('user_email.matches("claude")');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("walks pages and restarts when the page size changes", async () => {

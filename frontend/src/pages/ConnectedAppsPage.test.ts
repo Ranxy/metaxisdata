@@ -1,15 +1,9 @@
 import { create } from "@bufbuild/protobuf";
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdvancedSearchBar from "@/components/common/AdvancedSearchBar.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
-import {
-  ConnectedApp_State,
-  ConnectedAppSchema,
-} from "@/types/proto-es/v1/connected_app_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import ConnectedAppsPage from "./ConnectedAppsPage.vue";
 
@@ -32,19 +26,6 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn() },
 }));
 
-function app() {
-  return create(ConnectedAppSchema, {
-    name: "connectedApps/7",
-    clientId: "client-abc",
-    clientName: "Claude Code",
-    user: "users/1",
-    userEmail: "ada@example.com",
-    createTime: timestampFromDate(new Date("2026-10-01T09:00:00Z")),
-    expireTime: timestampFromDate(new Date("2026-11-01T09:00:00Z")),
-    state: ConnectedApp_State.ACTIVE,
-  });
-}
-
 describe("ConnectedAppsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,31 +37,31 @@ describe("ConnectedAppsPage", () => {
       permissions: [],
     });
     mocks.listConnectedApps.mockResolvedValue({
-      connectedApps: [app()],
+      connectedApps: [],
       nextPageToken: "",
     });
-    mocks.listAllUsers.mockResolvedValue([]);
   });
 
   afterEach(() => {
     document.body.innerHTML = "";
   });
 
-  it("is the caller's own list, with no user column and no filters", async () => {
+  // The page owns the header's refresh affordance. What the section shows and
+  // which scope it queries are the section's contract, owned by its own suite;
+  // asserting the header copy here only failed when the copy was edited.
+  it("reloads the section from the header refresh button", async () => {
     const wrapper = mount(ConnectedAppsPage, {
       global: { plugins: [i18n] },
     });
     await flushPromises();
+    mocks.listConnectedApps.mockClear();
 
-    expect(wrapper.text()).toContain("Connected apps");
-    expect(wrapper.text()).toContain(
-      "The clients you authorized to act as you"
-    );
-    expect(mocks.listConnectedApps).toHaveBeenCalledWith(
-      expect.objectContaining({ user: "users/1", filter: "" })
-    );
-    // The caller's own email is not a column; there is nobody to distinguish.
-    expect(wrapper.text()).not.toContain("ada@example.com");
-    expect(wrapper.findComponent(AdvancedSearchBar).exists()).toBe(false);
+    const refresh = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Refresh");
+    await refresh?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.listConnectedApps).toHaveBeenCalledTimes(1);
   });
 });
