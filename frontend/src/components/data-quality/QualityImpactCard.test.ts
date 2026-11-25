@@ -228,12 +228,11 @@ describe("QualityImpactCard", () => {
         ),
       })
     );
-    expect(wrapper.html()).toContain(
-      formatDateTime(
-        timestampFromDate(new Date(START.getTime() - 7_200_000)),
-        "en-US"
-      )
+    const changedAt = formatDateTime(
+      timestampFromDate(new Date(START.getTime() - 7_200_000)),
+      "en-US"
     );
+    expect(wrapper.find(`[title="${changedAt}"]`).exists()).toBe(true);
 
     const executionLink = wrapper
       .findAll("a")

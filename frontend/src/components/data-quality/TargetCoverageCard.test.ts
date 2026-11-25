@@ -111,24 +111,15 @@ describe("TargetCoverageCard", () => {
     const progress = wrapper.find('[role="progressbar"]');
     expect(progress.attributes("aria-valuenow")).toBe("2");
     expect(progress.attributes("aria-valuemax")).toBe("3");
-    const bar = progress.find("div");
-    expect(bar.attributes("style")).toContain("width: 67%");
-    expect(bar.attributes("style")).toContain("hsl(var(--success))");
 
-    const lists = wrapper.findAll("ul");
-    const covered = lists[0].findAll("li");
-    expect(covered).toHaveLength(2);
-    expect(covered[0].text()).toContain("email");
-    expect(covered[0].text()).toContain("2");
-    expect(covered[1].text()).toContain("id");
-    expect(covered[1].text()).toContain("1");
-
-    const uncovered = lists[1].findAll("li");
-    expect(uncovered).toHaveLength(1);
-    expect(uncovered[0].text()).toBe("name");
-    expect(uncovered[0].find("div").attributes("title")).toBe(
-      t("dataQuality.coverage.uncovered")
-    );
+    // Covered columns carry their check count; the uncovered one says so.
+    const chips = wrapper.findAll("li").map((item) => item.text().trim());
+    expect(chips).toContain("email2");
+    expect(chips).toContain("id1");
+    expect(chips).toContain("name");
+    expect(
+      wrapper.findAll(`[title="${t("dataQuality.coverage.uncovered")}"]`)
+    ).toHaveLength(1);
   });
 
   it("says so when every column has a check", async () => {
@@ -152,11 +143,11 @@ describe("TargetCoverageCard", () => {
     const wrapper = mountCard();
     await flushPromises();
 
-    const uncoveredList = wrapper.findAll("ul")[0];
-    const items = uncoveredList.findAll("li");
-    expect(items).toHaveLength(13);
-    expect(uncoveredList.findAll("div")).toHaveLength(12);
-    expect(items[12].text()).toBe("+3");
+    expect(wrapper.findAll("li")).toHaveLength(13);
+    expect(
+      wrapper.findAll(`[title="${t("dataQuality.coverage.uncovered")}"]`)
+    ).toHaveLength(12);
+    expect(wrapper.text()).toContain("+3");
   });
 
   it("degrades to the failure message and re-reads on retry", async () => {

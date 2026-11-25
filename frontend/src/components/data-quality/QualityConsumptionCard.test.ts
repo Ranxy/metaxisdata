@@ -140,7 +140,9 @@ describe("QualityConsumptionCard", () => {
       label("dataQuality.overview.consumptionDownstream", { count: 9 })
     );
     // The card previews five; the dialog is where the rest live.
-    expect(wrapper.findAll("li")).toHaveLength(5);
+    expect(wrapper.findAll('a[href^="/data-quality/targets/"]')).toHaveLength(
+      5
+    );
     expect(text).not.toContain("prod · shop · public.coupons");
 
     const orderLink = wrapper
