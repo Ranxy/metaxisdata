@@ -67,11 +67,14 @@ describe("AuditLogsPage", () => {
     const wrapper = await mountPage();
     mocks.listAuditLogs.mockClear();
 
-    await wrapper.find('input[type="text"]').setValue("Login");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await flushPromises();
-
-    expect(lastFilter()).toContain('method.matches("Login")');
+    vi.useFakeTimers();
+    try {
+      await wrapper.find('input[type="text"]').setValue("Login");
+      await vi.advanceTimersByTimeAsync(300);
+      expect(lastFilter()).toContain('method.matches("Login")');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // The Event column prints a localized name, so the search box has to accept
@@ -80,28 +83,34 @@ describe("AuditLogsPage", () => {
     const wrapper = await mountPage();
     mocks.listAuditLogs.mockClear();
 
-    await wrapper.find('input[type="text"]').setValue("Sign in");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await flushPromises();
-
-    expect(lastFilter()).toContain('method.matches("AuthService/Login")');
+    vi.useFakeTimers();
+    try {
+      await wrapper.find('input[type="text"]').setValue("Sign in");
+      await vi.advanceTimersByTimeAsync(300);
+      expect(lastFilter()).toContain('method.matches("AuthService/Login")');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drops the filter when the bar is cleared", async () => {
     const wrapper = await mountPage();
-    await wrapper.find('input[type="text"]').setValue("Login");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await flushPromises();
-    mocks.listAuditLogs.mockClear();
+    vi.useFakeTimers();
+    try {
+      await wrapper.find('input[type="text"]').setValue("Login");
+      await vi.advanceTimersByTimeAsync(300);
+      mocks.listAuditLogs.mockClear();
 
-    const clearButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "Clear filters");
-    await clearButton?.trigger("click");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await flushPromises();
+      const clearButton = wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Clear filters");
+      await clearButton?.trigger("click");
+      await vi.advanceTimersByTimeAsync(300);
 
-    expect(searchInput(wrapper).value).toBe("");
-    expect(lastFilter()).not.toContain("method.matches");
+      expect(searchInput(wrapper).value).toBe("");
+      expect(lastFilter()).not.toContain("method.matches");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
