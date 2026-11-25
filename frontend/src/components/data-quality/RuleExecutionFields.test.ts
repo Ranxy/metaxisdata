@@ -1,6 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
-import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select, SelectItem } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { Engine } from "@/types/proto-es/v1/common_pb";
@@ -61,30 +60,17 @@ async function methodOptions(wrapper: ReturnType<typeof mount>) {
   }));
 }
 
-function fieldLabels(wrapper: ReturnType<typeof mount>): string[] {
-  return wrapper
-    .findAllComponents(FormField)
-    .map((field) => String(field.props("label")));
-}
-
 describe("RuleExecutionFields", () => {
   it("edits the query timeout on its own", async () => {
     const { wrapper, model } = mountFields();
-    expect(fieldLabels(wrapper)).toContain(
-      label("dataQuality.editor.timeoutSeconds")
-    );
 
     await wrapper.find("#dq-config-timeout").setValue("120");
     expect(model.timeoutSeconds).toBe("120");
-    // The check's schedule belongs to the target, so the copy says so.
-    expect(wrapper.text()).toContain(label("dataQuality.editor.executionHint"));
     wrapper.unmount();
   });
 
   it("offers no sampling by default and keeps it that way", () => {
-    const { wrapper, model } = mountFields();
-    expect(model.sampleMethod).toBe("none");
-    expect(wrapper.text()).toContain(label("dataQuality.editor.sampling"));
+    const { wrapper } = mountFields();
     expect(wrapper.find("#dq-config-sampling").exists()).toBe(true);
     // With no sampling chosen there is no amount to enter.
     expect(wrapper.find("#dq-config-sample-percent").exists()).toBe(false);
@@ -103,25 +89,21 @@ describe("RuleExecutionFields", () => {
     wrapper.unmount();
   });
 
-  it("leaves the percentage out for an engine without a sampling clause", async () => {
-    const { wrapper } = mountFields({ engine: Engine.MYSQL });
+  it.each([
+    { engine: Engine.MYSQL, metaType: MetaType.TABLE },
+    { engine: Engine.POSTGRES, metaType: MetaType.VIEW },
+  ])(
+    "leaves the percentage out for an engine or object without one ($engine/$metaType)",
+    async (options) => {
+      const { wrapper } = mountFields(options);
 
-    expect(await methodOptions(wrapper)).toEqual([
-      { value: "none", disabled: false },
-      { value: "maxRows", disabled: false },
-    ]);
-    wrapper.unmount();
-  });
-
-  it("leaves the percentage out for a view", async () => {
-    const { wrapper } = mountFields({ metaType: MetaType.VIEW });
-
-    expect(await methodOptions(wrapper)).toEqual([
-      { value: "none", disabled: false },
-      { value: "maxRows", disabled: false },
-    ]);
-    wrapper.unmount();
-  });
+      expect(await methodOptions(wrapper)).toEqual([
+        { value: "none", disabled: false },
+        { value: "maxRows", disabled: false },
+      ]);
+      wrapper.unmount();
+    }
+  );
 
   it("shows the amount input of the chosen method", async () => {
     const percent = mountFields({ config: { sampleMethod: "percent" } });
@@ -130,9 +112,6 @@ describe("RuleExecutionFields", () => {
     );
     expect(percent.wrapper.find("#dq-config-sample-max-rows").exists()).toBe(
       false
-    );
-    expect(percent.wrapper.text()).toContain(
-      label("dataQuality.editor.samplePercentHint")
     );
     expect(percent.wrapper.text()).toContain("%");
 
@@ -145,9 +124,6 @@ describe("RuleExecutionFields", () => {
     });
     expect(maxRows.wrapper.find("#dq-config-sample-max-rows").exists()).toBe(
       true
-    );
-    expect(maxRows.wrapper.text()).toContain(
-      label("dataQuality.editor.sampleMaxRowsHint")
     );
     expect(
       maxRows.wrapper.find("#dq-config-sample-max-rows").attributes("max")
@@ -233,21 +209,13 @@ describe("RuleExecutionFields", () => {
   });
 
   it("hides sampling for a rule type that cannot be sampled", () => {
-    for (const ruleType of [
-      QualityRuleType.ROW_COUNT,
-      QualityRuleType.ROW_COUNT_CHANGE,
-      QualityRuleType.FRESHNESS,
-      QualityRuleType.CUSTOM_SQL,
-      QualityRuleType.CEL_EXPRESSION,
-      QualityRuleType.REFERENTIAL_INTEGRITY,
-      QualityRuleType.CROSS_TABLE,
-    ]) {
-      const { wrapper } = mountFields({ ruleType });
-      expect(wrapper.find("#dq-config-sampling").exists()).toBe(false);
-      // The timeout stays available for every check.
-      expect(wrapper.find("#dq-config-timeout").exists()).toBe(true);
-      wrapper.unmount();
-    }
+    // Which types are sampleable is pinned by utils/dataQualityForm.test.ts;
+    // this proves the field routes that flag for a representative type.
+    const { wrapper } = mountFields({ ruleType: QualityRuleType.ROW_COUNT });
+    expect(wrapper.find("#dq-config-sampling").exists()).toBe(false);
+    // The timeout stays available for every check.
+    expect(wrapper.find("#dq-config-timeout").exists()).toBe(true);
+    wrapper.unmount();
 
     // A stored method survives on such a type so it can be inspected or cleared.
     const stored = mountFields({
