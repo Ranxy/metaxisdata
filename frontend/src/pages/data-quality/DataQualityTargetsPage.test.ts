@@ -199,12 +199,6 @@ function buttonWithLabel(wrapper: ReturnType<typeof mount>, label: string) {
     .find((button) => button.text().trim() === label);
 }
 
-/** Let the 300ms search debounce fire. */
-async function settleSearch() {
-  await new Promise((resolve) => setTimeout(resolve, 350));
-  await flushPromises();
-}
-
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
@@ -260,20 +254,26 @@ describe("DataQualityTargetsPage export", () => {
     );
 
     // Typing alone does not change what the directory (or its export) selects;
-    // the debounce applies the term once the reader pauses.
-    await wrapper.find("#data-quality-target-search").setValue("orders");
-    await exportButton(wrapper)?.trigger("click");
-    await flushPromises();
-    expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
-      expect.objectContaining({ search: "" })
-    );
+    // the debounce applies the term once the reader pauses. Timers are driven so
+    // the export before the pause cannot race the pending debounce.
+    vi.useFakeTimers();
+    try {
+      await wrapper.find("#data-quality-target-search").setValue("orders");
+      await exportButton(wrapper)?.trigger("click");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "" })
+      );
 
-    await settleSearch();
-    await exportButton(wrapper)?.trigger("click");
-    await flushPromises();
-    expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
-      expect.objectContaining({ search: "orders" })
-    );
+      await vi.advanceTimersByTimeAsync(300);
+      await exportButton(wrapper)?.trigger("click");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "orders" })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -550,11 +550,15 @@ describe("DataQualityTargetsPage server filters", () => {
     const { wrapper, router } = await mountPage();
     const search = wrapper.find("#data-quality-target-search");
 
-    await search.setValue("customers");
-    // Typing alone does not hit the server; the debounce does.
-    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
-
-    await settleSearch();
+    // Typing alone does not hit the server; the driven debounce does.
+    vi.useFakeTimers();
+    try {
+      await search.setValue("customers");
+      expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(300);
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(mocks.listQualityTargets).toHaveBeenCalledTimes(2);
     expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
@@ -640,8 +644,14 @@ describe("DataQualityTargetsPage server filters", () => {
     );
     const { wrapper, router } = await mountPage();
 
-    await wrapper.find("#data-quality-target-search").setValue("nothing");
-    await settleSearch();
+    vi.useFakeTimers();
+    try {
+      await wrapper.find("#data-quality-target-search").setValue("nothing");
+      await vi.advanceTimersByTimeAsync(300);
+    } finally {
+      vi.useRealTimers();
+    }
+    await flushPromises();
     expect(rows(wrapper)).toHaveLength(0);
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.targets.emptyFilteredTitle")
@@ -652,10 +662,11 @@ describe("DataQualityTargetsPage server filters", () => {
       i18n.global.t("dataQuality.targets.clearFilters")
     );
     expect(clear).toBeTruthy();
-    await clear?.trigger("click");
+    clear?.element.click();
     await flushPromises();
 
     expect(router.currentRoute.value.query).toEqual({});
+
     expect(mocks.listQualityTargets).toHaveBeenLastCalledWith({
       pageSize: 1000,
       search: "",
@@ -744,7 +755,7 @@ describe("DataQualityTargetsPage states and links", () => {
   });
 
   it("opens the picked target's workspace ready to add its first check", async () => {
-    const { wrapper } = await mountPage();
+    const { wrapper, router } = await mountPage();
     const picker = wrapper.findComponent(TargetPickerStub);
     picker.vm.$emit("select", {
       guid: TARGET_ORDERS,
@@ -758,8 +769,8 @@ describe("DataQualityTargetsPage states and links", () => {
       columns: [],
     });
     await flushPromises();
-    expect(wrapper.vm.$route.name).toBe("DataQualityTarget");
-    expect(wrapper.vm.$route.query).toMatchObject({
+    expect(router.currentRoute.value.name).toBe("DataQualityTarget");
+    expect(router.currentRoute.value.query).toMatchObject({
       metaType: String(MetaType.TABLE),
       add: "1",
     });
