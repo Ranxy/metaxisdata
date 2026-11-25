@@ -1638,11 +1638,14 @@ describe("DataQualityTargetPage", () => {
     );
     await flushPromises();
 
-    expect(wrapper.find("#dq-rule-rule-dataset").classes()).toContain("ring-2");
-    // Only the named row is marked.
-    expect(wrapper.find("#dq-rule-rule-multi").classes()).not.toContain(
-      "ring-2"
-    );
+    // Only the named row is marked, on the row's own highlight contract.
+    const highlighted = wrapper
+      .findAllComponents(TargetCheckRow)
+      .filter((row) => row.props("highlight") === true);
+    expect(highlighted).toHaveLength(1);
+    expect(
+      (highlighted[0]?.props("rule") as { name: string } | undefined)?.name
+    ).toBe(RULE_DATASET);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(scrollSpy).toHaveBeenCalledWith({ block: "center" });
     wrapper.unmount();
@@ -1840,12 +1843,12 @@ describe("DataQualityTargetPage", () => {
   });
 
   it("opens the check dialog when the directory sends add=1", async () => {
-    const { wrapper } = await mountPage(
+    const { wrapper, router } = await mountPage(
       `/data-quality/targets/${TARGET.split(";").join("/")}?metaType=${MetaType.TABLE}&add=1`
     );
 
     expect(wrapper.findComponent(TargetRuleComposer).props("open")).toBe(true);
-    expect(wrapper.vm.$route.query.add).toBeUndefined();
+    expect(router.currentRoute.value.query.add).toBeUndefined();
     wrapper.unmount();
   });
 
