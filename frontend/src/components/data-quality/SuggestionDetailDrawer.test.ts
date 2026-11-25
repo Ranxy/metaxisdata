@@ -74,7 +74,7 @@ describe("SuggestionDetailDrawer superseded proposals", () => {
     expect(wrapper.text()).not.toContain("Decided at");
   });
 
-  it("keeps the decision wording for accepted and rejected proposals", () => {
+  it("keeps the decision wording for a rejected proposal", () => {
     const wrapper = mountDrawer(QualitySuggestionStatus.REJECTED);
 
     expect(wrapper.text()).toContain("Decided by");
