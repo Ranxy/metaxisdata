@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select, SelectItem } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { ExplainSQLResponseSchema } from "@/types/proto-es/v1/explain_sql_service_pb";
 import ExplainSQLPage from "./ExplainSQLPage.vue";
@@ -30,6 +31,12 @@ vi.mock("@/store/modules/instance", () => ({
     active: [],
   }),
 }));
+
+// Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
+// does not implement.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
 
 function content(value: string) {
   return create(ExplainSQLResponseSchema, {
@@ -99,18 +106,16 @@ beforeEach(() => {
   });
 });
 
-interface PageVm {
-  providerOptions: Array<{
-    key: string;
-    profile: string;
-    model: string;
-    title: string;
-  }>;
-  selectedProvider: string;
-}
-
-function vm(wrapper: ReturnType<typeof mount>): PageVm {
-  return wrapper.vm as unknown as PageVm;
+/** Open the pair picker and read the labels it offers. */
+async function modelOptions(
+  wrapper: Awaited<ReturnType<typeof mountPage>>
+): Promise<string[]> {
+  const picker = wrapper.findComponent(Select);
+  await picker.find("button").trigger("pointerdown");
+  await flushPromises();
+  return picker
+    .findAllComponents(SelectItem)
+    .map((item) => String(item.text()));
 }
 
 function enabledProfile(
@@ -199,15 +204,20 @@ describe("ExplainSQLPage", () => {
     });
     const wrapper = await mountPage();
 
-    expect(
-      vm(wrapper).providerOptions.map((option) => [
-        option.profile,
-        option.model,
-      ])
-    ).toEqual([["llm-provider-profiles/allowed", "fast"]]);
-    // The label names both halves of the pair, since the model is never inferred.
-    expect(vm(wrapper).providerOptions[0].title).toContain("Allowed");
-    expect(vm(wrapper).providerOptions[0].title).toContain("fast");
+    // One permitted pair is not a choice, so the picker stays hidden; the
+    // request naming it is the observable proof the blocked profile was dropped.
+    expect(wrapper.findComponent(Select).exists()).toBe(false);
+    mocks.explainSQL.mockReturnValue(hanging([content("Done")]));
+    await typeCustomSQL(wrapper);
+    await explainButton(wrapper)?.trigger("click");
+    await flushPromises();
+    expect(mocks.explainSQL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerName: "llm-provider-profiles/allowed",
+        model: "fast",
+      }),
+      expect.anything()
+    );
   });
 
   it("offers every enabled model when the allowlist is empty", async () => {
@@ -225,15 +235,14 @@ describe("ExplainSQLPage", () => {
     });
     const wrapper = await mountPage();
 
-    expect(
-      vm(wrapper).providerOptions.map((option) => [
-        option.profile,
-        option.model,
-      ])
-    ).toEqual([
-      ["llm-provider-profiles/a", "fast"],
-      ["llm-provider-profiles/b", "reasoner"],
-    ]);
+    // The label names both halves of the pair, since the model is never inferred.
+    const options = await modelOptions(wrapper);
+    expect(options).toHaveLength(2);
+    expect(options[0]).toContain("A");
+    expect(options[0]).toContain("fast");
+    expect(options[1]).toContain("B");
+    expect(options[1]).toContain("reasoner");
+    expect(options.some((text) => text.includes("retired"))).toBe(false);
   });
 
   it("sends the selected pair on both explain paths", async () => {
@@ -248,9 +257,7 @@ describe("ExplainSQLPage", () => {
       nextPageToken: "",
     });
     const wrapper = await mountPage();
-    // The first option is selected by default.
-    expect(vm(wrapper).selectedProvider).toBe("0");
-
+    // The first option is the default; the request below proves it travels.
     await typeCustomSQL(wrapper);
     await explainButton(wrapper)?.trigger("click");
     await flushPromises();
@@ -278,7 +285,7 @@ describe("ExplainSQLPage", () => {
     const wrapper = await mountPage();
     // One option is not a choice, so the picker stays hidden but the pair is
     // still the one the request names.
-    expect(vm(wrapper).providerOptions).toHaveLength(1);
+    expect(wrapper.findComponent(Select).exists()).toBe(false);
 
     await typeCustomSQL(wrapper);
     await explainButton(wrapper)?.trigger("click");
@@ -296,7 +303,7 @@ describe("ExplainSQLPage", () => {
   it("leaves the pair empty for the server default when no model is selectable", async () => {
     mocks.explainSQL.mockReturnValue(hanging([content("Done")]));
     const wrapper = await mountPage();
-    expect(vm(wrapper).providerOptions).toHaveLength(0);
+    expect(wrapper.findComponent(Select).exists()).toBe(false);
 
     await typeCustomSQL(wrapper);
     await explainButton(wrapper)?.trigger("click");
