@@ -87,12 +87,20 @@ describe("ExecutionRunRow", () => {
   });
 
   it("links the rule and target only when the caller may view rules", () => {
-    expect(mountRow().findAllComponents({ name: "RouterLink" })).toHaveLength(
-      4
-    );
-    expect(
-      mountRow({ canViewRule: false }).findAllComponents({ name: "RouterLink" })
-    ).toHaveLength(2);
+    const linkedText = (wrapper: ReturnType<typeof mountRow>) =>
+      wrapper
+        .findAllComponents({ name: "RouterLink" })
+        .map((link) => link.text())
+        .join(" | ");
+
+    const visible = linkedText(mountRow());
+    expect(visible).toContain("rule-1");
+    expect(visible).toContain("orders");
+
+    // Without the permission the rule is plain text; the target link stays.
+    const hidden = linkedText(mountRow({ canViewRule: false }));
+    expect(hidden).not.toContain("rule-1");
+    expect(hidden).toContain("orders");
   });
 
   it("asks the page to open the execution", async () => {

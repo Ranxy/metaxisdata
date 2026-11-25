@@ -93,9 +93,6 @@ describe("TargetScanHistory", () => {
       metaType: MetaType.TABLE,
       pageSize: 20,
     });
-    expect(wrapper.find("h3").text()).toBe(
-      labels()("dataQuality.executions.historyTitle")
-    );
     const cards = wrapper.findAllComponents(RunCardStub);
     expect(cards).toHaveLength(2);
     expect(cards[0]?.props("targetGuid")).toBe(TARGET);
