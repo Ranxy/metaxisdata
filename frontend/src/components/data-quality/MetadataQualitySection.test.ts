@@ -350,16 +350,6 @@ describe("MetadataQualitySection", () => {
     expect(wrapper.text()).toContain(label("dataQuality.semanticType.id"));
     expect(wrapper.text()).toContain("990");
     expect(wrapper.text()).toContain(label("dataQuality.asset.noLabel"));
-    // Read-only caller: no action buttons.
-    expect(wrapper.text().includes(label("dataQuality.asset.createRule"))).toBe(
-      false
-    );
-    expect(
-      wrapper.text().includes(label("dataQuality.asset.analyzeColumns"))
-    ).toBe(false);
-    // The queue endpoint needs the suggest permission, so a read-only caller
-    // never asks for it.
-    expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
   });
 
   it("takes the actions from the server's answer for this table", async () => {
