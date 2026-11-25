@@ -271,12 +271,6 @@ function exportButton(wrapper: ReturnType<typeof mount>) {
     );
 }
 
-/** Let the 300ms search debounce fire. */
-async function settleSearch() {
-  await new Promise((resolve) => setTimeout(resolve, 350));
-  await flushPromises();
-}
-
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
@@ -388,10 +382,15 @@ describe("DataQualityExecutionsPage by target", () => {
     const { wrapper } = await mountPage();
     expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
 
-    await wrapper.find("#data-quality-target-search").setValue("customers");
-    // Typing does not query until the debounce fires.
-    expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
-    await settleSearch();
+    // Typing does not query until the 300ms debounce fires; drive the timer.
+    vi.useFakeTimers();
+    try {
+      await wrapper.find("#data-quality-target-search").setValue("customers");
+      expect(mocks.listQualityTargets).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(300);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(mocks.listQualityTargets).toHaveBeenLastCalledWith(
       expect.objectContaining({ search: "customers" })
     );
