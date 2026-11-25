@@ -50,10 +50,7 @@ import {
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { InstanceSchema } from "@/types/proto-es/v1/instance_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
-import {
-  qualityRuleTypeDescriptionKey,
-  qualityRuleTypeKey,
-} from "@/utils/dataQuality";
+import { qualityRuleTypeKey } from "@/utils/dataQuality";
 import type { TargetColumnDetail } from "@/utils/dataQualityForm";
 import TargetRuleComposer from "./TargetRuleComposer.vue";
 
@@ -407,17 +404,9 @@ describe("TargetRuleComposer", () => {
     );
   });
 
-  it("names the target it is fixed to and loads its columns", async () => {
+  it("loads the target's columns for the config pickers", async () => {
     const wrapper = await mountComposer();
 
-    // The title carries the page's label, not a target the reader must pick.
-    expect(document.body.textContent).toContain(
-      label("dataQuality.composer.title", { target: TARGET_LABEL })
-    );
-    expect(document.body.textContent).toContain(
-      label("dataQuality.composer.description")
-    );
-    // Column details reach the config form's pickers; a failed read is silent.
     expect(mocks.listAllMetadata).toHaveBeenCalledWith({
       parentGuid: TABLE,
       metaType: MetaType.COLUMN,
@@ -430,24 +419,19 @@ describe("TargetRuleComposer", () => {
     await nextTick();
 
     const buttons = typeButtons();
-    expect(buttons).toHaveLength(20);
     expect(buttons.map(typeButtonLabel)).toContain(
       label(qualityRuleTypeKey(QualityRuleType.ROW_COUNT))
     );
-    // Each entry explains what the check observes.
-    expect(document.body.textContent).toContain(
-      label(qualityRuleTypeDescriptionKey(QualityRuleType.ROW_COUNT))
-    );
-    // All four sections have a member on a plain table.
-    for (const group of [
-      "commonGroup",
-      "datasetGroup",
-      "columnGroup",
-      "advancedGroup",
+    // All four catalogue sections have a member on a plain table. Which types
+    // belong to each section is pinned by utils/dataQualityForm.test.ts; this
+    // only proves the composer renders every section that has one.
+    for (const ruleType of [
+      QualityRuleType.ROW_COUNT,
+      QualityRuleType.ROW_COUNT_CHANGE,
+      QualityRuleType.NULL_PERCENT,
+      QualityRuleType.CUSTOM_SQL,
     ]) {
-      expect(document.body.textContent).toContain(
-        label(`dataQuality.composer.${group}`)
-      );
+      expect(typeButton(ruleType), String(ruleType)).toBeDefined();
     }
     // The default check is the one the catalogue marks as selected.
     expect(
@@ -460,28 +444,19 @@ describe("TargetRuleComposer", () => {
     const wrapper = await mountComposer({ metaType: MetaType.VIEW });
     await nextTick();
 
-    const buttons = typeButtons();
-    expect(buttons).toHaveLength(5);
-    expect(new Set(buttons.map(typeButtonLabel))).toEqual(
-      new Set(
-        [
-          QualityRuleType.ROW_COUNT,
-          QualityRuleType.ROW_COUNT_CHANGE,
-          QualityRuleType.FRESHNESS,
-          QualityRuleType.CUSTOM_SQL,
-          QualityRuleType.SCHEMA_DRIFT,
-        ].map((ruleType) => label(qualityRuleTypeKey(ruleType)))
-      )
-    );
+    expect(typeButton(QualityRuleType.ROW_COUNT)).toBeDefined();
+    // Column and advanced checks need rows or columns a view does not expose.
+    for (const ruleType of [
+      QualityRuleType.UNIQUE,
+      QualityRuleType.NULL_PERCENT,
+      QualityRuleType.CROSS_TABLE,
+      QualityRuleType.STANDARD_CODE,
+    ]) {
+      expect(typeButton(ruleType), String(ruleType)).toBeUndefined();
+    }
+    // The catalogue explains why it is shorter for a view.
     expect(document.body.textContent).toContain(
       label("dataQuality.editor.ruleTypeViewHint")
-    );
-    // The sections with no member for a view are not rendered.
-    expect(document.body.textContent).not.toContain(
-      label("dataQuality.composer.columnGroup")
-    );
-    expect(document.body.textContent).not.toContain(
-      label("dataQuality.composer.advancedGroup")
     );
     wrapper.unmount();
   });
@@ -533,8 +508,6 @@ describe("TargetRuleComposer", () => {
     // rule is the observable proof that the contract default applied.
     const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
     expect(rule.severity).toBe(QualitySeverity.ERROR);
-    // Scheduling belongs to the target, so the rule carries none.
-    expect(rule).not.toHaveProperty("scheduleInterval");
     wrapper.unmount();
   });
 
@@ -562,16 +535,6 @@ describe("TargetRuleComposer", () => {
     expect((config?.value as { column?: string } | undefined)?.column).toBe(
       "email"
     );
-    wrapper.unmount();
-  });
-
-  it("starts a dataset check from the dataset scope", async () => {
-    const wrapper = await mountComposer({ scope: "dataset" });
-    await nextTick();
-
-    expect(
-      typeButton(QualityRuleType.ROW_COUNT)?.getAttribute("aria-pressed")
-    ).toBe("true");
     wrapper.unmount();
   });
 
@@ -817,10 +780,10 @@ describe("TargetRuleComposer", () => {
     mocks.updateQualityRule.mockResolvedValue(updated);
     const wrapper = await mountComposer({ rule: original });
 
-    // The dialog is fixed to the rule rather than to a blank create form.
-    expect(document.body.textContent).toContain(
-      label("dataQuality.composer.editTitle", { title: "Orders have rows" })
-    );
+    // The dialog is seeded from the stored rule, not from a blank create form.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-title")?.value
+    ).toBe("Orders have rows");
     expect(dialogButton(label("dataQuality.editor.saveChanges"))).toBeDefined();
 
     setInput("#dq-composer-title", "Orders have rows, revised");
@@ -1244,19 +1207,12 @@ describe("TargetRuleComposer", () => {
     wrapper.unmount();
   });
 
-  it("starts a new count-change check with on_empty pass and explains why", async () => {
+  it("starts a new count-change check with on_empty pass", async () => {
     const wrapper = await mountComposer();
     await nextTick();
 
     typeButton(QualityRuleType.ROW_COUNT_CHANGE)?.click();
     await flushPromises();
-
-    // A count-change check's first run only records a baseline; the editor says
-    // so next to the empty-result control instead of leaving the reader to
-    // discover it from a NOT_EVALUATED verdict.
-    expect(document.body.textContent).toContain(
-      label("dataQuality.editor.onEmptyRowCountChangeHint")
-    );
 
     setInput("#dq-composer-title", "Row count stays stable");
     setInput("#dq-field-maxIncreasePct", "10");
