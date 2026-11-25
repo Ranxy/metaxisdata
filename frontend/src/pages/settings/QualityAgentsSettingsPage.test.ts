@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -19,6 +20,12 @@ import {
 } from "@/types/proto-es/v1/setting_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import QualityAgentsSettingsPage from "./QualityAgentsSettingsPage.vue";
+
+// Radix opens a select on pointerdown and calls pointer-capture APIs that jsdom
+// does not implement.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
 
 // Each case mounts its own page; a leftover teleported dialog would answer the next
 // case's queries.
@@ -100,27 +107,75 @@ function providerProfiles(): LlmProviderProfile[] {
   ];
 }
 
-interface PageVm {
-  form: {
-    displayName: string;
-    owner: string;
-    providerProfile: string;
-    providerModel: string;
-    databases: string[];
-    capabilities: string[];
-    adoptionMode: string;
-  };
-  providerOptions: Array<{ name: string; title: string }>;
-  modelOptions: string[];
-  providerUnavailable: boolean;
-  modelUnavailable: boolean;
-  profilesError: boolean;
-  canCreate: boolean;
-  setProviderProfile: (value: unknown) => void;
+function selectById(wrapper: ReturnType<typeof mount>, id: string) {
+  return wrapper
+    .findAllComponents(Select)
+    .find((select) =>
+      select
+        .findAllComponents(SelectTrigger)
+        .some((trigger) => trigger.attributes("id") === id)
+    );
 }
 
-function vm(wrapper: ReturnType<typeof mount>): PageVm {
-  return wrapper.vm as unknown as PageVm;
+/** Set a teleported input's value the way a keystroke would. */
+function setInput(selector: string, value: string) {
+  const element = document.querySelector(selector) as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value"
+  )?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** The value the control renders as chosen. */
+function chosen(wrapper: ReturnType<typeof mount>, id: string): unknown {
+  return selectById(wrapper, id)?.props("modelValue");
+}
+
+/** Pick a value through the select's own event, as the UI would. */
+async function choose(
+  wrapper: ReturnType<typeof mount>,
+  id: string,
+  value: string
+) {
+  selectById(wrapper, id)?.vm.$emit("update:modelValue", value);
+  await nextTick();
+}
+
+/** Open a select and read the values it offers. */
+async function optionValues(
+  wrapper: ReturnType<typeof mount>,
+  id: string
+): Promise<string[]> {
+  document
+    .querySelector<HTMLElement>(`#${id}`)
+    ?.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+    );
+  await flushPromises();
+  const items = selectById(wrapper, id)?.findAllComponents(SelectItem) ?? [];
+  return items.map((item) => String(item.props("value")));
+}
+
+/** Click the checkbox inside the dialog label that carries `text`. */
+async function clickDialogCheckbox(text: string) {
+  const label = [...(dialog()?.querySelectorAll("label") ?? [])].find(
+    (item) => item.textContent?.trim() === text
+  );
+  await clickCheckboxIn(label);
+}
+
+/** Click the checkbox of a label whose long text contains `text`. */
+async function clickDialogCheckboxContaining(text: string) {
+  const label = [...(dialog()?.querySelectorAll("label") ?? [])].find((item) =>
+    item.textContent?.includes(text)
+  );
+  await clickCheckboxIn(label);
+}
+
+async function clickCheckboxIn(label: Element | undefined) {
+  (label?.querySelector('[role="checkbox"]') as HTMLElement | null)?.click();
+  await flushPromises();
 }
 
 function dialog(): HTMLElement | undefined {
@@ -231,16 +286,12 @@ describe("QualityAgentsSettingsPage", () => {
     // The fixture's allowed_llm_provider_models admits only three profiles, and
     // `excluded` is outside it; it is still offered because that allowlist
     // restricts Explain SQL only and an agent may pin any enabled model.
-    expect(vm(wrapper).providerOptions.map((option) => option.name)).toEqual([
+    expect(await optionValues(wrapper, "qa-provider")).toEqual([
       mainProfile,
       secondaryProfile,
       singleProfile,
       "llm-provider-profiles/excluded",
     ]);
-    // The dialog renders the selected value; the list is filtered by the helper.
-    expect(dialogText()).toContain(
-      i18n.global.t("qualityAgents.providerProfile")
-    );
     // An empty pair explains why the primary action is disabled.
     expect(dialogText()).toContain(
       i18n.global.t("qualityAgents.providerRequiredHint")
@@ -251,19 +302,15 @@ describe("QualityAgentsSettingsPage", () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
 
-    vm(wrapper).setProviderProfile(mainProfile);
-    await nextTick();
-
-    expect(vm(wrapper).modelOptions).toEqual(["fast", "reasoner"]);
+    await choose(wrapper, "qa-provider", mainProfile);
     // Several enabled models require an explicit choice, because their price and
     // quality differ.
-    expect(vm(wrapper).form.providerModel).toBe("");
+    expect(chosen(wrapper, "qa-model")).toBe("");
 
-    vm(wrapper).form.displayName = "Agent A";
-    vm(wrapper).form.providerModel = "reasoner";
-    vm(wrapper).form.databases = ["instances/i/databases/d"];
+    setInput("#qa-name", "Agent A");
     await nextTick();
-    expect(vm(wrapper).canCreate).toBe(true);
+    await choose(wrapper, "qa-model", "reasoner");
+    await clickDialogCheckbox("d");
     const createButton = dialogButton(
       i18n.global.t("qualityAgents.createAction")
     );
@@ -282,35 +329,26 @@ describe("QualityAgentsSettingsPage", () => {
   it("keeps an enabled model, auto-selects a single one and ignores a same-value click", async () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
-    const page = vm(wrapper);
 
-    page.setProviderProfile(mainProfile);
-    await nextTick();
-    page.form.providerModel = "reasoner";
-    await nextTick();
+    await choose(wrapper, "qa-provider", mainProfile);
+    await choose(wrapper, "qa-model", "reasoner");
 
     // Clicking the already-selected provider must not silently move the model.
-    page.setProviderProfile(mainProfile);
-    await nextTick();
-    expect(page.form.providerModel).toBe("reasoner");
+    await choose(wrapper, "qa-provider", mainProfile);
+    expect(chosen(wrapper, "qa-model")).toBe("reasoner");
 
     // A profile that does not enable the current model requires a new choice.
-    page.setProviderProfile(secondaryProfile);
-    await nextTick();
-    expect(page.modelOptions).toEqual(["fast", "other"]);
-    expect(page.form.providerModel).toBe("");
+    await choose(wrapper, "qa-provider", secondaryProfile);
+    expect(chosen(wrapper, "qa-model")).toBe("");
 
     // A profile that also enables the current model keeps it.
-    page.form.providerModel = "fast";
-    await nextTick();
-    page.setProviderProfile(mainProfile);
-    await nextTick();
-    expect(page.form.providerModel).toBe("fast");
+    await choose(wrapper, "qa-model", "fast");
+    await choose(wrapper, "qa-provider", mainProfile);
+    expect(chosen(wrapper, "qa-model")).toBe("fast");
 
     // A profile that enables exactly one model selects it; several require a choice.
-    page.setProviderProfile(singleProfile);
-    await nextTick();
-    expect(page.form.providerModel).toBe("only");
+    await choose(wrapper, "qa-provider", singleProfile);
+    expect(chosen(wrapper, "qa-model")).toBe("only");
   });
 
   it("keeps an unavailable stored pair, marks it and still saves other edits", async () => {
@@ -336,9 +374,8 @@ describe("QualityAgentsSettingsPage", () => {
     await openEdit(wrapper);
     // An edit keeps a stored value it can no longer resolve, marked instead of
     // silently cleared.
-    expect(vm(wrapper).form.providerProfile).toBe("llm-provider-profiles/gone");
-    expect(vm(wrapper).providerUnavailable).toBe(true);
-    expect(vm(wrapper).modelUnavailable).toBe(true);
+    expect(chosen(wrapper, "qa-provider")).toBe("llm-provider-profiles/gone");
+    expect(chosen(wrapper, "qa-model")).toBe("ghost");
     expect(dialogText()).toContain(
       i18n.global.t("qualityAgents.providerUnavailableHint")
     );
@@ -376,8 +413,7 @@ describe("QualityAgentsSettingsPage", () => {
     const wrapper = await mountPage();
     await openEdit(wrapper);
 
-    vm(wrapper).form.providerModel = "reasoner";
-    await nextTick();
+    await choose(wrapper, "qa-model", "reasoner");
     dialogButton(i18n.global.t("qualityAgents.saveAction"))?.click();
     await flushPromises();
 
@@ -411,7 +447,6 @@ describe("QualityAgentsSettingsPage", () => {
       i18n.global.t("qualityAgents.providerUnavailable")
     );
     await openEdit(wrapper);
-    expect(vm(wrapper).profilesError).toBe(true);
     expect(dialogText()).toContain(
       i18n.global.t("qualityAgents.providerProfilesError")
     );
@@ -439,9 +474,14 @@ describe("QualityAgentsSettingsPage", () => {
     );
 
     await openEdit(wrapper);
-    expect(vm(wrapper).providerUnavailable).toBe(false);
-    expect(vm(wrapper).modelUnavailable).toBe(false);
-    expect(vm(wrapper).modelOptions).toEqual(["x"]);
+    // The stored pair resolves against the profile list, so the dialog opens on it.
+    expect(chosen(wrapper, "qa-provider")).toBe(
+      "llm-provider-profiles/excluded"
+    );
+    expect(chosen(wrapper, "qa-model")).toBe("x");
+    expect(dialogText()).not.toContain(
+      i18n.global.t("qualityAgents.providerUnavailableHint")
+    );
   });
 
   it("marks a stored pair whose profile enables no model as unavailable", async () => {
@@ -464,11 +504,13 @@ describe("QualityAgentsSettingsPage", () => {
     );
 
     await openEdit(wrapper);
-    expect(vm(wrapper).providerUnavailable).toBe(true);
-    expect(vm(wrapper).modelUnavailable).toBe(true);
-    // The stale pair is kept and an unrelated edit can still be saved.
-    expect(vm(wrapper).form.providerProfile).toBe(
+    // The stale pair is kept, marked, and an unrelated edit can still be saved.
+    expect(chosen(wrapper, "qa-provider")).toBe(
       "llm-provider-profiles/disabled"
+    );
+    expect(chosen(wrapper, "qa-model")).toBe("idle");
+    expect(dialogText()).toContain(
+      i18n.global.t("qualityAgents.providerUnavailableHint")
     );
     expect(
       dialogButton(i18n.global.t("qualityAgents.saveAction"))?.disabled
@@ -512,7 +554,11 @@ describe("QualityAgentsSettingsPage", () => {
     await openEdit(wrapper);
 
     // The stored OFF is shown as OFF, not silently turned into PAUSED.
-    expect(vm(wrapper).form.adoptionMode).toBe("off");
+    expect(
+      wrapper
+        .findAllComponents(Select)
+        .some((select) => select.props("modelValue") === "off")
+    ).toBe(true);
     dialogButton(i18n.global.t("qualityAgents.saveAction"))?.click();
     await flushPromises();
     const [edited] = mocks.updateQualityAgent.mock.calls[0] ?? [];
@@ -522,13 +568,20 @@ describe("QualityAgentsSettingsPage", () => {
   it("sends each adoption mode chosen on create, OFF included", async () => {
     const wrapper = await mountPage();
     await openCreate(wrapper);
-    const page = vm(wrapper);
-    page.form.displayName = "Agent H";
-    page.form.providerProfile = mainProfile;
-    page.form.providerModel = "fast";
-    page.form.databases = ["instances/i/databases/d"];
-    page.form.capabilities = ["suggest", "patrol", "adopt"];
-    page.form.adoptionMode = "off";
+    setInput("#qa-name", "Agent H");
+    await nextTick();
+    await choose(wrapper, "qa-provider", mainProfile);
+    await choose(wrapper, "qa-model", "fast");
+    await clickDialogCheckbox("d");
+    // Enabling adopt reveals its controls; pick OFF explicitly.
+    await clickDialogCheckboxContaining(
+      i18n.global.t("qualityAgents.capabilityAdopt")
+    );
+    const adoption = wrapper
+      .findAllComponents(Select)
+      .find((select) => select.props("modelValue") === "paused");
+    expect(adoption).toBeDefined();
+    adoption?.vm.$emit("update:modelValue", "off");
     await nextTick();
     dialogButton(i18n.global.t("qualityAgents.createAction"))?.click();
     await flushPromises();

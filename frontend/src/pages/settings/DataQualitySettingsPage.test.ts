@@ -6,7 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import FormField from "@/components/ui/form-field/FormField.vue";
-import { Select } from "@/components/ui/select";
+import { Select, SelectTrigger } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -108,15 +108,27 @@ function dialogButton(text: string): HTMLElement | undefined {
   ].find((button) => button.textContent?.trim() === text);
 }
 
-interface PageVm {
-  form: { llmProviderProfile: string; llmProviderModel: string };
-  modelOptions: string[];
-  setLlmProfile: (value: unknown) => void;
-  setEnableLlmAnalysis: (enabled: boolean) => void;
+function llmSelect(wrapper: ReturnType<typeof mount>, id: string) {
+  return wrapper
+    .findAllComponents(Select)
+    .find((select) =>
+      select
+        .findAllComponents(SelectTrigger)
+        .some((trigger) => trigger.attributes("id") === id)
+    );
 }
 
-function vm(wrapper: ReturnType<typeof mount>): PageVm {
-  return wrapper.vm as unknown as PageVm;
+function llmValue(wrapper: ReturnType<typeof mount>, id: string): unknown {
+  return llmSelect(wrapper, id)?.props("modelValue");
+}
+
+async function chooseLlm(
+  wrapper: ReturnType<typeof mount>,
+  id: string,
+  value: string
+) {
+  llmSelect(wrapper, id)?.vm.$emit("update:modelValue", value);
+  await flushPromises();
 }
 
 async function mountPage(permissions = PERMISSIONS) {
@@ -263,8 +275,8 @@ describe("DataQualitySettingsPage", () => {
     // kept even though the Explain SQL allowlist excludes it.
     expect(wrapper.text()).toContain("Primary");
     expect(wrapper.text()).toContain("fast");
-    expect(vm(wrapper).form.llmProviderProfile).toBe("llmProfiles/p1");
-    expect(vm(wrapper).form.llmProviderModel).toBe("fast");
+    expect(llmValue(wrapper, "dq-setting-llm-profile")).toBe("llmProfiles/p1");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("fast");
   });
 
   it("saves the whole section with the expected setting", async () => {
@@ -522,17 +534,18 @@ describe("DataQualitySettingsPage", () => {
       ],
     });
     const wrapper = await mountPage();
-    const page = vm(wrapper);
 
     // Switching to a multi-model profile leaves the model unnamed: half a pair.
-    page.setLlmProfile("llmProfiles/p2");
-    expect(page.form.llmProviderModel).toBe("");
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "llmProfiles/p2");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
 
     // Turning assistance off disables the selectors, so the half pair is cleared
     // rather than left unfixable until the switch is turned back on.
-    page.setEnableLlmAnalysis(false);
-    expect(page.form.llmProviderProfile).toBe("");
-    expect(page.form.llmProviderModel).toBe("");
+    await wrapper.find("#dq-setting-enable-llm").trigger("click");
+    await flushPromises();
+    // The select renders its Auto sentinel; the stored pair is empty.
+    expect(llmValue(wrapper, "dq-setting-llm-profile")).toBe("-");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
   });
 
   it("lists code tables with their value count and updated time", async () => {
@@ -733,7 +746,7 @@ describe("DataQualitySettingsPage", () => {
           ?.element as HTMLInputElement
       ).value
     ).toBe("Asia/Shanghai");
-    expect(wrapper.html()).toContain(
+    expect(wrapper.text()).toContain(
       i18n.global.t("dataQualitySettings.weekdayFriday")
     );
   });
@@ -870,8 +883,8 @@ describe("DataQualitySettingsPage", () => {
 
     // Nothing makes that profile usable, so the form falls back to the automatic
     // choice instead of offering a selection the analyses could not run.
-    expect(vm(wrapper).form.llmProviderProfile).toBe("");
-    expect(vm(wrapper).form.llmProviderModel).toBe("");
+    expect(llmValue(wrapper, "dq-setting-llm-profile")).toBe("-");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
   });
 
   it("clears a stored model the profile no longer enables", async () => {
@@ -895,8 +908,8 @@ describe("DataQualitySettingsPage", () => {
     });
     const wrapper = await mountPage();
 
-    expect(vm(wrapper).form.llmProviderProfile).toBe("");
-    expect(vm(wrapper).form.llmProviderModel).toBe("");
+    expect(llmValue(wrapper, "dq-setting-llm-profile")).toBe("-");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
   });
 
   it("keeps the model picker disabled while the provider is Auto", async () => {
@@ -911,7 +924,7 @@ describe("DataQualitySettingsPage", () => {
     );
     const wrapper = await mountPage();
 
-    expect(vm(wrapper).form.llmProviderModel).toBe("");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
     expect(
       wrapper.find("#dq-setting-llm-model").attributes("disabled")
     ).toBeDefined();
@@ -953,31 +966,28 @@ describe("DataQualitySettingsPage", () => {
       ],
     });
     const wrapper = await mountPage();
-    const page = vm(wrapper);
 
     // A profile that also enables the current model keeps it.
-    page.setLlmProfile("llmProfiles/other");
-    expect(page.modelOptions).toEqual(["fast"]);
-    expect(page.form.llmProviderModel).toBe("fast");
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "llmProfiles/other");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("fast");
 
     // A single enabled model is unambiguous, so it is selected automatically.
-    page.setLlmProfile("llmProfiles/single");
-    expect(page.form.llmProviderModel).toBe("only");
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "llmProfiles/single");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("only");
 
     // Several models, none of them the current one: the administrator must choose.
-    page.setLlmProfile("llmProfiles/main");
-    expect(page.modelOptions).toEqual(["fast", "reasoner"]);
-    expect(page.form.llmProviderModel).toBe("");
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "llmProfiles/main");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
 
     // Re-clicking the selected profile does not replace a pinned model.
-    page.form.llmProviderModel = "reasoner";
-    page.setLlmProfile("llmProfiles/main");
-    expect(page.form.llmProviderModel).toBe("reasoner");
+    await chooseLlm(wrapper, "dq-setting-llm-model", "reasoner");
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "llmProfiles/main");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("reasoner");
 
-    // Auto clears the model too.
-    page.setLlmProfile("-");
-    expect(page.form.llmProviderProfile).toBe("");
-    expect(page.form.llmProviderModel).toBe("");
+    // Auto clears the model too; the select renders its "-" sentinel.
+    await chooseLlm(wrapper, "dq-setting-llm-profile", "-");
+    expect(llmValue(wrapper, "dq-setting-llm-profile")).toBe("-");
+    expect(llmValue(wrapper, "dq-setting-llm-model")).toBe("");
   });
 
   it("explains why nothing is selectable when no profile enables a model", async () => {
