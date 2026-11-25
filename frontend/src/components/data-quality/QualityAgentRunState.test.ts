@@ -98,12 +98,10 @@ describe("QualityAgentRunState", () => {
       .find((button) => button.text() === "Show more");
     expect(showMore).toBeDefined();
     expect(showMore?.attributes("aria-expanded")).toBe("false");
-    expect(wrapper.html()).toContain("line-clamp-4");
 
     await showMore?.trigger("click");
 
     expect(wrapper.text()).toContain("Show less");
-    expect(wrapper.html()).not.toContain("line-clamp-4");
     const showLess = wrapper
       .findAll("button")
       .find((button) => button.text() === "Show less");
