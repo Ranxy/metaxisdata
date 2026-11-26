@@ -131,3 +131,52 @@ func TestListRecentExecutionsNamesTheCheckAndTheFailure(t *testing.T) {
 	require.Contains(t, result, `"errorCode":"BAD_VALUE"`)
 	require.Contains(t, result, `now - 1 day`)
 }
+
+// An agent that can read a failure's execution but not the check's definition can
+// describe the symptom and nothing else: the sample's range bound was visible only
+// in the config, which no tool returned. inspect_check must carry both, and default
+// to the newest failing check when the model names none.
+func TestInspectCheckRendersDefinitionAndEvidence(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAgentStore{
+		rules: []*store.QualityRuleMessage{{
+			ID:         460,
+			ResourceID: "r460",
+			Title:      "performed_at must be recent and not in the future",
+			RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+			State:      storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Revision:   2,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
+				Range: &storepb.RangeConfig{Column: "performed_at", Min: qualityTestPtr("now - 1 day")},
+			}},
+		}},
+		executions: []*store.QualityExecutionMessage{{
+			ID:           4339,
+			RuleID:       460,
+			RuleRevision: 2,
+			Status:       storepb.QualityStatus_QUALITY_STATUS_ERROR,
+			ErrorCode:    "BAD_VALUE",
+			ErrorMessage: `invalid input syntax for type timestamp with time zone: "now - 1 day"`,
+			StartedAt:    time.Date(2026, 11, 26, 6, 8, 55, 0, time.UTC),
+			FinishedAt:   time.Date(2026, 11, 26, 6, 8, 55, 0, time.UTC),
+		}},
+	}
+	tools := NewAgentTools(AgentDeps{Store: store})
+	result, err := tools.InspectCheck(context.Background(), AgentSession{
+		WorkspaceID: "ws",
+		TargetGUID:  "target-1",
+		TargetType:  storepb.MetaType_TABLE,
+	}, "")
+	require.NoError(t, err)
+	require.Contains(t, result, `"name":"qualityRules/r460"`)
+	require.Contains(t, result, `"type":"RANGE"`)
+	require.Contains(t, result, `"revision":2`)
+	require.Contains(t, result, `performed_at`)
+	require.Contains(t, result, `now - 1 day`)
+	require.Contains(t, result, `"errorCode":"BAD_VALUE"`)
+}
+
+// qualityTestPtr is a local pointer helper for the optional proto fields.
+func qualityTestPtr[T any](value T) *T { return &value }

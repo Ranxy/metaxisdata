@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -334,6 +335,140 @@ func (t *AgentTools) ListRecentExecutions(ctx context.Context, session AgentSess
 		executions = []dataquality.ExecutionEvidence{}
 	}
 	return marshalJSON(map[string]any{"executions": executions})
+}
+
+// maxInspectConfigBytes bounds the definition an inspection renders. A config
+// larger than this is a custom SQL statement, which the agent cannot rewrite
+// anyway, so the tool reports that it omitted the body instead of returning a
+// string the result budget would cut in half.
+const maxInspectConfigBytes = 4 << 10
+
+// InspectCheck renders one check's definition and its own executions. It is the
+// tool that turns "an execution failed" into "this check, at this revision, with
+// this config, failed for this reason": the read that lets a model decide whether
+// the check or the data is wrong.
+func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Rule       string `json:"rule"`
+		Executions int    `json:"executions"`
+	}
+	if strings.TrimSpace(arguments) != "" {
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid inspect_check arguments")
+		}
+	}
+	limit := input.Executions
+	switch {
+	case limit <= 0:
+		limit = 5
+	case limit > 20:
+		limit = 20
+	default:
+	}
+	rules, err := t.deps.Store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the target's rules")
+	}
+	rawLimit := limit
+	executions, err := t.deps.Store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{TargetGUID: &session.TargetGUID, Limit: &rawLimit})
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the target's executions")
+	}
+	rule := findInspectedRule(rules, executions, input.Rule)
+	if rule == nil {
+		if strings.TrimSpace(input.Rule) == "" {
+			return "", errors.New("the target has no check to inspect; name one with rule")
+		}
+		return "", errors.Errorf("the target has no check %q", input.Rule)
+	}
+	own := make([]*store.QualityExecutionMessage, 0, len(executions))
+	for _, execution := range executions {
+		if execution != nil && execution.RuleID == rule.ID {
+			own = append(own, execution)
+		}
+	}
+	result := map[string]any{
+		"target":     session.TargetGUID,
+		"rule":       inspectedRuleView(rule),
+		"executions": dataquality.BuildExecutionEvidence(own, rules),
+	}
+	return marshalJSON(result)
+}
+
+// inspectedRuleView renders one check's definition. It carries the config because
+// the failure is usually a property of the config, and the revision because a
+// historical execution ran a definition the head row may no longer hold.
+func inspectedRuleView(rule *store.QualityRuleMessage) map[string]any {
+	view := map[string]any{
+		"name":     "qualityRules/" + rule.ResourceID,
+		"title":    rule.Title,
+		"type":     strings.TrimPrefix(rule.RuleType.String(), "QUALITY_RULE_TYPE_"),
+		"state":    strings.TrimPrefix(rule.State.String(), "QUALITY_RULE_STATE_"),
+		"severity": strings.TrimPrefix(rule.Severity.String(), "QUALITY_SEVERITY_"),
+		"revision": rule.Revision,
+	}
+	if rule.Description != "" {
+		view["description"] = rule.Description
+	}
+	if rule.Config == nil {
+		return view
+	}
+	encoded, err := protojson.Marshal(rule.Config)
+	if err != nil {
+		return view
+	}
+	if len(encoded) > maxInspectConfigBytes {
+		view["configOmitted"] = "the definition is larger than the inspection budget"
+		return view
+	}
+	view["config"] = string(encoded)
+	return view
+}
+
+// findInspectedRule resolves the check one inspection is about: the named one, or
+// the check behind the newest failed execution when the caller named none. Naming
+// nothing and having nothing to look at is an error the model can act on.
+func findInspectedRule(rules []*store.QualityRuleMessage, executions []*store.QualityExecutionMessage, name string) *store.QualityRuleMessage {
+	wanted := strings.TrimSpace(name)
+	wanted = strings.TrimPrefix(wanted, "qualityRules/")
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		if wanted != "" && rule.ResourceID == wanted {
+			return rule
+		}
+	}
+	if wanted != "" {
+		return nil
+	}
+	byID := make(map[int64]*store.QualityRuleMessage, len(rules))
+	for _, rule := range rules {
+		if rule != nil {
+			byID[rule.ID] = rule
+		}
+	}
+	for _, execution := range executions {
+		if execution == nil {
+			continue
+		}
+		rule := byID[execution.RuleID]
+		if rule == nil {
+			continue
+		}
+		if execution.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR || execution.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
+			return rule
+		}
+	}
+	for _, execution := range executions {
+		if execution == nil {
+			continue
+		}
+		if rule := byID[execution.RuleID]; rule != nil {
+			return rule
+		}
+	}
+	return nil
 }
 
 // GetMemory lists the target's confirmed memories.

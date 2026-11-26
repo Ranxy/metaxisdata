@@ -72,9 +72,27 @@ func targetToolSpecs() []toolSpec {
 		},
 		{
 			name:        "list_recent_executions",
-			description: "List the target's recent executions with their outcomes and failed row counts.",
+			description: "List the target's recent executions with the check they belong to, their outcome, failure code and message, and row counts.",
 			parameters:  emptyParameters(),
 			meta:        readMeta(),
+		},
+		{
+			name: "inspect_check",
+			description: "Read one check's definition — type, revision, severity and the rest of its config — together with that check's own recent executions and failure evidence. " +
+				"Naming no check inspects the newest failing one.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"rule": map[string]any{
+					"type":        "string",
+					"description": "optional check resource name; omit to inspect the newest failing check",
+				},
+				"executions": map[string]any{
+					"type":        "integer",
+					"minimum":     1,
+					"maximum":     20,
+					"description": "how many of the check's executions to include, at most 20",
+				},
+			}},
+			meta: readMeta(),
 		},
 		{
 			name:        "get_memory",
