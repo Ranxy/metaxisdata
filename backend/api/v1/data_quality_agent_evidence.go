@@ -97,19 +97,30 @@ func (s *DataQualityService) requireAgentEvidence(ctx context.Context, agentPrin
 	if actor == nil {
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("the agent principal no longer exists"))
 	}
+	if err := s.checkEvidenceTarget(ctx, actor, targetGUID); err != nil {
+		return "", err
+	}
+	return targetGUID, nil
+}
+
+// checkEvidenceTarget is the object-level half of the read: the agent may read one
+// target's evidence only if its delegated grant covers that target. The permission is
+// rules.evidence, so the scoped authorizer really evaluates the grant chain instead of
+// short-circuiting on the member baseline.
+func (s *DataQualityService) checkEvidenceTarget(ctx context.Context, actor *store.UserMessage, targetGUID string) error {
 	// A focused unit test builds the service without an authorizer; the evidence read
 	// keeps working there, the same way the list reads keep their legacy behavior.
 	if s.authorizer == nil {
-		return targetGUID, nil
+		return nil
 	}
 	allowed, err := s.authorizer.Check(ctx, actor, permission.DataQualityRulesEvidence, resource.NewRef(resource.TypeTable, targetGUID))
 	if err != nil {
-		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the evidence permission"))
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to check the evidence permission"))
 	}
 	if !allowed {
-		return "", connect.NewError(connect.CodePermissionDenied, errors.Errorf("permission %q denied", permission.DataQualityRulesEvidence))
+		return connect.NewError(connect.CodePermissionDenied, errors.Errorf("permission %q denied", permission.DataQualityRulesEvidence))
 	}
-	return targetGUID, nil
+	return nil
 }
 
 // boundAgentEvidenceExecutions applies the read's own budget.
