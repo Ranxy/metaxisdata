@@ -3417,7 +3417,7 @@
     "contextTitle": "Context",
     "contextUsage": "{used} / {window}",
     "contextValueText": "{used} / {window} tokens ({percent}%)",
-    "contextWindowHint": "The model's combined request and response capacity; the agent compacts before the window fills, sizing the pressure by its own token estimate, so the compaction point is approximate.",
+    "contextWindowHint": "The model's combined request and response capacity; the agent compacts before the window fills, measuring the conversation with its own token estimate, so the compaction point is approximate.",
     "conversationEmpty": "No messages yet. Ask the agent about scope health, pending proposals or recent findings.",
     "conversationHint": "Your conversation with the agent will live here.",
     "conversationTitle": "Conversation",

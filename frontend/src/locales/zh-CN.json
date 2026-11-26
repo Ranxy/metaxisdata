@@ -3402,7 +3402,7 @@
     "casesTitle": "工作项",
     "collapseReason": "收起",
     "contextCannotCompact": "此模型组合无法压缩",
-    "contextCompactsNear": "引擎估算在 {tokens} 附近压缩",
+    "contextCompactsNear": "引擎按自身估算，接近 {tokens} 时压缩",
     "contextEstimated": "估算值",
     "contextMeasuredAt": "第 {wake} 次唤醒 · {time}",
     "contextMeasuredAtTurn": "第 {wake} 次唤醒 · 第 {turn} 轮 · {time}",
