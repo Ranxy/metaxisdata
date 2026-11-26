@@ -71,9 +71,11 @@ const (
 	// DefaultAgentRunnerTokensPerHour is the fallback hourly token ceiling of one
 	// agent whose own budget does not say.
 	DefaultAgentRunnerTokensPerHour int64 = 100_000_000
-	// DefaultAgentRunnerWakesPerHour is the fallback hourly wake budget of one
-	// agent whose own budget does not say.
-	DefaultAgentRunnerWakesPerHour = 20
+	// DefaultAgentRunnerWakesPerHour is the fallback hourly wake budget of one agent
+	// whose own budget does not say. It is shared by every target session the agent
+	// runs, and a wake is a model call: a dozen targets each concluding once an hour
+	// must fit, while a loop that wakes itself every minute must not.
+	DefaultAgentRunnerWakesPerHour = 60
 	// DefaultAgentRunnerMaxConcurrentSessions is the fallback concurrent session
 	// budget of one agent whose own budget does not say.
 	DefaultAgentRunnerMaxConcurrentSessions = 2

@@ -699,8 +699,13 @@ func (s *Store) SumQualityAgentSessionTokensSince(ctx context.Context, workspace
 	return total, nil
 }
 
-// CountQualityAgentSessionWakesSince counts the wakes a workspace started since one
-// instant, the hourly wake budget.
+// CountQualityAgentSessionWakesSince counts the wakes one agent's target sessions performed since
+// an instant: the wake budget's read.
+//
+// Only a wake counts. An event message is not a wake — a dozen events are folded into one wake, and
+// they have their own per-session ceiling (CountQualityAgentSessionEventsSince). Counting each event
+// here let a burst of perception spend the capacity to think, which parked the session exactly when
+// it had something to act on.
 func (s *Store) CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error) {
 	var total int64
 	if err := s.GetDB().QueryRowContext(ctx, `
@@ -708,12 +713,9 @@ func (s *Store) CountQualityAgentSessionWakesSince(ctx context.Context, workspac
 		FROM quality_agent_message m
 		JOIN quality_agent_session s ON s.id = m.session_id
 		WHERE m.workspace_id = $1 AND s.agent_id = $2 AND m.created_at > $3
-			AND m.role = $4 AND s.kind = 1
-			AND m.origin IN ($5, $6, $7)`, workspaceID, agentID, since,
-		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK)).Scan(&total); err != nil {
+			AND s.kind = 1
+			AND m.origin = $4`, workspaceID, agentID, since,
+		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE)).Scan(&total); err != nil {
 		return 0, errors.Wrap(err, "failed to count the session wakes")
 	}
 	return total, nil
