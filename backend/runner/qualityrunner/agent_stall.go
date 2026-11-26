@@ -13,10 +13,17 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// stallSweepInterval is how often the stall sweep runs. A check that has not run for two of its
-// target's cadences does not become urgent inside ten seconds, and the sweep costs one read per
-// target, so it runs once a minute rather than on every scheduler tick.
-const stallSweepInterval = time.Minute
+const (
+	// stallSweepInterval is how often the stall sweep runs. A check that has not run for two of its
+	// target's cadences does not become urgent inside ten seconds, and the sweep costs one read per
+	// target, so it runs once a minute rather than on every scheduler tick.
+	stallSweepInterval = time.Minute
+	// stallSweepGrace keeps the sweep quiet right after the process starts. The scheduler runs every
+	// target's overdue batch within the first minute, so a sweep that spoke first would report a
+	// whole target as dead and then watch it execute a second later — the restart noise that made
+	// one start produce two contradictory events per check.
+	stallSweepGrace = 2 * time.Minute
+)
 
 // sweepStalledChecks tells each target session about the checks that have stopped running.
 //
@@ -26,7 +33,7 @@ const stallSweepInterval = time.Minute
 // starts from the schedule instead of from an execution.
 func (r *Runner) sweepStalledChecks(ctx context.Context) {
 	now := time.Now().UTC()
-	if !r.stallSweepDue(now) {
+	if stallSweepWithinGrace(r.startedAt, now) || !r.stallSweepDue(now) {
 		return
 	}
 	if !r.currentSettings().AgentRunnerEnabled {
@@ -79,11 +86,11 @@ func stalledCheckEvent(check *store.QualityRuleStalenessMessage, day string, now
 	if check == nil {
 		return agentEvent{}, false
 	}
-	lastCompleted := time.Time{}
-	if check.LastCompletedAt != nil {
-		lastCompleted = *check.LastCompletedAt
+	lastFinished := time.Time{}
+	if check.LastFinishedAt != nil {
+		lastFinished = *check.LastFinishedAt
 	}
-	health := dataquality.DiagnoseStaleCheck(check.CreatedAt, lastCompleted, check.Cadence, now)
+	health := dataquality.DiagnoseStaleCheck(check.CreatedAt, lastFinished, check.Cadence, now)
 	if health.Class != dataquality.HealthStalled {
 		return agentEvent{}, false
 	}
@@ -99,6 +106,15 @@ func stalledCheckEvent(check *store.QualityRuleStalenessMessage, day string, now
 		Reference: "qualityRules/" + check.RuleResourceID,
 		Key:       fmt.Sprintf("stalled:%d:%s", check.RuleID, day),
 	}, true
+}
+
+// stallSweepWithinGrace reports whether the process is still too young for the sweep to speak. A
+// zero start (a test, or a runner built before the field existed) is never inside the grace window.
+func stallSweepWithinGrace(startedAt, now time.Time) bool {
+	if startedAt.IsZero() {
+		return false
+	}
+	return now.Sub(startedAt) < stallSweepGrace
 }
 
 // stallSweepDue reports whether the sweep may run now, and records the pass. It is throttled rather

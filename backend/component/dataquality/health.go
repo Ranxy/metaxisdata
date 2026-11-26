@@ -158,18 +158,18 @@ func DiagnoseCheckHealth(input HealthInput) CheckHealth {
 }
 
 // DiagnoseStaleCheck answers the stall question from the two instants a sweep can read: when the
-// check was saved and when it last completed. The batch path has the executions and reaches the
-// same answer through DiagnoseCheckHealth; a sweep that holds only the newest completion still needs
-// to notice a check that is not running at all, because such a check produces no execution and
-// therefore no event of its own.
+// check was saved and when it last finished an execution, whatever the verdict. A check that finishes
+// executions is not stalled — it may be failing or never concluding, and those have their own paths
+// — so only a check with nothing finished inside its window is reported here. The batch path has the
+// executions and reaches the same answer through DiagnoseCheckHealth.
 //
 // The returned class is STALLED for a check that has stopped running, PENDING for one that is still
 // inside its first window, and empty when there is nothing to say.
-func DiagnoseStaleCheck(ruleCreatedAt, lastCompletedAt time.Time, cadence time.Duration, now time.Time) CheckHealth {
+func DiagnoseStaleCheck(ruleCreatedAt, lastFinishedAt time.Time, cadence time.Duration, now time.Time) CheckHealth {
 	if cadence <= 0 || now.IsZero() {
 		return CheckHealth{}
 	}
-	return stallCheck(ruleCreatedAt, lastCompletedAt, cadence, now, DefaultHealthStallFactor)
+	return stallCheck(ruleCreatedAt, lastFinishedAt, cadence, now, DefaultHealthStallFactor)
 }
 
 // stallCheck is the one stall rule both callers share: a check is stalled when it has not completed

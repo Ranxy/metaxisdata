@@ -239,6 +239,10 @@ type Runner struct {
 	// minute because a check that has not run for two of its target's cadences does
 	// not become urgent between two ten-second ticks.
 	stallSweepAt time.Time
+	// startedAt is when this process started the runner. The stall sweep stays quiet for
+	// its first minutes: the scheduler's first pass re-runs every overdue target, and a
+	// sweep that spoke before it declared the whole target stalled.
+	startedAt time.Time
 }
 
 // NewRunner creates the data-quality runner. The executor is stateless, so one
@@ -252,6 +256,7 @@ func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 		dbFactory: dbFactory,
 		stateCfg:  stateCfg,
 		exec:      exec,
+		startedAt: time.Now().UTC(),
 		resolveReferenceTarget: func(ctx context.Context, guid string, metaType storepb.MetaType) (*dataquality.Resolution, error) {
 			return dataquality.ResolveTarget(ctx, stores, guid, metaType)
 		},

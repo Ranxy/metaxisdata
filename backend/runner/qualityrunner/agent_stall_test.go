@@ -46,7 +46,7 @@ func TestStalledCheckEventIsSilentForAWorkingOrYoungCheck(t *testing.T) {
 	completed := now.Add(-2 * time.Minute)
 	working := &store.QualityRuleStalenessMessage{
 		RuleID: 1, RuleResourceID: "r1", CreatedAt: now.Add(-24 * time.Hour),
-		Cadence: time.Hour, LastCompletedAt: &completed,
+		Cadence: time.Hour, LastFinishedAt: &completed,
 	}
 	_, stalled := stalledCheckEvent(working, "2026-03-02", now)
 	require.False(t, stalled)
@@ -72,4 +72,17 @@ func TestStallSweepRunsAtMostOnceAMinute(t *testing.T) {
 	require.False(t, runner.stallSweepDue(start.Add(10*time.Second)))
 	require.False(t, runner.stallSweepDue(start.Add(stallSweepInterval-time.Second)))
 	require.True(t, runner.stallSweepDue(start.Add(stallSweepInterval)))
+}
+
+// The sweep stays quiet for its first minutes: a process start re-runs every overdue target within
+// the first scheduler pass, and a sweep that spoke first reported a whole target as dead moments
+// before the same checks executed.
+func TestStallSweepWaitsOutTheStartupGrace(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)
+	require.True(t, stallSweepWithinGrace(startedAt, startedAt.Add(10*time.Second)))
+	require.True(t, stallSweepWithinGrace(startedAt, startedAt.Add(stallSweepGrace-time.Second)))
+	require.False(t, stallSweepWithinGrace(startedAt, startedAt.Add(stallSweepGrace)))
+	require.False(t, stallSweepWithinGrace(time.Time{}, startedAt), "an unknown start is never in grace")
 }

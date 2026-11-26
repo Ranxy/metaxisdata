@@ -22,14 +22,17 @@ type QualityRuleStalenessMessage struct {
 	// CreatedAt is when the check was saved; a check younger than its stall window has simply not
 	// had a chance to run.
 	CreatedAt time.Time
-	// LastCompletedAt is the newest completed execution, nil when the check never completed one.
-	LastCompletedAt *time.Time
+	// LastFinishedAt is the newest finished execution of any verdict, nil when the check has never
+	// finished one. A check that finishes executions is not stalled — it is at most "not concluding",
+	// which is the health path's business — so the sweep reads the newest finish rather than the
+	// newest completion.
+	LastFinishedAt *time.Time
 	// Cadence is the target's nominal schedule spacing.
 	Cadence time.Duration
 }
 
 // ListQualityRuleStaleness returns the enabled checks of one target with the instant each last
-// completed and the target's cadence.
+// finished an execution, and the target's cadence.
 //
 // It reads the newest completion rather than the executions themselves because a sweep asks one
 // question — is this check running at all? — and the batch path, which holds the executions, asks
@@ -45,15 +48,12 @@ func (s *Store) ListQualityRuleStaleness(ctx context.Context, targetGUID string)
 		FROM quality_rule r
 		JOIN quality_target_schedule s
 			ON s.target_guid = r.target_guid AND s.target_type = r.target_type
-		LEFT JOIN quality_execution e
-			ON e.rule_id = r.id AND e.state = $2
-		WHERE r.target_guid = $1 AND r.state = $3
+		LEFT JOIN quality_execution e ON e.rule_id = r.id AND e.finished_at IS NOT NULL
+		WHERE r.target_guid = $1 AND r.state = $2
 		GROUP BY r.id, r.resource_id, r.title, r.target_guid, r.target_type, r.created_at,
 			s.schedule_interval_seconds
 		ORDER BY r.id`,
-		targetGUID,
-		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
-		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED))
+		targetGUID, int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the target's check staleness")
 	}
@@ -63,19 +63,19 @@ func (s *Store) ListQualityRuleStaleness(ctx context.Context, targetGUID string)
 		var (
 			message         QualityRuleStalenessMessage
 			targetType      int16
-			lastCompletedAt sql.NullTime
+			lastFinishedAt  sql.NullTime
 			intervalSeconds int32
 		)
 		if err := rows.Scan(&message.RuleID, &message.RuleResourceID, &message.Title,
-			&message.TargetGUID, &targetType, &message.CreatedAt, &lastCompletedAt,
+			&message.TargetGUID, &targetType, &message.CreatedAt, &lastFinishedAt,
 			&intervalSeconds); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a check's staleness")
 		}
 		message.TargetType = storepb.MetaType(targetType)
 		message.Cadence = time.Duration(intervalSeconds) * time.Second
-		if lastCompletedAt.Valid {
-			value := lastCompletedAt.Time
-			message.LastCompletedAt = &value
+		if lastFinishedAt.Valid {
+			value := lastFinishedAt.Time
+			message.LastFinishedAt = &value
 		}
 		messages = append(messages, &message)
 	}
