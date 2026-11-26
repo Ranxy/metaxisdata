@@ -30,6 +30,7 @@ import (
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -126,6 +127,18 @@ func configureGrpcRouters(
 		sessionEngine.SetAdoption(dataQualityService.AdoptQualitySuggestions)
 		sessionEngine.SetOwnerAdoption(dataQualityService.AdoptQualitySuggestionsForOwner)
 		sessionEngine.SetEvidence(dataQualityService)
+		sessionEngine.SetControl(func(ctx context.Context, agentPrincipalID int32, caseResourceID, action string) (quality.ControlOutcome, error) {
+			result, err := dataQualityService.ControlAgentCheck(ctx, agentPrincipalID, caseResourceID, action)
+			if err != nil {
+				return quality.ControlOutcome{}, err
+			}
+			return quality.ControlOutcome{
+				Check:    result.Check,
+				State:    result.State,
+				Revision: result.Revision,
+				Reason:   result.Reason,
+			}, nil
+		})
 	}
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m, iamManager)

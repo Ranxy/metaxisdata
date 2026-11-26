@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -343,4 +344,21 @@ func (s *Store) EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentI
 	}
 	at := earliest.Time.UTC()
 	return &at, nil
+}
+
+// GetQualityAgentCaseByResourceID reads one case by the resource id a wake prompt names.
+func (s *Store) GetQualityAgentCaseByResourceID(ctx context.Context, resourceID string) (*QualityAgentCaseMessage, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return nil, common.Errorf(common.Invalid, "a case resource id is required")
+	}
+	message, err := scanQualityAgentCase(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityAgentCaseColumns+` FROM quality_agent_case WHERE resource_id = $1`, resourceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the quality agent case")
+	}
+	return message, nil
 }

@@ -139,7 +139,7 @@ func suggestProfile() capabilityProfile {
 					"- When a check cannot express the intent — a value the database refuses, the wrong check type for a rolling window — draft the check that can with draft_checks instead of forcing the broken definition to work.",
 					"- Read the target's schema, profiles, labels and consumers with get_table_context before drafting.",
 					"- A draft is a proposal, never a running check. The Adoption section decides whether it is created automatically; otherwise a person reviews it.",
-					"- You cannot retire or pause a check. When a replacement is queued and the old check keeps failing, say so and let a person decide about the old one.",
+					"- A check that cannot run at all may be paused with control_check once its case is diagnosed; the case is then escalated so a person decides whether to resume, archive or replace it. You cannot archive or resume a check.",
 				}, "\n")}}
 			case conversationProduct.Name:
 				return []agent.PromptSection{{Name: "capability-suggest", Text: strings.Join([]string{

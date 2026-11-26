@@ -96,6 +96,8 @@ type Engine struct {
 	// after the service exists, like adoption, because the engine is constructed
 	// first.
 	evidence quality.AgentEvidence
+	// control applies a state change to one case. It is a setter for the same reason.
+	control quality.ControlFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -123,6 +125,13 @@ func (e *Engine) SetAdoption(adoption AdoptionFunc) {
 // report that the read is not configured instead of falling back to a store query.
 func (e *Engine) SetEvidence(evidence quality.AgentEvidence) {
 	e.evidence = evidence
+}
+
+// SetControl wires the control verb after the API service exists, for the same reason
+// SetAdoption is a setter. Without it the control tool reports that the verb is not configured
+// instead of silently doing nothing.
+func (e *Engine) SetControl(control quality.ControlFunc) {
+	e.control = control
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service

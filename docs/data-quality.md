@@ -590,8 +590,7 @@ tool; a person's approval is recorded under its own origin but never spends it.
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the
 person's own decision: it turns the agent's queued drafts into checks without the guardrails or the ceiling, but with rule
-validation, the audit ledger and the person's attribution. Publishing a contract, editing a check, rejecting a draft and changing
-settings remain human-only. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
+validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only. A check that cannot run at all is the one exception: the agent may pause it, the case is escalated, and a person still decides whether to resume, archive or replace it. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
 the agent's owner (or by the approver when there is none), and MCP stays read-only.
 
 ### Budgets, blocks and work sessions

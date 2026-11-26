@@ -144,3 +144,79 @@ func TestEffectOfComesFromTheClass(t *testing.T) {
 	require.Equal(t, EffectSubject, EffectOf(&dataquality.Diagnosis{Class: dataquality.ClassNoVerdictEmpty}))
 	require.Equal(t, EffectSubject, EffectOf(nil))
 }
+
+// Pausing is only for a check that cannot run. Pausing one that concludes would remove it from
+// the score, and pausing a source fault would hide an infrastructure problem behind a rule
+// state change. Resuming and archiving are not case verbs.
+func TestDecideControl(t *testing.T) {
+	t.Parallel()
+
+	diagnosed := store.QualityAgentCaseStateDiagnosed
+	cases := []struct {
+		name      string
+		policy    Policy
+		facts     CaseFacts
+		action    ControlAction
+		want      bool
+		wantInMsg string
+	}{
+		{
+			name:   "a repair-level agent may pause a check that cannot run",
+			policy: Policy{Participation: ParticipationRepair},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassConfigValueInvalid}},
+			action: ControlPause, want: true,
+		},
+		{
+			name:   "observe may not pause",
+			policy: Policy{Participation: ParticipationObserve},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassConfigValueInvalid}},
+			action: ControlPause, wantInMsg: "repair-level",
+		},
+		{
+			name:   "a manual lock outranks the delegation",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: diagnosed, ManualLock: true, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassStructureDrift}},
+			action: ControlPause, wantInMsg: "a person manages this check",
+		},
+		{
+			name:   "only a diagnosed case may change state",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: store.QualityAgentCaseStateActed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassStructureDrift}},
+			action: ControlPause, wantInMsg: "diagnosed",
+		},
+		{
+			name:   "a data failure is not pausable",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassDataFailure}},
+			action: ControlPause, wantInMsg: "cannot run",
+		},
+		{
+			name:   "a source fault is not pausable",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassSourceFault}},
+			action: ControlPause, wantInMsg: "cannot run",
+		},
+		{
+			name:   "resuming is a person's decision",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassStructureDrift}},
+			action: ControlResume, wantInMsg: "person's decision",
+		},
+		{
+			name:   "archiving is decided on the check, not from a case",
+			policy: Policy{Participation: ParticipationTune},
+			facts:  CaseFacts{State: diagnosed, Diagnosis: &dataquality.Diagnosis{Class: dataquality.ClassStructureDrift}},
+			action: ControlArchive, wantInMsg: "on the check itself",
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			verdict := test.policy.DecideControl(test.facts, test.action)
+			require.Equal(t, test.want, verdict.Allowed)
+			if test.wantInMsg != "" {
+				require.Contains(t, verdict.Reason, test.wantInMsg)
+			}
+		})
+	}
+}

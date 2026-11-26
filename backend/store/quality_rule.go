@@ -1134,3 +1134,21 @@ func (s *Store) ListQualityRulesByTargets(ctx context.Context, keys []MetaGUIDKe
 	}
 	return rules, nil
 }
+
+// GetQualityRuleByID reads one rule row by its internal id, without the archived filter: an
+// execution row and a case both carry the id, and a caller that already holds that evidence
+// must be able to render the rule even when it has since been archived.
+func (s *Store) GetQualityRuleByID(ctx context.Context, id int64) (*QualityRuleMessage, error) {
+	if id <= 0 {
+		return nil, common.Errorf(common.Invalid, "a quality rule id is required")
+	}
+	rule, err := scanQualityRule(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityRuleColumns+` FROM quality_rule WHERE id = $1`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the quality rule")
+	}
+	return rule, nil
+}

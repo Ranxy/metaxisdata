@@ -174,3 +174,45 @@ func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
 	_, err = tools.InspectCheck(context.Background(), AgentSession{TargetGUID: "target-1"}, "")
 	require.ErrorContains(t, err, "not configured")
 }
+
+// control_check is a request, not the authority: it passes the agent principal, the case the
+// model named and the action through, and reports what the application layer actually did. A
+// process without the verb refuses instead of pretending.
+func TestControlCheckPassesTheRequestThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase, gotAction string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Control: func(_ context.Context, principalID int32, caseResourceID, action string) (ControlOutcome, error) {
+			gotPrincipal, gotCase, gotAction = principalID, caseResourceID, action
+			return ControlOutcome{
+				Check: "qualityRules/r460", State: "PAUSED", Revision: 3,
+				Reason: "the agent paused the check because it cannot run",
+			}, nil
+		},
+	})
+	result, err := tools.ControlCheck(context.Background(), AgentSession{
+		AgentPrincipalID: 110,
+		TargetGUID:       "target-1",
+	}, `{"case":"workspaces/ws/qualityAgentCases/c9","action":"PAUSE"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualityAgentCases/c9", gotCase)
+	require.Equal(t, "PAUSE", gotAction)
+	require.Contains(t, result, `"state":"PAUSED"`)
+	require.Contains(t, result, `"revision":3`)
+	require.Contains(t, result, `"case":"c9"`)
+}
+
+func TestControlCheckRequiresTheVerbAndItsArguments(t *testing.T) {
+	t.Parallel()
+
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}})
+	_, err := tools.ControlCheck(context.Background(), AgentSession{}, `{"case":"c9","action":"PAUSE"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = tools.ControlCheck(context.Background(), AgentSession{}, `{"action":"PAUSE"}`)
+	require.ErrorContains(t, err, "needs a case and an action")
+}

@@ -123,3 +123,54 @@ func pinsField(pinned []string, field string) bool {
 	}
 	return false
 }
+
+// ControlAction is one requested state change on a check.
+type ControlAction string
+
+const (
+	// ControlPause stops a check that cannot produce a verdict, so its noise ends while a
+	// person decides what to do with it.
+	ControlPause ControlAction = "PAUSE"
+	// ControlResume restarts a paused check. It is not a case verb: pausing escalates the case,
+	// which releases the subject, and a paused check produces no new evidence to base a resume
+	// on. A person resumes it.
+	ControlResume ControlAction = "RESUME"
+	// ControlArchive retires a check.
+	ControlArchive ControlAction = "ARCHIVE"
+)
+
+// DecideControl answers whether one state change may be applied to one case. Pausing is only for
+// a check that cannot produce a verdict: there is no red to hide, so stopping the noise is safe,
+// while pausing a check that concludes would remove it from the score.
+func (p Policy) DecideControl(facts CaseFacts, action ControlAction) Verdict {
+	if facts.ManualLock {
+		return Verdict{Reason: "a person manages this check"}
+	}
+	if facts.State != store.QualityAgentCaseStateDiagnosed {
+		return Verdict{Reason: "only a diagnosed case may change a check's state"}
+	}
+	if facts.Diagnosis == nil {
+		return Verdict{Reason: "the failure has no diagnosis, so there is nothing to pause"}
+	}
+	switch action {
+	case ControlPause:
+	case ControlResume:
+		// The pause escalates the case and a terminal case releases the subject, so there is no
+		// case left to resume from; a paused check also produces no new evidence.
+		return Verdict{Reason: "resuming a paused check is a person's decision"}
+	case ControlArchive:
+		return Verdict{Reason: "retiring a check is a decision made on the check itself, not from a case"}
+	default:
+		return Verdict{Reason: "the control action is not one this build understands"}
+	}
+	switch facts.Diagnosis.Class {
+	case dataquality.ClassConfigValueInvalid,
+		dataquality.ClassConfigUnsupported,
+		dataquality.ClassStructureDrift:
+		// The check itself is the problem. Nothing that could have produced a verdict is being
+		// hidden, because these classes cannot produce one.
+	default:
+		return Verdict{Reason: "only a check that cannot run may be paused; this failure is " + string(facts.Diagnosis.Class)}
+	}
+	return p.Allows(Decision{Action: dataquality.ActionControl, Effect: EffectState})
+}
