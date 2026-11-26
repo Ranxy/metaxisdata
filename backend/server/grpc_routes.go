@@ -134,6 +134,21 @@ func configureGrpcRouters(
 			}
 			return quality.RunOutcome{Check: result.Check, Execution: result.Execution, State: result.State}, nil
 		})
+		sessionEngine.SetRevise(func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value string) (quality.RevisionOutcome, error) {
+			result, err := dataQualityService.ReviseAgentField(ctx, agentPrincipalID, caseResourceID, field, value)
+			if err != nil {
+				return quality.RevisionOutcome{}, err
+			}
+			return quality.RevisionOutcome{
+				Check:     result.Check,
+				Field:     result.Field,
+				From:      result.From,
+				To:        result.To,
+				Revision:  result.Revision,
+				Execution: result.Execution,
+				State:     result.State,
+			}, nil
+		})
 		sessionEngine.SetPropose(func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value, rationale string) (quality.ProposalOutcome, error) {
 			result, err := dataQualityService.ProposeAgentRevision(ctx, agentPrincipalID, caseResourceID, field, value, rationale)
 			if err != nil {

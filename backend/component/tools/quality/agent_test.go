@@ -183,6 +183,45 @@ func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
 // control_check is a request, not the authority: it passes the agent principal, the case the
 // model named and the action through, and reports what the application layer actually did. A
 // process without the verb refuses instead of pretending.
+// repair_check applies the server-computed repair: the model names the case and nothing else, and
+// the result says what was written and which run will verify it.
+func TestRepairCheckPassesTheCaseAndReportsTheWrite(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase, gotField, gotValue string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Revise: func(_ context.Context, principalID int32, caseResourceID, field, value string) (RevisionOutcome, error) {
+			gotPrincipal, gotCase, gotField, gotValue = principalID, caseResourceID, field, value
+			return RevisionOutcome{
+				Check: "qualityRules/r460", Field: "", To: "the target's current columns",
+				Revision: 4, Execution: "qualityExecutions/4451", State: "ACTED",
+			}, nil
+		},
+	})
+	result, err := tools.RepairCheck(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"case":"workspaces/ws/qualityAgentCases/c9"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualityAgentCases/c9", gotCase)
+	require.Empty(t, gotField, "the model never supplies the value of a deterministic repair")
+	require.Empty(t, gotValue)
+	require.Contains(t, result, `"case":"c9"`)
+	require.Contains(t, result, `"revision":4`)
+	require.Contains(t, result, `"execution":"qualityExecutions/4451"`)
+}
+
+func TestRepairCheckRequiresTheVerbAndACase(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).RepairCheck(context.Background(), AgentSession{}, `{"case":"c9"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).RepairCheck(context.Background(), AgentSession{}, `{}`)
+	require.ErrorContains(t, err, "needs a case")
+}
+
 // propose_revision is a request for a person's decision: it passes the agent principal, the case
 // and the change through, and reports the state the application layer actually reached. A process
 // without the verb refuses instead of reporting a change nobody recorded.

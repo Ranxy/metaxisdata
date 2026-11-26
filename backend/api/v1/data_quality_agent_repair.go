@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -251,6 +252,31 @@ func optionalParticipation(level *store.QualityAgentParticipation) *agentpolicy.
 	return &converted
 }
 
+// planAgentRun plans one immediate execution of one check through the ordinary manual-run path,
+// authorizing with the agent's own principal exactly as the adoption path does: the agent is the
+// actor, and rules.run is checked on the target. It returns the execution the runner will pick up.
+func (s *DataQualityService) planAgentRun(ctx context.Context, agent *store.QualityAgentMessage, rule *store.QualityRuleMessage) (string, error) {
+	actor, err := s.store.GetUserByID(ctx, agent.PrincipalID)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the agent principal")
+	}
+	if actor == nil {
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("the agent principal no longer exists"))
+	}
+	agentCtx := context.WithValue(ctx, common.UserContextKey, actor)
+	response, err := s.RunQualityRules(agentCtx, connect.NewRequest(&v1pb.RunQualityRulesRequest{
+		Parent: "workspaces/-",
+		Rules:  []string{"qualityRules/" + rule.ResourceID},
+	}))
+	if err != nil {
+		return "", err
+	}
+	if len(response.Msg.GetExecutions()) == 0 {
+		return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("no execution was planned for the check"))
+	}
+	return response.Msg.GetExecutions()[0].GetName(), nil
+}
+
 // AgentRunResult is what one diagnostic run did: the execution the runner will pick up and the
 // case's new state.
 type AgentRunResult struct {
@@ -287,27 +313,10 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the check is paused, so it cannot run; a person decides whether to resume it"))
 	}
-	// The manual run path authorizes with the agent's own principal, exactly as the adoption path
-	// does: the agent is the actor, and rules.run is checked on the target.
-	actor, err := s.store.GetUserByID(ctx, agent.PrincipalID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the agent principal")
-	}
-	if actor == nil {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("the agent principal no longer exists"))
-	}
-	agentCtx := context.WithValue(ctx, common.UserContextKey, actor)
-	response, err := s.RunQualityRules(agentCtx, connect.NewRequest(&v1pb.RunQualityRulesRequest{
-		Parent: "workspaces/-",
-		Rules:  []string{"qualityRules/" + rule.ResourceID},
-	}))
+	execution, err := s.planAgentRun(ctx, agent, rule)
 	if err != nil {
 		return nil, err
 	}
-	if len(response.Msg.GetExecutions()) == 0 {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no execution was planned for the check"))
-	}
-	execution := response.Msg.GetExecutions()[0]
 	// Look again soon: the runner picks the execution up within its tick, and the next wake reads
 	// the verdict.
 	next := time.Now().UTC().Add(time.Minute)
@@ -321,7 +330,7 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 	return &AgentRunResult{
 		Case:      openCase.ResourceID,
 		Check:     "qualityRules/" + rule.ResourceID,
-		Execution: execution.GetName(),
+		Execution: execution,
 		State:     store.QualityAgentCaseStateActed.Name(),
 	}, nil
 }
@@ -348,6 +357,164 @@ func (s *DataQualityService) agentOwnerLanguage(ctx context.Context, agent *stor
 		owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
 	}
 	return agentlang.ForAgent(agent, owner), owner
+}
+
+// AgentRevisionResult is what one revision wrote: the field and its new value, the revision the
+// CAS produced and the execution that will verify the repair.
+type AgentRevisionResult struct {
+	Case      string `json:"case"`
+	Check     string `json:"check"`
+	Field     string `json:"field"`
+	From      string `json:"from,omitempty"`
+	To        string `json:"to,omitempty"`
+	Revision  int32  `json:"revision"`
+	Execution string `json:"execution,omitempty"`
+	State     string `json:"state"`
+}
+
+// ReviseAgentField applies the one deterministic repair a case's diagnosis names.
+//
+// The value is the server's when the case names no field: aligning a structure snapshot means
+// writing the columns the registry holds now, and a value the model supplied would let it pin a
+// snapshot that never existed. A field the model does name is a criterion, which this verb refuses
+// unless the delegation is `tune` and the change replays against the recent executions — the same
+// table every other write uses, read from the same facts.
+//
+// The write is the last step and it is one compare-and-set: the config, validated and compiled
+// first, is written with the revision the decision was based on, so a person editing the check
+// meanwhile makes this fail instead of being overwritten. It deliberately does not reuse the
+// shared rule-update path, which writes before it decides and authorizes with rules.update.
+func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value string) (*AgentRevisionResult, error) {
+	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesRepair)
+	if err != nil {
+		return nil, err
+	}
+	if openCase.RuleID == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the case is not about one check"))
+	}
+	rule, err := s.store.GetQualityRuleByID(ctx, *openCase.RuleID)
+	if err != nil {
+		return nil, err
+	}
+	if rule == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the case's check no longer exists"))
+	}
+	if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+		// A repair is only verified by a run, and a paused check never runs: writing one would leave
+		// the case waiting for evidence that cannot arrive.
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the check is paused, so a repair could never be verified; a person decides whether to resume it"))
+	}
+	policy, err := s.agentPolicy(ctx, agent, openCase.TargetGUID)
+	if err != nil {
+		return nil, err
+	}
+	diagnosis, err := s.agentCaseDiagnosis(ctx, rule, openCase)
+	if err != nil {
+		return nil, err
+	}
+	field = strings.TrimSpace(field)
+	verdict := policy.DecideRevise(agentpolicy.CaseFacts{
+		State:        openCase.State,
+		Attempts:     openCase.Attempts,
+		Diagnosis:    diagnosis,
+		ManualLock:   rule.ManualLock,
+		PinnedFields: rule.PinnedFields,
+		// No replay yet, so a criterion change stays a proposal; the field this verb can write
+		// today is the one whose value the registry owns.
+		ReplayAvailable: false,
+	}, agentpolicy.FieldChange{Field: field})
+	if !verdict.Allowed {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
+	}
+	var config *storepb.QualityRuleConfig
+	if field == "" {
+		// The server computes the value: the snapshot is whatever the target's columns are now.
+		resolution, err := dataquality.ResolveTarget(ctx, s.store, rule.TargetGUID, rule.TargetType)
+		if err != nil {
+			return nil, err
+		}
+		aligned, ok := proto.Clone(rule.Config).(*storepb.QualityRuleConfig)
+		if !ok {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("the check's config could not be copied"))
+		}
+		if !alignSchemaDriftSnapshot(aligned, resolution.Target.Columns) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the check has no column snapshot to align"))
+		}
+		config = aligned
+	} else {
+		patched, err := dataquality.PatchField(rule.Config, field, value)
+		if err != nil {
+			return nil, connectErrorInvalid("%v", err)
+		}
+		config = patched
+	}
+	validated, _, err := s.validateRuleInput(ctx, openCase.WorkspaceID, rule.RuleType, rule.TargetGUID, rule.TargetType, config)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.Wrap(err, "the repaired definition would not save"))
+	}
+	// A server-computed snapshot changes a value the registry owns, not the statement the check
+	// runs, so there is nothing new to probe. A value the caller supplied does change the
+	// statement, and a probe proves it binds before anything is written.
+	if field != "" {
+		if err := s.probeQualityRule(ctx, validated); err != nil {
+			return nil, err
+		}
+	}
+	// The check's own fingerprint moves with the definition: leaving the old one behind would make
+	// the next run report the same drift the repair just settled.
+	schemaHash, err := s.targetSchemaHash(ctx, validated.Target)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.store.UpdateQualityRule(ctx, rule.ResourceID, &store.UpdateQualityRuleMessage{
+		Config:           config,
+		TargetMetaHash:   &schemaHash,
+		ExpectedRevision: &rule.Revision,
+		UpdatedBy:        principalIDPointer(int(agentPrincipalID)),
+	})
+	if err != nil {
+		if common.ErrorCode(err) == common.Conflict {
+			return nil, connect.NewError(connect.CodeAborted, err)
+		}
+		return nil, errors.Wrap(err, "failed to write the repaired definition")
+	}
+	// The repair is only a repair once a run proves it. The run is planned before the case moves, so
+	// the next batch verifies it; when planning fails the case still moves, because the check's next
+	// scheduled run verifies it just the same.
+	execution, runErr := s.planAgentRun(ctx, agent, updated)
+	if runErr != nil {
+		slog.Warn("failed to plan the verification run of a repair",
+			slog.String("case", openCase.ResourceID), log.WithError(runErr))
+		execution = ""
+	}
+	next := time.Now().UTC().Add(time.Minute)
+	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+		openCase.State, store.QualityAgentCaseStateActed, openCase.Attempts, &next, ""); caseErr != nil {
+		slog.Warn("failed to mark the case as acted after a repair",
+			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
+	} else if !applied {
+		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	}
+	result := &AgentRevisionResult{
+		Case:      openCase.ResourceID,
+		Check:     "qualityRules/" + updated.ResourceID,
+		Revision:  updated.Revision,
+		Execution: execution,
+		State:     store.QualityAgentCaseStateActed.Name(),
+	}
+	if diagnosis != nil {
+		result.Field, result.From = diagnosis.Field, diagnosis.FieldValue
+	}
+	if field != "" {
+		result.To = value
+	} else {
+		result.From = ""
+		result.To = "the target's current columns"
+	}
+	return result, nil
 }
 
 // AgentProposalResult is what one proposal asked for: the change, the case it escalated and the

@@ -149,6 +149,19 @@ func targetToolSpecs() []toolSpec {
 			meta: repairMeta(),
 		},
 		{
+			name: "repair_check",
+			description: "Apply the one deterministic repair a diagnosed case names: align a check's saved column snapshot with the registry, " +
+				"so a check that reports the target's structure changed can run again. The value comes from the registry, not from you; " +
+				"the next run of the check verifies the repair. A threshold or a bound goes through propose_revision.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+			}, "required": []string{"case"}},
+			meta: repairMeta(),
+		},
+		{
 			name: "propose_revision",
 			description: "Ask the owner to change one field of a check you may not rewrite yourself: a bound that never binds, " +
 				"a threshold, a field a person pinned. The change is validated but not applied, and the case becomes escalated. " +

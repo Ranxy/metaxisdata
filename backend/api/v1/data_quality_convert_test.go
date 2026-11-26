@@ -954,6 +954,32 @@ func TestFillSchemaDriftSnapshot(t *testing.T) {
 	})
 }
 
+// The repair counterpart of the fill: a drifted check already holds a snapshot, and replacing the
+// stale one with what the registry says now is the whole repair. A read that returned no columns
+// must not empty it, or the check would start comparing the table against itself.
+func TestAlignSchemaDriftSnapshotReplacesAStaleSnapshot(t *testing.T) {
+	t.Parallel()
+
+	stale := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{
+		ExpectedColumns: []*storepb.SchemaDriftColumn{{Name: "legacy_id", Type: "int"}},
+	}}}
+	columns := []dataquality.ColumnInfo{
+		{Name: "id", Type: "bigint", Nullable: false},
+		{Name: "performed_at", Type: "timestamptz", Nullable: true},
+	}
+	require.True(t, alignSchemaDriftSnapshot(stale, columns))
+	expected := stale.GetSchemaDrift().GetExpectedColumns()
+	require.Len(t, expected, 2)
+	require.Equal(t, "id", expected[0].GetName())
+	require.Equal(t, "performed_at", expected[1].GetName())
+
+	require.False(t, alignSchemaDriftSnapshot(stale, nil), "an empty registry read writes nothing")
+	require.Len(t, stale.GetSchemaDrift().GetExpectedColumns(), 2)
+
+	notDrift := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{}}}
+	require.False(t, alignSchemaDriftSnapshot(notDrift, columns))
+}
+
 func TestSchemaDriftOptionalCheckTypesRoundTrip(t *testing.T) {
 	t.Parallel()
 

@@ -166,6 +166,8 @@ type AgentDeps struct {
 	Run RunFunc
 	// Propose records one proposed change for the owner; nil reports it as not configured.
 	Propose ProposeFunc
+	// Revise applies a case's deterministic repair; nil reports it as not configured.
+	Revise ReviseFunc
 }
 
 // RunOutcome is what one diagnostic run did.
@@ -204,6 +206,57 @@ func (t *AgentTools) RunCheck(ctx context.Context, session AgentSession, argumen
 		"state":     outcome.State,
 		"note":      "the runner picks the execution up within its tick; the verdict closes or advances the case",
 	})
+}
+
+// RevisionOutcome is what one repair wrote.
+type RevisionOutcome struct {
+	Check     string
+	Field     string
+	From      string
+	To        string
+	Revision  int32
+	Execution string
+	State     string
+}
+
+// ReviseFunc applies one case's deterministic repair through the application layer. The field and
+// value are empty for a repair whose value the server computes.
+type ReviseFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value string) (RevisionOutcome, error)
+
+// RepairCheck applies the one deterministic repair a case's diagnosis names — aligning a check's
+// saved structure snapshot with the registry — and asks for the run that verifies it. The value is
+// the registry's, so the model supplies a case and nothing else; a threshold or a bound it wanted
+// to change goes through propose_revision instead.
+func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case string `json:"case"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid repair_check arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" {
+		return "", errors.New("repair_check needs a case")
+	}
+	if t.deps.Revise == nil {
+		return "", errors.New("the repair verb is not configured in this process")
+	}
+	outcome, err := t.deps.Revise(ctx, session.AgentPrincipalID, input.Case, "", "")
+	if err != nil {
+		return "", err
+	}
+	result := map[string]any{
+		"case":     sessionCaseName(input.Case),
+		"check":    outcome.Check,
+		"field":    outcome.Field,
+		"to":       outcome.To,
+		"revision": outcome.Revision,
+		"state":    outcome.State,
+		"note":     "the verdict of the next run closes or advances the case",
+	}
+	if outcome.Execution != "" {
+		result["execution"] = outcome.Execution
+	}
+	return marshalJSON(result)
 }
 
 // ProposalOutcome is what one proposal asked for. It carries no service type, for the same

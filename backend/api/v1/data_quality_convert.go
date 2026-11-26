@@ -1589,8 +1589,22 @@ func convertSchemaDriftColumnsFromV1(columns []*v1pb.SchemaDriftColumn) []*store
 // order, which is what check_order compares against, and records nullability
 // explicitly: a snapshot this API wrote is a complete column contract.
 func fillSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataquality.ColumnInfo) bool {
+	return setSchemaDriftSnapshot(config, columns, false)
+}
+
+// alignSchemaDriftSnapshot overwrites a schema_drift rule's snapshot with the registry's current
+// columns. It is the repair counterpart of fillSchemaDriftSnapshot: a check that drifted already
+// has a snapshot, and replacing the stale one is the whole change. A registry read that returned no
+// columns writes nothing, so a failed resolution cannot empty the snapshot and turn the check into
+// one that compares a table against itself.
+func alignSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataquality.ColumnInfo) bool {
+	return setSchemaDriftSnapshot(config, columns, true)
+}
+
+// setSchemaDriftSnapshot writes the column snapshot a schema_drift check compares against.
+func setSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataquality.ColumnInfo, overwrite bool) bool {
 	drift := config.GetSchemaDrift()
-	if drift == nil || len(drift.GetExpectedColumns()) > 0 || len(columns) == 0 {
+	if drift == nil || len(columns) == 0 || (!overwrite && len(drift.GetExpectedColumns()) > 0) {
 		return false
 	}
 	expected := make([]*storepb.SchemaDriftColumn, 0, len(columns))
