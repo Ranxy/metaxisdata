@@ -122,6 +122,10 @@ type TableContext struct {
 	Downstream  int32                 `json:"downstreamConsumers"`
 	Upstream    int32                 `json:"upstreamSources"`
 	SchemaStale bool                  `json:"schemaChangedRecently,omitempty"`
+	// AllowedRuleTypes are the check types the rule pipeline accepts on this target,
+	// short-named as the rest of the surface spells them. A draft naming any other
+	// type is refused, so the model reads this before it writes an intent.
+	AllowedRuleTypes []string `json:"allowedRuleTypes"`
 }
 
 // TableContextReader loads the table context one triage wake reads. Production
@@ -549,7 +553,7 @@ func (t *AgentTools) targetPendingDrafts(ctx context.Context, session AgentSessi
 			"confidence": row.Confidence,
 		}
 		if ruleType, ok := dataquality.RuleTypeForDraftConfig(row.Payload.GetRule().GetConfig()); ok {
-			view["ruleType"] = strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
+			view["ruleType"] = dataquality.RuleTypeShortName(ruleType)
 		}
 		views = append(views, view)
 	}

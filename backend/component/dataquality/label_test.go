@@ -457,7 +457,7 @@ func TestLabelRuleTypesMappingMatchesPrompt(t *testing.T) {
 			require.True(t, ok, labelName)
 			var got []string
 			for _, ruleType := range RuleTypesForSemantic(label) {
-				got = append(got, labelRuleTypeShortName(ruleType))
+				got = append(got, RuleTypeShortName(ruleType))
 			}
 			require.Equal(t, ruleNames, got, labelName)
 		}
