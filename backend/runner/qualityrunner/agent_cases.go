@@ -99,6 +99,10 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						// that from the table, so it has to reach the owner.
 						r.escalateFrozenCase(ctx, openCase, assessment.Rule)
 					}
+					if state == store.QualityAgentCaseStateResolved {
+						// The item is settled, so the target's decision card must stop listing it.
+						r.refreshTargetCard(ctx, agent.ID, targetGUID)
+					}
 				}
 				continue
 			}
@@ -116,6 +120,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				} else if applied {
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
+					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
 			}
@@ -134,6 +139,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				} else if applied {
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
+					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
 			}

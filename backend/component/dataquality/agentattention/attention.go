@@ -2,14 +2,15 @@
 //
 // It is one package rather than a method on the API service because two writers escalate a case: a
 // verb the model calls and the runner that settles a batch. The parts that must not drift are the
-// dedupe key (one open item per case, however often the case is escalated), which session the item
-// hangs off, who is told when the agent has no owner, and the owner's language — so they live here,
-// and both callers pass the same notice.
+// dedupe key (one open item per target, however many of its work items are escalated), which session
+// the item hangs off, who is told when the agent has no owner, and the owner's language — so they
+// live here, and both callers pass the same notice.
 package agentattention
 
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -23,7 +24,10 @@ import (
 type Store interface {
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 	ListQualityAgentSessionsByTarget(ctx context.Context, workspaceID, targetGUID string) ([]*store.QualityAgentSessionMessage, error)
+	ListQualityAgentCases(ctx context.Context, find *store.FindQualityAgentCaseMessage) ([]*store.QualityAgentCaseMessage, error)
 	CreateQualityAgentAttention(ctx context.Context, message *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error)
+	RefreshOpenQualityAgentAttention(ctx context.Context, agentID int64, dedupeKey, question, caseResourceID string) error
+	ResolveOpenQualityAgentAttentionByDedupe(ctx context.Context, agentID int64, dedupeKey string, now time.Time) (bool, error)
 }
 
 // Notifier delivers the doorbell behind the durable item. A nil notifier leaves the item in the
@@ -67,6 +71,9 @@ func (r *Raiser) Raise(ctx context.Context, openCase *store.QualityAgentCaseMess
 	if title == "" {
 		title = agentlang.AttentionTitle(language, notice.Kind)
 	}
+	// One card per target, not per work item: nine checks silenced by one empty table are one
+	// question, and a person reading the inbox wants targets, not rules.
+	question := agentlang.CaseListQuestion(language, notice.Question, r.otherWaitingCases(ctx, openCase))
 	// Link the target session when there is one, so the card carries the target; an unlinked item is
 	// still an agent-level notice rather than a lost one.
 	var sessionID *int64
@@ -88,13 +95,22 @@ func (r *Raiser) Raise(ctx context.Context, openCase *store.QualityAgentCaseMess
 		Kind:           notice.Kind,
 		SessionID:      sessionID,
 		Title:          title,
-		Question:       common.TruncateUTF8Bytes(notice.Question, 2000),
-		DedupeKey:      DedupeKey(openCase.ResourceID),
+		Question:       common.TruncateUTF8Bytes(question, 2000),
+		DedupeKey:      DedupeKey(openCase.TargetGUID),
 		CaseResourceID: openCase.ResourceID,
 		SuggestedPatch: notice.Patch,
 		CreatedAt:      now,
 	})
-	if err != nil || !created {
+	if err != nil {
+		return
+	}
+	if !created {
+		// The target's card is already open: refresh what it says without ringing the doorbell
+		// again, because the second question on a target is not a second decision to make.
+		if refreshErr := r.Store.RefreshOpenQualityAgentAttention(ctx, agent.ID,
+			DedupeKey(openCase.TargetGUID), common.TruncateUTF8Bytes(question, 2000), openCase.ResourceID); refreshErr != nil {
+			slog.Warn("failed to refresh a target's decision card", log.WithError(refreshErr))
+		}
 		return
 	}
 	if r.Notifier == nil {
@@ -119,11 +135,90 @@ func (r *Raiser) Raise(ctx context.Context, openCase *store.QualityAgentCaseMess
 	}
 }
 
-// DedupeKey is the one key an escalated case uses, whichever writer escalated it: a case that is
-// escalated twice must not page twice, and the open item already tells the owner what to decide.
-func DedupeKey(caseResourceID string) string {
-	return "case:" + caseResourceID
+// DedupeKey is the one key a target's decision card uses, whichever writer escalated a work item on
+// it: a target that escalates twice must not page twice, and the open card already tells the owner
+// what is waiting there.
+func DedupeKey(targetGUID string) string {
+	return "target:" + targetGUID
 }
+
+// waitingCases reads the work items still waiting for a decision on one target, newest first. The
+// list is bounded because it is rendered into one card, and the card is the only thing a person
+// reads before deciding.
+func (r *Raiser) waitingCases(ctx context.Context, agentID int64, targetGUID string) []*store.QualityAgentCaseMessage {
+	if targetGUID == "" {
+		return nil
+	}
+	cases, err := r.Store.ListQualityAgentCases(ctx, &store.FindQualityAgentCaseMessage{
+		AgentID:    &agentID,
+		TargetGUID: &targetGUID,
+		States: []store.QualityAgentCaseState{
+			store.QualityAgentCaseStateEscalated, store.QualityAgentCaseStateFrozen,
+		},
+		Limit: maxCardCases,
+	})
+	if err != nil {
+		slog.Warn("failed to read a target's waiting work items", log.WithError(err))
+		return nil
+	}
+	return cases
+}
+
+// otherWaitingCases renders the target's other waiting items, excluding the one this notice is
+// about. A summary is already the sentence a person needs; it is truncated because one card has to
+// hold several of them.
+func (r *Raiser) otherWaitingCases(ctx context.Context, newest *store.QualityAgentCaseMessage) []string {
+	cases := r.waitingCases(ctx, newest.AgentID, newest.TargetGUID)
+	others := make([]string, 0, len(cases))
+	for _, openCase := range cases {
+		if openCase == nil || openCase.ResourceID == newest.ResourceID || len(others) >= maxCardItems {
+			continue
+		}
+		others = append(others, common.TruncateUTF8Bytes(strings.TrimSpace(openCase.Summary), 200))
+	}
+	return others
+}
+
+// Refresh recomputes one target's decision card after a work item settled: it re-renders the list
+// while something still waits there, and closes the card when nothing does. Without it a card
+// outlives the question it asks — either listing a work item that is already closed or staying open
+// on a target that owes nothing.
+func (r *Raiser) Refresh(ctx context.Context, agent *store.QualityAgentMessage, targetGUID string) {
+	if r == nil || r.Store == nil || agent == nil || targetGUID == "" {
+		return
+	}
+	now := time.Now().UTC()
+	if r.Now != nil {
+		now = r.Now()
+	}
+	cases := r.waitingCases(ctx, agent.ID, targetGUID)
+	if len(cases) == 0 {
+		if _, err := r.Store.ResolveOpenQualityAgentAttentionByDedupe(ctx, agent.ID, DedupeKey(targetGUID), now); err != nil {
+			slog.Warn("failed to close a settled target's decision card", log.WithError(err))
+		}
+		return
+	}
+	language, _ := OwnerLanguage(ctx, r.Store, agent)
+	others := make([]string, 0, len(cases)-1)
+	for _, openCase := range cases[1:] {
+		if openCase == nil || len(others) >= maxCardItems {
+			continue
+		}
+		others = append(others, common.TruncateUTF8Bytes(strings.TrimSpace(openCase.Summary), 200))
+	}
+	question := agentlang.CaseListQuestion(language, cases[0].Summary, others)
+	if err := r.Store.RefreshOpenQualityAgentAttention(ctx, agent.ID, DedupeKey(targetGUID),
+		common.TruncateUTF8Bytes(question, 2000), cases[0].ResourceID); err != nil {
+		slog.Warn("failed to refresh a target's decision card", log.WithError(err))
+	}
+}
+
+// maxCardCases bounds how many waiting items one decision card reads; maxCardItems bounds how many
+// of them the card lists, so one target with many failures still renders a message a person reads.
+const (
+	maxCardCases = 12
+	maxCardItems = 6
+)
 
 // OwnerLanguage resolves the language the agent's prose is written in for its owner. A caller
 // that renders a question before raising it reads the same decision this package uses for the

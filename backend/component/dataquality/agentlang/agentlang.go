@@ -305,3 +305,26 @@ func ScopeSummary(lang string, total, pending, active, dormant, outOfScope, gone
 	lines = append(lines, "A model is not configured, so this is the deterministic summary; configure an LLM provider to ask follow-up questions.")
 	return strings.Join(lines, "\n")
 }
+
+// CaseListQuestion is the body of one target's decision card. The newest hand-off is written as the
+// model wrote it, and the work items still waiting on the same target are listed under it: one card
+// answers "what does this target still owe me" instead of one card per check, which is what made a
+// single empty table look like nine separate decisions.
+func CaseListQuestion(lang, newest string, alsoWaiting []string) string {
+	newest = strings.TrimSpace(newest)
+	if len(alsoWaiting) == 0 {
+		return newest
+	}
+	heading := "Also waiting on this target:"
+	if IsChinese(lang) {
+		heading = "同一目标上还在等你决定："
+	}
+	lines := make([]string, 0, len(alsoWaiting)+3)
+	lines = append(lines, newest, "", heading)
+	for _, item := range alsoWaiting {
+		if item = strings.TrimSpace(item); item != "" {
+			lines = append(lines, "- "+item)
+		}
+	}
+	return strings.Join(lines, "\n")
+}

@@ -32,19 +32,33 @@ const (
 // with no answer.
 func (r *Runner) sweepFactCases(ctx context.Context, now time.Time) {
 	for _, class := range dataquality.FactNotWorkClasses() {
-		closed, err := r.stores.ResolveQualityAgentCasesByClass(ctx, string(class), dataquality.FactResolution(class), now)
+		settled, err := r.stores.ResolveQualityAgentCasesByClass(ctx, string(class), dataquality.FactResolution(class), now)
 		if err != nil {
 			slog.Warn("failed to settle the quality agent cases that are facts, not work",
 				slog.String("class", string(class)), log.WithError(err))
 			continue
 		}
-		if closed == 0 {
-			continue
+		for _, group := range settled {
+			r.metrics.ObserveAgentCaseTransitions(store.QualityAgentCaseStateResolved.Name(), group.Cases)
+			slog.Info("settled quality agent cases that are facts, not work",
+				slog.String("class", string(class)), slog.String("target", group.TargetGUID),
+				slog.Int64("cases", group.Cases))
+			// The settled items were the reason the target had a decision card; the card must not
+			// outlive them.
+			r.refreshTargetCard(ctx, group.AgentID, group.TargetGUID)
 		}
-		r.metrics.ObserveAgentCaseTransitions(store.QualityAgentCaseStateResolved.Name(), closed)
-		slog.Info("settled quality agent cases that are facts, not work",
-			slog.String("class", string(class)), slog.Int64("cases", closed))
 	}
+}
+
+// refreshTargetCard recomputes one target's decision card after work items settled. A read failure
+// is logged and dropped: the card is a notice, not the record.
+func (r *Runner) refreshTargetCard(ctx context.Context, agentID int64, targetGUID string) {
+	agent, err := r.stores.GetQualityAgentByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return
+	}
+	raiser := &agentattention.Raiser{Store: r.stores, Notifier: r.notifier}
+	raiser.Refresh(ctx, agent, targetGUID)
 }
 
 // sweepStalledChecks tells each target session about the checks that have stopped running.

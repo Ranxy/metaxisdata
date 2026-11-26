@@ -131,20 +131,39 @@ func (s *Store) GetOpenQualityAgentAttentionByDedupe(ctx context.Context, agentI
 	return message, nil
 }
 
-// SetOpenQualityAgentAttentionQuestion refreshes the wording of the one open item
-// for an agent/dedupe key. It never re-notifies: the notification is sent only when
-// the item is first created, while the question must stay truthful as later passes
-// change the counts behind it.
-func (s *Store) SetOpenQualityAgentAttentionQuestion(ctx context.Context, agentID int64, dedupeKey, question string) error {
+// RefreshOpenQualityAgentAttention rewrites the wording of the one open item for an
+// agent/dedupe key, and the work item it points at when that changed. It never
+// re-notifies: the notification is sent only when the item is first created, while
+// the question must stay truthful as later passes change what is behind it.
+func (s *Store) RefreshOpenQualityAgentAttention(ctx context.Context, agentID int64, dedupeKey, question, caseResourceID string) error {
 	_, err := s.GetDB().ExecContext(ctx, `
 		UPDATE quality_agent_attention
-		SET question = $3
-		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $4`,
-		agentID, dedupeKey, question, int16(QualityAgentAttentionStatusOpen))
+		SET question = $3, case_resource_id = COALESCE(NULLIF($4, ''), case_resource_id)
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $5`,
+		agentID, dedupeKey, question, caseResourceID, int16(QualityAgentAttentionStatusOpen))
 	if err != nil {
 		return errors.Wrap(err, "failed to update the open quality agent attention")
 	}
 	return nil
+}
+
+// ResolveOpenQualityAgentAttentionByDedupe closes the open item for a dedupe key. applied is false
+// when nothing was open, so a caller that runs on every pass is idempotent.
+func (s *Store) ResolveOpenQualityAgentAttentionByDedupe(ctx context.Context, agentID int64, dedupeKey string, now time.Time) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention
+		SET status = $3, resolved_at = $4
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $5`,
+		agentID, dedupeKey, int16(QualityAgentAttentionStatusResolved), now.UTC(),
+		int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to resolve the open quality agent attention")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read the resolved quality agent attention count")
+	}
+	return affected > 0, nil
 }
 
 // GetQualityAgentAttentionByResourceID reads one escalation; nil means absent.
