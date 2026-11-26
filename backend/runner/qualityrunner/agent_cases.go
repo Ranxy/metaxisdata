@@ -39,19 +39,50 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 		return
 	}
 	now := time.Now().UTC()
-	opened := 0
+	opened, resolved := 0, 0
 	for _, session := range sessions {
 		agent, agentErr := r.stores.GetQualityAgentByID(ctx, session.AgentID)
 		if agentErr != nil || agent == nil || agent.State != store.QualityAgentStateActive {
 			continue
 		}
+		// One read for the agent's whole open set: a target may hold a hundred checks, and a
+		// query per check would make this pass the most expensive thing in the batch.
+		openCases, listErr := r.stores.ListOpenQualityAgentCases(ctx, agent.ID, 200)
+		if listErr != nil {
+			slog.Warn("failed to read the agent's open cases", slog.Int64("agent", agent.ID), log.WithError(listErr))
+			continue
+		}
+		bySubject := make(map[string]*store.QualityAgentCaseMessage, len(openCases))
+		for _, openCase := range openCases {
+			bySubject[openCase.SubjectKey] = openCase
+		}
 		for _, assessment := range assessments {
+			ruleID := assessment.Rule.ID
+			subjectKey := store.QualityAgentCaseSubjectKey(assessment.Execution.TargetGUID, &ruleID, store.QualityAgentCaseKindExecution)
+			openCase := bySubject[subjectKey]
 			diagnosis := dataquality.DiagnoseExecution(dataquality.DiagnosisInput{
 				Execution: assessment.Execution,
 				Rule:      assessment.Rule,
 				Now:       now,
 			})
 			if diagnosis == nil || diagnosis.Class == dataquality.ClassDataFailure {
+				// The check concluded, so the question the case was asking is answered. A FAIL
+				// is a conclusion too: the issue ledger owns it from here.
+				if openCase == nil {
+					continue
+				}
+				if _, applied, closeErr := r.stores.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+					openCase.State, store.QualityAgentCaseStateResolved, openCase.Attempts, nil,
+					"the check produced a verdict"); closeErr != nil {
+					slog.Warn("failed to resolve a quality agent case",
+						slog.String("case", openCase.ResourceID), log.WithError(closeErr))
+				} else if applied {
+					resolved++
+				}
+				continue
+			}
+			if openCase != nil {
+				// The problem is already claimed; re-diagnosing it is a later wake's job.
 				continue
 			}
 			_, created, createErr := r.stores.CreateQualityAgentCase(ctx, &store.CreateQualityAgentCaseInput{
@@ -59,7 +90,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				AgentID:      agent.ID,
 				TargetGUID:   assessment.Execution.TargetGUID,
 				TargetType:   assessment.Execution.TargetType,
-				RuleID:       &assessment.Rule.ID,
+				RuleID:       &ruleID,
 				Instance:     assessment.Execution.InstanceResourceID,
 				Kind:         store.QualityAgentCaseKindExecution,
 				FailureClass: string(diagnosis.Class),
@@ -81,7 +112,8 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 			}
 		}
 	}
-	if opened > 0 {
-		slog.Info("opened quality agent cases", slog.String("target", targetGUID), slog.Int("count", opened))
+	if opened > 0 || resolved > 0 {
+		slog.Info("settled quality agent cases",
+			slog.String("target", targetGUID), slog.Int("opened", opened), slog.Int("resolved", resolved))
 	}
 }
