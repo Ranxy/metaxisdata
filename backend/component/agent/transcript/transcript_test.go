@@ -65,19 +65,16 @@ func TestRepairToolCallsClosesDanglingCallsAndDropsOrphans(t *testing.T) {
 
 // The estimate sizes a conversation against the model's budget, so it must count the
 // tool-call arguments — a turn of large argument JSON is what overflows — and must
-// charge each script at roughly its own tokenizer rate. One per-character price for
-// every script measured an English and JSON transcript at more than twice the
-// provider's own count, so compaction fired with most of the window still free.
+// charge each script at a dense transcript's rate. A prose average under-counted an
+// English and JSON transcript at 2.1x the provider's count and compacted it with most
+// of the window still free; the opposite slip is worse, because the trigger reserves
+// the output budget and a wake that skips compaction has to fit beside it.
 func TestEstimateTokensCountsArgumentsAndScalesWithTheScript(t *testing.T) {
 	t.Parallel()
 
 	small := []agent.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{toolCallWithArguments("call-1", "{}")}}}
 	large := []agent.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{toolCallWithArguments("call-1", strings.Repeat("x", 400))}}}
 	require.Greater(t, EstimateTokens(large), EstimateTokens(small), "the arguments must count, not only the call name")
-
-	latin := strings.Repeat("é", 400)
-	require.GreaterOrEqual(t, EstimateTextTokens(latin), len(latin)/4,
-		"a rune-dense script must never be sized below one token per four bytes")
 
 	tests := []struct {
 		name string
@@ -86,22 +83,28 @@ func TestEstimateTokensCountsArgumentsAndScalesWithTheScript(t *testing.T) {
 		high float64
 	}{
 		{
-			name: "English prose",
-			text: strings.Repeat("the table holds no rows in this window. ", 200),
-			low:  0.25,
-			high: 0.5,
+			name: "ASCII prose and identifiers",
+			text: strings.Repeat("the table holds no rows in this window; qualityExecutions/EVLfBmbynW9F failed. ", 100),
+			low:  0.45,
+			high: 0.6,
 		},
 		{
-			name: "JSON of identifiers",
-			text: strings.Repeat(`{"execution":"qualityExecutions/4616","status":"FAIL","totalRows":0}`, 20),
-			low:  0.25,
-			high: 0.5,
+			name: "two-byte script",
+			text: strings.Repeat("café naïve Привет ", 100),
+			low:  0.55,
+			high: 0.7,
 		},
 		{
 			name: "Chinese prose",
 			text: strings.Repeat("该表当前没有数据行。", 200),
 			low:  0.6,
-			high: 0.9,
+			high: 0.85,
+		},
+		{
+			name: "four-byte runes",
+			text: strings.Repeat("🧭", 200),
+			low:  0.9,
+			high: 1.1,
 		},
 	}
 	for _, test := range tests {

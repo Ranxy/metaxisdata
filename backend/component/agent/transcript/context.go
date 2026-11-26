@@ -108,10 +108,11 @@ func RepairToolCalls(messages []agent.Message) []agent.Message {
 	return repaired
 }
 
-// EstimateTokens approximates a conversation's token size. A provider's real
-// prompt_tokens is always preferred when a wake reported one; this estimate is the
-// only reading for the messages added since, so it errs high rather than undercount
-// a rune-dense script.
+// EstimateTokens approximates a conversation's token size. The compaction decision
+// reads this estimate alone — a provider's prompt_tokens only reaches the session
+// rail — so it charges each script at a dense transcript's rate rather than a prose
+// average. The live system prompt and the tool schemas are outside it; the trigger's
+// headroom is what absorbs that fixed overhead.
 func EstimateTokens(messages []agent.Message) int {
 	total := 0
 	for _, message := range messages {
@@ -126,26 +127,23 @@ func EstimateTokens(messages []agent.Message) int {
 	return total
 }
 
-// EstimateTextTokens approximates one string's token count. The rate follows each
-// rune's UTF-8 width, which is what separates one script's tokenizer density from
-// another's: an ASCII character costs about three eighths of a token (English prose
-// runs nearer a quarter, JSON full of identifiers nearer a half), a two-byte rune
-// half a token, a han character three quarters, and a four-byte rune a whole one.
-// The width model never falls below one token per four bytes, so a rune-dense script
-// is not undercounted, and it stops charging English at a han character's rate —
-// which sized an English and JSON transcript at twice the provider's own count and
-// compacted it with most of the window still free.
+// EstimateTextTokens approximates one string's token count. A tokenizer's rate depends
+// on the script, so the charge follows each rune's UTF-8 width: half a token per ASCII
+// character (prose runs nearer a quarter, but identifiers, digests and sample values
+// reach a half), five eighths for a two-byte rune, three quarters for a han character,
+// and one for a four-byte rune. Each rate is the dense case, not the average, because
+// the estimate is the only guard between a wake and the provider's window: the trigger
+// reserves the model's output budget, so a wake that skips compaction still has to fit
+// beside it, and charging prose rates let a dense transcript overflow where the old
+// uniform three quarters could not.
 func EstimateTextTokens(text string) int {
-	if text == "" {
-		return 0
-	}
 	eighths := 0
 	for _, r := range text {
 		switch {
 		case r < utf8.RuneSelf:
-			eighths += 3
-		case r < 0x800:
 			eighths += 4
+		case r < 0x800:
+			eighths += 5
 		case r < 0x10000:
 			eighths += 6
 		default:
