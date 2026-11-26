@@ -223,13 +223,16 @@ type RevisionOutcome struct {
 // value are empty for a repair whose value the server computes.
 type ReviseFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value string) (RevisionOutcome, error)
 
-// RepairCheck applies the one deterministic repair a case's diagnosis names — aligning a check's
-// saved structure snapshot with the registry — and asks for the run that verifies it. The value is
-// the registry's, so the model supplies a case and nothing else; a threshold or a bound it wanted
-// to change goes through propose_revision instead.
+// RepairCheck applies the repair a case's diagnosis names. Without a field the value is the
+// server's — aligning a structure snapshot means writing the columns the registry holds now — and
+// the verb asks for the run that verifies it. With a field it is a criterion change, which the
+// application layer allows only at a tune-level delegation and only when re-judging the recent runs
+// leaves every red run red; at every other level it is a proposal.
 func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
 	var input struct {
-		Case string `json:"case"`
+		Case  string `json:"case"`
+		Field string `json:"field"`
+		Value string `json:"value"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid repair_check arguments")
@@ -237,10 +240,13 @@ func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, argu
 	if strings.TrimSpace(input.Case) == "" {
 		return "", errors.New("repair_check needs a case")
 	}
+	if strings.TrimSpace(input.Field) != "" && input.Value == "" {
+		return "", errors.New("repair_check needs a value for the field it names")
+	}
 	if t.deps.Revise == nil {
 		return "", errors.New("the repair verb is not configured in this process")
 	}
-	outcome, err := t.deps.Revise(ctx, session.AgentPrincipalID, input.Case, "", "")
+	outcome, err := t.deps.Revise(ctx, session.AgentPrincipalID, input.Case, input.Field, input.Value)
 	if err != nil {
 		return "", err
 	}
@@ -252,6 +258,9 @@ func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, argu
 		"revision": outcome.Revision,
 		"state":    outcome.State,
 		"note":     "the verdict of the next run closes or advances the case",
+	}
+	if outcome.From != "" {
+		result["from"] = outcome.From
 	}
 	if outcome.Execution != "" {
 		result["execution"] = outcome.Execution

@@ -359,6 +359,46 @@ func (s *DataQualityService) agentOwnerLanguage(ctx context.Context, agent *stor
 	return agentlang.ForAgent(agent, owner), owner
 }
 
+// revisedAgentConfig is the definition one repair would write. The value is the server's when the
+// case names no field: aligning a structure snapshot means writing the columns the registry holds
+// now, and a value the model supplied would let it pin a snapshot that never existed.
+func (s *DataQualityService) revisedAgentConfig(ctx context.Context, rule *store.QualityRuleMessage, field, value string) (*storepb.QualityRuleConfig, error) {
+	if strings.TrimSpace(field) != "" {
+		patched, err := dataquality.PatchField(rule.Config, field, value)
+		if err != nil {
+			return nil, connectErrorInvalid("%v", err)
+		}
+		return patched, nil
+	}
+	resolution, err := dataquality.ResolveTarget(ctx, s.store, rule.TargetGUID, rule.TargetType)
+	if err != nil {
+		return nil, err
+	}
+	aligned, ok := proto.Clone(rule.Config).(*storepb.QualityRuleConfig)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("the check's config could not be copied"))
+	}
+	if !alignSchemaDriftSnapshot(aligned, resolution.Target.Columns) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the check has no column snapshot to align"))
+	}
+	return aligned, nil
+}
+
+// recentRuleExecutions reads the completed runs a replay re-judges, newest first. A run that never
+// finished has no observation, so it is not evidence about the change.
+func (s *DataQualityService) recentRuleExecutions(ctx context.Context, ruleID int64, limit int) ([]*store.QualityExecutionMessage, error) {
+	executions, err := s.store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{
+		RuleID: &ruleID,
+		States: []storepb.QualityExecutionState{storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED},
+		Limit:  &limit,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the check's recent executions")
+	}
+	return executions, nil
+}
+
 // AgentRevisionResult is what one revision wrote: the field and its new value, the revision the
 // CAS produced and the execution that will verify the repair.
 type AgentRevisionResult struct {
@@ -414,41 +454,36 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 		return nil, err
 	}
 	field = strings.TrimSpace(field)
+	config, err := s.revisedAgentConfig(ctx, rule, field, value)
+	if err != nil {
+		return nil, err
+	}
+	// A criterion change is only checkable by re-judging the runs it would affect, so the replay is
+	// computed before the decision and handed to it: the facts the gate reads are the facts the
+	// refusal names. A snapshot repair changes no verdict, so it replays nothing.
+	replay := dataquality.Replay{}
+	if field != "" {
+		executions, err := s.recentRuleExecutions(ctx, rule.ID, dataquality.ReplayWindow)
+		if err != nil {
+			return nil, err
+		}
+		replay = dataquality.ReplayRule(rule.RuleType, config, executions)
+	}
 	verdict := policy.DecideRevise(agentpolicy.CaseFacts{
-		State:        openCase.State,
-		Attempts:     openCase.Attempts,
-		Diagnosis:    diagnosis,
-		ManualLock:   rule.ManualLock,
-		PinnedFields: rule.PinnedFields,
-		// No replay yet, so a criterion change stays a proposal; the field this verb can write
-		// today is the one whose value the registry owns.
-		ReplayAvailable: false,
+		State:           openCase.State,
+		Attempts:        openCase.Attempts,
+		Diagnosis:       diagnosis,
+		ManualLock:      rule.ManualLock,
+		PinnedFields:    rule.PinnedFields,
+		ReplayAvailable: replay.Available,
 	}, agentpolicy.FieldChange{Field: field})
 	if !verdict.Allowed {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
-	var config *storepb.QualityRuleConfig
-	if field == "" {
-		// The server computes the value: the snapshot is whatever the target's columns are now.
-		resolution, err := dataquality.ResolveTarget(ctx, s.store, rule.TargetGUID, rule.TargetType)
-		if err != nil {
-			return nil, err
-		}
-		aligned, ok := proto.Clone(rule.Config).(*storepb.QualityRuleConfig)
-		if !ok {
-			return nil, connect.NewError(connect.CodeInternal, errors.New("the check's config could not be copied"))
-		}
-		if !alignSchemaDriftSnapshot(aligned, resolution.Target.Columns) {
-			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("the check has no column snapshot to align"))
-		}
-		config = aligned
-	} else {
-		patched, err := dataquality.PatchField(rule.Config, field, value)
-		if err != nil {
-			return nil, connectErrorInvalid("%v", err)
-		}
-		config = patched
+	if len(replay.Loosened) > 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+			"the change would turn failing runs into passes (%s), so it is not a repair; propose it instead",
+			strings.Join(replay.Loosened, ", ")))
 	}
 	validated, _, err := s.validateRuleInput(ctx, openCase.WorkspaceID, rule.RuleType, rule.TargetGUID, rule.TargetType, config)
 	if err != nil {

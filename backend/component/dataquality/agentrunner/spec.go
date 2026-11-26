@@ -150,13 +150,22 @@ func targetToolSpecs() []toolSpec {
 		},
 		{
 			name: "repair_check",
-			description: "Apply the one deterministic repair a diagnosed case names: align a check's saved column snapshot with the registry, " +
-				"so a check that reports the target's structure changed can run again. The value comes from the registry, not from you; " +
-				"the next run of the check verifies the repair. A threshold or a bound goes through propose_revision.",
+			description: "Apply the repair a diagnosed case names. Omit field and value and the server writes the fix it computes — aligning a check's " +
+				"saved column snapshot with the registry — so a check that reports the target's structure changed can run again. " +
+				"Name a field and a value only to change what the check accepts: that needs a tune-level delegation and is replayed against " +
+				"the recent runs, and it is refused when a failing run would turn into a pass. Either way the next run verifies the repair.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
 					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+				"field": map[string]any{
+					"type":        "string",
+					"description": "optional: the dotted config field the diagnosis named, only for a criterion change",
+				},
+				"value": map[string]any{
+					"type":        "string",
+					"description": "optional: the value that field should take; required with a field",
 				},
 			}, "required": []string{"case"}},
 			meta: repairMeta(),

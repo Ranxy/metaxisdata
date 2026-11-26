@@ -212,6 +212,32 @@ func TestRepairCheckPassesTheCaseAndReportsTheWrite(t *testing.T) {
 	require.Contains(t, result, `"execution":"qualityExecutions/4451"`)
 }
 
+// A criterion change travels through the same verb, with the field and value the model named; the
+// application layer decides whether the delegation allows it and whether the replay agrees.
+func TestRepairCheckCarriesACriterionChange(t *testing.T) {
+	t.Parallel()
+
+	var gotField, gotValue string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Revise: func(_ context.Context, _ int32, _, field, value string) (RevisionOutcome, error) {
+			gotField, gotValue = field, value
+			return RevisionOutcome{
+				Check: "qualityRules/r460", Field: field, From: "now - 1 day", To: value, Revision: 5, State: "ACTED",
+			}, nil
+		},
+	})
+	result, err := tools.RepairCheck(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"case":"c9","field":"range.min","value":"2024-01-01T00:00:00Z"}`)
+	require.NoError(t, err)
+	require.Equal(t, "range.min", gotField)
+	require.Equal(t, "2024-01-01T00:00:00Z", gotValue)
+	require.Contains(t, result, `"from":"now - 1 day"`)
+
+	_, err = tools.RepairCheck(context.Background(), AgentSession{}, `{"case":"c9","field":"range.min"}`)
+	require.ErrorContains(t, err, "needs a value")
+}
+
 func TestRepairCheckRequiresTheVerbAndACase(t *testing.T) {
 	t.Parallel()
 
