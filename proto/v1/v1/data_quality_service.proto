@@ -4076,6 +4076,30 @@ message QualityAgentAttention {
   // attention. The owner sees what is waiting before replying, without needing
   // the suggestion queue's own permission.
   repeated string pending_draft_titles = 13;
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
+  // escalation that is not about one agent work item.
+  string case = 14;
+  // The concrete change the agent asks for, when the escalation is a proposal. The owner
+  // reviews a field, a value and a reason instead of a paragraph; empty when the escalation
+  // asks for a decision that has no single change behind it.
+  QualityAgentFieldPatch suggested_patch = 15;
+}
+
+// QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
+// value it would take, and why. The agent may not apply it, so the patch is what a person
+// reads before editing: the value already passed the same validation a save runs.
+message QualityAgentFieldPatch {
+  // The dotted config path, e.g. range.min.
+  string field = 1;
+  // The value the field would take.
+  string value = 2;
+  // The revision the proposal was computed from; zero when the check has no revision.
+  int32 base_revision = 3;
+  // SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the
+  // failure the case diagnosed, never sent by the agent.
+  string effect = 4;
+  // Why the agent proposes it.
+  string rationale = 5;
 }
 
 message ListQualityAgentAttentionsRequest {

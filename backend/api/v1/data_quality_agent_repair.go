@@ -21,6 +21,9 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// qualityAgentCasePrefix is the resource-name segment of one agent work item.
+const qualityAgentCasePrefix = "qualityAgentCases/"
+
 // AgentControlResult is what one state change did, in the shape the model reports and the
 // transcript keeps.
 type AgentControlResult struct {

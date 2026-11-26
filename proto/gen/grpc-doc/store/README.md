@@ -38,6 +38,7 @@
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
     - [QualityAgentEnrollment](#metaxisdata-store-QualityAgentEnrollment)
+    - [QualityAgentFieldPatch](#metaxisdata-store-QualityAgentFieldPatch)
     - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
     - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
     - [QualityAgentSessionContextUsage](#metaxisdata-store-QualityAgentSessionContextUsage)
@@ -857,6 +858,33 @@ person sees. The session row remains the execution state.
 | revision | [int32](#int32) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentFieldPatch"></a>
+
+### QualityAgentFieldPatch
+QualityAgentFieldPatch is the one change an agent asks a person to make: the config field,
+the value it would take, and why. It is the payload of
+quality_agent_attention.suggested_patch, so a proposal reaches the owner as a change to
+review rather than a paragraph to interpret.
+
+Every config field a diagnosis can name holds a string, so the patch carries a string and
+the value the owner applies is the value validation already saw when the agent proposed it.
+The effect is derived from the diagnosis by the server: an agent cannot declare its own
+change executable.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| field | [string](#string) |  | The dotted config path, e.g. range.min. |
+| value | [string](#string) |  | The value the field would take. |
+| base_revision | [int32](#int32) |  | The revision the proposal was computed from; zero when the check has no revision. |
+| effect | [string](#string) |  | SUBJECT, CRITERION or EXECUTABILITY: what the change touches (agentpolicy.Effect). |
+| rationale | [string](#string) |  | Why the agent proposes it, in the language of the agent&#39;s owner. |
 
 
 
