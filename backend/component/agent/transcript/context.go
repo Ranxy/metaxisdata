@@ -131,11 +131,11 @@ func EstimateTokens(messages []agent.Message) int {
 // on the script, so the charge follows each rune's UTF-8 width: half a token per ASCII
 // character (prose runs nearer a quarter, but identifiers, digests and sample values
 // reach a half), five eighths for a two-byte rune, three quarters for a han character,
-// and one for a four-byte rune. Each rate is the dense case, not the average, because
-// the estimate is the only guard between a wake and the provider's window: the trigger
+// and one for a four-byte rune. Those are the dense case rather than the average — the
+// estimate is the only guard between a wake and the provider's window, and the trigger
 // reserves the model's output budget, so a wake that skips compaction still has to fit
-// beside it, and charging prose rates let a dense transcript overflow where the old
-// uniform three quarters could not.
+// beside it — except the four-byte rate, which is the byte floor: a tokenizer spends two
+// or three tokens on an emoji, and a transcript in this product holds none.
 func EstimateTextTokens(text string) int {
 	eighths := 0
 	for _, r := range text {
