@@ -56,6 +56,7 @@ import {
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityAgentAttentionsRequestSchema,
+  ListQualityAgentCasesRequestSchema,
   ListQualityAgentConversationMessagesRequestSchema,
   type ListQualityAgentConversationMessagesResponse,
   ListQualityAgentReportsRequestSchema,
@@ -80,6 +81,8 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
+  type QualityAgentCase,
+  QualityAgentCaseState,
   type QualityAgentReport,
   QualityAgentReportFrequency,
   type QualityAgentSession,
@@ -1705,6 +1708,26 @@ export async function listQualityAgentAttentions(
     signal,
   });
   return response.qualityAgentAttentions;
+}
+
+/**
+ * One agent's work items: the checks it could not settle by itself. Empty states lists every
+ * state; the board asks for the open ones and lets the server order them.
+ */
+export async function listQualityAgentCases(
+  agentName: string,
+  states: QualityAgentCaseState[] = [],
+  signal?: AbortSignal
+): Promise<QualityAgentCase[]> {
+  const request = create(ListQualityAgentCasesRequestSchema, {
+    parent: agentName,
+    states,
+    pageSize: 50,
+  });
+  const response = await dataQualityClient.listQualityAgentCases(request, {
+    signal,
+  });
+  return response.qualityAgentCases;
 }
 
 /** Answer an escalation as the owner; resumes the target session and resolves it. */

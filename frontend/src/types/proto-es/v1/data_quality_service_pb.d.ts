@@ -7868,6 +7868,178 @@ export declare type QualityAgentFieldPatch = Message<"metaxisdata.v1.QualityAgen
 export declare const QualityAgentFieldPatchSchema: GenMessage<QualityAgentFieldPatch>;
 
 /**
+ * QualityAgentCase is one durable work item: a check the agent could not settle by itself, the
+ * failure class that explains why, and the state the next wake resumes from. It is not the issue
+ * ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
+ * produce a verdict becomes a case.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentCase
+ */
+export declare type QualityAgentCase = Message<"metaxisdata.v1.QualityAgentCase"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 3;
+   */
+  target?: QualityTarget;
+
+  /**
+   * Format: qualityRules/{rule}; empty for a target-level case.
+   *
+   * @generated from field: string check = 4;
+   */
+  check: string;
+
+  /**
+   * The failure class this case is about (store FailureClass); empty until diagnosed.
+   *
+   * @generated from field: string class = 5;
+   */
+  class: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentCaseState state = 6;
+   */
+  state: QualityAgentCaseState;
+
+  /**
+   * Attempts is how many repairs have been spent on this case, and max_attempts is the budget;
+   * reaching it freezes the case.
+   *
+   * @generated from field: int32 attempts = 7;
+   */
+  attempts: number;
+
+  /**
+   * @generated from field: int32 max_attempts = 8;
+   */
+  maxAttempts: number;
+
+  /**
+   * The config field the diagnosis named, in dotted form, e.g. range.min.
+   *
+   * @generated from field: string field = 9;
+   */
+  field: string;
+
+  /**
+   * One sentence naming the check and explaining the failure, for a person reading the board.
+   *
+   * @generated from field: string summary = 10;
+   */
+  summary: string;
+
+  /**
+   * How the case ended, empty while it is open.
+   *
+   * @generated from field: string resolution = 11;
+   */
+  resolution: string;
+
+  /**
+   * When the next look is due: a case waiting for a verification run names the instant instead of
+   * sleeping until the session's idle cadence.
+   *
+   * @generated from field: google.protobuf.Timestamp next_action_at = 12;
+   */
+  nextActionAt?: Timestamp;
+
+  /**
+   * Format: qualityExecutions/{execution}; the run the case was opened on.
+   *
+   * @generated from field: string execution = 13;
+   */
+  execution: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 14;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 15;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentCase.
+ * Use `create(QualityAgentCaseSchema)` to create a new message.
+ */
+export declare const QualityAgentCaseSchema: GenMessage<QualityAgentCase>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentCasesRequest
+ */
+export declare type ListQualityAgentCasesRequest = Message<"metaxisdata.v1.ListQualityAgentCasesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * Restrict the list to these states; empty lists every state.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentCaseState states = 2;
+   */
+  states: QualityAgentCaseState[];
+
+  /**
+   * The maximum number of cases to return. If unspecified, at most 50 are returned. The maximum
+   * value is 200; values above 200 are coerced to 200.
+   *
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentCasesRequest.
+ * Use `create(ListQualityAgentCasesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentCasesRequestSchema: GenMessage<ListQualityAgentCasesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentCasesResponse
+ */
+export declare type ListQualityAgentCasesResponse = Message<"metaxisdata.v1.ListQualityAgentCasesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentCase quality_agent_cases = 1;
+   */
+  qualityAgentCases: QualityAgentCase[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentCasesResponse.
+ * Use `create(ListQualityAgentCasesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentCasesResponseSchema: GenMessage<ListQualityAgentCasesResponse>;
+
+/**
  * @generated from message metaxisdata.v1.ListQualityAgentAttentionsRequest
  */
 export declare type ListQualityAgentAttentionsRequest = Message<"metaxisdata.v1.ListQualityAgentAttentionsRequest"> & {
@@ -11795,6 +11967,59 @@ export enum QualityAgentAttentionStatus {
 export declare const QualityAgentAttentionStatusSchema: GenEnum<QualityAgentAttentionStatus>;
 
 /**
+ * QualityAgentCaseState is where one work item stands. The last three are terminal and release
+ * the case's subject, so a later occurrence opens a new case instead of staying invisible.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentCaseState
+ */
+export enum QualityAgentCaseState {
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_OPEN = 1;
+   */
+  OPEN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_DIAGNOSED = 2;
+   */
+  DIAGNOSED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_ACTED = 3;
+   */
+  ACTED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION = 4;
+   */
+  AWAITING_VERIFICATION = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_RESOLVED = 5;
+   */
+  RESOLVED = 5,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_FROZEN = 6;
+   */
+  FROZEN = 6,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_STATE_ESCALATED = 7;
+   */
+  ESCALATED = 7,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentCaseState.
+ */
+export declare const QualityAgentCaseStateSchema: GenEnum<QualityAgentCaseState>;
+
+/**
  * QualityContractChangeKind says which sections of a version changed against its
  * predecessor.
  *
@@ -12754,6 +12979,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityAgentAttentionsRequestSchema;
     output: typeof ListQualityAgentAttentionsResponseSchema;
+  },
+  /**
+   * List one agent's work items, the ones still open first. A case is the agent's durable
+   * record of a check it could not settle by itself; the owner and administrators may read
+   * it to see what the agent is working on and what it has given up on.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentCases
+   */
+  listQualityAgentCases: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentCasesRequestSchema;
+    output: typeof ListQualityAgentCasesResponseSchema;
   },
   /**
    * Answer an escalation as the owner. The reply is appended to the target session,

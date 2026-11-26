@@ -576,6 +576,10 @@ agent does not offer it as something it did. The owner answers or dismisses it f
 and a reply can ask the agent to adopt the pending drafts, while the proposal item offers an **Approve pending drafts** action to the
 agent's owner or an administrator; a person's approval does not need adoption to be enabled. The item closes once no pending draft is left,
 whether the agent adopted them or a person created or rejected the last one. The owner also gets an in-app notification.
+- **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the
+  failure class, the repair attempts spent and where it stands. An item that needs a person also appears in the attention list above
+  it, as a proposal to apply or a decision to make; the rest are the agent's own to-do list, visible so that "what is the agent stuck
+  on" has an answer that does not require reading a transcript.
 - **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks the agent adopted, checks a person
 approved, drafts that failed to write, and drafts still pending — plus the most recent write failure. **Approve pending drafts**
 creates the agent's pending drafts as your decision: the approval writes through the internal create path, so it needs no rule-write

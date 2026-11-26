@@ -290,6 +290,58 @@
 
     <Card v-if="agent">
       <CardHeader class="border-b">
+        <div class="flex flex-wrap items-center gap-2">
+          <CardTitle class="text-base">{{ t("qualityAgent.casesTitle") }}</CardTitle>
+          <Badge
+            v-if="cases.length > 0"
+            variant="secondary"
+          >
+            {{ cases.length }}
+          </Badge>
+        </div>
+        <CardDescription>{{ t("qualityAgent.casesHint") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <p
+          v-if="cases.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("qualityAgent.casesEmpty") }}
+        </p>
+        <ul
+          v-else
+          class="space-y-2"
+        >
+          <li
+            v-for="workItem in cases"
+            :key="workItem.name"
+            class="rounded-md border px-3 py-2"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <Badge>{{ qualityAgentCaseStateLabel(workItem.state) }}</Badge>
+              <span
+                v-if="workItem.class"
+                class="text-xs uppercase text-muted-foreground"
+              >
+                {{ workItem.class }}
+              </span>
+              <span class="text-xs text-muted-foreground">
+                {{ t("qualityAgent.caseAttempts", {
+                  attempts: workItem.attempts,
+                  max: workItem.maxAttempts,
+                }) }}
+              </span>
+            </div>
+            <p class="mt-1 text-sm">
+              {{ workItem.summary }}
+            </p>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
             <CardTitle class="text-base">{{ t("qualityAgent.workSessionsTitle") }}</CardTitle>
@@ -443,6 +495,7 @@ import {
   adoptQualityAgentPendingSuggestions,
   getQualityAgent,
   listQualityAgentAttentions,
+  listQualityAgentCases,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
   listQualityAgentSessionsPage,
@@ -482,6 +535,8 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
+  type QualityAgentCase,
+  QualityAgentCaseState,
   QualityAgentMessageRole,
   type QualityAgentReport,
   type QualityAgentSession,
@@ -516,6 +571,7 @@ const error = ref("");
 const busy = ref(false);
 
 const attentions = ref<QualityAgentAttention[]>([]);
+const cases = ref<QualityAgentCase[]>([]);
 const reports = ref<QualityAgentReport[]>([]);
 const reportOpen = ref(false);
 const selectedReport = ref<QualityAgentReport>();
@@ -685,6 +741,46 @@ async function loadAttentions() {
     );
   } catch {
     attentions.value = [];
+  }
+}
+
+/** The agent's open work items: what it is carrying right now. */
+async function loadCases() {
+  try {
+    cases.value = await listQualityAgentCases(agentName.value, [
+      QualityAgentCaseState.OPEN,
+      QualityAgentCaseState.DIAGNOSED,
+      QualityAgentCaseState.ACTED,
+      QualityAgentCaseState.AWAITING_VERIFICATION,
+    ]);
+  } catch {
+    cases.value = [];
+  }
+}
+
+/**
+ * qualityAgentCaseStateLabel renders one work-item state. The keys are spelled out rather than
+ * built from the enum value: the i18n checker must see every one of them, and a new state is a
+ * product decision, not a translation the build should guess.
+ */
+function qualityAgentCaseStateLabel(state: QualityAgentCaseState): string {
+  switch (state) {
+    case QualityAgentCaseState.OPEN:
+      return t("qualityAgent.caseState.open");
+    case QualityAgentCaseState.DIAGNOSED:
+      return t("qualityAgent.caseState.diagnosed");
+    case QualityAgentCaseState.ACTED:
+      return t("qualityAgent.caseState.acted");
+    case QualityAgentCaseState.AWAITING_VERIFICATION:
+      return t("qualityAgent.caseState.awaitingVerification");
+    case QualityAgentCaseState.RESOLVED:
+      return t("qualityAgent.caseState.resolved");
+    case QualityAgentCaseState.FROZEN:
+      return t("qualityAgent.caseState.frozen");
+    case QualityAgentCaseState.ESCALATED:
+      return t("qualityAgent.caseState.escalated");
+    default:
+      return t("qualityAgent.caseState.unspecified");
   }
 }
 
@@ -891,6 +987,7 @@ onMounted(async () => {
       loadConversation(),
       loadReports(),
       loadAttentions(),
+      loadCases(),
       loadSessions(),
     ]);
   }

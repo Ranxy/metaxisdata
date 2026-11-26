@@ -651,6 +651,14 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
+  // List one agent's work items, the ones still open first. A case is the agent's durable
+  // record of a check it could not settle by itself; the owner and administrators may read
+  // it to see what the agent is working on and what it has given up on.
+  rpc ListQualityAgentCases(ListQualityAgentCasesRequest) returns (ListQualityAgentCasesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/cases"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
   // Answer an escalation as the owner. The reply is appended to the target session,
   // the session is resumed, and the attention is resolved; a retry on a closed
   // attention is a no-op.
@@ -4100,6 +4108,77 @@ message QualityAgentFieldPatch {
   string effect = 4;
   // Why the agent proposes it.
   string rationale = 5;
+}
+
+// QualityAgentCaseState is where one work item stands. The last three are terminal and release
+// the case's subject, so a later occurrence opens a new case instead of staying invisible.
+enum QualityAgentCaseState {
+  QUALITY_AGENT_CASE_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_CASE_STATE_OPEN = 1;
+  QUALITY_AGENT_CASE_STATE_DIAGNOSED = 2;
+  QUALITY_AGENT_CASE_STATE_ACTED = 3;
+  QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION = 4;
+  QUALITY_AGENT_CASE_STATE_RESOLVED = 5;
+  QUALITY_AGENT_CASE_STATE_FROZEN = 6;
+  QUALITY_AGENT_CASE_STATE_ESCALATED = 7;
+}
+
+// QualityAgentCase is one durable work item: a check the agent could not settle by itself, the
+// failure class that explains why, and the state the next wake resumes from. It is not the issue
+// ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
+// produce a verdict becomes a case.
+message QualityAgentCase {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentCase"
+    pattern: "workspaces/{workspace}/qualityAgentCases/{quality_agent_case}"
+  };
+
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityTarget target = 3;
+  // Format: qualityRules/{rule}; empty for a target-level case.
+  string check = 4;
+  // The failure class this case is about (store FailureClass); empty until diagnosed.
+  string class = 5;
+  QualityAgentCaseState state = 6;
+  // Attempts is how many repairs have been spent on this case, and max_attempts is the budget;
+  // reaching it freezes the case.
+  int32 attempts = 7;
+  int32 max_attempts = 8;
+  // The config field the diagnosis named, in dotted form, e.g. range.min.
+  string field = 9;
+  // One sentence naming the check and explaining the failure, for a person reading the board.
+  string summary = 10;
+  // How the case ended, empty while it is open.
+  string resolution = 11;
+  // When the next look is due: a case waiting for a verification run names the instant instead of
+  // sleeping until the session's idle cadence.
+  google.protobuf.Timestamp next_action_at = 12;
+  // Format: qualityExecutions/{execution}; the run the case was opened on.
+  string execution = 13;
+  google.protobuf.Timestamp create_time = 14;
+  google.protobuf.Timestamp update_time = 15;
+}
+
+message ListQualityAgentCasesRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // Restrict the list to these states; empty lists every state.
+  repeated QualityAgentCaseState states = 2;
+  // The maximum number of cases to return. If unspecified, at most 50 are returned. The maximum
+  // value is 200; values above 200 are coerced to 200.
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentCasesResponse {
+  repeated QualityAgentCase quality_agent_cases = 1;
+  string next_page_token = 2;
 }
 
 message ListQualityAgentAttentionsRequest {
