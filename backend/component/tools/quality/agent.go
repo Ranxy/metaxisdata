@@ -145,7 +145,7 @@ type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType sto
 // instead of letting them fall back to an unbounded store read.
 type AgentEvidence interface {
 	ReadTargetExecutions(ctx context.Context, agentPrincipalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error)
-	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
+	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, agentID int64, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
 }
 
 // AgentDeps is everything the agent tools need from their product.
@@ -357,7 +357,7 @@ func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arg
 	if t.deps.Evidence == nil {
 		return "", errors.New("the evidence read is not configured in this process")
 	}
-	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.TargetGUID, input.Rule, input.Executions)
+	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.AgentID, session.TargetGUID, input.Rule, input.Executions)
 	if err != nil {
 		return "", err
 	}

@@ -174,3 +174,34 @@ func (p Policy) DecideControl(facts CaseFacts, action ControlAction) Verdict {
 	}
 	return p.Allows(Decision{Action: dataquality.ActionControl, Effect: EffectState})
 }
+
+// AllowedActions filters a diagnosis's class-based actions down to what this delegation actually
+// permits for this case, in the diagnosis's order. It is the same table the verbs enforce, so the
+// dossier a model reads and the gate a write hits cannot disagree.
+//
+// The server-performed actions (RESOLVE_EMPTY, ACK_STRUCTURE) are dropped: no model verb exists
+// for them, and listing one would invite a request that can only fail.
+func (p Policy) AllowedActions(facts CaseFacts) []dataquality.RepairAction {
+	if facts.Diagnosis == nil {
+		return nil
+	}
+	allowed := make([]dataquality.RepairAction, 0, len(facts.Diagnosis.Actions))
+	for _, action := range facts.Diagnosis.Actions {
+		var verdict Verdict
+		switch action {
+		case dataquality.ActionRunNow, dataquality.ActionRecord,
+			dataquality.ActionProposeRevision, dataquality.ActionEscalate:
+			verdict = Verdict{Allowed: true}
+		case dataquality.ActionReviseField:
+			verdict = p.DecideRevise(facts, FieldChange{Field: facts.Diagnosis.Field})
+		case dataquality.ActionControl:
+			verdict = p.DecideControl(facts, ControlPause)
+		default:
+			continue
+		}
+		if verdict.Allowed {
+			allowed = append(allowed, action)
+		}
+	}
+	return allowed
+}

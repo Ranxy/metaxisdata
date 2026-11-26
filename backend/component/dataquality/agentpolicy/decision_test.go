@@ -220,3 +220,50 @@ func TestDecideControl(t *testing.T) {
 		})
 	}
 }
+
+// The dossier's action list and the verb gates are the same table: an action the model cannot
+// take on this case must not appear, and an action it can must. Server-performed actions are
+// absent because no model verb exists for them.
+func TestAllowedActionsFiltersTheClassList(t *testing.T) {
+	t.Parallel()
+
+	diagnosed := store.QualityAgentCaseStateDiagnosed
+	drift := &dataquality.Diagnosis{
+		Class:   dataquality.ClassStructureDrift,
+		Actions: []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionAckStructure, dataquality.ActionRunNow, dataquality.ActionEscalate},
+	}
+	valueInvalid := &dataquality.Diagnosis{
+		Class:   dataquality.ClassConfigValueInvalid,
+		Field:   "range.min",
+		Actions: []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionRunNow, dataquality.ActionProposeRevision, dataquality.ActionEscalate},
+	}
+	emptyTarget := &dataquality.Diagnosis{
+		Class:   dataquality.ClassNoVerdictEmpty,
+		Actions: []dataquality.RepairAction{dataquality.ActionResolveEmpty, dataquality.ActionRunNow, dataquality.ActionEscalate},
+	}
+
+	// A repair-level agent may re-snapshot a drifted check but not rewrite a criterion.
+	repair := Policy{Participation: ParticipationRepair}
+	require.Equal(t,
+		[]dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionRunNow, dataquality.ActionEscalate},
+		repair.AllowedActions(CaseFacts{State: diagnosed, Diagnosis: drift}))
+	require.Equal(t,
+		[]dataquality.RepairAction{dataquality.ActionRunNow, dataquality.ActionProposeRevision, dataquality.ActionEscalate},
+		repair.AllowedActions(CaseFacts{State: diagnosed, Diagnosis: valueInvalid}))
+
+	// A pinned check keeps only the actions that write nothing.
+	locked := repair.AllowedActions(CaseFacts{State: diagnosed, Diagnosis: drift, ManualLock: true})
+	require.Equal(t, []dataquality.RepairAction{dataquality.ActionRunNow, dataquality.ActionEscalate}, locked)
+
+	// A terminal or unset case has no revise, because a verb acts on a diagnosed case.
+	frozen := repair.AllowedActions(CaseFacts{State: store.QualityAgentCaseStateFrozen, Diagnosis: drift})
+	require.NotContains(t, frozen, dataquality.ActionReviseField)
+
+	// The server-performed RESOLVE_EMPTY is never offered to the model.
+	empty := repair.AllowedActions(CaseFacts{State: diagnosed, Diagnosis: emptyTarget})
+	require.NotContains(t, empty, dataquality.ActionResolveEmpty)
+	require.Contains(t, empty, dataquality.ActionRunNow)
+
+	// No diagnosis means no action list, not a permissive one.
+	require.Nil(t, repair.AllowedActions(CaseFacts{State: diagnosed}))
+}
