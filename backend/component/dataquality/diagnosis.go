@@ -95,6 +95,23 @@ type Diagnosis struct {
 	Evidence string `json:"evidence,omitempty"`
 }
 
+// IsFactNotWork reports whether a class describes the target rather than a defect in the check, so a
+// run that lands in it opens no work item. An empty target is the one case: there is nothing to
+// judge, a person cannot make the check work by approving an edit, and every run of it would produce
+// the same honest "no verdict". Leaving it as work parks a permanent item that no verb can close.
+func IsFactNotWork(class FailureClass) bool {
+	switch class {
+	case ClassNoVerdictEmpty:
+		return true
+	case ClassConfigValueInvalid, ClassConfigUnsupported, ClassStructureDrift,
+		ClassNoVerdictNoBaseline, ClassNoVerdictNoValue, ClassStuckInflight,
+		ClassSourceFault, ClassDataFailure, ClassExecutionFault, "":
+		return false
+	default:
+		return false
+	}
+}
+
 // DiagnosisInput is everything one diagnosis is computed from. Everything that is not
 // on the execution row is supplied by the caller, so the function stays pure.
 type DiagnosisInput struct {

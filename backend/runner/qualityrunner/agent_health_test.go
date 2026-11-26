@@ -35,16 +35,10 @@ func TestHealthFindingsOnlyReportsChecksThatRanWithoutConcluding(t *testing.T) {
 		{Rule: rule(7, "filtered to nothing", enabled), Execution: execution(7, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 4)},
 	}, now)
 
-	require.Len(t, findings, 2)
-
-	empty := findings[0]
-	require.Equal(t, int64(6), empty.RuleID)
-	require.Equal(t, "NO_VERDICT_EMPTY", string(empty.Class))
-	require.Contains(t, empty.Summary, "empty target")
-	require.Contains(t, empty.Summary, "no verdict")
-	require.Equal(t, "health:NO_VERDICT_EMPTY:6:2026-11-26", empty.Key)
-
-	never := findings[1]
+	// Only the check that runs over rows without concluding is an event. An empty target is a fact
+	// about the target: telling the agent about it every day would be a daily wake for nothing.
+	require.Len(t, findings, 1)
+	never := findings[0]
 	require.Equal(t, int64(7), never.RuleID)
 	require.Equal(t, "NEVER_JUDGED", string(never.Class))
 	require.Equal(t, "qualityRules/r", never.Rule)
@@ -57,8 +51,9 @@ func TestHealthFindingKeysAreDailyAndPerCheck(t *testing.T) {
 
 	enabled := storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
 	day := time.Date(2026, 11, 26, 8, 0, 0, 0, time.UTC)
-	rule := &store.QualityRuleMessage{ID: 9, ResourceID: "r9", Title: "empty", State: enabled, CreatedAt: day.Add(-30 * 24 * time.Hour)}
-	execution := &store.QualityExecutionMessage{ID: 99, RuleID: 9, Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, FinishedAt: day}
+	rule := &store.QualityRuleMessage{ID: 9, ResourceID: "r9", Title: "never concludes", State: enabled, CreatedAt: day.Add(-30 * 24 * time.Hour)}
+	// Rows were read and the observation still came back empty: NEVER_JUDGED, which is worth an event.
+	execution := &store.QualityExecutionMessage{ID: 99, RuleID: 9, Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, TotalRows: 7, FinishedAt: day}
 
 	first := healthFindings([]healthAssessment{{Rule: rule, Execution: execution}}, day)
 	later := healthFindings([]healthAssessment{{Rule: rule, Execution: execution}}, day.Add(6*time.Hour))

@@ -53,7 +53,12 @@ func healthFindings(assessments []healthAssessment, now time.Time) []healthFindi
 			Now:        now,
 		})
 		switch health.Class {
-		case dataquality.HealthNoVerdictEmpty, dataquality.HealthNeverJudged:
+		case dataquality.HealthNeverJudged:
+		case dataquality.HealthNoVerdictEmpty:
+			// An empty target is not a defect the agent can act on, and a daily event about it is a
+			// daily wake for nothing. It is a fact about the target, so it stays in the dossier and out
+			// of the inbox.
+			continue
 		default:
 			continue
 		}

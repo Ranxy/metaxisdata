@@ -191,3 +191,34 @@ func TestDiagnoseStaleCheckAgreesWithTheBatchStallRule(t *testing.T) {
 	require.Empty(t, DiagnoseStaleCheck(now.Add(-30*24*time.Hour), time.Time{}, 0, now).Class)
 	require.Empty(t, DiagnoseStaleCheck(now.Add(-30*24*time.Hour), time.Time{}, cadence, time.Time{}).Class)
 }
+
+// An empty target is a fact about the target, not a defect in the check: the sweep and the case
+// intake both read this one decision, so "no rows" cannot mean "the evaluation pipeline is broken".
+func TestIsFactNotWorkOnlyForAnEmptyTarget(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, IsFactNotWork(ClassNoVerdictEmpty))
+	for _, class := range []FailureClass{
+		ClassConfigValueInvalid, ClassConfigUnsupported, ClassStructureDrift,
+		ClassNoVerdictNoBaseline, ClassNoVerdictNoValue, ClassStuckInflight,
+		ClassSourceFault, ClassDataFailure, ClassExecutionFault, "",
+	} {
+		require.False(t, IsFactNotWork(class), class)
+	}
+
+	// The classification itself: a NOT_EVALUATED run over zero rows is the empty class, and the same
+	// run over rows is work the agent can act on.
+	empty := DiagnoseExecution(DiagnosisInput{
+		Execution: healthExecution(1, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 0, time.Now()),
+		Rule:      healthRule(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, time.Now()),
+	})
+	require.NotNil(t, empty)
+	require.True(t, IsFactNotWork(empty.Class))
+
+	withRows := DiagnoseExecution(DiagnosisInput{
+		Execution: healthExecution(2, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 5, time.Now()),
+		Rule:      healthRule(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, time.Now()),
+	})
+	require.NotNil(t, withRows)
+	require.False(t, IsFactNotWork(withRows.Class))
+}
