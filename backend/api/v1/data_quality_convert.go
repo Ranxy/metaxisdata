@@ -426,6 +426,8 @@ func convertQualityRule(workspaceID string, rule *store.QualityRuleMessage) *v1p
 		UpdateTime:    timestamppb.New(rule.UpdatedAt),
 		MuteUntil:     timestampOrNil(rule.MuteUntil),
 		Tags:          append([]string(nil), rule.Tags...),
+		ManualLock:    rule.ManualLock,
+		PinnedFields:  append([]string(nil), rule.PinnedFields...),
 	}
 }
 
@@ -598,6 +600,10 @@ type qualityRuleUpdate struct {
 	// TargetMoved is set when the mask changes target.meta_guid, so the schedule of
 	// both the old and the new target must be reconciled.
 	TargetMoved bool
+	// PinChanged is set when the mask writes a pin, which is metadata rather than a
+	// definition: it needs no revalidation and no revision, only the audit row the
+	// update path already writes.
+	PinChanged bool
 }
 
 // parseQualityRuleUpdate turns the update mask into a store patch. It is pure so
@@ -691,6 +697,29 @@ func parseQualityRuleUpdate(rule *v1pb.QualityRule, paths []string) (*qualityRul
 				mutedUntil = rule.GetMuteUntil().AsTime()
 			}
 			update.Patch.MuteUntil = &mutedUntil
+		case "manual_lock":
+			// A pin is the one thing that takes a check out of the agent's reach, so it is written
+			// through the ordinary rule update and audited there: a separate verb would be a second
+			// authorization surface for the same column.
+			locked := rule.GetManualLock()
+			update.Patch.ManualLock = &locked
+			update.PinChanged = true
+		case "pinned_fields":
+			pins := strings.TrimSpace(strings.Join(rule.GetPinnedFields(), ""))
+			if pins == "" {
+				update.Patch.PinnedFields = &[]string{}
+				update.PinChanged = true
+				break
+			}
+			fields := make([]string, 0, len(rule.GetPinnedFields()))
+			for _, field := range rule.GetPinnedFields() {
+				trimmed := strings.TrimSpace(field)
+				if trimmed != "" {
+					fields = append(fields, trimmed)
+				}
+			}
+			update.Patch.PinnedFields = &fields
+			update.PinChanged = true
 		default:
 			return nil, connectErrorInvalid("unsupported update path %q", path)
 		}
@@ -1281,6 +1310,7 @@ func convertQualitySuggestion(workspaceID string, suggestion *store.QualitySugge
 		DecidedBy:     formatQualityOwner(suggestion.DecidedBy),
 		DecideTime:    timestampOrNil(suggestion.DecidedAt),
 		DecisionNote:  suggestion.DecisionNote,
+		Concern:       suggestion.Concern,
 	}
 }
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -264,6 +266,61 @@ func (s *Store) ListOpenQualityAgentCases(ctx context.Context, agentID int64, li
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "failed to list the open quality agent cases")
+	}
+	return cases, nil
+}
+
+// FindQualityAgentCaseMessage selects one agent's work items for the read-only case view.
+type FindQualityAgentCaseMessage struct {
+	AgentID *int64
+	// States restricts the lifecycle; an empty slice lists every state, closed ones included.
+	States []QualityAgentCaseState
+	Limit  int
+	Offset int
+}
+
+// ListQualityAgentCases lists one agent's work items for the board: the ones still open first,
+// soonest action first, then the closed ones newest first. A person reading it wants to know what
+// the agent is working on now before it wants history.
+func (s *Store) ListQualityAgentCases(ctx context.Context, find *FindQualityAgentCaseMessage) ([]*QualityAgentCaseMessage, error) {
+	if find == nil || find.AgentID == nil || *find.AgentID <= 0 {
+		return nil, common.Errorf(common.Invalid, "a quality agent case list needs an agent")
+	}
+	limit := find.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	where := "agent_id = $1"
+	args := []any{*find.AgentID}
+	if len(find.States) > 0 {
+		states := make([]int16, 0, len(find.States))
+		for _, state := range find.States {
+			states = append(states, int16(state))
+		}
+		args = append(args, pq.Array(states))
+		where += " AND state = ANY($" + strconv.Itoa(len(args)) + ")"
+	}
+	args = append(args, limit, find.Offset)
+	rows, err := s.GetDB().QueryContext(ctx,
+		`SELECT `+qualityAgentCaseColumns+` FROM quality_agent_case
+		 WHERE `+where+`
+		 ORDER BY (state BETWEEN 1 AND 4) DESC, next_action_at ASC NULLS LAST, updated_at DESC, id DESC
+		 LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)),
+		args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality agent cases")
+	}
+	defer rows.Close()
+	cases := make([]*QualityAgentCaseMessage, 0, limit)
+	for rows.Next() {
+		message, scanErr := scanQualityAgentCase(rows)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to read a quality agent case")
+		}
+		cases = append(cases, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality agent cases")
 	}
 	return cases, nil
 }

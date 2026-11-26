@@ -159,6 +159,9 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, agent *sto
 		NewIssueCount:        snapshot.NewIssueCount,
 		OpenIssueCount:       snapshot.OpenIssueCount,
 		PendingProposalCount: snapshot.PendingProposalCount,
+		RepairedCount:        snapshot.RepairedCount,
+		EscalatedCount:       snapshot.EscalatedCount,
+		OpenCaseCount:        snapshot.OpenCaseCount,
 		BodyMarkdown:         body,
 		GeneratedAt:          &now,
 	})

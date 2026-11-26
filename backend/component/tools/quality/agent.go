@@ -168,6 +168,8 @@ type AgentDeps struct {
 	Propose ProposeFunc
 	// Revise applies a case's deterministic repair; nil reports it as not configured.
 	Revise ReviseFunc
+	// Flag records the agent's own objection to a draft it queued; nil reports it as not configured.
+	Flag FlagFunc
 }
 
 // RunOutcome is what one diagnostic run did.
@@ -266,6 +268,45 @@ func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, argu
 		result["execution"] = outcome.Execution
 	}
 	return marshalJSON(result)
+}
+
+// FlagOutcome is what one flagged draft recorded.
+type FlagOutcome struct {
+	Draft   string
+	Concern string
+	State   string
+}
+
+// FlagFunc records the agent's objection to one of its own drafts.
+type FlagFunc func(ctx context.Context, agentPrincipalID int32, draftResourceID, concern string) (FlagOutcome, error)
+
+// FlagProposal records why a draft the agent just queued should not be adopted on its own. The
+// agent drafts first and doubts afterwards: it cannot know which proposals it created until the
+// drafting tool answers, which is why this is its own tool rather than a field on draft_checks.
+func (t *AgentTools) FlagProposal(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Draft   string `json:"draft"`
+		Concern string `json:"concern"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid flag_proposal arguments")
+	}
+	if strings.TrimSpace(input.Draft) == "" || strings.TrimSpace(input.Concern) == "" {
+		return "", errors.New("flag_proposal needs a draft and a concern")
+	}
+	if t.deps.Flag == nil {
+		return "", errors.New("the flag verb is not configured in this process")
+	}
+	outcome, err := t.deps.Flag(ctx, session.AgentPrincipalID, input.Draft, input.Concern)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"draft":   outcome.Draft,
+		"concern": outcome.Concern,
+		"state":   outcome.State,
+		"note":    "a flagged draft is never adopted automatically; a person reads the concern and decides",
+	})
 }
 
 // ProposalOutcome is what one proposal asked for. It carries no service type, for the same

@@ -56,6 +56,8 @@ import {
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityAgentAttentionsRequestSchema,
+  ListQualityAgentCaseActionsRequestSchema,
+  ListQualityAgentCasesRequestSchema,
   ListQualityAgentConversationMessagesRequestSchema,
   type ListQualityAgentConversationMessagesResponse,
   ListQualityAgentReportsRequestSchema,
@@ -80,6 +82,9 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
+  type QualityAgentCase,
+  type QualityAgentCaseAction,
+  QualityAgentCaseState,
   type QualityAgentReport,
   QualityAgentReportFrequency,
   type QualityAgentSession,
@@ -1566,6 +1571,10 @@ export interface QualityAgentConfigInput {
     maxNewSessionsPerHour?: number;
     maxActiveSessions?: number;
     conversationMessagesPerHour?: number;
+    /** Writes to checks per rolling day; zero means the server default. */
+    repairMaxPerDay?: number;
+    /** Immediate runs per check per rolling day; zero means the server default. */
+    runMaxPerRulePerDay?: number;
   };
 }
 
@@ -1705,6 +1714,60 @@ export async function listQualityAgentAttentions(
     signal,
   });
   return response.qualityAgentAttentions;
+}
+
+/**
+ * One agent's work items: the checks it could not settle by itself. Empty states lists every
+ * state; the board asks for the open ones and lets the server order them.
+ */
+export async function listQualityAgentCases(
+  agentName: string,
+  states: QualityAgentCaseState[] = [],
+  signal?: AbortSignal
+): Promise<QualityAgentCase[]> {
+  const request = create(ListQualityAgentCasesRequestSchema, {
+    parent: agentName,
+    states,
+    pageSize: 50,
+  });
+  const response = await dataQualityClient.listQualityAgentCases(request, {
+    signal,
+  });
+  return response.qualityAgentCases;
+}
+
+/**
+ * The writes one agent made to checks, newest first. A case narrows it to that work item's history.
+ * It is the record behind the write budget: what it changed, from which revision to which, and why.
+ */
+export async function listQualityAgentCaseActions(
+  agentName: string,
+  options: {
+    caseName?: string;
+    pageToken?: string;
+    pageSize?: number;
+    signal?: AbortSignal;
+  } = {}
+): Promise<{
+  actions: QualityAgentCaseAction[];
+  nextPageToken: string;
+}> {
+  const request = create(ListQualityAgentCaseActionsRequestSchema, {
+    parent: agentName,
+    case: options.caseName ?? "",
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityAgentCaseActions(
+    request,
+    {
+      signal: options.signal,
+    }
+  );
+  return {
+    actions: response.qualityAgentCaseActions,
+    nextPageToken: response.nextPageToken,
+  };
 }
 
 /** Answer an escalation as the owner; resumes the target session and resolves it. */

@@ -20,6 +20,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
@@ -118,6 +119,9 @@ type DataQualityService struct {
 	// notifier sends the owner's inbox row when an agent escalates. Nil disables
 	// notification while keeping the attention to-do (tests).
 	notifier *notification.Service
+	// caseAttention writes the escalation a case verb owes its owner. The runner
+	// escalates a case too, so the writer is shared rather than duplicated.
+	caseAttention *agentattention.Raiser
 	// exportSlots bounds how many bulk exports one process streams at once. An
 	// export holds a metadata-database connection per page and can stream for
 	// minutes, so an unbounded fan-out from one member would starve the rest of
@@ -130,7 +134,7 @@ type DataQualityService struct {
 // suggester and quota are created once by the server and shared with the
 // background suggestion runner, so a job spends the same budget a request does.
 func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics, iamChecker PermissionChecker, notifier *notification.Service) *DataQualityService {
-	return &DataQualityService{
+	service := &DataQualityService{
 		store:              s,
 		dbFactory:          dbFactory,
 		executionScheduler: executionScheduler,
@@ -142,6 +146,8 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, execu
 		iam:                iamChecker,
 		notifier:           notifier,
 	}
+	service.caseAttention = &agentattention.Raiser{Store: s, Notifier: notifier}
+	return service
 }
 
 // SetAuthorizer wires the resource-scoped authorizer. The server calls it after

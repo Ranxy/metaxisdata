@@ -36,6 +36,7 @@ type qualitySuggestionScannerStub struct {
 	decidedAt     sql.NullTime
 	decisionNote  string
 	confidence    float64
+	concern       string
 }
 
 func (s qualitySuggestionScannerStub) Scan(dest ...any) error {
@@ -59,6 +60,7 @@ func (s qualitySuggestionScannerStub) Scan(dest ...any) error {
 	*(dest[17].(*sql.NullTime)) = s.decidedAt
 	*(dest[18].(*string)) = s.decisionNote
 	*(dest[19].(*float64)) = s.confidence
+	*(dest[20].(*string)) = s.concern
 	return nil
 }
 
@@ -210,6 +212,7 @@ func TestScanQualitySuggestionRoundTripsThePayloadAndDecision(t *testing.T) {
 		decidedAt:     sql.NullTime{Time: decidedAt, Valid: true},
 		decisionNote:  "looks right",
 		confidence:    0.73,
+		concern:       "the audit table appends rows out of order",
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(31), message.ID)
@@ -234,6 +237,9 @@ func TestScanQualitySuggestionRoundTripsThePayloadAndDecision(t *testing.T) {
 	require.Equal(t, decidedAt, *message.DecidedAt)
 	require.Equal(t, "looks right", message.DecisionNote)
 	require.InDelta(t, 0.73, message.Confidence, 1e-9)
+	// The concern is head-only metadata beside the payload: it survives a refresh that rewrites the
+	// payload, which is why it is a column rather than a payload field.
+	require.Equal(t, "the audit table appends rows out of order", message.Concern)
 }
 
 func TestScanQualitySuggestionLeavesPendingDecisionColumnsNil(t *testing.T) {

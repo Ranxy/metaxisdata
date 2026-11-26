@@ -196,7 +196,7 @@ instruments, four of them scrape-time gauges, plus the standard Go and process c
 | `instance_connection` | in use, waiters by priority, try-acquire rejections | Whether the per-instance connection budget is saturated |
 | `db_pool` | connections by state, max open, waits, wait duration | Metadata-database pool saturation |
 | `notification` | delivery attempts by outcome, delivery duration | Outbound delivery success, including quiet-hours deferrals |
-| `agent` | tool calls, duration, result bytes | Model-facing tool executions on the built-in products and MCP |
+| `agent` | tool calls, duration, result bytes; case opened, case transitions, write refusals | Model-facing tool executions on the built-in products and MCP, and the quality agent's work items: whether it settles its own work, and where the delegation refuses it |
 | build | `metaxisdata_build_info` | Which release and commit the process runs |
 | standard | `go_*`, `process_*` | Runtime and process health |
 

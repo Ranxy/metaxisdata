@@ -5669,6 +5669,123 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/caseActions:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the writes one agent made to checks, newest first: the ledger behind the write budget
+                 and the answer to "what has it changed". A case narrows it to one work item's history.
+            operationId: DataQualityService_ListQualityAgentCaseActions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: case
+                  in: query
+                  description: |-
+                    Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+                     the agent made, which is the activity view; a case lists that work item's history.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+                     value is 200; values above 200 are coerced to 200.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentCaseActionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/cases:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List one agent's work items, the ones still open first. A case is the agent's durable
+                 record of a check it could not settle by itself; the owner and administrators may read
+                 it to see what the agent is working on and what it has given up on.
+            operationId: DataQualityService_ListQualityAgentCases
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: states
+                  in: query
+                  description: Restrict the list to these states; empty lists every state.
+                  schema:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_AGENT_CASE_STATE_UNSPECIFIED
+                            - QUALITY_AGENT_CASE_STATE_OPEN
+                            - QUALITY_AGENT_CASE_STATE_DIAGNOSED
+                            - QUALITY_AGENT_CASE_STATE_ACTED
+                            - QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION
+                            - QUALITY_AGENT_CASE_STATE_RESOLVED
+                            - QUALITY_AGENT_CASE_STATE_FROZEN
+                            - QUALITY_AGENT_CASE_STATE_ESCALATED
+                        type: string
+                        format: enum
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of cases to return. If unspecified, at most 50 are returned. The maximum
+                     value is 200; values above 200 are coerced to 200.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentCasesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/conversation:
         get:
             tags:
@@ -12423,6 +12540,24 @@ components:
                         $ref: '#/components/schemas/QualityAgentAttention'
                 nextPageToken:
                     type: string
+        ListQualityAgentCaseActionsResponse:
+            type: object
+            properties:
+                qualityAgentCaseActions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentCaseAction'
+                nextPageToken:
+                    type: string
+        ListQualityAgentCasesResponse:
+            type: object
+            properties:
+                qualityAgentCases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentCase'
+                nextPageToken:
+                    type: string
         ListQualityAgentConversationMessagesResponse:
             type: object
             properties:
@@ -14350,9 +14485,142 @@ components:
                 conversationMessagesPerHour:
                     type: integer
                     format: int32
+                repairMaxPerDay:
+                    type: integer
+                    description: |-
+                        How many writes to checks the agent may make per rolling day, across its whole scope. This is
+                         the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+                    format: int32
+                runMaxPerRulePerDay:
+                    type: integer
+                    description: |-
+                        How many immediate runs the agent may request per check per rolling day. A run is its
+                         diagnostic, so the ceiling is per check rather than per agent.
+                    format: int32
             description: |-
                 QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
                  default; the workspace hard caps still apply.
+        QualityAgentCase:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                check:
+                    type: string
+                    description: 'Format: qualityRules/{rule}; empty for a target-level case.'
+                class:
+                    type: string
+                    description: The failure class this case is about (store FailureClass); empty until diagnosed.
+                state:
+                    enum:
+                        - QUALITY_AGENT_CASE_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_CASE_STATE_OPEN
+                        - QUALITY_AGENT_CASE_STATE_DIAGNOSED
+                        - QUALITY_AGENT_CASE_STATE_ACTED
+                        - QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION
+                        - QUALITY_AGENT_CASE_STATE_RESOLVED
+                        - QUALITY_AGENT_CASE_STATE_FROZEN
+                        - QUALITY_AGENT_CASE_STATE_ESCALATED
+                    type: string
+                    format: enum
+                attempts:
+                    type: integer
+                    description: |-
+                        Attempts is how many repairs have been spent on this case, and max_attempts is the budget;
+                         reaching it freezes the case.
+                    format: int32
+                maxAttempts:
+                    type: integer
+                    format: int32
+                field:
+                    type: string
+                    description: The config field the diagnosis named, in dotted form, e.g. range.min.
+                summary:
+                    type: string
+                    description: One sentence naming the check and explaining the failure, for a person reading the board.
+                resolution:
+                    type: string
+                    description: How the case ended, empty while it is open.
+                nextActionAt:
+                    type: string
+                    description: |-
+                        When the next look is due: a case waiting for a verification run names the instant instead of
+                         sleeping until the session's idle cadence.
+                    format: date-time
+                execution:
+                    type: string
+                    description: 'Format: qualityExecutions/{execution}; the run the case was opened on.'
+                createTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentCase is one durable work item: a check the agent could not settle by itself, the
+                 failure class that explains why, and the state the next wake resumes from. It is not the issue
+                 ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
+                 produce a verdict becomes a case.
+        QualityAgentCaseAction:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                case:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+                         belonged to no work item (an owner-requested run).
+                check:
+                    type: string
+                    description: 'Format: qualityRules/{rule}; empty when the check has since been hard-deleted.'
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                action:
+                    enum:
+                        - QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED
+                        - QUALITY_AGENT_CASE_ACTION_KIND_REVISE
+                        - QUALITY_AGENT_CASE_ACTION_KIND_CONTROL
+                        - QUALITY_AGENT_CASE_ACTION_KIND_RUN
+                        - QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE
+                    type: string
+                    format: enum
+                field:
+                    type: string
+                    description: The config field a REVISE or PROPOSE named, in dotted form.
+                fromRevision:
+                    type: integer
+                    description: The definition revisions the write produced; equal for an action that wrote no definition.
+                    format: int32
+                toRevision:
+                    type: integer
+                    format: int32
+                execution:
+                    type: string
+                    description: 'Format: qualityExecutions/{execution}; the run the write planned, when it planned one.'
+                class:
+                    type: string
+                    description: The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID.
+                reason:
+                    type: string
+                    description: 'The action''s own note: the requested control action, or the field the run diagnosed.'
+                createTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+                 which definition revision to which, which execution it planned, and why. Only applied writes are
+                 recorded — a refused write is a metric, not a spent budget.
         QualityAgentFieldPatch:
             type: object
             properties:
@@ -14449,6 +14717,20 @@ components:
                 generateTime:
                     type: string
                     format: date-time
+                repairedCount:
+                    type: integer
+                    description: |-
+                        Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+                         They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+                         counted from the agent's own cases, not from the checks.
+                    format: int32
+                escalatedCount:
+                    type: integer
+                    format: int32
+                openCaseCount:
+                    type: integer
+                    description: Work items still in progress when the report was generated. Not period-bounded.
+                    format: int32
             description: QualityAgentReport is one deterministic patrol report over an agent's scope.
         QualityAgentReportSchedule:
             type: object
@@ -16023,6 +16305,20 @@ components:
                          is not affected. It is scheduling metadata, not part of the rule definition:
                          editing it does not append a revision.
                     format: enum
+                manualLock:
+                    type: boolean
+                    description: |-
+                        A person manages this check. The agent may still read it and propose changes, but it never
+                         rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+                         and the only one — editing a check never creates a lock.
+                pinnedFields:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+                         everything below it. Both this and manual_lock are head-only metadata: they are not part of
+                         the definition and write no revision.
             description: QualityRule is one data quality check.
         QualityRuleConfig:
             type: object
@@ -16535,6 +16831,12 @@ components:
                         The permissions the caller holds on this suggestion's target, e.g.
                          "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
                          the row's create-rule and decision actions without a second request.
+                concern:
+                    type: string
+                    description: |-
+                        The proposing agent's own objection to this draft. A draft carrying one is never adopted
+                         automatically: the model that drafted it can see false positives the adoption gate cannot, and
+                         the review queue shows the doubt beside the draft it is about.
             description: |-
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the

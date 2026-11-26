@@ -334,6 +334,8 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 		config.MaxNewSessionsPerHour = budget.GetMaxNewSessionsPerHour()
 		config.MaxActiveSessions = budget.GetMaxActiveSessions()
 		config.ConversationMessagesPerHour = budget.GetConversationMessagesPerHour()
+		config.RepairMaxPerDay = budget.GetRepairMaxPerDay()
+		config.RunMaxPerRulePerDay = budget.GetRunMaxPerRulePerDay()
 	}
 	return config, databases, nil
 }
@@ -358,6 +360,12 @@ func validateQualityAgentBudget(budget *v1pb.QualityAgentBudget) error {
 	}
 	if budget.GetConversationMessagesPerHour() < 0 || budget.GetConversationMessagesPerHour() > dataquality.MaxAgentRunnerConversationMessagesPerHour {
 		return connectErrorInvalid("the conversation messages per hour budget must be between 0 and %d", dataquality.MaxAgentRunnerConversationMessagesPerHour)
+	}
+	if budget.GetRepairMaxPerDay() < 0 || budget.GetRepairMaxPerDay() > dataquality.MaxAgentRepairsPerDay {
+		return connectErrorInvalid("the daily repair budget must be between 0 and %d", dataquality.MaxAgentRepairsPerDay)
+	}
+	if budget.GetRunMaxPerRulePerDay() < 0 || budget.GetRunMaxPerRulePerDay() > dataquality.MaxAgentRunsPerRulePerDay {
+		return connectErrorInvalid("the daily runs per check budget must be between 0 and %d", dataquality.MaxAgentRunsPerRulePerDay)
 	}
 	return nil
 }
@@ -478,6 +486,8 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 			MaxNewSessionsPerHour:       agent.MaxNewSessionsPerHour,
 			MaxActiveSessions:           agent.MaxActiveSessions,
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
+			RepairMaxPerDay:             agent.RepairMaxPerDay,
+			RunMaxPerRulePerDay:         agent.RunMaxPerRulePerDay,
 		},
 	}
 }
@@ -687,6 +697,8 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 			MaxNewSessionsPerHour:       agent.MaxNewSessionsPerHour,
 			MaxActiveSessions:           agent.MaxActiveSessions,
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
+			RepairMaxPerDay:             agent.RepairMaxPerDay,
+			RunMaxPerRulePerDay:         agent.RunMaxPerRulePerDay,
 		},
 	}
 }

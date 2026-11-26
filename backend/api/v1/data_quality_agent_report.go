@@ -59,6 +59,9 @@ func convertQualityAgentReportToV1(workspaceID, agentResourceID string, report *
 		NewIssueCount:        report.NewIssueCount,
 		OpenIssueCount:       report.OpenIssueCount,
 		PendingProposalCount: report.PendingProposalCount,
+		RepairedCount:        report.RepairedCount,
+		EscalatedCount:       report.EscalatedCount,
+		OpenCaseCount:        report.OpenCaseCount,
 		BodyMarkdown:         report.BodyMarkdown,
 		CreateTime:           timestamppb.New(report.CreatedAt),
 	}

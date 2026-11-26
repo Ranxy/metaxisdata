@@ -53,7 +53,7 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "run_check",
-		"repair_check", "propose_revision", "get_memory",
+		"repair_check", "propose_revision", "flag_proposal", "get_memory",
 		"record_asset_fact", "block_session", "schedule_wake",
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
@@ -91,6 +91,8 @@ func (e *Engine) executeTool(
 		return tools.RepairCheck(ctx, agentSession, arguments)
 	case "propose_revision":
 		return tools.ProposeRevision(ctx, agentSession, arguments)
+	case "flag_proposal":
+		return tools.FlagProposal(ctx, agentSession, arguments)
 	case "get_memory":
 		return tools.GetMemory(ctx, agentSession)
 	case "record_asset_fact":
@@ -218,5 +220,6 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		Run:          e.run,
 		Propose:      e.propose,
 		Revise:       e.revise,
+		Flag:         e.flag,
 	})
 }

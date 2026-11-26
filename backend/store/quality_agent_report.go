@@ -43,16 +43,22 @@ type QualityAgentReportMessage struct {
 	NewIssueCount        int32
 	OpenIssueCount       int32
 	PendingProposalCount int32
-	BodyMarkdown         string
-	CreatedAt            time.Time
-	GeneratedAt          *time.Time
+	// RepairedCount, EscalatedCount and OpenCaseCount are the agent's work items: what it settled by
+	// itself in the period, what it handed to a person, and what is still in progress now.
+	RepairedCount  int32
+	EscalatedCount int32
+	OpenCaseCount  int32
+	BodyMarkdown   string
+	CreatedAt      time.Time
+	GeneratedAt    *time.Time
 }
 
 const qualityAgentReportColumns = `id, resource_id, workspace_id, agent_id,
 	period_kind, period_key, period_start, period_end, scope, target_count,
 	covered_target_count, rule_count, execution_count, passed_count, warned_count,
 	failed_count, errored_count, new_issue_count, open_issue_count,
-	pending_proposal_count, body_markdown, created_at, generated_at`
+	pending_proposal_count, repaired_count, escalated_count, open_case_count,
+	body_markdown, created_at, generated_at`
 
 // CreateQualityAgentReport inserts one report row. The unique (agent, period) index
 // makes a retried tick converge on one report; an existing row is returned with
@@ -75,9 +81,9 @@ func (s *Store) CreateQualityAgentReport(ctx context.Context, message *QualityAg
 			 period_start, period_end, scope, target_count, covered_target_count,
 			 rule_count, execution_count, passed_count, warned_count, failed_count,
 			 errored_count, new_issue_count, open_issue_count, pending_proposal_count,
-			 body_markdown, generated_at)
+			 repaired_count, escalated_count, open_case_count, body_markdown, generated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-			$16, $17, $18, $19, $20, $21)
+			$16, $17, $18, $19, $20, $21, $22, $23, $24)
 		ON CONFLICT (agent_id, period_key) DO NOTHING
 		RETURNING `+qualityAgentReportColumns,
 		resourceID, message.WorkspaceID, message.AgentID,
@@ -85,7 +91,8 @@ func (s *Store) CreateQualityAgentReport(ctx context.Context, message *QualityAg
 		pq.Array(message.Scope), message.TargetCount, message.CoveredTargetCount,
 		message.RuleCount, message.ExecutionCount, message.PassedCount, message.WarnedCount,
 		message.FailedCount, message.ErroredCount, message.NewIssueCount,
-		message.OpenIssueCount, message.PendingProposalCount, message.BodyMarkdown,
+		message.OpenIssueCount, message.PendingProposalCount, message.RepairedCount,
+		message.EscalatedCount, message.OpenCaseCount, message.BodyMarkdown,
 		message.GeneratedAt)
 	created, err := scanQualityAgentReport(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -158,6 +165,18 @@ type QualityAgentReportSnapshot struct {
 	NewIssueCount        int32
 	OpenIssueCount       int32
 	PendingProposalCount int32
+	// RepairedCount is how many work items the agent closed by itself in the period, and
+	// RepairedByClass says in what way; OpenCaseCount is the work still in progress now.
+	RepairedCount   int32
+	EscalatedCount  int32
+	OpenCaseCount   int32
+	RepairedByClass []QualityAgentCaseClassCount
+}
+
+// QualityAgentCaseClassCount is one failure class and how many work items of it the agent settled.
+type QualityAgentCaseClassCount struct {
+	Class string
+	Count int32
 }
 
 // BuildQualityAgentReportSnapshot aggregates one period over the agent's enrolled
@@ -248,6 +267,40 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 	).Scan(&snapshot.PendingProposalCount); err != nil {
 		return nil, errors.Wrap(err, "failed to count the report pending proposals")
 	}
+	// The agent's own work items: what it settled and what it handed over inside the period, plus
+	// what it is still carrying. A case is the agent's, not the target's, so this reads by agent id.
+	caseRows, err := s.GetDB().QueryContext(ctx, `
+		SELECT failure_class, COUNT(*) FROM quality_agent_case
+		WHERE agent_id = $1 AND state = $2 AND updated_at >= $3 AND updated_at < $4
+		GROUP BY failure_class ORDER BY failure_class`,
+		agentID, int16(QualityAgentCaseStateResolved), since, until)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to count the report repaired work items")
+	}
+	defer caseRows.Close()
+	for caseRows.Next() {
+		var class string
+		var count int32
+		if err := caseRows.Scan(&class, &count); err != nil {
+			return nil, errors.Wrap(err, "failed to scan the report repaired work items")
+		}
+		snapshot.RepairedCount += count
+		snapshot.RepairedByClass = append(snapshot.RepairedByClass,
+			QualityAgentCaseClassCount{Class: class, Count: count})
+	}
+	if err := caseRows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the report repaired work items")
+	}
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FILTER (WHERE updated_at >= $2 AND updated_at < $3),
+			COUNT(*) FILTER (WHERE state BETWEEN 1 AND 4)
+		FROM quality_agent_case
+		WHERE agent_id = $1 AND (state IN ($4, $5) OR state BETWEEN 1 AND 4)`,
+		agentID, since, until,
+		int16(QualityAgentCaseStateEscalated), int16(QualityAgentCaseStateFrozen),
+	).Scan(&snapshot.EscalatedCount, &snapshot.OpenCaseCount); err != nil {
+		return nil, errors.Wrap(err, "failed to count the report escalated work items")
+	}
 	return snapshot, nil
 }
 
@@ -264,6 +317,7 @@ func scanQualityAgentReport(scanner interface{ Scan(dest ...any) error }) (*Qual
 		&message.RuleCount, &message.ExecutionCount, &message.PassedCount,
 		&message.WarnedCount, &message.FailedCount, &message.ErroredCount,
 		&message.NewIssueCount, &message.OpenIssueCount, &message.PendingProposalCount,
+		&message.RepairedCount, &message.EscalatedCount, &message.OpenCaseCount,
 		&message.BodyMarkdown, &message.CreatedAt, &generatedAt,
 	); err != nil {
 		return nil, err

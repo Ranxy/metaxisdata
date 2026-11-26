@@ -111,6 +111,12 @@ type QualityAgentMessage struct {
 	// inherits it unless a narrower row says otherwise.
 	Participation QualityAgentParticipation
 
+	// RepairMaxPerDay and RunMaxPerRulePerDay are the agent's write budgets: how many writes to
+	// checks it may make per rolling day, and how many immediate runs per check per rolling day.
+	// Zero means the server default, like the other budgets.
+	RepairMaxPerDay     int32
+	RunMaxPerRulePerDay int32
+
 	CreatedBy *int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -122,7 +128,8 @@ const qualityAgentColumns = `id, resource_id, principal_id, display_name, descri
 	adoption_rule_types, adoption_confidence_threshold, adoption_allow_critical,
 	adoption_max_per_day, conversation_messages_per_hour, tokens_per_hour,
 	wakes_per_hour, max_concurrent_sessions, max_new_sessions_per_hour,
-	max_active_sessions, participation, created_by, created_at, updated_at`
+	max_active_sessions, participation, repair_max_per_day, run_max_per_rule_per_day,
+	created_by, created_at, updated_at`
 
 // CreateQualityAgent creates the agent principal and its row with the default
 // runtime configuration. The principal holds no workspace policy binding; the
@@ -283,6 +290,8 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 			language = $19,
 			provider_profile = $20,
 			provider_model = $21,
+			repair_max_per_day = $22,
+			run_max_per_rule_per_day = $23,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING `+qualityAgentColumns,
@@ -293,7 +302,8 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		message.AdoptionMaxPerDay, message.ConversationMessagesPerHour,
 		message.TokensPerHour, message.WakesPerHour, message.MaxConcurrentSessions,
 		message.MaxNewSessionsPerHour, message.MaxActiveSessions, message.Language,
-		message.ProviderProfile, message.ProviderModel))
+		message.ProviderProfile, message.ProviderModel, message.RepairMaxPerDay,
+		message.RunMaxPerRulePerDay))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, common.Errorf(common.NotFound, "quality agent %d not found", message.ID)
@@ -483,7 +493,8 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 		&message.AdoptionConfidenceThreshold, &message.AdoptionAllowCritical,
 		&message.AdoptionMaxPerDay, &message.ConversationMessagesPerHour,
 		&message.TokensPerHour, &message.WakesPerHour, &message.MaxConcurrentSessions,
-		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions, &participation, &createdBy,
+		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions, &participation,
+		&message.RepairMaxPerDay, &message.RunMaxPerRulePerDay, &createdBy,
 		&message.CreatedAt, &message.UpdatedAt,
 	); err != nil {
 		return nil, err

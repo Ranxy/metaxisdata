@@ -357,3 +357,38 @@ func TestRunCheckPassesTheRequestThrough(t *testing.T) {
 	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).RunCheck(context.Background(), AgentSession{}, `{"case":"c9"}`)
 	require.ErrorContains(t, err, "not configured")
 }
+
+// flag_proposal carries the agent's objection to its own draft through to the application layer,
+// which is the only thing the adoption gate can read: the gate judges a draft's shape, not whether
+// the model that drafted it believes it.
+func TestFlagProposalPassesTheConcernThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotDraft, gotConcern string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Flag: func(_ context.Context, principalID int32, draftResourceID, concern string) (FlagOutcome, error) {
+			gotPrincipal, gotDraft, gotConcern = principalID, draftResourceID, concern
+			return FlagOutcome{
+				Draft: "qualitySuggestions/s123", Concern: concern, State: "PENDING",
+			}, nil
+		},
+	})
+	result, err := tools.FlagProposal(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"draft":"workspaces/ws/qualitySuggestions/s123","concern":"the audit table appends out of order"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualitySuggestions/s123", gotDraft)
+	require.Equal(t, "the audit table appends out of order", gotConcern)
+	require.Contains(t, result, `"draft":"qualitySuggestions/s123"`)
+	require.Contains(t, result, "never adopted automatically")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).FlagProposal(context.Background(), AgentSession{},
+		`{"draft":"s1","concern":"x"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).FlagProposal(context.Background(), AgentSession{},
+		`{"draft":"s1"}`)
+	require.ErrorContains(t, err, "needs a draft and a concern")
+}

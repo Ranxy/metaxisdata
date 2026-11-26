@@ -45,7 +45,7 @@ verb replays the actual change — so the action list a model reads cannot offer
 
 ## Escalations
 
-An escalated case raises one attention for the owner — deduped per case, carrying the target's session when there is one, the case it unblocks, and, for a proposal, the change itself — and notifies the owner or the administrators when the agent has none — because a decision nobody is told about is not a decision. There is no publish, edit, archive, resume, settings or reject tool, and MCP exposes reads only.
+An escalated case raises one attention for the owner — deduped per case, carrying the target's session when there is one, the case it unblocks, and, for a proposal, the change itself — and notifies the owner or the administrators when the agent has none — because a decision nobody is told about is not a decision. The same escalation is raised by the runner when a case **freezes**: the agent spent its repair budget and the check still fails the same way, which is the agent saying it cannot fix this, and nothing in the case table tells a person that on its own. Both writers go through one escalation package, so the dedupe key, the session the item hangs off, who is notified when the agent has no owner, and the owner's language cannot drift between them. There is no publish, edit, archive, resume, settings or reject tool, and MCP exposes reads only.
 
 Attention items (`BLOCKED`, `PROPOSAL_PENDING`, `REPORT_ANOMALY`) are the owner's to-do list: they send an inbox notification to the owner (administrators when the agent has no owner), a reply restores the target session and resolves the item, and dismiss only closes it. A reply can also ask the agent to adopt pending drafts. A target-level attention carries the target and its session, so the home list leads with the target, expands inline to up to five pending draft titles, and replies through the same target session; a report anomaly is agent-level and has no target. A pass or a person's decision that empties a target queue resolves its proposal attention.
 
@@ -53,9 +53,19 @@ Attention items (`BLOCKED`, `PROPOSAL_PENDING`, `REPORT_ANOMALY`) are the owner'
 
 A case is the agent's durable work item, separate from the issue ledger: a FAIL is a conclusion about the data and becomes an issue, while a check that **cannot** produce a verdict (a refused bound, an unsupported column, an empty target, a missing baseline) becomes a case. The server opens it — never the model — in `DIAGNOSED` with the class the deterministic diagnosis computed, and one open case claims a subject (agent plus target, rule and kind) through a partial unique index, so a retried batch cannot open two. States are `OPEN`/`DIAGNOSED`/`ACTED`/`AWAITING_VERIFICATION`/`RESOLVED`/`FROZEN`/`ESCALATED`; the last three are terminal and release the subject, because a frozen case that kept its subject would make the check permanently invisible to the agent. A later execution that produces a verdict closes the open case, so the table holds current work rather than history. A case with a repair pending is verified by the next execution of its check: a verdict closes it, the same class spends one attempt and freezes at the budget (two by default), a different class re-diagnoses without spending one, and a run that has not finished spends nothing. The case's own evidence execution is never taken as its verification run, so a retried batch cannot spend an attempt, and only a case that actually has a repair pending is verified — a still-failing run on a merely diagnosed case must not burn the budget before the agent has changed anything.
 
+The board is the read-only view of that table: `ListQualityAgentCases` lists one agent's work items, open ones first and soonest
+action first, with the class, the state, the repair attempts spent and the sentence naming the check. The agent's owner and
+administrators may read it. It is a projection, not a second state machine — nothing writes through it, and a person who wants to act
+does so through the check itself or by answering the escalation.
+
 ## Delegated authority: participation and pins
 
 How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the delegation default) or `TUNE`. It cascades — the agent row, the database row the operator chose when delegating, then an enrollment-level exception — and an unset slot inherits the level above it rather than resetting, so narrowing one table does not re-declare the rest. The level is per target, so it cannot live in the byte-stable system prompt: the wake instruction states the resolved level and what it permits. A **pin** is the only way to take a check out of the agent's reach, and it is always a person's explicit act: `quality_rule.manual_lock` pins the whole check, `pinned_fields` pins named config paths (a pin on `range` covers `range.min`), and editing a check never creates one. Both are head-only metadata like the frequency tier — they write no revision.
+
+A pin is written by a person through the ordinary rule update (`manual_lock` and `pinned_fields` are two mask paths), on the
+check's own row in the checks list: the lock is the button there, and per-field pins are the same metadata through the API. It is
+audited like any other rule write, changes no definition, writes no revision, and is revocable in one click. That is deliberate —
+the delegation's safety rests on the escape hatch being easier to reach than the thing it guards against.
 
 ## Wake rendering and scheduling
 
@@ -100,6 +110,62 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 | Scenario | Behavior |
 | --- | --- |
 | An agent's provider or model is missing or no longer enabled | the wake has no model: the conversation answers with the deterministic scope summary, triage parks `needs-human`, the agent is shown as unavailable; never a silent switch. A changed pair the registry cannot run is refused before the agent row exists |
+
+## The patrol report
+
+The report is a deterministic aggregate, rendered by `component/dataquality/agentreport` and stored with its counts as columns. It
+leads with the scope and the period's executions, then answers the two questions an owner actually asks: **what the agent fixed** —
+the work items it closed by itself in the period, broken down by failure class — and **what is waiting for you** — the items it
+escalated or froze, the ones still in progress, the drafts still pending and the issues still open. The work-item counts are the
+agent's own cases, read by agent rather than by target, so a report never counts another agent's work. Both sections state their
+honest zero: "nothing was settled by the agent" is different from "the agent fixed nothing because there was nothing to fix", and a
+report that hides the difference cannot show whether delegating the database is working.
+
+## When the agent distrusts its own draft
+
+The adoption gate judges a draft's shape: its rule type, the drafting model's confidence, the target's criticality, the daily
+ceiling, the scope. It cannot judge whether the model that drafted it believes it — and a model that has read an audit table's
+insertion pattern often does not. `flag_proposal` is that doubt's route: the agent names one of its own pending drafts and states
+the objection, and the concern is stored beside the payload (head-only metadata, so a later refresh cannot erase it) and shown in
+the review queue. A flagged draft is never adopted automatically — the concern outranks the allowlist, because the doubt is about
+something the gate cannot see — but it can still be adopted deliberately by the owner, because a flag is a doubt and not a refusal.
+The skip is recorded in the adoption ledger with the concern quoted, so the reason a draft stayed pending is answerable later.
+
+## Budgets and the ledger
+
+Every write an agent makes to a check appends one row to `quality_agent_case_action`: the case, the agent, the target and the
+instance (copied rather than joined, so the row survives an archived rule), the kind (`REVISE`, `CONTROL`, `RUN`, `PROPOSE`), the
+field, the definition revisions the write produced, the execution it planned, the failure class it acted on and when. The table is
+append-only and records applied writes only: a refused write is a metric, and recording it as a spent budget would make a refusal
+cost the agent its allowance.
+
+That ledger is what makes a budget possible. Two ceilings exist, both per rolling day, both stored on the agent row with the same
+"zero means the server default" convention as the runtime budgets: writes to checks across the agent's whole scope (`REPAIR` and
+`CONTROL` share it, because pausing a check and rewriting one are the same churn from an operator's point of view) and immediate
+runs per check. The ceilings answer different questions: how much definition churn the delegation tolerates is a property of the
+agent, while how often one broken check may be re-run is a property of the check — running ten different checks once is normal,
+running one check ten times an hour is noise.
+
+The ceiling exists because a terminal case releases its subject. "Repair, freeze, reopen, repair" would otherwise loop on the
+agent's own, with each round looking locally reasonable and no person ever paged. A refusal is `RESOURCE_EXHAUSTED`, names the
+ceiling and says what still works — proposing, recording a fact, escalating, and the reset tomorrow — because a bare "no" is what
+makes a model retry the same verb or park the session. The budget is checked in the pipeline before validation and the probe and
+after the verb is authorized, so a write that would be refused costs nothing; it is recorded after the write succeeded, and a
+ledger failure is logged rather than raised, because the check is already changed and losing the row only means one write goes
+uncounted.
+
+The ledger is readable: `ListQualityAgentCaseActions` lists one agent's writes newest first, optionally narrowed to one work item, and
+the agent home renders it twice — a whole-agent **Activity** list that pages forward, and a per-work-item **History** dialog that
+answers "what did it do to this check". Both are owner-and-administrator reads. A write that names a case the agent does not own is
+refused rather than answered with an empty page, because "no history" and "not your case" are different facts.
+
+## Instrumentation
+
+Three counters describe how autonomous the agent is: work items opened (by failure class), work-item transitions (by the state
+reached) and writes refused (by verb, participation level and effect). The ratios a dashboard wants — autonomy is resolved over
+resolved plus escalated and frozen, a reopen rate is a second transition of the same subject — are computed from those counters
+rather than recorded as gauges, so the definition can change without a deploy. A refused write is the one signal that the prompt is
+inviting the model somewhere the policy will not follow.
 
 ## Where to look
 

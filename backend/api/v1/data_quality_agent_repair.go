@@ -15,6 +15,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -72,7 +73,16 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 		PinnedFields: rule.PinnedFields,
 	}, requested)
 	if !verdict.Allowed {
+		// A refusal is worth counting: it is how a dashboard notices that the prompt is inviting the
+		// model somewhere the policy will not follow.
+		s.metrics.ObserveAgentWriteRefused("control", policy.EffectiveLevel().Name(), agentpolicy.EffectState.Name())
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
+	}
+	// The budget is spent before anything is written and after the verb is authorized, so a refused
+	// write never costs the agent its allowance.
+	if err := s.requireAgentRepairBudget(ctx, agent); err != nil {
+		s.metrics.ObserveAgentWriteRefused("control", policy.EffectiveLevel().Name(), agentpolicy.EffectState.Name())
+		return nil, err
 	}
 	paused := storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
 	updated, err := s.store.UpdateQualityRule(ctx, rule.ResourceID, &store.UpdateQualityRuleMessage{
@@ -86,6 +96,10 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 		}
 		return nil, errors.Wrap(err, "failed to pause the quality rule")
 	}
+	entry := caseActionLedger(openCase, agent, rule)
+	entry.Action = store.QualityAgentCaseActionControl
+	entry.Reason = string(requested)
+	s.recordAgentCaseAction(ctx, entry)
 	// A target whose last enabled check is paused must stop being due, so the schedule follows
 	// the check. A failure here is logged and does not undo the pause: the check is already off.
 	if err := s.store.SyncQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, time.Now().UTC()); err != nil {
@@ -101,9 +115,10 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 		slog.Warn("the case changed before it could be escalated",
 			slog.String("case", openCase.ResourceID))
 	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
 		// An escalated case is a decision the owner owes, so it has to reach them. The notice is
 		// deduped per case: a retried verb must not page twice.
-		s.raiseCaseAttention(ctx, openCase, agent, caseNotice{
+		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
 			Kind:     store.QualityAgentAttentionKindBlocked,
 			Question: reason,
 		})
@@ -277,6 +292,113 @@ func (s *DataQualityService) planAgentRun(ctx context.Context, agent *store.Qual
 	return response.Msg.GetExecutions()[0].GetName(), nil
 }
 
+// agentBudgetWindow is the rolling day the agent's write budgets count over.
+const agentBudgetWindow = 24 * time.Hour
+
+// agentWriteBudget resolves the agent's write allowance, applying the server defaults to the zeros
+// an agent row stores by default.
+func agentWriteBudget(agent *store.QualityAgentMessage) agentpolicy.WriteBudget {
+	if agent == nil {
+		return agentpolicy.WriteBudget{}
+	}
+	return agentpolicy.WriteBudget{
+		RepairsPerDay:     agent.RepairMaxPerDay,
+		RunsPerRulePerDay: agent.RunMaxPerRulePerDay,
+	}
+}
+
+// requireAgentRepairBudget refuses one more write to a check once the agent has spent its rolling
+// day. The ceiling exists because a terminal case releases its subject: without it,
+// "repair, freeze, reopen, repair" would loop on the agent's own and nothing would page anyone.
+func (s *DataQualityService) requireAgentRepairBudget(ctx context.Context, agent *store.QualityAgentMessage) error {
+	spent, err := s.store.CountQualityAgentCaseActions(ctx, &store.FindQualityAgentCaseActionMessage{
+		AgentID: agent.ID,
+		Actions: []store.QualityAgentCaseActionKind{
+			store.QualityAgentCaseActionRevise, store.QualityAgentCaseActionControl,
+		},
+		Since: time.Now().UTC().Add(-agentBudgetWindow),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to read the agent's write budget")
+	}
+	if reason, refused := agentWriteBudget(agent).RepairRefusal(spent); refused {
+		return connect.NewError(connect.CodeResourceExhausted, errors.New(reason))
+	}
+	return nil
+}
+
+// requireAgentRunBudget refuses one more immediate run of a check once the agent has spent its
+// rolling day on that check. A run is the diagnostic, not the repair, so the ceiling is per check.
+func (s *DataQualityService) requireAgentRunBudget(ctx context.Context, agent *store.QualityAgentMessage, ruleID int64) error {
+	spent, err := s.store.CountQualityAgentCaseActions(ctx, &store.FindQualityAgentCaseActionMessage{
+		AgentID: agent.ID,
+		Actions: []store.QualityAgentCaseActionKind{store.QualityAgentCaseActionRun},
+		RuleID:  &ruleID,
+		Since:   time.Now().UTC().Add(-agentBudgetWindow),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to read the agent's run budget")
+	}
+	if reason, refused := agentWriteBudget(agent).RunRefusal(spent); refused {
+		return connect.NewError(connect.CodeResourceExhausted, errors.New(reason))
+	}
+	return nil
+}
+
+// recordAgentCaseAction appends one applied write to the ledger. A ledger failure is logged and never
+// undoes the write it records: the check is already changed, and losing the row only means the budget
+// under-counts this one write.
+func (s *DataQualityService) recordAgentCaseAction(ctx context.Context, action *store.QualityAgentCaseActionMessage) {
+	if action == nil || action.AgentID <= 0 {
+		return
+	}
+	action.CreatedAt = time.Now().UTC()
+	if _, err := s.store.RecordQualityAgentCaseAction(ctx, action); err != nil {
+		slog.Warn("failed to record a quality agent case action",
+			slog.Int64("agent", action.AgentID), log.WithError(err))
+	}
+}
+
+// plannedExecutionID resolves the row id of an execution a verb just planned, for the ledger. A name
+// that does not parse yields no id rather than a failed write: the write already happened.
+func plannedExecutionID(name string) *int64 {
+	if name == "" {
+		return nil
+	}
+	if _, id, err := parseQualityExecutionID(name); err == nil {
+		return &id
+	}
+	return nil
+}
+
+// ledgerClass is the failure class a ledger row records, which is why the write was made at all.
+func ledgerClass(diagnosis *dataquality.Diagnosis) string {
+	if diagnosis == nil {
+		return ""
+	}
+	return string(diagnosis.Class)
+}
+
+// caseActionLedger builds the ledger row every verb shares: who acted, on which check, in which
+// target, for which case.
+func caseActionLedger(openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, rule *store.QualityRuleMessage) *store.QualityAgentCaseActionMessage {
+	action := &store.QualityAgentCaseActionMessage{AgentID: agent.ID}
+	if openCase != nil {
+		caseID := openCase.ID
+		action.CaseID = &caseID
+		action.TargetGUID = openCase.TargetGUID
+		action.TargetType = openCase.TargetType
+		action.Instance = openCase.Instance
+	}
+	if rule != nil {
+		ruleID := rule.ID
+		action.RuleID = &ruleID
+		action.FromRevision = rule.Revision
+		action.ToRevision = rule.Revision
+	}
+	return action
+}
+
 // AgentRunResult is what one diagnostic run did: the execution the runner will pick up and the
 // case's new state.
 type AgentRunResult struct {
@@ -313,10 +435,20 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the check is paused, so it cannot run; a person decides whether to resume it"))
 	}
+	if err := s.requireAgentRunBudget(ctx, agent, rule.ID); err != nil {
+		// A budget refusal is not about the delegation level, so the metric carries no level: the
+		// verb and the empty label already say which ceiling was hit.
+		s.metrics.ObserveAgentWriteRefused("run", "", "")
+		return nil, err
+	}
 	execution, err := s.planAgentRun(ctx, agent, rule)
 	if err != nil {
 		return nil, err
 	}
+	entry := caseActionLedger(openCase, agent, rule)
+	entry.Action = store.QualityAgentCaseActionRun
+	entry.ExecutionID = plannedExecutionID(execution)
+	s.recordAgentCaseAction(ctx, entry)
 	// Look again soon: the runner picks the execution up within its tick, and the next wake reads
 	// the verdict.
 	next := time.Now().UTC().Add(time.Minute)
@@ -326,6 +458,8 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
 	} else if !applied {
 		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateActed.Name())
 	}
 	return &AgentRunResult{
 		Case:      openCase.ResourceID,
@@ -335,28 +469,9 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 	}, nil
 }
 
-// caseNotice is what one verb tells the owner about its case. It is a value rather than a set of
-// parameters because a notice is one thing: the kind picks the headline, the patch says what to
-// change, and the question says why.
-type caseNotice struct {
-	Kind store.QualityAgentAttentionKind
-	// Title overrides the kind's default headline. A proposal that asks for one concrete value is
-	// a different thing from a queue of drafts, though both are pending decisions.
-	Title string
-	// Question is the body, in the owner's language.
-	Question string
-	// Patch is the change the owner is asked to make, when there is exactly one. It is stored on
-	// the notice so the owner reviews a field and a value, not a paragraph.
-	Patch *storepb.QualityAgentFieldPatch
-}
-
 // agentOwnerLanguage resolves the language an agent's server prose is written in for its owner.
 func (s *DataQualityService) agentOwnerLanguage(ctx context.Context, agent *store.QualityAgentMessage) (string, *store.UserMessage) {
-	var owner *store.UserMessage
-	if agent != nil && agent.OwnerPrincipalID != nil {
-		owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
-	}
-	return agentlang.ForAgent(agent, owner), owner
+	return agentattention.OwnerLanguage(ctx, s.store, agent)
 }
 
 // revisedAgentConfig is the definition one repair would write. The value is the server's when the
@@ -478,12 +593,19 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 		ReplayAvailable: replay.Available,
 	}, agentpolicy.FieldChange{Field: field})
 	if !verdict.Allowed {
+		s.metrics.ObserveAgentWriteRefused("repair", policy.EffectiveLevel().Name(), agentpolicy.EffectOf(diagnosis).Name())
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
 	if len(replay.Loosened) > 0 {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
 			"the change would turn failing runs into passes (%s), so it is not a repair; propose it instead",
 			strings.Join(replay.Loosened, ", ")))
+	}
+	// The budget is spent here, before validation and the probe: a refused write must not cost the
+	// agent its allowance, and the pipeline keeps the expensive checks last.
+	if err := s.requireAgentRepairBudget(ctx, agent); err != nil {
+		s.metrics.ObserveAgentWriteRefused("repair", policy.EffectiveLevel().Name(), agentpolicy.EffectOf(diagnosis).Name())
+		return nil, err
 	}
 	validated, _, err := s.validateRuleInput(ctx, openCase.WorkspaceID, rule.RuleType, rule.TargetGUID, rule.TargetType, config)
 	if err != nil {
@@ -516,6 +638,11 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 		}
 		return nil, errors.Wrap(err, "failed to write the repaired definition")
 	}
+	entry := caseActionLedger(openCase, agent, rule)
+	entry.Action = store.QualityAgentCaseActionRevise
+	entry.Field = field
+	entry.ToRevision = updated.Revision
+	entry.Reason = ledgerClass(diagnosis)
 	// The repair is only a repair once a run proves it. The run is planned before the case moves, so
 	// the next batch verifies it; when planning fails the case still moves, because the check's next
 	// scheduled run verifies it just the same.
@@ -525,6 +652,8 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 			slog.String("case", openCase.ResourceID), log.WithError(runErr))
 		execution = ""
 	}
+	entry.ExecutionID = plannedExecutionID(execution)
+	s.recordAgentCaseAction(ctx, entry)
 	next := time.Now().UTC().Add(time.Minute)
 	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
 		openCase.State, store.QualityAgentCaseStateActed, openCase.Attempts, &next, ""); caseErr != nil {
@@ -532,6 +661,8 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
 	} else if !applied {
 		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateActed.Name())
 	}
 	result := &AgentRevisionResult{
 		Case:      openCase.ResourceID,
@@ -604,6 +735,7 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 		PinnedFields: rule.PinnedFields,
 	}, agentpolicy.FieldChange{Field: field})
 	if !verdict.Allowed {
+		s.metrics.ObserveAgentWriteRefused("propose", policy.EffectiveLevel().Name(), "")
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
 	// The proposed value must be one the check could save. The patch is applied to a copy and
@@ -625,6 +757,11 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 		Effect:       effect.Name(),
 		Rationale:    common.TruncateUTF8Bytes(strings.TrimSpace(rationale), 1000),
 	}
+	entry := caseActionLedger(openCase, agent, rule)
+	entry.Action = store.QualityAgentCaseActionPropose
+	entry.Field = field
+	entry.Reason = ledgerClass(diagnosis)
+	s.recordAgentCaseAction(ctx, entry)
 	language, _ := s.agentOwnerLanguage(ctx, agent)
 	question := agentlang.CaseRevisionQuestion(language, agentlang.CaseRevision{
 		Check:     checkTitle(rule),
@@ -642,7 +779,8 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 	} else if !applied {
 		slog.Warn("the case changed before it could be escalated", slog.String("case", openCase.ResourceID))
 	} else {
-		s.raiseCaseAttention(ctx, openCase, agent, caseNotice{
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
+		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
 			Kind:     store.QualityAgentAttentionKindProposalPending,
 			Title:    agentlang.CaseRevisionTitle(language),
 			Question: question,
@@ -659,61 +797,11 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 	}, nil
 }
 
-// raiseCaseAttention tells the owner that a case needs a decision. It is best effort: a failed
-// notice never undoes the write it reports, and the case row stays the durable record.
-func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, notice caseNotice) {
-	if openCase == nil || agent == nil {
+// raiseCaseAttention tells the owner that a case needs a decision, through the one escalation
+// writer both this service and the runner use.
+func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, notice agentattention.Notice) {
+	if s.caseAttention == nil {
 		return
 	}
-	language, owner := s.agentOwnerLanguage(ctx, agent)
-	title := notice.Title
-	if title == "" {
-		title = agentlang.AttentionTitle(language, notice.Kind)
-	}
-	// Link the target session when there is one, so the card carries the target; an unlinked
-	// item is still an agent-level notice rather than a lost one.
-	var sessionID *int64
-	if sessions, err := s.store.ListQualityAgentSessionsByTarget(ctx, openCase.WorkspaceID, openCase.TargetGUID); err == nil {
-		for _, session := range sessions {
-			if session.AgentID == agent.ID {
-				sessionID = &session.ID
-				break
-			}
-		}
-	}
-	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID:    openCase.WorkspaceID,
-		AgentID:        agent.ID,
-		Kind:           notice.Kind,
-		SessionID:      sessionID,
-		Title:          title,
-		Question:       common.TruncateUTF8Bytes(notice.Question, 2000),
-		DedupeKey:      "case:" + openCase.ResourceID,
-		CaseResourceID: openCase.ResourceID,
-		SuggestedPatch: notice.Patch,
-		CreatedAt:      time.Now().UTC(),
-	})
-	if err != nil || !created {
-		return
-	}
-	if s.notifier == nil {
-		return
-	}
-	detail := &storepb.QualityAgentAttentionDetail{
-		Agent:     common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
-		Attention: common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
-		Kind:      int32(notice.Kind),
-		Title:     attention.Title,
-		Question:  attention.Question,
-	}
-	dedupeKey := "dqagent:" + attention.ResourceID
-	if owner != nil {
-		if sendErr := s.notifier.SendQualityAgentAttention(ctx, int32(owner.ID), dedupeKey, detail); sendErr != nil {
-			slog.Warn("failed to send a case attention notification", log.WithError(sendErr))
-		}
-		return
-	}
-	if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
-		slog.Warn("failed to send a case attention notification to admins", log.WithError(sendErr))
-	}
+	s.caseAttention.Raise(ctx, openCase, agent, notice)
 }

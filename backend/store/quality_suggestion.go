@@ -20,7 +20,7 @@ import (
 // returns, in the order scanQualitySuggestion expects them.
 const qualitySuggestionColumns = `id, resource_id, kind, source, agent_id, target_guid, target_type, payload, signature,
 	status, provider, model, prompt_version, created_by, created_at, refreshed_at, decided_by, decided_at,
-	decision_note, confidence`
+	decision_note, confidence, concern`
 
 // queueQualitySuggestionQuery upserts one pending proposal by identity. A
 // suggestion is a proposal for a human, not a log entry: (target_guid,
@@ -127,6 +127,10 @@ type QualitySuggestionMessage struct {
 	DecidedBy    *int32
 	DecidedAt    *time.Time
 	DecisionNote string
+	// Concern is the proposing agent's own objection to this draft. A draft carrying one is never
+	// adopted automatically: the model knows something about the target's shape that the gate's
+	// allowlist and confidence cannot.
+	Concern string
 }
 
 // FindQualitySuggestionMessage filters suggestions. Every field is optional for a
@@ -264,6 +268,7 @@ func scanQualitySuggestion(row rowScanner) (*QualitySuggestionMessage, error) {
 		&message.ID, &message.ResourceID, &kind, &source, &agentID, &message.TargetGUID, &targetType, &payload,
 		&message.Signature, &status, &message.Provider, &message.Model, &message.PromptVersion, &createdBy,
 		&message.CreatedAt, &refreshedAt, &decidedBy, &decidedAt, &message.DecisionNote, &message.Confidence,
+		&message.Concern,
 	); err != nil {
 		return nil, err
 	}
@@ -457,6 +462,29 @@ func (s *Store) QueueQualitySuggestion(ctx context.Context, message *QualitySugg
 	// An inserted row has no refresh time; an updated one was stamped with the
 	// current pass's instant by the upsert.
 	return stored, stored.RefreshedAt == nil, nil
+}
+
+// SetQualitySuggestionConcern records the proposing agent's own objection to one of its pending
+// drafts. It applies only while the draft is pending: a decided proposal is a record of what was
+// decided, and rewriting its justification afterwards would rewrite history. The update is a
+// compare-and-set on the status for that reason, not an optimistic lock.
+func (s *Store) SetQualitySuggestionConcern(ctx context.Context, resourceID, concern string) (*QualitySuggestionMessage, bool, error) {
+	if resourceID == "" {
+		return nil, false, common.Errorf(common.Invalid, "a suggestion resource id is required")
+	}
+	row := s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_suggestion SET concern = $2
+		WHERE resource_id = $1 AND status = $3
+		RETURNING `+qualitySuggestionColumns,
+		resourceID, concern, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING))
+	stored, err := scanQualitySuggestion(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to record a draft concern")
+	}
+	return stored, true, nil
 }
 
 // GetQualitySuggestion returns the suggestion the find names, or (nil, nil) when

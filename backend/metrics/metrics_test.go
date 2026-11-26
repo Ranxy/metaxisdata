@@ -139,6 +139,10 @@ func TestRegisteredInstruments(t *testing.T) {
 		"metaxisdata_agent_tool_calls_total":           {"product", "tool", "outcome"},
 		"metaxisdata_agent_tool_call_duration_seconds": {"product", "tool"},
 		"metaxisdata_agent_tool_result_bytes":          {"product", "tool"},
+		// The agent's work items: opened, where they end up, and the writes the delegation refused.
+		"metaxisdata_agent_case_opened_total":      {"class"},
+		"metaxisdata_agent_case_transitions_total": {"state"},
+		"metaxisdata_agent_write_refused_total":    {"verb", "level", "effect"},
 		// Outbound notifications.
 		"metaxisdata_notification_deliveries_attempted_total": {"outcome"},
 		"metaxisdata_notification_delivery_duration_seconds":  nil,
@@ -349,6 +353,12 @@ func TestRecordersEmitExpectedLabels(t *testing.T) {
 	m.ObserveLLMCall("explain_sql", "openai", LLMOutcomeSuccess, time.Second, 10, 5)
 	m.CountLLMQuotaRejection(LLMQuotaAnalysis)
 	m.CountInstanceConnectionTryAcquireRejected()
+	m.ObserveAgentCaseOpened("CONFIG_VALUE_INVALID")
+	m.ObserveAgentCaseOpened("not-a-class")
+	m.ObserveAgentCaseTransition("RESOLVED")
+	m.ObserveAgentCaseTransition("SOMETHING_NEW")
+	m.ObserveAgentWriteRefused("repair", "REPAIR", "CRITERION")
+	m.ObserveAgentWriteRefused("propose", "", "")
 	m.RunnerPanicked("schemasync")
 	// net/http accepts arbitrary method tokens; the recorder must not turn one
 	// into a series.
@@ -377,6 +387,24 @@ func TestRecordersEmitExpectedLabels(t *testing.T) {
 	}))
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_quality_rule_errors_total", map[string]string{
 		"rule_type": "row_count", "error_code": "connection",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_case_opened_total", map[string]string{
+		"class": "config_value_invalid",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_case_opened_total", map[string]string{
+		"class": "unspecified",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_case_transitions_total", map[string]string{
+		"state": "resolved",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_case_transitions_total", map[string]string{
+		"state": "other",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_write_refused_total", map[string]string{
+		"verb": "repair", "level": "repair", "effect": "criterion",
+	}))
+	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_agent_write_refused_total", map[string]string{
+		"verb": "propose", "level": "none", "effect": "none",
 	}))
 	require.Equal(t, 1.0, sampleValue(t, families, "metaxisdata_llm_calls_total", map[string]string{
 		"feature": "explain_sql", "provider": "openai", "outcome": LLMOutcomeSuccess,

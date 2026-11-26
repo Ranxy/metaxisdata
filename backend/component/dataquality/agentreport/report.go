@@ -40,20 +40,61 @@ func Render(snapshot *store.QualityAgentReportSnapshot, periodStart, periodEnd t
 	fmt.Fprintf(&body, "- New issues: %d\n", snapshot.NewIssueCount)
 	fmt.Fprintf(&body, "- Open issues: %d\n", snapshot.OpenIssueCount)
 	fmt.Fprintf(&body, "- Proposals waiting for review: %d\n\n", snapshot.PendingProposalCount)
-	_, _ = body.WriteString("## What a person should look at\n\n")
-	if snapshot.FailedCount > 0 || snapshot.ErroredCount > 0 {
-		fmt.Fprintf(&body, "- %d check(s) failed and %d errored in this period.\n", snapshot.FailedCount, snapshot.ErroredCount)
+	_, _ = body.WriteString("## What the agent fixed\n\n")
+	if snapshot.RepairedCount > 0 {
+		fmt.Fprintf(&body, "- %d work item(s) closed by the agent itself: %s.\n",
+			snapshot.RepairedCount, repairedClasses(snapshot.RepairedByClass, "en"))
+	} else {
+		_, _ = body.WriteString("- No work item was settled by the agent in this period.\n")
 	}
-	if snapshot.OpenIssueCount > 0 {
-		fmt.Fprintf(&body, "- %d issue(s) remain open.\n", snapshot.OpenIssueCount)
+	_, _ = body.WriteString("\n## What is waiting for you\n\n")
+	waiting := false
+	if snapshot.EscalatedCount > 0 {
+		fmt.Fprintf(&body, "- %d work item(s) were escalated or frozen for a decision.\n", snapshot.EscalatedCount)
+		waiting = true
+	}
+	if snapshot.OpenCaseCount > 0 {
+		fmt.Fprintf(&body, "- %d work item(s) are still in progress.\n", snapshot.OpenCaseCount)
+		waiting = true
 	}
 	if snapshot.PendingProposalCount > 0 {
-		fmt.Fprintf(&body, "- %d proposal(s) wait for the owner's decision.\n", snapshot.PendingProposalCount)
+		fmt.Fprintf(&body, "- %d proposal(s) wait for a decision.\n", snapshot.PendingProposalCount)
+		waiting = true
 	}
-	if snapshot.FailedCount == 0 && snapshot.ErroredCount == 0 && snapshot.OpenIssueCount == 0 && snapshot.PendingProposalCount == 0 {
-		_, _ = body.WriteString("- Nothing needs attention in this period.\n")
+	if snapshot.OpenIssueCount > 0 {
+		fmt.Fprintf(&body, "- %d issue(s) remain open on the data itself.\n", snapshot.OpenIssueCount)
+		waiting = true
+	}
+	if snapshot.FailedCount > 0 || snapshot.ErroredCount > 0 {
+		fmt.Fprintf(&body, "- %d check(s) failed and %d errored in this period; the issues above are where they land.\n",
+			snapshot.FailedCount, snapshot.ErroredCount)
+		waiting = true
+	}
+	if !waiting {
+		_, _ = body.WriteString("- Nothing needs a decision in this period.\n")
 	}
 	return body.String()
+}
+
+// repairedClasses renders the failure classes the agent settled, in the order the read returned
+// them, so a retried report renders byte-identically.
+func repairedClasses(classes []store.QualityAgentCaseClassCount, language string) string {
+	if len(classes) == 0 {
+		return "unclassified"
+	}
+	parts := make([]string, 0, len(classes))
+	for _, class := range classes {
+		name := class.Class
+		if name == "" {
+			if language == "zh" {
+				name = "未分类"
+			} else {
+				name = "unclassified"
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%s %d", name, class.Count))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func renderChinese(snapshot *store.QualityAgentReportSnapshot, periodStart, periodEnd time.Time, location *time.Location) string {
@@ -75,18 +116,38 @@ func renderChinese(snapshot *store.QualityAgentReportSnapshot, periodStart, peri
 	_, _ = fmt.Fprintf(&body, "- 新增问题：%d\n", snapshot.NewIssueCount)
 	_, _ = fmt.Fprintf(&body, "- 未解决问题：%d\n", snapshot.OpenIssueCount)
 	_, _ = fmt.Fprintf(&body, "- 待审核建议：%d\n\n", snapshot.PendingProposalCount)
-	_, _ = body.WriteString("## 需要人关注\n\n")
-	if snapshot.FailedCount > 0 || snapshot.ErroredCount > 0 {
-		_, _ = fmt.Fprintf(&body, "- 本周期 %d 个检查失败、%d 个检查错误。\n", snapshot.FailedCount, snapshot.ErroredCount)
+	_, _ = body.WriteString("## Agent 修好了什么\n\n")
+	if snapshot.RepairedCount > 0 {
+		_, _ = fmt.Fprintf(&body, "- 由 Agent 自行收敛的工作项：%d 个（%s）。\n",
+			snapshot.RepairedCount, repairedClasses(snapshot.RepairedByClass, "zh"))
+	} else {
+		_, _ = body.WriteString("- 本周期没有由 Agent 自行收敛的工作项。\n")
 	}
-	if snapshot.OpenIssueCount > 0 {
-		_, _ = fmt.Fprintf(&body, "- %d 个问题仍未解决。\n", snapshot.OpenIssueCount)
+	_, _ = body.WriteString("\n## 等你决定\n\n")
+	waiting := false
+	if snapshot.EscalatedCount > 0 {
+		_, _ = fmt.Fprintf(&body, "- %d 个工作项已升级或冻结，等待你决定。\n", snapshot.EscalatedCount)
+		waiting = true
+	}
+	if snapshot.OpenCaseCount > 0 {
+		_, _ = fmt.Fprintf(&body, "- %d 个工作项仍在处理中。\n", snapshot.OpenCaseCount)
+		waiting = true
 	}
 	if snapshot.PendingProposalCount > 0 {
-		_, _ = fmt.Fprintf(&body, "- %d 条建议等待负责人决定。\n", snapshot.PendingProposalCount)
+		_, _ = fmt.Fprintf(&body, "- %d 条建议等待决定。\n", snapshot.PendingProposalCount)
+		waiting = true
 	}
-	if snapshot.FailedCount == 0 && snapshot.ErroredCount == 0 && snapshot.OpenIssueCount == 0 && snapshot.PendingProposalCount == 0 {
-		_, _ = body.WriteString("- 本周期没有需要关注的事项。\n")
+	if snapshot.OpenIssueCount > 0 {
+		_, _ = fmt.Fprintf(&body, "- %d 个数据问题仍未解决。\n", snapshot.OpenIssueCount)
+		waiting = true
+	}
+	if snapshot.FailedCount > 0 || snapshot.ErroredCount > 0 {
+		_, _ = fmt.Fprintf(&body, "- 本周期 %d 个检查失败、%d 个检查错误，相应问题记在上面的问题台账。\n",
+			snapshot.FailedCount, snapshot.ErroredCount)
+		waiting = true
+	}
+	if !waiting {
+		_, _ = body.WriteString("- 本周期没有需要你决定的事项。\n")
 	}
 	return body.String()
 }

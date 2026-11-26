@@ -104,6 +104,17 @@ const (
 	// MaxAgentRunnerConversationMessagesPerHour is the hard ceiling of an agent's
 	// owner-conversation message budget.
 	MaxAgentRunnerConversationMessagesPerHour = 10_000
+	// DefaultAgentRepairsPerDay is the fallback of an agent's daily write budget: how many
+	// definition or state writes it may make across its whole scope in one rolling day. It is the
+	// ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+	DefaultAgentRepairsPerDay = 10
+	// MaxAgentRepairsPerDay is the hard ceiling of that budget.
+	MaxAgentRepairsPerDay = 100
+	// DefaultAgentRunsPerRulePerDay is the fallback of the immediate-run budget: a run is the agent's
+	// diagnostic, so the ceiling is per check rather than per agent.
+	DefaultAgentRunsPerRulePerDay = 3
+	// MaxAgentRunsPerRulePerDay is the hard ceiling of that budget.
+	MaxAgentRunsPerRulePerDay = 100
 	// DefaultAgentRunnerDormantReviewDays is how long a triaged target sleeps
 	// before it is reviewed again.
 	DefaultAgentRunnerDormantReviewDays = 30

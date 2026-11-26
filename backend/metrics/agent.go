@@ -13,6 +13,9 @@ type agentMetrics struct {
 	calls     *prometheus.CounterVec
 	duration  *prometheus.HistogramVec
 	resultLen *prometheus.HistogramVec
+	// cases instruments the agent's work items: opened, where they end up, and the writes the
+	// delegation refused.
+	cases caseMetrics
 }
 
 func newAgentMetrics() agentMetrics {
@@ -37,11 +40,12 @@ func newAgentMetrics() agentMetrics {
 			Help:      "Model-visible tool result size in bytes, by product and tool.",
 			Buckets:   []float64{64, 256, 1024, 4096, 8192, 16384, 65536},
 		}, []string{"product", "tool"}),
+		cases: newCaseMetrics(),
 	}
 }
 
 func (m agentMetrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.calls, m.duration, m.resultLen}
+	return append([]prometheus.Collector{m.calls, m.duration, m.resultLen}, m.cases.collectors()...)
 }
 
 // ObserveAgentToolCall records one tool execution. A nil Metrics records nothing.

@@ -341,6 +341,10 @@
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
     - [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest)
     - [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse)
+    - [ListQualityAgentCaseActionsRequest](#metaxisdata-v1-ListQualityAgentCaseActionsRequest)
+    - [ListQualityAgentCaseActionsResponse](#metaxisdata-v1-ListQualityAgentCaseActionsResponse)
+    - [ListQualityAgentCasesRequest](#metaxisdata-v1-ListQualityAgentCasesRequest)
+    - [ListQualityAgentCasesResponse](#metaxisdata-v1-ListQualityAgentCasesResponse)
     - [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest)
     - [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse)
     - [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest)
@@ -387,6 +391,8 @@
     - [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus)
     - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
+    - [QualityAgentCase](#metaxisdata-v1-QualityAgentCase)
+    - [QualityAgentCaseAction](#metaxisdata-v1-QualityAgentCaseAction)
     - [QualityAgentFieldPatch](#metaxisdata-v1-QualityAgentFieldPatch)
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
     - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
@@ -490,6 +496,8 @@
     - [QualityAgentAdoptionMode](#metaxisdata-v1-QualityAgentAdoptionMode)
     - [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind)
     - [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus)
+    - [QualityAgentCaseActionKind](#metaxisdata-v1-QualityAgentCaseActionKind)
+    - [QualityAgentCaseState](#metaxisdata-v1-QualityAgentCaseState)
     - [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole)
     - [QualityAgentReportFrequency](#metaxisdata-v1-QualityAgentReportFrequency)
@@ -6241,6 +6249,74 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityAgentCaseActionsRequest"></a>
+
+### ListQualityAgentCaseActionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| case | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write the agent made, which is the activity view; a case lists that work item&#39;s history. |
+| page_size | [int32](#int32) |  | The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum value is 200; values above 200 are coerced to 200. |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentCaseActionsResponse"></a>
+
+### ListQualityAgentCaseActionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_case_actions | [QualityAgentCaseAction](#metaxisdata-v1-QualityAgentCaseAction) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentCasesRequest"></a>
+
+### ListQualityAgentCasesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| states | [QualityAgentCaseState](#metaxisdata-v1-QualityAgentCaseState) | repeated | Restrict the list to these states; empty lists every state. |
+| page_size | [int32](#int32) |  | The maximum number of cases to return. If unspecified, at most 50 are returned. The maximum value is 200; values above 200 are coerced to 200. |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentCasesResponse"></a>
+
+### ListQualityAgentCasesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_cases | [QualityAgentCase](#metaxisdata-v1-QualityAgentCase) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityAgentConversationMessagesRequest"></a>
 
 ### ListQualityAgentConversationMessagesRequest
@@ -7119,6 +7195,69 @@ default; the workspace hard caps still apply.
 | max_new_sessions_per_hour | [int32](#int32) |  |  |
 | max_active_sessions | [int32](#int32) |  |  |
 | conversation_messages_per_hour | [int32](#int32) |  |  |
+| repair_max_per_day | [int32](#int32) |  | How many writes to checks the agent may make per rolling day, across its whole scope. This is the ceiling that stops &#34;repair, freeze, reopen, repair&#34; from looping on the agent&#39;s own. |
+| run_max_per_rule_per_day | [int32](#int32) |  | How many immediate runs the agent may request per check per rolling day. A run is its diagnostic, so the ceiling is per check rather than per agent. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentCase"></a>
+
+### QualityAgentCase
+QualityAgentCase is one durable work item: a check the agent could not settle by itself, the
+failure class that explains why, and the state the next wake resumes from. It is not the issue
+ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
+produce a verdict becomes a case.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case} |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| check | [string](#string) |  | Format: qualityRules/{rule}; empty for a target-level case. |
+| class | [string](#string) |  | The failure class this case is about (store FailureClass); empty until diagnosed. |
+| state | [QualityAgentCaseState](#metaxisdata-v1-QualityAgentCaseState) |  |  |
+| attempts | [int32](#int32) |  | Attempts is how many repairs have been spent on this case, and max_attempts is the budget; reaching it freezes the case. |
+| max_attempts | [int32](#int32) |  |  |
+| field | [string](#string) |  | The config field the diagnosis named, in dotted form, e.g. range.min. |
+| summary | [string](#string) |  | One sentence naming the check and explaining the failure, for a person reading the board. |
+| resolution | [string](#string) |  | How the case ended, empty while it is open. |
+| next_action_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the next look is due: a case waiting for a verification run names the instant instead of sleeping until the session&#39;s idle cadence. |
+| execution | [string](#string) |  | Format: qualityExecutions/{execution}; the run the case was opened on. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentCaseAction"></a>
+
+### QualityAgentCaseAction
+QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+which definition revision to which, which execution it planned, and why. Only applied writes are
+recorded — a refused write is a metric, not a spent budget.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action} |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| case | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write belonged to no work item (an owner-requested run). |
+| check | [string](#string) |  | Format: qualityRules/{rule}; empty when the check has since been hard-deleted. |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| action | [QualityAgentCaseActionKind](#metaxisdata-v1-QualityAgentCaseActionKind) |  |  |
+| field | [string](#string) |  | The config field a REVISE or PROPOSE named, in dotted form. |
+| from_revision | [int32](#int32) |  | The definition revisions the write produced; equal for an action that wrote no definition. |
+| to_revision | [int32](#int32) |  |  |
+| execution | [string](#string) |  | Format: qualityExecutions/{execution}; the run the write planned, when it planned one. |
+| class | [string](#string) |  | The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID. |
+| reason | [string](#string) |  | The action&#39;s own note: the requested control action, or the field the run diagnosed. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -7175,6 +7314,9 @@ QualityAgentReport is one deterministic patrol report over an agent&#39;s scope.
 | body_markdown | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | generate_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| repaired_count | [int32](#int32) |  | Work items the agent closed by itself inside the period, and the ones it escalated or froze. They are the report&#39;s answer to &#34;what did it fix&#34; and &#34;what is waiting for me&#34;; both were counted from the agent&#39;s own cases, not from the checks. |
+| escalated_count | [int32](#int32) |  |  |
+| open_case_count | [int32](#int32) |  | Work items still in progress when the report was generated. Not period-bounded. |
 
 
 
@@ -7966,6 +8108,8 @@ QualityRule is one data quality check.
 | tags | [string](#string) | repeated |  |
 | viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this rule&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.update&#34;. Output only; a page uses it to gate row actions without a second request. |
 | frequency_tier | [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier) |  | How often this check needs to run inside the target&#39;s schedule. The target tick is the floor, so a tier denser than the target is a no-op; a manual run is not affected. It is scheduling metadata, not part of the rule definition: editing it does not append a revision. |
+| manual_lock | [bool](#bool) |  | A person manages this check. The agent may still read it and propose changes, but it never rewrites it: the lock is the explicit, revocable way to take a check out of the agent&#39;s reach, and the only one — editing a check never creates a lock. |
+| pinned_fields | [string](#string) | repeated | Config paths a person pinned, in dotted form (&#34;range.min&#34;). A pin on a parent path covers everything below it. Both this and manual_lock are head-only metadata: they are not part of the definition and write no revision. |
 
 
 
@@ -8219,6 +8363,7 @@ normal rule or label path.
 | decision_note | [string](#string) |  |  |
 | refresh_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When a later generation pass refreshed this pending proposal&#39;s payload. Unset when the proposal has not been refreshed. |
 | viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this suggestion&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.create&#34;. Output only; a page uses it to gate the row&#39;s create-rule and decision actions without a second request. |
+| concern | [string](#string) |  | The proposing agent&#39;s own objection to this draft. A draft carrying one is never adopted automatically: the model that drafted it can see false positives the adoption gate cannot, and the review queue shows the doubt beside the draft it is about. |
 
 
 
@@ -9275,6 +9420,41 @@ QualityAgentAttentionStatus is the to-do&#39;s lifecycle.
 
 
 
+<a name="metaxisdata-v1-QualityAgentCaseActionKind"></a>
+
+### QualityAgentCaseActionKind
+QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it
+spends no repair budget; it is listed because &#34;what did the agent decide&#34; is part of the record.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_CASE_ACTION_KIND_REVISE | 1 |  |
+| QUALITY_AGENT_CASE_ACTION_KIND_CONTROL | 2 |  |
+| QUALITY_AGENT_CASE_ACTION_KIND_RUN | 3 |  |
+| QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE | 4 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentCaseState"></a>
+
+### QualityAgentCaseState
+QualityAgentCaseState is where one work item stands. The last three are terminal and release
+the case&#39;s subject, so a later occurrence opens a new case instead of staying invisible.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_CASE_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_CASE_STATE_OPEN | 1 |  |
+| QUALITY_AGENT_CASE_STATE_DIAGNOSED | 2 |  |
+| QUALITY_AGENT_CASE_STATE_ACTED | 3 |  |
+| QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION | 4 |  |
+| QUALITY_AGENT_CASE_STATE_RESOLVED | 5 |  |
+| QUALITY_AGENT_CASE_STATE_FROZEN | 6 |  |
+| QUALITY_AGENT_CASE_STATE_ESCALATED | 7 |  |
+
+
+
 <a name="metaxisdata-v1-QualityAgentMessageOrigin"></a>
 
 ### QualityAgentMessageOrigin
@@ -10082,6 +10262,8 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityAgentConversationMessages | [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest) | [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse) | Read the agent&#39;s front-office conversation. The owner and administrators may read; only the owner may send. |
 | ListQualityAgentReports | [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest) | [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse) | List one agent&#39;s patrol reports, newest period first. |
 | ListQualityAgentAttentions | [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest) | [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse) | List one agent&#39;s escalations. The owner and administrators may read. |
+| ListQualityAgentCases | [ListQualityAgentCasesRequest](#metaxisdata-v1-ListQualityAgentCasesRequest) | [ListQualityAgentCasesResponse](#metaxisdata-v1-ListQualityAgentCasesResponse) | List one agent&#39;s work items, the ones still open first. A case is the agent&#39;s durable record of a check it could not settle by itself; the owner and administrators may read it to see what the agent is working on and what it has given up on. |
+| ListQualityAgentCaseActions | [ListQualityAgentCaseActionsRequest](#metaxisdata-v1-ListQualityAgentCaseActionsRequest) | [ListQualityAgentCaseActionsResponse](#metaxisdata-v1-ListQualityAgentCaseActionsResponse) | List the writes one agent made to checks, newest first: the ledger behind the write budget and the answer to &#34;what has it changed&#34;. A case narrows it to one work item&#39;s history. |
 | ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer an escalation as the owner. The reply is appended to the target session, the session is resumed, and the attention is resolved; a retry on a closed attention is a no-op. |
 | DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
 | SetQualityAgentAdoption | [SetQualityAgentAdoptionRequest](#metaxisdata-v1-SetQualityAgentAdoptionRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Let the owner turn automatic adoption off or back to paused; administrators may also set ACTIVE. The rest of the configuration stays administrator-managed. |

@@ -165,6 +165,10 @@ type UpdateQualityRuleMessage struct {
 	// FrequencyTier is a head-only scheduling edit: changing it does not bump the
 	// revision.
 	FrequencyTier *storepb.QualityFrequencyTier
+	// ManualLock and PinnedFields are the pins: head-only metadata like the frequency
+	// tier, because a pin says who manages the check, not what the check means.
+	ManualLock   *bool
+	PinnedFields *[]string
 	// OwnerID uses 0 to clear the owner (NULL); principals have ids above 0.
 	OwnerID *int32
 	Tags    *[]string
@@ -835,6 +839,18 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 	if v := patch.MuteUntil; v != nil {
 		args = append(args, qualityRuleWriteTime(v))
 		sets = append(sets, fmt.Sprintf("mute_until = $%d", len(args)))
+	}
+	if v := patch.ManualLock; v != nil {
+		args = append(args, *v)
+		sets = append(sets, fmt.Sprintf("manual_lock = $%d", len(args)))
+	}
+	if v := patch.PinnedFields; v != nil {
+		pins := *v
+		if pins == nil {
+			pins = []string{}
+		}
+		args = append(args, pq.Array(pins))
+		sets = append(sets, fmt.Sprintf("pinned_fields = $%d", len(args)))
 	}
 	if v := patch.UpdatedBy; v != nil {
 		args = append(args, qualityRuleWriteInt32(v))

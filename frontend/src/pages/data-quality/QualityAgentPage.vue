@@ -290,6 +290,76 @@
 
     <Card v-if="agent">
       <CardHeader class="border-b">
+        <div class="flex flex-wrap items-center gap-2">
+          <CardTitle class="text-base">{{ t("qualityAgent.casesTitle") }}</CardTitle>
+          <Badge
+            v-if="cases.length > 0"
+            variant="secondary"
+          >
+            {{ cases.length }}
+          </Badge>
+        </div>
+        <CardDescription>{{ t("qualityAgent.casesHint") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <p
+          v-if="cases.length === 0"
+          class="text-sm text-muted-foreground"
+        >
+          {{ t("qualityAgent.casesEmpty") }}
+        </p>
+        <ul
+          v-else
+          class="space-y-2"
+        >
+          <li
+            v-for="workItem in cases"
+            :key="workItem.name"
+            class="rounded-md border px-3 py-2"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <Badge>{{ qualityAgentCaseStateLabel(workItem.state) }}</Badge>
+              <span
+                v-if="workItem.class"
+                class="text-xs uppercase text-muted-foreground"
+              >
+                {{ workItem.class }}
+              </span>
+              <span class="text-xs text-muted-foreground">
+                {{ t("qualityAgent.caseAttempts", {
+                  attempts: workItem.attempts,
+                  max: workItem.maxAttempts,
+                }) }}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="ml-auto h-7 px-2 text-xs"
+                @click="openCaseHistory(workItem)"
+              >
+                {{ t("qualityAgent.activity.caseHistory") }}
+              </Button>
+            </div>
+            <p class="mt-1 text-sm">
+              {{ workItem.summary }}
+            </p>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
+        <CardTitle class="text-base">{{ t("qualityAgent.activity.title") }}</CardTitle>
+        <CardDescription>{{ t("qualityAgent.activity.hint") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <QualityAgentCaseActivity :agent-name="agentName" />
+      </CardContent>
+    </Card>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
             <CardTitle class="text-base">{{ t("qualityAgent.workSessionsTitle") }}</CardTitle>
@@ -392,7 +462,8 @@
                 targets: report.targetCount,
                 rules: report.ruleCount,
                 failed: report.failedCount,
-                issues: report.openIssueCount,
+                repaired: report.repairedCount,
+                waiting: report.escalatedCount + report.openCaseCount,
               }) }}
             </p>
           </div>
@@ -406,6 +477,23 @@
         </div>
       </CardContent>
     </Card>
+
+    <Dialog
+      :open="caseHistoryOpen"
+      @update:open="caseHistoryOpen = $event"
+    >
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ t("qualityAgent.activity.caseHistoryTitle") }}</DialogTitle>
+        </DialogHeader>
+        <QualityAgentCaseActivity
+          v-if="caseHistoryCase"
+          :agent-name="agentName"
+          :case-name="caseHistoryCase.name"
+          :empty="t('qualityAgent.activity.caseHistoryEmpty')"
+        />
+      </DialogContent>
+    </Dialog>
 
     <Dialog
       :open="reportOpen"
@@ -443,6 +531,7 @@ import {
   adoptQualityAgentPendingSuggestions,
   getQualityAgent,
   listQualityAgentAttentions,
+  listQualityAgentCases,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
   listQualityAgentSessionsPage,
@@ -455,6 +544,7 @@ import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
 import QualityAgentAttentionItem from "@/components/data-quality/QualityAgentAttentionItem.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -482,6 +572,8 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
+  type QualityAgentCase,
+  QualityAgentCaseState,
   QualityAgentMessageRole,
   type QualityAgentReport,
   type QualityAgentSession,
@@ -516,6 +608,9 @@ const error = ref("");
 const busy = ref(false);
 
 const attentions = ref<QualityAgentAttention[]>([]);
+const cases = ref<QualityAgentCase[]>([]);
+const caseHistoryOpen = ref(false);
+const caseHistoryCase = ref<QualityAgentCase>();
 const reports = ref<QualityAgentReport[]>([]);
 const reportOpen = ref(false);
 const selectedReport = ref<QualityAgentReport>();
@@ -685,6 +780,52 @@ async function loadAttentions() {
     );
   } catch {
     attentions.value = [];
+  }
+}
+
+/** openCaseHistory shows what the agent did to one work item's check. */
+function openCaseHistory(workItem: QualityAgentCase) {
+  caseHistoryCase.value = workItem;
+  caseHistoryOpen.value = true;
+}
+
+/** The agent's open work items: what it is carrying right now. */
+async function loadCases() {
+  try {
+    cases.value = await listQualityAgentCases(agentName.value, [
+      QualityAgentCaseState.OPEN,
+      QualityAgentCaseState.DIAGNOSED,
+      QualityAgentCaseState.ACTED,
+      QualityAgentCaseState.AWAITING_VERIFICATION,
+    ]);
+  } catch {
+    cases.value = [];
+  }
+}
+
+/**
+ * qualityAgentCaseStateLabel renders one work-item state. The keys are spelled out rather than
+ * built from the enum value: the i18n checker must see every one of them, and a new state is a
+ * product decision, not a translation the build should guess.
+ */
+function qualityAgentCaseStateLabel(state: QualityAgentCaseState): string {
+  switch (state) {
+    case QualityAgentCaseState.OPEN:
+      return t("qualityAgent.caseState.open");
+    case QualityAgentCaseState.DIAGNOSED:
+      return t("qualityAgent.caseState.diagnosed");
+    case QualityAgentCaseState.ACTED:
+      return t("qualityAgent.caseState.acted");
+    case QualityAgentCaseState.AWAITING_VERIFICATION:
+      return t("qualityAgent.caseState.awaitingVerification");
+    case QualityAgentCaseState.RESOLVED:
+      return t("qualityAgent.caseState.resolved");
+    case QualityAgentCaseState.FROZEN:
+      return t("qualityAgent.caseState.frozen");
+    case QualityAgentCaseState.ESCALATED:
+      return t("qualityAgent.caseState.escalated");
+    default:
+      return t("qualityAgent.caseState.unspecified");
   }
 }
 
@@ -891,6 +1032,7 @@ onMounted(async () => {
       loadConversation(),
       loadReports(),
       loadAttentions(),
+      loadCases(),
       loadSessions(),
     ]);
   }

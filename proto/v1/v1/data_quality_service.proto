@@ -651,6 +651,21 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
+  // List one agent's work items, the ones still open first. A case is the agent's durable
+  // record of a check it could not settle by itself; the owner and administrators may read
+  // it to see what the agent is working on and what it has given up on.
+  rpc ListQualityAgentCases(ListQualityAgentCasesRequest) returns (ListQualityAgentCasesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/cases"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // List the writes one agent made to checks, newest first: the ledger behind the write budget
+  // and the answer to "what has it changed". A case narrows it to one work item's history.
+  rpc ListQualityAgentCaseActions(ListQualityAgentCaseActionsRequest) returns (ListQualityAgentCaseActionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/caseActions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
   // Answer an escalation as the owner. The reply is appended to the target session,
   // the session is resumed, and the attention is resolved; a retry on a closed
   // attention is a no-op.
@@ -1195,6 +1210,16 @@ message QualityRule {
   // is not affected. It is scheduling metadata, not part of the rule definition:
   // editing it does not append a revision.
   QualityFrequencyTier frequency_tier = 20;
+
+  // A person manages this check. The agent may still read it and propose changes, but it never
+  // rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+  // and the only one — editing a check never creates a lock.
+  bool manual_lock = 22;
+
+  // Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+  // everything below it. Both this and manual_lock are head-only metadata: they are not part of
+  // the definition and write no revision.
+  repeated string pinned_fields = 23;
 
   // Scheduling is a property of the target, not of one rule: see
   // QualityTargetSchedule and UpdateQualityTargetSchedule.
@@ -2069,6 +2094,11 @@ message QualitySuggestion {
   // "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
   // the row's create-rule and decision actions without a second request.
   repeated string viewer_permissions = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The proposing agent's own objection to this draft. A draft carrying one is never adopted
+  // automatically: the model that drafted it can see false positives the adoption gate cannot, and
+  // the review queue shows the doubt beside the draft it is about.
+  string concern = 16;
 }
 
 // QualitySuggestionQueueSummary is what one generation pass did to the review
@@ -3843,6 +3873,12 @@ message QualityAgentBudget {
   int32 max_new_sessions_per_hour = 4;
   int32 max_active_sessions = 5;
   int32 conversation_messages_per_hour = 6;
+  // How many writes to checks the agent may make per rolling day, across its whole scope. This is
+  // the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+  int32 repair_max_per_day = 7;
+  // How many immediate runs the agent may request per check per rolling day. A run is its
+  // diagnostic, so the ceiling is per check rather than per agent.
+  int32 run_max_per_rule_per_day = 8;
 }
 
 // QualityAgent is one built-in quality agent: a service-account identity that exists
@@ -4012,6 +4048,13 @@ message QualityAgentReport {
   string body_markdown = 22;
   google.protobuf.Timestamp create_time = 24;
   google.protobuf.Timestamp generate_time = 25;
+  // Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+  // They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+  // counted from the agent's own cases, not from the checks.
+  int32 repaired_count = 26;
+  int32 escalated_count = 27;
+  // Work items still in progress when the report was generated. Not period-bounded.
+  int32 open_case_count = 28;
 }
 
 message ListQualityAgentReportsRequest {
@@ -4100,6 +4143,136 @@ message QualityAgentFieldPatch {
   string effect = 4;
   // Why the agent proposes it.
   string rationale = 5;
+}
+
+// QualityAgentCaseState is where one work item stands. The last three are terminal and release
+// the case's subject, so a later occurrence opens a new case instead of staying invisible.
+enum QualityAgentCaseState {
+  QUALITY_AGENT_CASE_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_CASE_STATE_OPEN = 1;
+  QUALITY_AGENT_CASE_STATE_DIAGNOSED = 2;
+  QUALITY_AGENT_CASE_STATE_ACTED = 3;
+  QUALITY_AGENT_CASE_STATE_AWAITING_VERIFICATION = 4;
+  QUALITY_AGENT_CASE_STATE_RESOLVED = 5;
+  QUALITY_AGENT_CASE_STATE_FROZEN = 6;
+  QUALITY_AGENT_CASE_STATE_ESCALATED = 7;
+}
+
+// QualityAgentCase is one durable work item: a check the agent could not settle by itself, the
+// failure class that explains why, and the state the next wake resumes from. It is not the issue
+// ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
+// produce a verdict becomes a case.
+message QualityAgentCase {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentCase"
+    pattern: "workspaces/{workspace}/qualityAgentCases/{quality_agent_case}"
+  };
+
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityTarget target = 3;
+  // Format: qualityRules/{rule}; empty for a target-level case.
+  string check = 4;
+  // The failure class this case is about (store FailureClass); empty until diagnosed.
+  string class = 5;
+  QualityAgentCaseState state = 6;
+  // Attempts is how many repairs have been spent on this case, and max_attempts is the budget;
+  // reaching it freezes the case.
+  int32 attempts = 7;
+  int32 max_attempts = 8;
+  // The config field the diagnosis named, in dotted form, e.g. range.min.
+  string field = 9;
+  // One sentence naming the check and explaining the failure, for a person reading the board.
+  string summary = 10;
+  // How the case ended, empty while it is open.
+  string resolution = 11;
+  // When the next look is due: a case waiting for a verification run names the instant instead of
+  // sleeping until the session's idle cadence.
+  google.protobuf.Timestamp next_action_at = 12;
+  // Format: qualityExecutions/{execution}; the run the case was opened on.
+  string execution = 13;
+  google.protobuf.Timestamp create_time = 14;
+  google.protobuf.Timestamp update_time = 15;
+}
+
+message ListQualityAgentCasesRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // Restrict the list to these states; empty lists every state.
+  repeated QualityAgentCaseState states = 2;
+  // The maximum number of cases to return. If unspecified, at most 50 are returned. The maximum
+  // value is 200; values above 200 are coerced to 200.
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentCasesResponse {
+  repeated QualityAgentCase quality_agent_cases = 1;
+  string next_page_token = 2;
+}
+
+// QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it
+// spends no repair budget; it is listed because "what did the agent decide" is part of the record.
+enum QualityAgentCaseActionKind {
+  QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED = 0;
+  QUALITY_AGENT_CASE_ACTION_KIND_REVISE = 1;
+  QUALITY_AGENT_CASE_ACTION_KIND_CONTROL = 2;
+  QUALITY_AGENT_CASE_ACTION_KIND_RUN = 3;
+  QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE = 4;
+}
+
+// QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+// which definition revision to which, which execution it planned, and why. Only applied writes are
+// recorded — a refused write is a metric, not a spent budget.
+message QualityAgentCaseAction {
+  // Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+  // belonged to no work item (an owner-requested run).
+  string case = 3;
+  // Format: qualityRules/{rule}; empty when the check has since been hard-deleted.
+  string check = 4;
+  QualityTarget target = 5;
+  QualityAgentCaseActionKind action = 6;
+  // The config field a REVISE or PROPOSE named, in dotted form.
+  string field = 7;
+  // The definition revisions the write produced; equal for an action that wrote no definition.
+  int32 from_revision = 8;
+  int32 to_revision = 9;
+  // Format: qualityExecutions/{execution}; the run the write planned, when it planned one.
+  string execution = 10;
+  // The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID.
+  string class = 11;
+  // The action's own note: the requested control action, or the field the run diagnosed.
+  string reason = 12;
+  google.protobuf.Timestamp create_time = 13;
+}
+
+message ListQualityAgentCaseActionsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+  // the agent made, which is the activity view; a case lists that work item's history.
+  string case = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentCase"}];
+  // The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+  // value is 200; values above 200 are coerced to 200.
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentCaseActionsResponse {
+  repeated QualityAgentCaseAction quality_agent_case_actions = 1;
+  string next_page_token = 2;
 }
 
 message ListQualityAgentAttentionsRequest {

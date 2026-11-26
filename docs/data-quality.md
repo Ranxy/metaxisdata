@@ -565,8 +565,10 @@ conversation for that target, and the agent can record verified asset facts to r
 - **Converses with its owner.** The owner's questions join the same long-lived conversation. An agent without a configured model still
 answers with a deterministic scope summary.
 - **Reports.** On its schedule the agent produces a deterministic patrol report for its scope — scope health, targets and coverage,
-enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Reports are
-generated from records, do not call a model, and have no on-demand variant.
+enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Its two
+closing sections answer what the owner asks: what the agent fixed by itself this period (work items it closed, broken down by
+failure class) and what is waiting for a person (work items it escalated or froze, work still in progress, pending proposals, open
+issues). Reports are generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
 adoption pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
 names the most recent write failure. A work item the agent cannot finish arrives as one concrete change: the check, the config
@@ -576,6 +578,10 @@ agent does not offer it as something it did. The owner answers or dismisses it f
 and a reply can ask the agent to adopt the pending drafts, while the proposal item offers an **Approve pending drafts** action to the
 agent's owner or an administrator; a person's approval does not need adoption to be enabled. The item closes once no pending draft is left,
 whether the agent adopted them or a person created or rejected the last one. The owner also gets an in-app notification.
+- **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the
+  failure class, the repair attempts spent and where it stands. An item that needs a person also appears in the attention list above
+  it, as a proposal to apply or a decision to make; the rest are the agent's own to-do list, visible so that "what is the agent stuck
+  on" has an answer that does not require reading a transcript.
 - **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks the agent adopted, checks a person
 approved, drafts that failed to write, and drafts still pending — plus the most recent write failure. **Approve pending drafts**
 creates the agent's pending drafts as your decision: the approval writes through the internal create path, so it needs no rule-write
@@ -589,6 +595,22 @@ named the agent applies its guardrails to the target the conversation names, whi
 explicit decision — bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily
 ceiling or rule validation. The daily ceiling therefore bounds what the agent adopts on its own or through that conversation
 tool; a person's approval is recorded under its own origin but never spends it.
+- **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
+  that is usually empty — is flagged with its reason, and a flagged draft is never adopted automatically: it waits for a person, who
+  reads the objection in the review queue beside the draft. Flagging is a doubt, not a refusal: you can still approve the draft.
+- **Runs on a write budget.** Each agent has two daily ceilings beside its runtime budgets: how many writes to checks it may make
+  per day across its scope, and how many times it may run one check per day. Leave them at zero for the server defaults (ten writes,
+  three runs per check). At a ceiling the agent does not stall: proposing a change, recording a fact and escalating still work, and
+  the budgets reset the next day. Every write it does make is recorded — which check, which field, which revision, which failure
+  class — so "what has it changed" and "how much has it changed this week" are answerable without reading transcripts.
+- **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
+  which revision to which, the failure class it acted on and when — newest first, and each work item has a **History** dialog with
+  just its own writes. An execution the write planned is one click away. This is the same record the daily write budget counts, so
+  "what did it change" and "how much is left" never disagree.
+- **Can be held back, check by check.** Each row in the checks list has a lock: locking a check tells the agent it may read the
+  check and propose changes but never write it, and unlocking hands it back. Pinning a single field (for example only
+  `range.min`) is the same metadata, set through the API. A lock is recorded in the audit log, changes no definition, and is the
+  only way to take a check away from the agent — editing a check yourself never does.
 - **Does not write freely.** An agent never approves on its own. It may adopt drafts the owner explicitly asks for — applying the
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the

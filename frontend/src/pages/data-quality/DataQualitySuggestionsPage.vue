@@ -347,6 +347,16 @@
                           >
                             {{ suggestionRationale(suggestion) }}
                           </p>
+                          <!-- The agent's own objection to this draft. It is the reason the
+                               draft was not adopted automatically, so it belongs beside the
+                               draft rather than in the adoption ledger. -->
+                          <p
+                            v-if="suggestion.concern"
+                            class="line-clamp-2 text-xs wrap-anywhere text-warning"
+                            :title="suggestion.concern"
+                          >
+                            {{ t("dataQuality.suggestions.agentConcern", { concern: suggestion.concern }) }}
+                          </p>
                         </div>
                       </div>
                       <!-- Below xl the source and time collapse in here. -->
