@@ -109,9 +109,9 @@ func RepairToolCalls(messages []agent.Message) []agent.Message {
 }
 
 // EstimateTokens approximates a conversation's token size. A provider's real
-// prompt_tokens is always preferred when a wake reported one; this estimate sizes
-// messages added since, leaning high so a Chinese-heavy conversation is not
-// undercounted.
+// prompt_tokens is always preferred when a wake reported one; this estimate is the
+// only reading for the messages added since, so it errs high rather than undercount
+// a rune-dense script.
 func EstimateTokens(messages []agent.Message) int {
 	total := 0
 	for _, message := range messages {
@@ -126,18 +126,33 @@ func EstimateTokens(messages []agent.Message) int {
 	return total
 }
 
-// EstimateTextTokens approximates one string's token count from both its byte and
-// its rune length and keeps the larger.
+// EstimateTextTokens approximates one string's token count. The rate follows each
+// rune's UTF-8 width, which is what separates one script's tokenizer density from
+// another's: an ASCII character costs about three eighths of a token (English prose
+// runs nearer a quarter, JSON full of identifiers nearer a half), a two-byte rune
+// half a token, a han character three quarters, and a four-byte rune a whole one.
+// The width model never falls below one token per four bytes, so a rune-dense script
+// is not undercounted, and it stops charging English at a han character's rate —
+// which sized an English and JSON transcript at twice the provider's own count and
+// compacted it with most of the window still free.
 func EstimateTextTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	byBytes := (len(text) + 3) / 4
-	byRunes := (utf8.RuneCountInString(text)*3 + 3) / 4
-	if byBytes > byRunes {
-		return byBytes
+	eighths := 0
+	for _, r := range text {
+		switch {
+		case r < utf8.RuneSelf:
+			eighths += 3
+		case r < 0x800:
+			eighths += 4
+		case r < 0x10000:
+			eighths += 6
+		default:
+			eighths += 8
+		}
 	}
-	return byRunes
+	return (eighths + 7) / 8
 }
 
 // MessageTokens estimates one entry's tokens, tool calls included.

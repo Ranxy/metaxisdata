@@ -3,6 +3,7 @@ package transcript
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
@@ -62,10 +63,12 @@ func TestRepairToolCallsClosesDanglingCallsAndDropsOrphans(t *testing.T) {
 	require.Equal(t, "user", conversation[2].Role)
 }
 
-// The estimate sizes a conversation against the model's budget, so it must count
-// the tool-call arguments — a turn of large argument JSON is what overflows — and
-// must not undercount a script whose characters are one or two bytes.
-func TestEstimateTokensCountsArgumentsAndShortRunes(t *testing.T) {
+// The estimate sizes a conversation against the model's budget, so it must count the
+// tool-call arguments — a turn of large argument JSON is what overflows — and must
+// charge each script at roughly its own tokenizer rate. One per-character price for
+// every script measured an English and JSON transcript at more than twice the
+// provider's own count, so compaction fired with most of the window still free.
+func TestEstimateTokensCountsArgumentsAndScalesWithTheScript(t *testing.T) {
 	t.Parallel()
 
 	small := []agent.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{toolCallWithArguments("call-1", "{}")}}}
@@ -73,8 +76,43 @@ func TestEstimateTokensCountsArgumentsAndShortRunes(t *testing.T) {
 	require.Greater(t, EstimateTokens(large), EstimateTokens(small), "the arguments must count, not only the call name")
 
 	latin := strings.Repeat("é", 400)
-	require.Greater(t, EstimateTextTokens(latin), len(latin)/4,
-		"a one-byte-per-token guess would undercount a script with two-byte characters")
+	require.GreaterOrEqual(t, EstimateTextTokens(latin), len(latin)/4,
+		"a rune-dense script must never be sized below one token per four bytes")
+
+	tests := []struct {
+		name string
+		text string
+		low  float64
+		high float64
+	}{
+		{
+			name: "English prose",
+			text: strings.Repeat("the table holds no rows in this window. ", 200),
+			low:  0.25,
+			high: 0.5,
+		},
+		{
+			name: "JSON of identifiers",
+			text: strings.Repeat(`{"execution":"qualityExecutions/4616","status":"FAIL","totalRows":0}`, 20),
+			low:  0.25,
+			high: 0.5,
+		},
+		{
+			name: "Chinese prose",
+			text: strings.Repeat("该表当前没有数据行。", 200),
+			low:  0.6,
+			high: 0.9,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			rate := float64(EstimateTextTokens(test.text)) / float64(utf8.RuneCountInString(test.text))
+			require.GreaterOrEqual(t, rate, test.low, "the estimate must not undercount this script")
+			require.LessOrEqual(t, rate, test.high,
+				"the estimate must not charge this script another script's rate")
+		})
+	}
 }
 
 func TestPruneToolResultsKeepsTheHeadAndTail(t *testing.T) {
