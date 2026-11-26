@@ -10,7 +10,6 @@ package quality
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -176,10 +175,15 @@ type evidence struct {
 	PlanState   string
 	Criticality string
 	Gaps        []string
-	Executions  []string
+	Executions  []dataquality.ExecutionEvidence
 	Memories    []string
 	RuleCount   int
 }
+
+// recentExecutionWindow is how many executions one read returns. A diagnosis needs
+// the latest failure and the runs around it; a longer tail belongs in a query, not
+// in a tool result the model has to read on every wake.
+const recentExecutionWindow = 8
 
 // gatherEvidence assembles the target's plan, recent executions and confirmed memories.
 func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (*evidence, error) {
@@ -209,15 +213,16 @@ func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (
 		}
 		result.Gaps = append(result.Gaps, GapLabel(requirement))
 	}
-	limit := 5
+	limit := recentExecutionWindow
 	executions, err := t.deps.Store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{TargetGUID: &session.TargetGUID, Limit: &limit})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the target's executions")
 	}
-	for _, execution := range executions {
-		result.Executions = append(result.Executions, fmt.Sprintf("%s %s (%d failed rows)",
-			executionIDName(execution.ID), execution.Status, execution.FailedRows))
-	}
+	// The execution is the fact, so the projection carries the check it belongs to
+	// and the engine's own failure code and message. A list of statuses and counts
+	// alone once led the agent to blame the evaluation pipeline for a rule whose
+	// bound the database had refused.
+	result.Executions = dataquality.BuildExecutionEvidence(executions, rules)
 	memoryLimit := 20
 	memories, err := t.deps.Store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Limit: &memoryLimit})
 	if err != nil {
@@ -324,7 +329,11 @@ func (t *AgentTools) ListRecentExecutions(ctx context.Context, session AgentSess
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"executions": emptyIfNil(evidence.Executions)})
+	executions := evidence.Executions
+	if executions == nil {
+		executions = []dataquality.ExecutionEvidence{}
+	}
+	return marshalJSON(map[string]any{"executions": executions})
 }
 
 // GetMemory lists the target's confirmed memories.
@@ -517,11 +526,6 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 	default:
 		return "EXPERIMENTAL"
 	}
-}
-
-// executionIDName renders an execution resource name for a tool result.
-func executionIDName(id int64) string {
-	return fmt.Sprintf("qualityExecutions/%d", id)
 }
 
 // marshalJSON renders a tool result.
