@@ -31,6 +31,7 @@ type fakeStore struct {
 	systemUpdates int
 	contextUsage  []*storepb.QualityAgentSessionContextUsage
 	agent         *store.QualityAgentMessage
+	openCases     []*store.QualityAgentCaseMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -72,6 +73,11 @@ func (*fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessag
 
 func (*fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
 	return nil, nil
+}
+
+// openCases is what the wake prompt and the next-wake merge read.
+func (f *fakeStore) ListOpenQualityAgentCasesByTarget(context.Context, int64, string, int) ([]*store.QualityAgentCaseMessage, error) {
+	return f.openCases, nil
 }
 
 func (*fakeStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
@@ -577,6 +583,65 @@ func TestDeterministicWakeReviewsAHealthEventWithoutParking(t *testing.T) {
 	require.False(t, outcome.Blocked, "a health event must not park the session")
 	require.Contains(t, engineNoteContent(stores.messages), "deterministic health review")
 	require.Equal(t, int64(1), outcome.ProcessedSeq)
+}
+
+// A case is the agent's queue, so the wake tells it what is queued and the session wakes
+// when the case is due instead of sleeping until the idle cadence. Without both halves, a
+// case opened by the runner would wait a day for a wake that never mentioned it.
+func TestWakeRendersOpenCasesAndWakesForThem(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	dueAt := time.Now().UTC().Add(5 * time.Minute)
+	stores.openCases = []*store.QualityAgentCaseMessage{{
+		ResourceID:   "c1",
+		FailureClass: "CONFIG_VALUE_INVALID",
+		State:        store.QualityAgentCaseStateDiagnosed,
+		Attempts:     1,
+		MaxAttempts:  2,
+		Summary:      "the target database refused a bound value",
+		NextActionAt: ptrTime(dueAt),
+	}}
+
+	session := testSession()
+	session.AgentID = 1
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+
+	var wake string
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
+			message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE {
+			wake = message.Content
+			break
+		}
+	}
+	require.Contains(t, wake, "Open work items")
+	require.Contains(t, wake, "CONFIG_VALUE_INVALID")
+	require.Contains(t, wake, "DIAGNOSED")
+	require.Contains(t, wake, "the target database refused a bound value")
+
+	require.NotNil(t, outcome.NextWakeAt)
+	require.WithinDuration(t, dueAt, *outcome.NextWakeAt, time.Minute)
+}
+
+// The work list is bounded: a target may hold a hundred broken checks, and the prompt must
+// not grow with them.
+func TestOpenCaseBlockIsBounded(t *testing.T) {
+	t.Parallel()
+
+	cases := make([]*store.QualityAgentCaseMessage, 0, maxWakeCases+2)
+	for i := 0; i < maxWakeCases+2; i++ {
+		cases = append(cases, &store.QualityAgentCaseMessage{
+			ResourceID:   fmt.Sprintf("c%d", i),
+			FailureClass: "NEVER_JUDGED",
+			State:        store.QualityAgentCaseStateOpen,
+			Summary:      "a check ran without concluding",
+		})
+	}
+	block := openCaseBlock(cases)
+	require.Equal(t, maxWakeCases, strings.Count(block, "qualityAgentCases/"))
+	require.Empty(t, openCaseBlock(nil))
 }
 
 // A crash between the assistant message and its tool result is repaired before the next

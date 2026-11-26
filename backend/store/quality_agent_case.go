@@ -298,3 +298,49 @@ func (s *Store) CountOpenQualityAgentCases(ctx context.Context, agentID int64) (
 	}
 	return count, nil
 }
+
+// ListOpenQualityAgentCasesByTarget lists one target's unfinished work, soonest first. A
+// target session reads this to render the work it resumes from.
+func (s *Store) ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*QualityAgentCaseMessage, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.GetDB().QueryContext(ctx,
+		`SELECT `+qualityAgentCaseColumns+` FROM quality_agent_case
+		 WHERE agent_id = $1 AND target_guid = $2 AND state BETWEEN 1 AND 4
+		 ORDER BY next_action_at ASC NULLS LAST, id ASC
+		 LIMIT $3`, agentID, targetGUID, limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the target's open quality agent cases")
+	}
+	defer rows.Close()
+	cases := make([]*QualityAgentCaseMessage, 0, limit)
+	for rows.Next() {
+		message, scanErr := scanQualityAgentCase(rows)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to read an open quality agent case")
+		}
+		cases = append(cases, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to list the target's open quality agent cases")
+	}
+	return cases, nil
+}
+
+// EarliestOpenQualityAgentCaseActionAt reports the soonest next look among an agent's open
+// cases. The session runner merges it into the next wake so a case opened after a wake
+// began is not left sleeping until the idle cadence.
+func (s *Store) EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error) {
+	var earliest sql.NullTime
+	if err := s.GetDB().QueryRowContext(ctx,
+		`SELECT MIN(next_action_at) FROM quality_agent_case
+		 WHERE agent_id = $1 AND state BETWEEN 1 AND 4`, agentID).Scan(&earliest); err != nil {
+		return nil, errors.Wrap(err, "failed to read the earliest open case action")
+	}
+	if !earliest.Valid {
+		return nil, nil
+	}
+	at := earliest.Time.UTC()
+	return &at, nil
+}

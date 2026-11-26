@@ -38,6 +38,9 @@ const (
 	restartLimit int32 = 3
 	// restartEscalationLimit bounds how many restart-limit sessions one sweep escalates.
 	restartEscalationLimit = 100
+	// caseWakeFloor is the soonest a due case may wake a session, so a past-due case cannot
+	// make the three-second tick spin.
+	caseWakeFloor = time.Minute
 )
 
 // SessionStore is the slice of *store.Store the runner needs.
@@ -58,6 +61,7 @@ type SessionStore interface {
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
+	EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error)
 	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
@@ -312,6 +316,23 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		review := r.triageReviewAt()
 		if next == nil || review.Before(*next) {
 			next = &review
+		}
+	}
+	// A case is due work. The engine merges what it saw before the wake; this read catches a
+	// case another pass opened while the wake was running, which would otherwise sleep until
+	// the idle cadence. A past-due case is clamped so the three-second tick does not spin.
+	if session.Kind != 2 {
+		if earliest, caseErr := r.store.EarliestOpenQualityAgentCaseActionAt(ctx, session.AgentID); caseErr != nil {
+			slog.Warn("failed to read the earliest open case action",
+				slog.String("session", session.ResourceID), log.WithError(caseErr))
+		} else if earliest != nil {
+			at := earliest.UTC()
+			if floor := r.now().Add(caseWakeFloor); at.Before(floor) {
+				at = floor
+			}
+			if next == nil || at.Before(*next) {
+				next = &at
+			}
 		}
 	}
 	// Only an event or question that arrived after the consumed watermark makes another

@@ -27,6 +27,7 @@ type fakeStore struct {
 	releasedWakes        []*time.Time
 	claimedLimit         int
 	databases            []string
+	caseAction           *time.Time
 	enrollment           *store.QualityAgentEnrollmentMessage
 	parkedEnrollment     string
 	enrollmentNextReview time.Time
@@ -77,6 +78,11 @@ func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, 
 
 func (f *fakeStore) ListQualityAgentDatabases(context.Context, int64) ([]string, error) {
 	return f.databases, nil
+}
+
+// caseAction is the earliest next look among the agent's open cases.
+func (f *fakeStore) EarliestOpenQualityAgentCaseActionAt(context.Context, int64) (*time.Time, error) {
+	return f.caseAction, nil
 }
 
 func (f *fakeStore) MaxQualityAgentInputSeqAfter(context.Context, int64, int64) (int64, error) {
@@ -255,6 +261,46 @@ func TestHostSchedulesTheNextWake(t *testing.T) {
 			require.Len(t, stores.progress, 1)
 			require.Equal(t, int32(1), stores.progress[0].WakeCountIncrement)
 			require.Empty(t, stores.states)
+			require.Len(t, stores.releasedWakes, 1)
+			require.WithinDuration(t, tc.wantWake, *stores.releasedWakes[0], time.Second)
+		})
+	}
+}
+
+// A case is due work: the next wake is the soonest of the engine's answer and the agent's
+// open case, with a floor so a past-due case cannot make the three-second tick spin.
+func TestHostSchedulesTheNextWakeFromAnOpenCase(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(10_000, 0).UTC()
+	for _, tc := range []struct {
+		name       string
+		caseAction *time.Time
+		wantWake   time.Time
+	}{
+		{
+			name:       "a due case wakes sooner than the idle cadence",
+			caseAction: ptrTime(now.Add(5 * time.Minute)),
+			wantWake:   now.Add(5 * time.Minute),
+		},
+		{
+			name:       "a past-due case is clamped to the floor",
+			caseAction: ptrTime(now.Add(-time.Hour)),
+			wantWake:   now.Add(time.Minute),
+		},
+		{
+			name:       "a case later than the idle cadence changes nothing",
+			caseAction: ptrTime(now.Add(48 * time.Hour)),
+			wantWake:   now.Add(dataquality.DefaultAgentRunnerIdleWakeSeconds * time.Second),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores := &fakeStore{caseAction: tc.caseAction}
+			runner := testRunner(stores, &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}})
+
+			runner.host(context.Background(), testSession())
+
 			require.Len(t, stores.releasedWakes, 1)
 			require.WithinDuration(t, tc.wantWake, *stores.releasedWakes[0], time.Second)
 		})
