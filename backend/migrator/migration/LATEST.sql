@@ -2149,9 +2149,11 @@ UPDATE quality_agent_attention a
 SET status = 2, resolved_at = NOW()
 WHERE a.status = 1
     AND a.dedupe_key LIKE 'blocked:%'
-    AND EXISTS (
+    AND NOT EXISTS (
         SELECT 1 FROM quality_agent_session s
-        WHERE s.id = a.session_id AND s.state <> 3
+        WHERE s.id = a.session_id
+            AND s.state = 3
+            AND a.dedupe_key = 'blocked:' || s.resource_id || ':' || s.blocked_code
     );
 
 UPDATE quality_agent_attention a

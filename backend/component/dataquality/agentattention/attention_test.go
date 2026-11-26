@@ -22,6 +22,7 @@ type fakeStore struct {
 	createdFlag bool
 	refreshed   []refreshCall
 	resolved    []string
+	legacy      []string
 }
 
 type refreshCall struct {
@@ -70,6 +71,11 @@ func (f *fakeStore) RefreshOpenQualityAgentAttention(_ context.Context, _ int64,
 func (f *fakeStore) ResolveOpenQualityAgentAttentionByDedupe(_ context.Context, _ int64, dedupeKey string, _ time.Time) (bool, error) {
 	f.resolved = append(f.resolved, dedupeKey)
 	return true, nil
+}
+
+func (f *fakeStore) ResolveTargetCaseAttentions(_ context.Context, _ int64, targetGUID string, _ time.Time) (int64, error) {
+	f.legacy = append(f.legacy, targetGUID)
+	return 0, nil
 }
 
 // fakeNotifier records the doorbell, which must ring once per card and never on a refresh.
@@ -139,6 +145,8 @@ func TestRaiseAggregatesATargetIntoOneCard(t *testing.T) {
 		"a card answers for one target only")
 	require.Equal(t, "c1", card.CaseResourceID, "the card points at the work item it was raised for")
 	require.Equal(t, 1, notifier.owner, "a new card rings the doorbell once")
+	require.Equal(t, []string{"inst;app;public;stock_alert"}, stores.legacy,
+		"the target's legacy per-case cards are closed once its target card exists")
 }
 
 // A second escalation on the same target refreshes what the card says instead of paging again: the

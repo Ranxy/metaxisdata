@@ -28,6 +28,7 @@ type Store interface {
 	CreateQualityAgentAttention(ctx context.Context, message *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error)
 	RefreshOpenQualityAgentAttention(ctx context.Context, agentID int64, dedupeKey, question, caseResourceID string) error
 	ResolveOpenQualityAgentAttentionByDedupe(ctx context.Context, agentID int64, dedupeKey string, now time.Time) (bool, error)
+	ResolveTargetCaseAttentions(ctx context.Context, agentID int64, targetGUID string, now time.Time) (int64, error)
 }
 
 // Notifier delivers the doorbell behind the durable item. A nil notifier leaves the item in the
@@ -112,6 +113,11 @@ func (r *Raiser) Raise(ctx context.Context, openCase *store.QualityAgentCaseMess
 			slog.Warn("failed to refresh a target's decision card", log.WithError(refreshErr))
 		}
 		return
+	}
+	// The target has one card now, so a per-case card the old writer left behind would ask the same
+	// question twice.
+	if _, legacyErr := r.Store.ResolveTargetCaseAttentions(ctx, agent.ID, openCase.TargetGUID, now); legacyErr != nil {
+		slog.Warn("failed to close a target's leftover per-case cards", log.WithError(legacyErr))
 	}
 	if r.Notifier == nil {
 		return

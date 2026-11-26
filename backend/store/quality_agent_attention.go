@@ -239,6 +239,30 @@ func (s *Store) ResolveQualityAgentAttention(ctx context.Context, resourceID str
 	return attention, true, nil
 }
 
+// ResolveTargetCaseAttentions closes one target's legacy per-case cards. A card belongs to a target
+// now, so an old per-case card on the same target would ask the same question a second time; the
+// write that raises the target's card is where the leftover is cleared.
+func (s *Store) ResolveTargetCaseAttentions(ctx context.Context, agentID int64, targetGUID string, now time.Time) (int64, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention a
+		SET status = $3, resolved_at = $4
+		WHERE a.agent_id = $1 AND a.status = $5 AND a.dedupe_key LIKE 'case:%'
+			AND a.case_resource_id IN (
+				SELECT c.resource_id FROM quality_agent_case c
+				WHERE c.agent_id = $1 AND c.target_guid = $2
+			)`,
+		agentID, targetGUID, int16(QualityAgentAttentionStatusResolved), now.UTC(),
+		int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to resolve the target's per-case attentions")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to read the resolved per-case attention count")
+	}
+	return affected, nil
+}
+
 // ProposalAttentionDedupeKey is the dedupe key of the per-target proposal item.
 // The creation and the drain check must agree on it, so it lives here.
 func ProposalAttentionDedupeKey(targetGUID string) string {
