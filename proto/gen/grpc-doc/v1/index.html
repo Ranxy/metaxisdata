@@ -20516,6 +20516,22 @@ asks for a decision that has no single change behind it. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>repair_max_per_day</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many writes to checks the agent may make per rolling day, across its whole scope. This is
+the ceiling that stops &#34;repair, freeze, reopen, repair&#34; from looping on the agent&#39;s own. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>run_max_per_rule_per_day</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many immediate runs the agent may request per check per rolling day. A run is its
+diagnostic, so the ceiling is per check rather than per agent. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

@@ -131,6 +131,29 @@ the review queue. A flagged draft is never adopted automatically — the concern
 something the gate cannot see — but it can still be adopted deliberately by the owner, because a flag is a doubt and not a refusal.
 The skip is recorded in the adoption ledger with the concern quoted, so the reason a draft stayed pending is answerable later.
 
+## Budgets and the ledger
+
+Every write an agent makes to a check appends one row to `quality_agent_case_action`: the case, the agent, the target and the
+instance (copied rather than joined, so the row survives an archived rule), the kind (`REVISE`, `CONTROL`, `RUN`, `PROPOSE`), the
+field, the definition revisions the write produced, the execution it planned, the failure class it acted on and when. The table is
+append-only and records applied writes only: a refused write is a metric, and recording it as a spent budget would make a refusal
+cost the agent its allowance.
+
+That ledger is what makes a budget possible. Two ceilings exist, both per rolling day, both stored on the agent row with the same
+"zero means the server default" convention as the runtime budgets: writes to checks across the agent's whole scope (`REPAIR` and
+`CONTROL` share it, because pausing a check and rewriting one are the same churn from an operator's point of view) and immediate
+runs per check. The ceilings answer different questions: how much definition churn the delegation tolerates is a property of the
+agent, while how often one broken check may be re-run is a property of the check — running ten different checks once is normal,
+running one check ten times an hour is noise.
+
+The ceiling exists because a terminal case releases its subject. "Repair, freeze, reopen, repair" would otherwise loop on the
+agent's own, with each round looking locally reasonable and no person ever paged. A refusal is `RESOURCE_EXHAUSTED`, names the
+ceiling and says what still works — proposing, recording a fact, escalating, and the reset tomorrow — because a bare "no" is what
+makes a model retry the same verb or park the session. The budget is checked in the pipeline before validation and the probe and
+after the verb is authorized, so a write that would be refused costs nothing; it is recorded after the write succeeded, and a
+ledger failure is logged rather than raised, because the check is already changed and losing the row only means one write goes
+uncounted.
+
 ## Instrumentation
 
 Three counters describe how autonomous the agent is: work items opened (by failure class), work-item transitions (by the state

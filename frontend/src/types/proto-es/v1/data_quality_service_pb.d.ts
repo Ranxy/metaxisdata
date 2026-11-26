@@ -7212,6 +7212,22 @@ export declare type QualityAgentBudget = Message<"metaxisdata.v1.QualityAgentBud
    * @generated from field: int32 conversation_messages_per_hour = 6;
    */
   conversationMessagesPerHour: number;
+
+  /**
+   * How many writes to checks the agent may make per rolling day, across its whole scope. This is
+   * the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+   *
+   * @generated from field: int32 repair_max_per_day = 7;
+   */
+  repairMaxPerDay: number;
+
+  /**
+   * How many immediate runs the agent may request per check per rolling day. A run is its
+   * diagnostic, so the ceiling is per check rather than per agent.
+   *
+   * @generated from field: int32 run_max_per_rule_per_day = 8;
+   */
+  runMaxPerRulePerDay: number;
 };
 
 /**

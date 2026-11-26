@@ -15802,8 +15802,14 @@ type QualityAgentBudget struct {
 	MaxNewSessionsPerHour       int32                  `protobuf:"varint,4,opt,name=max_new_sessions_per_hour,json=maxNewSessionsPerHour,proto3" json:"max_new_sessions_per_hour,omitempty"`
 	MaxActiveSessions           int32                  `protobuf:"varint,5,opt,name=max_active_sessions,json=maxActiveSessions,proto3" json:"max_active_sessions,omitempty"`
 	ConversationMessagesPerHour int32                  `protobuf:"varint,6,opt,name=conversation_messages_per_hour,json=conversationMessagesPerHour,proto3" json:"conversation_messages_per_hour,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// How many writes to checks the agent may make per rolling day, across its whole scope. This is
+	// the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+	RepairMaxPerDay int32 `protobuf:"varint,7,opt,name=repair_max_per_day,json=repairMaxPerDay,proto3" json:"repair_max_per_day,omitempty"`
+	// How many immediate runs the agent may request per check per rolling day. A run is its
+	// diagnostic, so the ceiling is per check rather than per agent.
+	RunMaxPerRulePerDay int32 `protobuf:"varint,8,opt,name=run_max_per_rule_per_day,json=runMaxPerRulePerDay,proto3" json:"run_max_per_rule_per_day,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *QualityAgentBudget) Reset() {
@@ -15874,6 +15880,20 @@ func (x *QualityAgentBudget) GetMaxActiveSessions() int32 {
 func (x *QualityAgentBudget) GetConversationMessagesPerHour() int32 {
 	if x != nil {
 		return x.ConversationMessagesPerHour
+	}
+	return 0
+}
+
+func (x *QualityAgentBudget) GetRepairMaxPerDay() int32 {
+	if x != nil {
+		return x.RepairMaxPerDay
+	}
+	return 0
+}
+
+func (x *QualityAgentBudget) GetRunMaxPerRulePerDay() int32 {
+	if x != nil {
+		return x.RunMaxPerRulePerDay
 	}
 	return 0
 }
@@ -22772,14 +22792,16 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x13pending_draft_count\x18\x03 \x01(\x05R\x11pendingDraftCount\x12.\n" +
 	"\x13last_failure_reason\x18\x04 \x01(\tR\x11lastFailureReason\x12F\n" +
 	"\x11last_failure_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x0flastFailureTime\x12*\n" +
-	"\x11approved_last_24h\x18\x06 \x01(\x05R\x0fapprovedLast24h\"\xc9\x02\n" +
+	"\x11approved_last_24h\x18\x06 \x01(\x05R\x0fapprovedLast24h\"\xad\x03\n" +
 	"\x12QualityAgentBudget\x12&\n" +
 	"\x0ftokens_per_hour\x18\x01 \x01(\x03R\rtokensPerHour\x12$\n" +
 	"\x0ewakes_per_hour\x18\x02 \x01(\x05R\fwakesPerHour\x126\n" +
 	"\x17max_concurrent_sessions\x18\x03 \x01(\x05R\x15maxConcurrentSessions\x128\n" +
 	"\x19max_new_sessions_per_hour\x18\x04 \x01(\x05R\x15maxNewSessionsPerHour\x12.\n" +
 	"\x13max_active_sessions\x18\x05 \x01(\x05R\x11maxActiveSessions\x12C\n" +
-	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\"\xe7\x06\n" +
+	"\x1econversation_messages_per_hour\x18\x06 \x01(\x05R\x1bconversationMessagesPerHour\x12+\n" +
+	"\x12repair_max_per_day\x18\a \x01(\x05R\x0frepairMaxPerDay\x125\n" +
+	"\x18run_max_per_rule_per_day\x18\b \x01(\x05R\x13runMaxPerRulePerDay\"\xe7\x06\n" +
 	"\fQualityAgent\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +

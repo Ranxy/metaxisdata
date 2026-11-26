@@ -3518,6 +3518,8 @@
     "budgetConversation": "对话消息/小时",
     "budgetHint": "0 表示使用服务端默认；按需要限制该 Agent 的模型与调度成本。",
     "budgetNewSessions": "新增会话/小时",
+    "budgetRepairs": "每日写检查次数",
+    "budgetRunsPerRule": "每个检查每日运行次数",
     "budgetSection": "预算与上限",
     "budgetTokens": "Token/小时",
     "budgetWakes": "唤醒/小时",

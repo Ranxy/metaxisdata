@@ -598,6 +598,11 @@ tool; a person's approval is recorded under its own origin but never spends it.
 - **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
   that is usually empty — is flagged with its reason, and a flagged draft is never adopted automatically: it waits for a person, who
   reads the objection in the review queue beside the draft. Flagging is a doubt, not a refusal: you can still approve the draft.
+- **Runs on a write budget.** Each agent has two daily ceilings beside its runtime budgets: how many writes to checks it may make
+  per day across its scope, and how many times it may run one check per day. Leave them at zero for the server defaults (ten writes,
+  three runs per check). At a ceiling the agent does not stall: proposing a change, recording a fact and escalating still work, and
+  the budgets reset the next day. Every write it does make is recorded — which check, which field, which revision, which failure
+  class — so "what has it changed" and "how much has it changed this week" are answerable without reading transcripts.
 - **Can be held back, check by check.** Each row in the checks list has a lock: locking a check tells the agent it may read the
   check and propose changes but never write it, and unlocking hands it back. Pinning a single field (for example only
   `range.min`) is the same metadata, set through the API. A lock is recorded in the audit log, changes no definition, and is the

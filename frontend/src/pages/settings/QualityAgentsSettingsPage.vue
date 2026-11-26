@@ -534,6 +534,14 @@
                 <Label>{{ t("qualityAgents.budgetConversation") }}</Label>
                 <Input v-model.number="form.budgetConversationMessagesPerHour" inputmode="numeric" />
               </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetRepairs") }}</Label>
+                <Input v-model.number="form.budgetRepairMaxPerDay" inputmode="numeric" />
+              </div>
+              <div class="space-y-1">
+                <Label>{{ t("qualityAgents.budgetRunsPerRule") }}</Label>
+                <Input v-model.number="form.budgetRunMaxPerRulePerDay" inputmode="numeric" />
+              </div>
             </div>
           </div>
 
@@ -769,6 +777,8 @@ const form = ref({
   budgetMaxNewSessionsPerHour: 0,
   budgetMaxActiveSessions: 0,
   budgetConversationMessagesPerHour: 60,
+  budgetRepairMaxPerDay: 0,
+  budgetRunMaxPerRulePerDay: 0,
 });
 
 const modelOptions = computed(() =>
@@ -1073,6 +1083,8 @@ function openCreate() {
     budgetMaxNewSessionsPerHour: 0,
     budgetMaxActiveSessions: 0,
     budgetConversationMessagesPerHour: 60,
+    budgetRepairMaxPerDay: 0,
+    budgetRunMaxPerRulePerDay: 0,
   };
   overlapAcknowledged.value = false;
   createError.value = "";
@@ -1107,6 +1119,8 @@ function openEdit(agent: QualityAgent) {
     budgetMaxActiveSessions: agent.budget?.maxActiveSessions ?? 0,
     budgetConversationMessagesPerHour:
       agent.budget?.conversationMessagesPerHour ?? 60,
+    budgetRepairMaxPerDay: agent.budget?.repairMaxPerDay ?? 0,
+    budgetRunMaxPerRulePerDay: agent.budget?.runMaxPerRulePerDay ?? 0,
   };
   overlapAcknowledged.value = false;
   createError.value = "";
@@ -1198,6 +1212,8 @@ async function submitEdit() {
       maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
       conversationMessagesPerHour:
         Number(form.value.budgetConversationMessagesPerHour) || 0,
+      repairMaxPerDay: Number(form.value.budgetRepairMaxPerDay) || 0,
+      runMaxPerRulePerDay: Number(form.value.budgetRunMaxPerRulePerDay) || 0,
     });
     const paths = [
       "display_name",
@@ -1292,6 +1308,8 @@ async function submitCreate() {
         maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
         conversationMessagesPerHour:
           Number(form.value.budgetConversationMessagesPerHour) || 0,
+        repairMaxPerDay: Number(form.value.budgetRepairMaxPerDay) || 0,
+        runMaxPerRulePerDay: Number(form.value.budgetRunMaxPerRulePerDay) || 0,
       },
     };
     await createQualityAgent({

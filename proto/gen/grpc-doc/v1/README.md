@@ -7157,6 +7157,8 @@ default; the workspace hard caps still apply.
 | max_new_sessions_per_hour | [int32](#int32) |  |  |
 | max_active_sessions | [int32](#int32) |  |  |
 | conversation_messages_per_hour | [int32](#int32) |  |  |
+| repair_max_per_day | [int32](#int32) |  | How many writes to checks the agent may make per rolling day, across its whole scope. This is the ceiling that stops &#34;repair, freeze, reopen, repair&#34; from looping on the agent&#39;s own. |
+| run_max_per_rule_per_day | [int32](#int32) |  | How many immediate runs the agent may request per check per rolling day. A run is its diagnostic, so the ceiling is per check rather than per agent. |
 
 
 

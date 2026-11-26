@@ -3518,6 +3518,8 @@
     "budgetConversation": "Conversation messages/hour",
     "budgetHint": "0 uses the server default; cap this agent's model and scheduling cost if needed.",
     "budgetNewSessions": "New sessions/hour",
+    "budgetRepairs": "Writes to checks per day",
+    "budgetRunsPerRule": "Runs per check per day",
     "budgetSection": "Budget and limits",
     "budgetTokens": "Tokens/hour",
     "budgetWakes": "Wakes/hour",

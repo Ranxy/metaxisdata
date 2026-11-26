@@ -3866,6 +3866,12 @@ message QualityAgentBudget {
   int32 max_new_sessions_per_hour = 4;
   int32 max_active_sessions = 5;
   int32 conversation_messages_per_hour = 6;
+  // How many writes to checks the agent may make per rolling day, across its whole scope. This is
+  // the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+  int32 repair_max_per_day = 7;
+  // How many immediate runs the agent may request per check per rolling day. A run is its
+  // diagnostic, so the ceiling is per check rather than per agent.
+  int32 run_max_per_rule_per_day = 8;
 }
 
 // QualityAgent is one built-in quality agent: a service-account identity that exists

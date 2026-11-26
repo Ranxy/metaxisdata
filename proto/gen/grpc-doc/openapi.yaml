@@ -14423,6 +14423,18 @@ components:
                 conversationMessagesPerHour:
                     type: integer
                     format: int32
+                repairMaxPerDay:
+                    type: integer
+                    description: |-
+                        How many writes to checks the agent may make per rolling day, across its whole scope. This is
+                         the ceiling that stops "repair, freeze, reopen, repair" from looping on the agent's own.
+                    format: int32
+                runMaxPerRulePerDay:
+                    type: integer
+                    description: |-
+                        How many immediate runs the agent may request per check per rolling day. A run is its
+                         diagnostic, so the ceiling is per check rather than per agent.
+                    format: int32
             description: |-
                 QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
                  default; the workspace hard caps still apply.

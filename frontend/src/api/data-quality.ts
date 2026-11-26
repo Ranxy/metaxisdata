@@ -1569,6 +1569,10 @@ export interface QualityAgentConfigInput {
     maxNewSessionsPerHour?: number;
     maxActiveSessions?: number;
     conversationMessagesPerHour?: number;
+    /** Writes to checks per rolling day; zero means the server default. */
+    repairMaxPerDay?: number;
+    /** Immediate runs per check per rolling day; zero means the server default. */
+    runMaxPerRulePerDay?: number;
   };
 }
 
