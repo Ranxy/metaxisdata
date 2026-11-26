@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -95,6 +96,10 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 	} else if !applied {
 		slog.Warn("the case changed before it could be escalated",
 			slog.String("case", openCase.ResourceID))
+	} else {
+		// An escalated case is a decision the owner owes, so it has to reach them. The notice is
+		// deduped per case: a retried verb must not page twice.
+		s.raiseCaseAttention(ctx, openCase, agent, reason)
 	}
 	return &AgentControlResult{
 		Case:     openCase.ResourceID,
@@ -302,4 +307,62 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 		Execution: execution.GetName(),
 		State:     store.QualityAgentCaseStateActed.Name(),
 	}, nil
+}
+
+// raiseCaseAttention tells the owner that a case needs a decision. It is best effort: a failed
+// notice never undoes the write it reports, and the case row stays the durable record.
+func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, question string) {
+	if openCase == nil || agent == nil {
+		return
+	}
+	var owner *store.UserMessage
+	if agent.OwnerPrincipalID != nil {
+		owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
+	}
+	language := agentlang.ForAgent(agent, owner)
+	// Link the target session when there is one, so the card carries the target; an unlinked
+	// item is still an agent-level notice rather than a lost one.
+	var sessionID *int64
+	if sessions, err := s.store.ListQualityAgentSessionsByTarget(ctx, openCase.WorkspaceID, openCase.TargetGUID); err == nil {
+		for _, session := range sessions {
+			if session.AgentID == agent.ID {
+				sessionID = &session.ID
+				break
+			}
+		}
+	}
+	kind := store.QualityAgentAttentionKindBlocked
+	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
+		WorkspaceID: openCase.WorkspaceID,
+		AgentID:     agent.ID,
+		Kind:        kind,
+		SessionID:   sessionID,
+		Title:       agentlang.AttentionTitle(language, kind),
+		Question:    common.TruncateUTF8Bytes(question, 2000),
+		DedupeKey:   "case:" + openCase.ResourceID,
+		CreatedAt:   time.Now().UTC(),
+	})
+	if err != nil || !created {
+		return
+	}
+	if s.notifier == nil {
+		return
+	}
+	detail := &storepb.QualityAgentAttentionDetail{
+		Agent:     common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
+		Attention: common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
+		Kind:      int32(kind),
+		Title:     attention.Title,
+		Question:  attention.Question,
+	}
+	dedupeKey := "dqagent:" + attention.ResourceID
+	if agent.OwnerPrincipalID != nil {
+		if sendErr := s.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+			slog.Warn("failed to send a case attention notification", log.WithError(sendErr))
+		}
+		return
+	}
+	if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+		slog.Warn("failed to send a case attention notification to admins", log.WithError(sendErr))
+	}
 }
