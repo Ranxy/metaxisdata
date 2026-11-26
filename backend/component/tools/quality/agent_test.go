@@ -221,3 +221,28 @@ func TestControlCheckRequiresTheVerbAndItsArguments(t *testing.T) {
 	_, err = tools.ControlCheck(context.Background(), AgentSession{}, `{"action":"PAUSE"}`)
 	require.ErrorContains(t, err, "needs a case and an action")
 }
+
+// run_check is a request: it passes the agent principal and the case through and reports the
+// execution the runner will pick up. Without the verb it refuses rather than doing nothing.
+func TestRunCheckPassesTheRequestThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Run: func(_ context.Context, principalID int32, caseResourceID string) (RunOutcome, error) {
+			gotPrincipal, gotCase = principalID, caseResourceID
+			return RunOutcome{Check: "qualityRules/r460", Execution: "qualityExecutions/4451", State: "ACTED"}, nil
+		},
+	})
+	result, err := tools.RunCheck(context.Background(), AgentSession{AgentPrincipalID: 110}, `{"case":"c9"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "c9", gotCase)
+	require.Contains(t, result, `"execution":"qualityExecutions/4451"`)
+	require.Contains(t, result, `"state":"ACTED"`)
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).RunCheck(context.Background(), AgentSession{}, `{"case":"c9"}`)
+	require.ErrorContains(t, err, "not configured")
+}

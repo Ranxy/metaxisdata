@@ -127,6 +127,13 @@ func configureGrpcRouters(
 		sessionEngine.SetAdoption(dataQualityService.AdoptQualitySuggestions)
 		sessionEngine.SetOwnerAdoption(dataQualityService.AdoptQualitySuggestionsForOwner)
 		sessionEngine.SetEvidence(dataQualityService)
+		sessionEngine.SetRun(func(ctx context.Context, agentPrincipalID int32, caseResourceID string) (quality.RunOutcome, error) {
+			result, err := dataQualityService.RunAgentCheck(ctx, agentPrincipalID, caseResourceID)
+			if err != nil {
+				return quality.RunOutcome{}, err
+			}
+			return quality.RunOutcome{Check: result.Check, Execution: result.Execution, State: result.State}, nil
+		})
 		sessionEngine.SetControl(func(ctx context.Context, agentPrincipalID int32, caseResourceID, action string) (quality.ControlOutcome, error) {
 			result, err := dataQualityService.ControlAgentCheck(ctx, agentPrincipalID, caseResourceID, action)
 			if err != nil {

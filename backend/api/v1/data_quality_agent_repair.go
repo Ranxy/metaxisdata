@@ -16,6 +16,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -35,7 +36,7 @@ type AgentControlResult struct {
 // cannot produce a verdict hides no red, and the escalated case tells a person that a decision
 // about the check is still owed.
 func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincipalID int32, caseResourceID, action string) (*AgentControlResult, error) {
-	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID)
+	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesRepair)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,7 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 // agentCaseForRepair resolves the case a verb was asked to act on and proves the caller is the
 // agent that owns it. Both halves matter: the case carries the target and the evidence the verb
 // must judge, and a case is the agent's own work item, so another agent's case is never a target.
-func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrincipalID int32, caseResourceID string) (*store.QualityAgentCaseMessage, *store.QualityAgentMessage, error) {
+func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrincipalID int32, caseResourceID string, perm permission.Permission) (*store.QualityAgentCaseMessage, *store.QualityAgentMessage, error) {
 	resourceID := strings.TrimSpace(caseResourceID)
 	if index := strings.LastIndex(resourceID, "/"); index >= 0 {
 		resourceID = resourceID[index+1:]
@@ -130,7 +131,7 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 	if agent == nil || agent.PrincipalID != int(agentPrincipalID) {
 		return nil, nil, connect.NewError(connect.CodePermissionDenied, errors.New("the case belongs to another agent"))
 	}
-	if err := s.checkAgentTargetPermission(ctx, agent, openCase.TargetGUID, permission.DataQualityRulesRepair); err != nil {
+	if err := s.checkAgentTargetPermission(ctx, agent, openCase.TargetGUID, perm); err != nil {
 		return nil, nil, err
 	}
 	return openCase, agent, nil
@@ -226,4 +227,79 @@ func optionalParticipation(level *store.QualityAgentParticipation) *agentpolicy.
 	}
 	converted := agentpolicy.Participation(*level)
 	return &converted
+}
+
+// AgentRunResult is what one diagnostic run did: the execution the runner will pick up and the
+// case's new state.
+type AgentRunResult struct {
+	Case      string `json:"case"`
+	Check     string `json:"check"`
+	Execution string `json:"execution"`
+	State     string `json:"state"`
+}
+
+// RunAgentCheck asks the runner to execute one check now, so a diagnosis can be reproduced or a
+// repair verified without waiting for the next scheduled slot. The run is the ordinary manual
+// path: the API plans exactly this rule, the runner executes it, and the case waits for the result
+// like any other verification.
+func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID int32, caseResourceID string) (*AgentRunResult, error) {
+	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesRun)
+	if err != nil {
+		return nil, err
+	}
+	if openCase.State != store.QualityAgentCaseStateDiagnosed {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("only a diagnosed case can ask for a run; a repair already waiting for verification does not need another"))
+	}
+	if openCase.RuleID == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the case is not about one check"))
+	}
+	rule, err := s.store.GetQualityRuleByID(ctx, *openCase.RuleID)
+	if err != nil {
+		return nil, err
+	}
+	if rule == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the case's check no longer exists"))
+	}
+	if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the check is paused, so it cannot run; a person decides whether to resume it"))
+	}
+	// The manual run path authorizes with the agent's own principal, exactly as the adoption path
+	// does: the agent is the actor, and rules.run is checked on the target.
+	actor, err := s.store.GetUserByID(ctx, agent.PrincipalID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the agent principal")
+	}
+	if actor == nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("the agent principal no longer exists"))
+	}
+	agentCtx := context.WithValue(ctx, common.UserContextKey, actor)
+	response, err := s.RunQualityRules(agentCtx, connect.NewRequest(&v1pb.RunQualityRulesRequest{
+		Parent: "workspaces/-",
+		Rules:  []string{"qualityRules/" + rule.ResourceID},
+	}))
+	if err != nil {
+		return nil, err
+	}
+	if len(response.Msg.GetExecutions()) == 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no execution was planned for the check"))
+	}
+	execution := response.Msg.GetExecutions()[0]
+	// Look again soon: the runner picks the execution up within its tick, and the next wake reads
+	// the verdict.
+	next := time.Now().UTC().Add(time.Minute)
+	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+		openCase.State, store.QualityAgentCaseStateActed, openCase.Attempts, &next, ""); caseErr != nil {
+		slog.Warn("failed to mark the case as acted after a run",
+			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
+	} else if !applied {
+		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	}
+	return &AgentRunResult{
+		Case:      openCase.ResourceID,
+		Check:     "qualityRules/" + rule.ResourceID,
+		Execution: execution.GetName(),
+		State:     store.QualityAgentCaseStateActed.Name(),
+	}, nil
 }

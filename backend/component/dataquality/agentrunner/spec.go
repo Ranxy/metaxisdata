@@ -137,6 +137,18 @@ func targetToolSpecs() []toolSpec {
 			meta: repairMeta(),
 		},
 		{
+			name: "run_check",
+			description: "Run the check a diagnosed case is about, right now, to reproduce the failure or verify a repair. " +
+				"The verdict closes or advances the case.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+			}, "required": []string{"case"}},
+			meta: repairMeta(),
+		},
+		{
 			name:        "get_memory",
 			description: "List the target's confirmed asset facts.",
 			parameters:  emptyParameters(),

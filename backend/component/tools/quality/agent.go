@@ -162,6 +162,46 @@ type AgentDeps struct {
 	Evidence AgentEvidence
 	// Control applies a state change to one case; nil reports it as not configured.
 	Control ControlFunc
+	// Run asks the runner to execute one check now; nil reports it as not configured.
+	Run RunFunc
+}
+
+// RunOutcome is what one diagnostic run did.
+type RunOutcome struct {
+	Check     string
+	Execution string
+	State     string
+}
+
+// RunFunc asks the runner to execute one check now.
+type RunFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID string) (RunOutcome, error)
+
+// RunCheck re-runs the check a case is about, so a diagnosis can be reproduced or a repair
+// verified without waiting for the next scheduled slot.
+func (t *AgentTools) RunCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case string `json:"case"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid run_check arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" {
+		return "", errors.New("run_check needs a case")
+	}
+	if t.deps.Run == nil {
+		return "", errors.New("the run verb is not configured in this process")
+	}
+	outcome, err := t.deps.Run(ctx, session.AgentPrincipalID, input.Case)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":      sessionCaseName(input.Case),
+		"check":     outcome.Check,
+		"execution": outcome.Execution,
+		"state":     outcome.State,
+		"note":      "the runner picks the execution up within its tick; the verdict closes or advances the case",
+	})
 }
 
 // AgentTools runs the built-in quality agent's tools.

@@ -98,6 +98,8 @@ type Engine struct {
 	evidence quality.AgentEvidence
 	// control applies a state change to one case. It is a setter for the same reason.
 	control quality.ControlFunc
+	// run executes one check now. It is a setter for the same reason.
+	run quality.RunFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -132,6 +134,12 @@ func (e *Engine) SetEvidence(evidence quality.AgentEvidence) {
 // instead of silently doing nothing.
 func (e *Engine) SetControl(control quality.ControlFunc) {
 	e.control = control
+}
+
+// SetRun wires the diagnostic run verb after the API service exists, for the same reason
+// SetAdoption is a setter.
+func (e *Engine) SetRun(run quality.RunFunc) {
+	e.run = run
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service

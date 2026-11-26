@@ -52,7 +52,7 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 // "unknown tool" during a wake.
 func handlesTool(name string) bool {
 	switch name {
-	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "get_memory",
+	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "run_check", "get_memory",
 		"record_asset_fact", "block_session", "schedule_wake",
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
@@ -84,6 +84,8 @@ func (e *Engine) executeTool(
 		return tools.InspectCheck(ctx, agentSession, arguments)
 	case "control_check":
 		return tools.ControlCheck(ctx, agentSession, arguments)
+	case "run_check":
+		return tools.RunCheck(ctx, agentSession, arguments)
 	case "get_memory":
 		return tools.GetMemory(ctx, agentSession)
 	case "record_asset_fact":
@@ -208,5 +210,6 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		DraftChecks:  e.draftChecks,
 		Evidence:     e.evidence,
 		Control:      e.control,
+		Run:          e.run,
 	})
 }

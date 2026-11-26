@@ -137,6 +137,8 @@ var qualityAgentPermissions = permissionSet(
 	// registry (a structure snapshot). It is deliberately not rules.update, so the catalog
 	// itself reads as "this actor may not rewrite an arbitrary definition".
 	permission.DataQualityRulesRepair,
+	// Running a check is a diagnostic action: it produces a verdict, never a definition change.
+	permission.DataQualityRulesRun,
 	permission.DataQualitySuggest,
 	permission.DataQualityPlansUpdate,
 )
