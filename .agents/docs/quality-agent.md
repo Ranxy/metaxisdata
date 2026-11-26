@@ -89,6 +89,11 @@ The target session's wake instruction renders up to three of its open cases with
 
 Failure and error executions fan out to every session covering the target, always on, idempotent per execution and capped at 20 events per session per hour. A check that finishes `NOT_EVALUATED` is not a failure and produces no such event, so the batch also asks `dataquality.DiagnoseCheckHealth` about every check it ran: a check that ran without concluding becomes a health event (`NEVER_JUDGED`, `NO_VERDICT_EMPTY`, `STALLED`), one per check per UTC day and on the same hourly budget. The classes are deterministic and read the newest execution first, because an empty target is not a broken check and telling those apart is what the agent needs to stop guessing. A wake without a model consumes a health event as a note instead of parking the session: there is no verdict to review, and parking would silence the target exactly when it reports that it never concludes.
 
+The case is the channel for a check that cannot conclude: the batch opens the case *before* the health events, and an event for a
+check that already has an open case is suppressed, because the wake prompt renders open cases and a message repeating one would only
+be read and discarded. Nine checks used to arrive as eighteen messages (one health event and one stall event each) and a wake spent
+its whole turn budget on them; the same nine checks now arrive as one work list.
+
 A check that has stopped running is invisible to both of those paths, because it produces no execution at all. The scheduler therefore carries a stall sweep, throttled to a minute on its ten-second tick: it starts from the target's schedule instead of from an execution, compares each enabled check's newest completed run with two of the target's cadences (`DiagnoseStaleCheck`, the same stall rule the batch reader applies) and tells the target's sessions about the checks that have stopped. The event is keyed per check per day and shares the failure path's hourly budget, and it names the check rather than an execution, because there is no execution to name. A check younger than its window is pending rather than stalled, so a rule that joined the schedule a minute ago does not page anyone.
 
 ## Owner conversation and transcript

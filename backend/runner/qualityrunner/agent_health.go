@@ -124,6 +124,11 @@ func (r *Runner) intakeHealthEvents(ctx context.Context, workspaceID string, ass
 	}
 	for _, session := range sessions {
 		for _, finding := range findings {
+			if r.healthFindingHasCase(ctx, session.AgentID, targetGUID, finding.RuleID) {
+				// The case carries this check, and the wake prompt renders open cases: an event would
+				// repeat the same work as a message the model has to read and discard.
+				continue
+			}
 			r.appendSessionEvent(ctx, session, workspaceID, agentEvent{
 				Content:   finding.Summary,
 				Reference: finding.Rule,
@@ -131,4 +136,19 @@ func (r *Runner) intakeHealthEvents(ctx context.Context, workspaceID string, ass
 			}, now)
 		}
 	}
+}
+
+// healthFindingHasCase reports whether an open case already carries this check for this agent. A read
+// failure answers "no": the event is best effort, and a missing case read must not silence the one
+// signal that check has.
+func (r *Runner) healthFindingHasCase(ctx context.Context, agentID int64, targetGUID string, ruleID int64) bool {
+	rule := ruleID
+	openCase, err := r.stores.GetOpenQualityAgentCase(ctx, agentID,
+		store.QualityAgentCaseSubjectKey(targetGUID, &rule, store.QualityAgentCaseKindExecution))
+	if err != nil {
+		slog.Warn("failed to read a case for a health event",
+			slog.Int64("rule", ruleID), log.WithError(err))
+		return false
+	}
+	return openCase != nil
 }

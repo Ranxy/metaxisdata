@@ -172,14 +172,17 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// settled in both cases.
 	r.settleQualityExecutions(ctx, workspaceID, executions, storm, now)
 	// A failed check wakes its target's agent session: the agent should react while the
-	// failure is fresh, not on its next daily wake. A check that ran without concluding
-	// has no failure to report, so it gets its own event.
+	// failure is fresh, not on its next daily wake.
 	r.intakeAgentEvents(ctx, workspaceID, executions)
-	r.intakeHealthEvents(ctx, workspaceID, healthAssessments(executions))
 	// A check that cannot conclude is work the agent must resume across wakes, not a
 	// message it reads once. Opening the case here is what makes the agent's progress
-	// durable; deciding what to do about it is a later wake's job.
+	// durable; deciding what to do about it is a later wake's job. Cases are opened before
+	// the health events so an event never repeats work a case already carries.
 	r.intakeAgentCases(ctx, workspaceID, healthAssessments(executions))
+	// The health event is the fallback for a check that ran without concluding and has no
+	// case to carry it. Reading nine of them into one wake is what made a model spend its
+	// turn budget on a queue the case list already states in three lines.
+	r.intakeHealthEvents(ctx, workspaceID, healthAssessments(executions))
 
 	if aborted || incomplete {
 		if incomplete {
