@@ -122,7 +122,7 @@ type TableContext struct {
 	Downstream  int32                 `json:"downstreamConsumers"`
 	Upstream    int32                 `json:"upstreamSources"`
 	SchemaStale bool                  `json:"schemaChangedRecently,omitempty"`
-	// AllowedRuleTypes are the check types the rule pipeline accepts on this target,
+	// AllowedRuleTypes are the check types draft_checks can propose on this target,
 	// short-named as the rest of the surface spells them. A draft naming any other
 	// type is refused, so the model reads this before it writes an intent.
 	AllowedRuleTypes []string `json:"allowedRuleTypes"`

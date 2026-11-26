@@ -459,6 +459,16 @@ func TestBuildRuleDraftPromptOffersOnlyTheTypesTheTargetCanRun(t *testing.T) {
 	for _, refused := range []string{"- range:", "- null_percent:", "- accepted_values:", "- regex:", "- unique:"} {
 		require.NotContainsf(t, viewSystem, refused, "a view prompt must not offer %s", refused)
 	}
+
+	// The list a model is shown as "what can I draft here" is the prompt's own
+	// vocabulary, not the pipeline's wider rule-type set: custom SQL and schema
+	// drift can run on a view but are never drafted.
+	draftable := DraftableRuleTypes(storepb.MetaType_VIEW, storepb.Engine_POSTGRES)
+	require.Contains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)
+	require.Contains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE)
 }
 
 // The rule-draft prompt must name the labels of an enum column so the model can

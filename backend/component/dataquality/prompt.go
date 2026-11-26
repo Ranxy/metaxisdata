@@ -295,6 +295,22 @@ func BuildRuleDraftPrompt(draft RuleDraftContext, target ResolvedTarget, columns
 	return system, user
 }
 
+// DraftableRuleTypes lists the rule types the L1 prompt may propose for a target:
+// the closed draft vocabulary narrowed by the object-type and engine gates. It is
+// narrower than AllowedRuleTypes on purpose — custom SQL, CEL and schema drift can
+// run on a target but are never drafted — so a caller that shows a model "what can
+// I draft here" answers with this list.
+func DraftableRuleTypes(metaType storepb.MetaType, engine storepb.Engine) []storepb.QualityRuleType {
+	allowed := AllowedRuleTypes(metaType, engine)
+	types := make([]storepb.QualityRuleType, 0, len(draftRuleSpecs))
+	for _, spec := range draftRuleSpecs {
+		if slices.Contains(allowed, spec.Type) {
+			types = append(types, spec.Type)
+		}
+	}
+	return types
+}
+
 // draftRuleSpecsFor narrows the model's vocabulary to the types this target can
 // run, through the same target and engine gates the rule pipeline applies: a
 // VIEW has no column authority, and an engine refuses some types. Offering a type
@@ -302,10 +318,10 @@ func BuildRuleDraftPrompt(draft RuleDraftContext, target ResolvedTarget, columns
 // the cause. A target that runs none of them keeps the whole vocabulary, so the
 // pipeline's own refusal reason still explains the dead end.
 func draftRuleSpecsFor(target ResolvedTarget) []DraftRuleSpec {
-	allowed := AllowedRuleTypes(target.MetaType, target.Engine)
-	specs := make([]DraftRuleSpec, 0, len(draftRuleSpecs))
+	types := DraftableRuleTypes(target.MetaType, target.Engine)
+	specs := make([]DraftRuleSpec, 0, len(types))
 	for _, spec := range draftRuleSpecs {
-		if slices.Contains(allowed, spec.Type) {
+		if slices.Contains(types, spec.Type) {
 			specs = append(specs, spec)
 		}
 	}

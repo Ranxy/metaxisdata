@@ -41,7 +41,7 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 		Schema:     target.Schema,
 		Object:     target.Table,
 	}
-	for _, ruleType := range dataquality.AllowedRuleTypes(targetType, target.Engine) {
+	for _, ruleType := range dataquality.DraftableRuleTypes(targetType, target.Engine) {
 		context.AllowedRuleTypes = append(context.AllowedRuleTypes, dataquality.RuleTypeShortName(ruleType))
 	}
 	keyColumns := make(map[string]bool, len(target.KeyColumns))
