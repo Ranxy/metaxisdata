@@ -16689,6 +16689,12 @@ components:
                         The permissions the caller holds on this suggestion's target, e.g.
                          "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
                          the row's create-rule and decision actions without a second request.
+                concern:
+                    type: string
+                    description: |-
+                        The proposing agent's own objection to this draft. A draft carrying one is never adopted
+                         automatically: the model that drafted it can see false positives the adoption gate cannot, and
+                         the review queue shows the doubt beside the draft it is about.
             description: |-
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the

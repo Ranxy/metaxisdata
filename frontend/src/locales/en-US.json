@@ -1419,6 +1419,7 @@
       "acceptLabels": "Accept labels ({count})",
       "accepted": "Suggestion accepted",
       "activeFilters": "Active filters",
+      "agentConcern": "Flagged by the agent: {concern}",
       "allKinds": "All kinds",
       "allSources": "All sources",
       "allStatuses": "All statuses",

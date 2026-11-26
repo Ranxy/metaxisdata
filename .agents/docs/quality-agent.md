@@ -116,6 +116,16 @@ agent's own cases, read by agent rather than by target, so a report never counts
 honest zero: "nothing was settled by the agent" is different from "the agent fixed nothing because there was nothing to fix", and a
 report that hides the difference cannot show whether delegating the database is working.
 
+## When the agent distrusts its own draft
+
+The adoption gate judges a draft's shape: its rule type, the drafting model's confidence, the target's criticality, the daily
+ceiling, the scope. It cannot judge whether the model that drafted it believes it — and a model that has read an audit table's
+insertion pattern often does not. `flag_proposal` is that doubt's route: the agent names one of its own pending drafts and states
+the objection, and the concern is stored beside the payload (head-only metadata, so a later refresh cannot erase it) and shown in
+the review queue. A flagged draft is never adopted automatically — the concern outranks the allowlist, because the doubt is about
+something the gate cannot see — but it can still be adopted deliberately by the owner, because a flag is a doubt and not a refusal.
+The skip is recorded in the adoption ledger with the concern quoted, so the reason a draft stayed pending is answerable later.
+
 ## Instrumentation
 
 Three counters describe how autonomous the agent is: work items opened (by failure class), work-item transitions (by the state

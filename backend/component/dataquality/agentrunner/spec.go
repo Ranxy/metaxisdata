@@ -74,6 +74,16 @@ func proposeMeta() tool.Meta {
 	}
 }
 
+// suggestMeta is the metadata of a tool that writes a proposal-class record through the
+// application layer. The permission is rules.suggest, which is the agent's own drafting right and
+// is deliberately outside the member baseline, so the grant that bounds the agent to its databases
+// actually applies.
+func suggestMeta() tool.Meta {
+	meta := proposeMeta()
+	meta.Permission = string(permission.DataQualitySuggest)
+	return meta
+}
+
 // internalMeta is the metadata of a wake-control tool. It belongs to this product
 // only and is scoped by session ownership, not by a workspace permission.
 func internalMeta() tool.Meta {
@@ -194,6 +204,23 @@ func targetToolSpecs() []toolSpec {
 				},
 			}, "required": []string{"case", "field", "value"}},
 			meta: proposeMeta(),
+		},
+		{
+			name: "flag_proposal",
+			description: "Record why one of your own drafts should not be adopted on its own: a structural false positive you expect, " +
+				"a column that is usually empty, a check that will only ever be noise. A flagged draft is never adopted automatically; " +
+				"a person reads the concern and decides.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"draft": map[string]any{
+					"type":        "string",
+					"description": "the qualitySuggestions resource name or id draft_checks returned",
+				},
+				"concern": map[string]any{
+					"type":        "string",
+					"description": "what the draft gets wrong, in one or two sentences",
+				},
+			}, "required": []string{"draft", "concern"}},
+			meta: suggestMeta(),
 		},
 		{
 			name:        "get_memory",

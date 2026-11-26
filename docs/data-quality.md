@@ -595,6 +595,9 @@ named the agent applies its guardrails to the target the conversation names, whi
 explicit decision — bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily
 ceiling or rule validation. The daily ceiling therefore bounds what the agent adopts on its own or through that conversation
 tool; a person's approval is recorded under its own origin but never spends it.
+- **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
+  that is usually empty — is flagged with its reason, and a flagged draft is never adopted automatically: it waits for a person, who
+  reads the objection in the review queue beside the draft. Flagging is a doubt, not a refusal: you can still approve the draft.
 - **Does not write freely.** An agent never approves on its own. It may adopt drafts the owner explicitly asks for — applying the
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the

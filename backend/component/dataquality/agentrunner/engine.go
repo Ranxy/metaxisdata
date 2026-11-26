@@ -104,6 +104,8 @@ type Engine struct {
 	propose quality.ProposeFunc
 	// revise applies a case's deterministic repair. It is a setter for the same reason.
 	revise quality.ReviseFunc
+	// flag records the agent's own objection to a draft it queued. It is a setter for the same reason.
+	flag quality.FlagFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -157,6 +159,12 @@ func (e *Engine) SetPropose(propose quality.ProposeFunc) {
 // a setter.
 func (e *Engine) SetRevise(revise quality.ReviseFunc) {
 	e.revise = revise
+}
+
+// SetFlag wires the draft-flagging verb after the API service exists, for the same reason
+// SetAdoption is a setter.
+func (e *Engine) SetFlag(flag quality.FlagFunc) {
+	e.flag = flag
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service

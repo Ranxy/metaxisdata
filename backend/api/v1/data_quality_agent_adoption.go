@@ -246,6 +246,14 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		if draft == nil {
 			continue
 		}
+		// The agent's own doubt outranks every other guard, including the allowlist: a draft the model
+		// flagged is one it can already see the false positives in, and the gate cannot tell on its own.
+		if reason, flagged := draftConcernReason(suggestion.Concern); flagged {
+			s.recordAdoption(ctx, session, suggestion, origin, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+			result.recordItem(suggestion, "skipped", reason)
+			result.Skipped++
+			continue
+		}
 		if requireScope && !scopeCoversTarget(scope, suggestion.TargetGUID) {
 			reason := "the target is outside the agent's database scope"
 			s.recordAdoption(ctx, session, suggestion, origin, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
@@ -958,6 +966,17 @@ func (s *DataQualityService) recordAdoption(ctx context.Context, session *store.
 		slog.Warn("failed to record a quality agent adoption",
 			slog.String("suggestion", suggestion.ResourceID), log.WithError(recordErr))
 	}
+}
+
+// draftConcernReason renders the skip reason for a draft its own agent flagged, and reports whether
+// the draft carries a concern at all. A concern is the model's objection, not a person's, so it is
+// quoted rather than paraphrased: the owner reads the doubt in the words that raised it.
+func draftConcernReason(concern string) (string, bool) {
+	concern = strings.TrimSpace(concern)
+	if concern == "" {
+		return "", false
+	}
+	return "the agent flagged its own draft: " + common.TruncateUTF8Bytes(concern, 300), true
 }
 
 func adoptionAllowsRuleType(agent *store.QualityAgentMessage, ruleType storepb.QualityRuleType) bool {

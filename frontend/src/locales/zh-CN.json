@@ -1419,6 +1419,7 @@
       "acceptLabels": "接受标注（{count}）",
       "accepted": "建议已接受",
       "activeFilters": "已应用的筛选",
+      "agentConcern": "Agent 自己标注：{concern}",
       "allKinds": "全部类型",
       "allSources": "全部来源",
       "allStatuses": "全部状态",

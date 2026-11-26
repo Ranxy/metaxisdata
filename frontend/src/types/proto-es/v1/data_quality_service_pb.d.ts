@@ -2636,6 +2636,15 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
    * @generated from field: repeated string viewer_permissions = 15;
    */
   viewerPermissions: string[];
+
+  /**
+   * The proposing agent's own objection to this draft. A draft carrying one is never adopted
+   * automatically: the model that drafted it can see false positives the adoption gate cannot, and
+   * the review queue shows the doubt beside the draft it is about.
+   *
+   * @generated from field: string concern = 16;
+   */
+  concern: string;
 };
 
 /**

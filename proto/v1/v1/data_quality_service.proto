@@ -2077,6 +2077,11 @@ message QualitySuggestion {
   // "metaxisdata.dataQuality.rules.create". Output only; a page uses it to gate
   // the row's create-rule and decision actions without a second request.
   repeated string viewer_permissions = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The proposing agent's own objection to this draft. A draft carrying one is never adopted
+  // automatically: the model that drafted it can see false positives the adoption gate cannot, and
+  // the review queue shows the doubt beside the draft it is about.
+  string concern = 16;
 }
 
 // QualitySuggestionQueueSummary is what one generation pass did to the review

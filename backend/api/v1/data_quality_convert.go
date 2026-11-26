@@ -1281,6 +1281,7 @@ func convertQualitySuggestion(workspaceID string, suggestion *store.QualitySugge
 		DecidedBy:     formatQualityOwner(suggestion.DecidedBy),
 		DecideTime:    timestampOrNil(suggestion.DecidedAt),
 		DecisionNote:  suggestion.DecisionNote,
+		Concern:       suggestion.Concern,
 	}
 }
 

@@ -82,3 +82,22 @@ func TestAdoptionReportCapsItemsAndKeepsCounts(t *testing.T) {
 	require.True(t, report.ItemsTruncated)
 	require.True(t, report.RemainingKnown)
 }
+
+// A concern the agent raised about its own draft outranks every other guard, including the rule-type
+// allowlist: the gate cannot see the structural false positive the model already can. The reason
+// quotes the concern, because a person reading the ledger needs the doubt in the words that raised it.
+func TestDraftConcernReasonQuotesTheAgentObjection(t *testing.T) {
+	t.Parallel()
+
+	reason, flagged := draftConcernReason("  the audit table appends rows out of order  ")
+	require.True(t, flagged)
+	require.Equal(t, "the agent flagged its own draft: the audit table appends rows out of order", reason)
+
+	_, flagged = draftConcernReason("   ")
+	require.False(t, flagged, "an empty concern is not a flag")
+
+	long := strings.Repeat("x", 1000)
+	reason, flagged = draftConcernReason(long)
+	require.True(t, flagged)
+	require.LessOrEqual(t, len(reason), len("the agent flagged its own draft: ")+300)
+}
