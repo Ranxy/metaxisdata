@@ -133,6 +133,10 @@ var qualityAgentPermissions = permissionSet(
 	// permission is granted to every principal on every target — the scoped grant
 	// this role receives is the only thing that bounds the agent to its databases.
 	permission.DataQualityRulesEvidence,
+	// Repair is the narrow write: a field whose value the server can compute from the
+	// registry (a structure snapshot). It is deliberately not rules.update, so the catalog
+	// itself reads as "this actor may not rewrite an arbitrary definition".
+	permission.DataQualityRulesRepair,
 	permission.DataQualitySuggest,
 	permission.DataQualityPlansUpdate,
 )

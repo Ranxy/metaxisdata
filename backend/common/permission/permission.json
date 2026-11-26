@@ -193,6 +193,10 @@
       "id": "metaxisdata.dataQuality.rules.evidence"
     },
     {
+      "name": "DataQualityRulesRepair",
+      "id": "metaxisdata.dataQuality.rules.repair"
+    },
+    {
       "name": "DataQualityRulesCreate",
       "id": "metaxisdata.dataQuality.rules.create"
     },

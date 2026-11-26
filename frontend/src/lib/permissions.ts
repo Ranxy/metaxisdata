@@ -123,6 +123,7 @@ export const PERMISSION_GROUPS = [
       "metaxisdata.dataQuality.rules.get",
       "metaxisdata.dataQuality.rules.list",
       "metaxisdata.dataQuality.rules.evidence",
+      "metaxisdata.dataQuality.rules.repair",
       "metaxisdata.dataQuality.rules.create",
       "metaxisdata.dataQuality.rules.update",
       "metaxisdata.dataQuality.rules.delete",

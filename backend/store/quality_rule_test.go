@@ -41,11 +41,13 @@ type qualityRuleRowStub struct {
 	createdAt      time.Time
 	updatedAt      time.Time
 	deleted        bool
+	manualLock     bool
+	pinnedFields   pq.StringArray
 }
 
 func (s qualityRuleRowStub) Scan(dest ...any) error {
-	if len(dest) != 23 {
-		return fmt.Errorf("quality rule stub got %d destinations, want 23", len(dest))
+	if len(dest) != 25 {
+		return fmt.Errorf("quality rule stub got %d destinations, want 25", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*string)) = s.resourceID
@@ -70,6 +72,8 @@ func (s qualityRuleRowStub) Scan(dest ...any) error {
 	*(dest[20].(*time.Time)) = s.createdAt
 	*(dest[21].(*time.Time)) = s.updatedAt
 	*(dest[22].(*bool)) = s.deleted
+	*(dest[23].(*bool)) = s.manualLock
+	*(dest[24].(*pq.StringArray)) = s.pinnedFields
 	return nil
 }
 
