@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -140,6 +139,15 @@ type TableContextReader interface {
 // silently retrying the same intent.
 type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error)
 
+// AgentEvidence is the slice of the quality application layer the evidence tools read
+// through. It is the same read the RPC and MCP surfaces use, which is what keeps one
+// projection from drifting into three. A nil reader disables the evidence tools
+// instead of letting them fall back to an unbounded store read.
+type AgentEvidence interface {
+	ReadTargetExecutions(ctx context.Context, agentPrincipalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error)
+	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
+}
+
 // AgentDeps is everything the agent tools need from their product.
 type AgentDeps struct {
 	// Store is the domain store the tools read and write.
@@ -150,6 +158,8 @@ type AgentDeps struct {
 	TableContext TableContextReader
 	// DraftChecks is the triage drafting capability; nil reports it as not configured.
 	DraftChecks DraftChecksFunc
+	// Evidence is the application-layer evidence read; nil reports it as not configured.
+	Evidence AgentEvidence
 }
 
 // AgentTools runs the built-in quality agent's tools.
@@ -176,17 +186,13 @@ type evidence struct {
 	PlanState   string
 	Criticality string
 	Gaps        []string
-	Executions  []dataquality.ExecutionEvidence
 	Memories    []string
 	RuleCount   int
 }
 
-// recentExecutionWindow is how many executions one read returns. A diagnosis needs
-// the latest failure and the runs around it; a longer tail belongs in a query, not
-// in a tool result the model has to read on every wake.
-const recentExecutionWindow = 8
-
-// gatherEvidence assembles the target's plan, recent executions and confirmed memories.
+// gatherEvidence assembles the target's plan, rule count and confirmed memories. The
+// execution evidence is read through the application layer instead, so it has one
+// projection rather than a third one built here.
 func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (*evidence, error) {
 	result := &evidence{
 		TargetGUID: session.TargetGUID,
@@ -214,16 +220,6 @@ func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (
 		}
 		result.Gaps = append(result.Gaps, GapLabel(requirement))
 	}
-	limit := recentExecutionWindow
-	executions, err := t.deps.Store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{TargetGUID: &session.TargetGUID, Limit: &limit})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's executions")
-	}
-	// The execution is the fact, so the projection carries the check it belongs to
-	// and the engine's own failure code and message. A list of statuses and counts
-	// alone once led the agent to blame the evaluation pipeline for a rule whose
-	// bound the database had refused.
-	result.Executions = dataquality.BuildExecutionEvidence(executions, rules)
 	memoryLimit := 20
 	memories, err := t.deps.Store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Limit: &memoryLimit})
 	if err != nil {
@@ -324,29 +320,28 @@ func (t *AgentTools) targetPendingDrafts(ctx context.Context, session AgentSessi
 	return views, len(rows), true
 }
 
-// ListRecentExecutions lists the target's recent executions.
+// ListRecentExecutions lists the target's recent executions through the application
+// layer. The execution is the fact, so the projection carries the check it belongs to
+// and the engine's own failure code and message: a list of statuses and counts alone
+// once led the agent to blame the evaluation pipeline for a bound the database refused.
 func (t *AgentTools) ListRecentExecutions(ctx context.Context, session AgentSession) (string, error) {
-	evidence, err := t.gatherEvidence(ctx, session)
+	if t.deps.Evidence == nil {
+		return "", errors.New("the evidence read is not configured in this process")
+	}
+	executions, err := t.deps.Evidence.ReadTargetExecutions(ctx, session.AgentPrincipalID, session.TargetGUID, 0)
 	if err != nil {
 		return "", err
 	}
-	executions := evidence.Executions
 	if executions == nil {
 		executions = []dataquality.ExecutionEvidence{}
 	}
 	return marshalJSON(map[string]any{"executions": executions})
 }
 
-// maxInspectConfigBytes bounds the definition an inspection renders. A config
-// larger than this is a custom SQL statement, which the agent cannot rewrite
-// anyway, so the tool reports that it omitted the body instead of returning a
-// string the result budget would cut in half.
-const maxInspectConfigBytes = 4 << 10
-
-// InspectCheck renders one check's definition and its own executions. It is the
-// tool that turns "an execution failed" into "this check, at this revision, with
-// this config, failed for this reason": the read that lets a model decide whether
-// the check or the data is wrong.
+// InspectCheck renders one check's definition and its own executions. It is the tool
+// that turns "an execution failed" into "this check, at this revision, with this
+// config, failed for this reason": the read that lets a model decide whether the
+// check or the data is wrong.
 func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
 	var input struct {
 		Rule       string `json:"rule"`
@@ -357,118 +352,17 @@ func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arg
 			return "", errors.Wrap(err, "invalid inspect_check arguments")
 		}
 	}
-	limit := input.Executions
-	switch {
-	case limit <= 0:
-		limit = 5
-	case limit > 20:
-		limit = 20
-	default:
+	if t.deps.Evidence == nil {
+		return "", errors.New("the evidence read is not configured in this process")
 	}
-	rules, err := t.deps.Store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
+	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.TargetGUID, input.Rule, input.Executions)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to read the target's rules")
+		return "", err
 	}
-	rawLimit := limit
-	executions, err := t.deps.Store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{TargetGUID: &session.TargetGUID, Limit: &rawLimit})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to read the target's executions")
-	}
-	rule := findInspectedRule(rules, executions, input.Rule)
-	if rule == nil {
-		if strings.TrimSpace(input.Rule) == "" {
-			return "", errors.New("the target has no check to inspect; name one with rule")
-		}
+	if evidence == nil {
 		return "", errors.Errorf("the target has no check %q", input.Rule)
 	}
-	own := make([]*store.QualityExecutionMessage, 0, len(executions))
-	for _, execution := range executions {
-		if execution != nil && execution.RuleID == rule.ID {
-			own = append(own, execution)
-		}
-	}
-	result := map[string]any{
-		"target":     session.TargetGUID,
-		"rule":       inspectedRuleView(rule),
-		"executions": dataquality.BuildExecutionEvidence(own, rules),
-	}
-	return marshalJSON(result)
-}
-
-// inspectedRuleView renders one check's definition. It carries the config because
-// the failure is usually a property of the config, and the revision because a
-// historical execution ran a definition the head row may no longer hold.
-func inspectedRuleView(rule *store.QualityRuleMessage) map[string]any {
-	view := map[string]any{
-		"name":     "qualityRules/" + rule.ResourceID,
-		"title":    rule.Title,
-		"type":     strings.TrimPrefix(rule.RuleType.String(), "QUALITY_RULE_TYPE_"),
-		"state":    strings.TrimPrefix(rule.State.String(), "QUALITY_RULE_STATE_"),
-		"severity": strings.TrimPrefix(rule.Severity.String(), "QUALITY_SEVERITY_"),
-		"revision": rule.Revision,
-	}
-	if rule.Description != "" {
-		view["description"] = rule.Description
-	}
-	if rule.Config == nil {
-		return view
-	}
-	encoded, err := protojson.Marshal(rule.Config)
-	if err != nil {
-		return view
-	}
-	if len(encoded) > maxInspectConfigBytes {
-		view["configOmitted"] = "the definition is larger than the inspection budget"
-		return view
-	}
-	view["config"] = string(encoded)
-	return view
-}
-
-// findInspectedRule resolves the check one inspection is about: the named one, or
-// the check behind the newest failed execution when the caller named none. Naming
-// nothing and having nothing to look at is an error the model can act on.
-func findInspectedRule(rules []*store.QualityRuleMessage, executions []*store.QualityExecutionMessage, name string) *store.QualityRuleMessage {
-	wanted := strings.TrimSpace(name)
-	wanted = strings.TrimPrefix(wanted, "qualityRules/")
-	for _, rule := range rules {
-		if rule == nil {
-			continue
-		}
-		if wanted != "" && rule.ResourceID == wanted {
-			return rule
-		}
-	}
-	if wanted != "" {
-		return nil
-	}
-	byID := make(map[int64]*store.QualityRuleMessage, len(rules))
-	for _, rule := range rules {
-		if rule != nil {
-			byID[rule.ID] = rule
-		}
-	}
-	for _, execution := range executions {
-		if execution == nil {
-			continue
-		}
-		rule := byID[execution.RuleID]
-		if rule == nil {
-			continue
-		}
-		if execution.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR || execution.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
-			return rule
-		}
-	}
-	for _, execution := range executions {
-		if execution == nil {
-			continue
-		}
-		if rule := byID[execution.RuleID]; rule != nil {
-			return rule
-		}
-	}
-	return nil
+	return marshalJSON(evidence)
 }
 
 // GetMemory lists the target's confirmed memories.

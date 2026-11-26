@@ -125,6 +125,7 @@ func configureGrpcRouters(
 	if sessionEngine != nil {
 		sessionEngine.SetAdoption(dataQualityService.AdoptQualitySuggestions)
 		sessionEngine.SetOwnerAdoption(dataQualityService.AdoptQualitySuggestionsForOwner)
+		sessionEngine.SetEvidence(dataQualityService)
 	}
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m, iamManager)

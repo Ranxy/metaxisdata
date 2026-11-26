@@ -36,6 +36,16 @@ func readMeta() tool.Meta {
 	}
 }
 
+// evidenceMeta is the metadata of a tool that reads a target's evidence through the
+// application layer. The permission is rules.evidence, not rules.list: the latter is
+// in the member baseline, which grants it to every principal on every target, so it
+// cannot express "this agent, these databases".
+func evidenceMeta() tool.Meta {
+	meta := readMeta()
+	meta.Permission = string(permission.DataQualityRulesEvidence)
+	return meta
+}
+
 // proposeMeta is the metadata of a tool that records a proposal or evidence
 // through an RPC handler.
 func proposeMeta() tool.Meta {
@@ -74,7 +84,7 @@ func targetToolSpecs() []toolSpec {
 			name:        "list_recent_executions",
 			description: "List the target's recent executions with the check they belong to, their outcome, failure code and message, and row counts.",
 			parameters:  emptyParameters(),
-			meta:        readMeta(),
+			meta:        evidenceMeta(),
 		},
 		{
 			name: "inspect_check",
@@ -92,7 +102,7 @@ func targetToolSpecs() []toolSpec {
 					"description": "how many of the check's executions to include, at most 20",
 				},
 			}},
-			meta: readMeta(),
+			meta: evidenceMeta(),
 		},
 		{
 			name:        "get_memory",

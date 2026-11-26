@@ -46,6 +46,7 @@ func NonScopeable(perms map[Permission]bool) []Permission {
 var scopeablePermissions = map[Permission]bool{
 	DataQualityRulesGet:         true,
 	DataQualityRulesList:        true,
+	DataQualityRulesEvidence:    true,
 	DataQualityRulesCreate:      true,
 	DataQualityRulesUpdate:      true,
 	DataQualityRulesDelete:      true,

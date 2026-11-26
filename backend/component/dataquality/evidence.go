@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -115,4 +117,118 @@ func observedKindLabel(kind storepb.QualityObservedKind) string {
 		return ""
 	}
 	return strings.TrimPrefix(kind.String(), "QUALITY_OBSERVED_KIND_")
+}
+
+// maxInspectConfigBytes bounds the definition a check inspection renders. A config
+// larger than this is a custom SQL statement, which the agent cannot rewrite anyway,
+// so the read reports the omission instead of a string a result budget would cut in
+// half.
+const maxInspectConfigBytes = 4 << 10
+
+// CheckDefinition is one check's definition as an inspecting reader needs it: the
+// head revision, the fields that decide how strict it is, and the config itself.
+type CheckDefinition struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	State       string `json:"state"`
+	Severity    string `json:"severity"`
+	Revision    int32  `json:"revision"`
+	Description string `json:"description,omitempty"`
+	// Config is the protojson rendering of the config; it is omitted, with
+	// ConfigOmitted explaining why, when the rendering exceeds the inspection budget.
+	Config        string `json:"config,omitempty"`
+	ConfigOmitted string `json:"configOmitted,omitempty"`
+}
+
+// CheckEvidence is one check with its own executions: the unit an inspection reads.
+type CheckEvidence struct {
+	Target     string              `json:"target"`
+	Rule       CheckDefinition     `json:"rule"`
+	Executions []ExecutionEvidence `json:"executions"`
+}
+
+// BuildCheckEvidence renders one check's definition and executions. rules resolves
+// the execution rows' rule names, so a caller passes the target's whole rule set.
+func BuildCheckEvidence(targetGUID string, rule *store.QualityRuleMessage, executions []*store.QualityExecutionMessage, rules []*store.QualityRuleMessage) *CheckEvidence {
+	if rule == nil {
+		return nil
+	}
+	evidence := &CheckEvidence{
+		Target:     targetGUID,
+		Rule:       BuildCheckDefinition(rule),
+		Executions: BuildExecutionEvidence(executions, rules),
+	}
+	if evidence.Executions == nil {
+		evidence.Executions = []ExecutionEvidence{}
+	}
+	return evidence
+}
+
+// BuildCheckDefinition renders one check's definition.
+func BuildCheckDefinition(rule *store.QualityRuleMessage) CheckDefinition {
+	definition := CheckDefinition{
+		Name:        "qualityRules/" + rule.ResourceID,
+		Title:       rule.Title,
+		Type:        strings.TrimPrefix(rule.RuleType.String(), "QUALITY_RULE_TYPE_"),
+		State:       strings.TrimPrefix(rule.State.String(), "QUALITY_RULE_STATE_"),
+		Severity:    strings.TrimPrefix(rule.Severity.String(), "QUALITY_SEVERITY_"),
+		Revision:    rule.Revision,
+		Description: rule.Description,
+	}
+	if rule.Config == nil {
+		return definition
+	}
+	encoded, err := protojson.Marshal(rule.Config)
+	if err != nil {
+		definition.ConfigOmitted = "the definition could not be rendered"
+		return definition
+	}
+	if len(encoded) > maxInspectConfigBytes {
+		definition.ConfigOmitted = "the definition is larger than the inspection budget"
+		return definition
+	}
+	definition.Config = string(encoded)
+	return definition
+}
+
+// SelectInspectedRule resolves the check an inspection is about: the named one, or
+// the check behind the newest failed execution when the caller named none. A caller
+// that names a check the target does not have gets nil.
+func SelectInspectedRule(rules []*store.QualityRuleMessage, executions []*store.QualityExecutionMessage, name string) *store.QualityRuleMessage {
+	wanted := strings.TrimPrefix(strings.TrimSpace(name), "qualityRules/")
+	byID := make(map[int64]*store.QualityRuleMessage, len(rules))
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		byID[rule.ID] = rule
+		if wanted != "" && rule.ResourceID == wanted {
+			return rule
+		}
+	}
+	if wanted != "" {
+		return nil
+	}
+	for _, execution := range executions {
+		if execution == nil {
+			continue
+		}
+		rule := byID[execution.RuleID]
+		if rule == nil {
+			continue
+		}
+		if execution.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR || execution.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL {
+			return rule
+		}
+	}
+	for _, execution := range executions {
+		if execution == nil {
+			continue
+		}
+		if rule := byID[execution.RuleID]; rule != nil {
+			return rule
+		}
+	}
+	return nil
 }

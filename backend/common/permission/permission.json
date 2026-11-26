@@ -189,6 +189,10 @@
       "id": "metaxisdata.dataQuality.rules.list"
     },
     {
+      "name": "DataQualityRulesEvidence",
+      "id": "metaxisdata.dataQuality.rules.evidence"
+    },
+    {
       "name": "DataQualityRulesCreate",
       "id": "metaxisdata.dataQuality.rules.create"
     },

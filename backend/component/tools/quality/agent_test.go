@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -14,20 +15,38 @@ import (
 type fakeAgentStore struct {
 	suggestions []*store.QualitySuggestionMessage
 	status      *store.QualityAgentAdoptionStatusMessage
-	rules       []*store.QualityRuleMessage
-	executions  []*store.QualityExecutionMessage
 }
 
-func (f *fakeAgentStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
-	return f.rules, nil
+type fakeAgentEvidence struct {
+	executions []dataquality.ExecutionEvidence
+	check      *dataquality.CheckEvidence
+	err        error
+	principal  int32
+	target     string
+	limit      int
+	rule       string
+}
+
+func (f *fakeAgentEvidence) ReadTargetExecutions(_ context.Context, principalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error) {
+	f.principal, f.target, f.limit = principalID, targetGUID, limit
+	return f.executions, f.err
+}
+
+func (f *fakeAgentEvidence) ReadCheckEvidence(_ context.Context, principalID int32, targetGUID, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error) {
+	f.principal, f.target, f.rule, f.limit = principalID, targetGUID, ruleResourceID, limit
+	return f.check, f.err
+}
+
+func (*fakeAgentStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
+	return nil, nil
 }
 
 func (*fakeAgentStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
 	return nil, nil
 }
 
-func (f *fakeAgentStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
-	return f.executions, nil
+func (*fakeAgentStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
+	return nil, nil
 }
 
 func (*fakeAgentStore) ListQualityMemories(context.Context, *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error) {
@@ -89,94 +108,61 @@ func TestGetTargetSummaryCarriesAdoptionAndPendingDrafts(t *testing.T) {
 	require.Contains(t, result, `"title":"id must be unique"`)
 }
 
-// A failure list without the check it belongs to and the engine's own failure
-// reason is unactionable: the sample that motivated this projection held a rule
-// whose bound the database rejected, and the agent could only report that "the
-// evaluation pipeline seems broken".
-func TestListRecentExecutionsNamesTheCheckAndTheFailure(t *testing.T) {
+// The evidence tools are adapters over the application-layer read: they must pass the
+// agent principal and the session target through, and marshal what the read returns.
+// The projection itself is the application layer's job (and is tested there).
+func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
 	t.Parallel()
 
-	finished := time.Date(2026, 11, 26, 6, 8, 55, 0, time.UTC)
-	store := &fakeAgentStore{
-		rules: []*store.QualityRuleMessage{{
-			ID:         460,
-			ResourceID: "r460",
-			Title:      "performed_at must be recent and not in the future",
+	evidence := &fakeAgentEvidence{
+		executions: []dataquality.ExecutionEvidence{{
+			Execution: "qualityExecutions/4339",
+			Rule:      "qualityRules/r460",
+			Status:    "ERROR",
+			ErrorCode: "BAD_VALUE",
 		}},
-		executions: []*store.QualityExecutionMessage{{
-			ID:           4339,
-			RuleID:       460,
-			RuleRevision: 1,
-			Status:       storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			ErrorCode:    "BAD_VALUE",
-			ErrorMessage: `invalid input syntax for type timestamp with time zone: "now - 1 day"`,
-			Trigger:      storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
-			Attempt:      1,
-			StartedAt:    finished.Add(-12 * time.Millisecond),
-			FinishedAt:   finished,
-			DurationMS:   12,
-		}},
+		check: &dataquality.CheckEvidence{
+			Target: "target-1",
+			Rule: dataquality.CheckDefinition{
+				Name:     "qualityRules/r460",
+				Type:     "RANGE",
+				Revision: 2,
+				Config:   `{"range":{"column":"performed_at","min":"now - 1 day"}}`,
+			},
+		},
 	}
-	tools := NewAgentTools(AgentDeps{Store: store})
-	result, err := tools.ListRecentExecutions(context.Background(), AgentSession{
-		WorkspaceID: "ws",
-		TargetGUID:  "target-1",
-		TargetType:  storepb.MetaType_TABLE,
-	})
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}, Evidence: evidence})
+	session := AgentSession{
+		WorkspaceID:      "ws",
+		AgentPrincipalID: 110,
+		TargetGUID:       "target-1",
+		TargetType:       storepb.MetaType_TABLE,
+	}
+
+	executions, err := tools.ListRecentExecutions(context.Background(), session)
 	require.NoError(t, err)
-	require.Contains(t, result, `"execution":"qualityExecutions/4339"`)
-	require.Contains(t, result, `"rule":"qualityRules/r460"`)
-	require.Contains(t, result, `"title":"performed_at must be recent and not in the future"`)
-	require.Contains(t, result, `"status":"ERROR"`)
-	require.Contains(t, result, `"errorCode":"BAD_VALUE"`)
-	require.Contains(t, result, `now - 1 day`)
+	require.Contains(t, executions, `"execution":"qualityExecutions/4339"`)
+	require.Contains(t, executions, `"errorCode":"BAD_VALUE"`)
+	require.Equal(t, int32(110), evidence.principal)
+	require.Equal(t, "target-1", evidence.target)
+
+	inspected, err := tools.InspectCheck(context.Background(), session, `{"rule":"qualityRules/r460","executions":3}`)
+	require.NoError(t, err)
+	require.Contains(t, inspected, `"name":"qualityRules/r460"`)
+	require.Contains(t, inspected, `"revision":2`)
+	require.Contains(t, inspected, `now - 1 day`)
+	require.Equal(t, "qualityRules/r460", evidence.rule)
+	require.Equal(t, 3, evidence.limit)
 }
 
-// An agent that can read a failure's execution but not the check's definition can
-// describe the symptom and nothing else: the sample's range bound was visible only
-// in the config, which no tool returned. inspect_check must carry both, and default
-// to the newest failing check when the model names none.
-func TestInspectCheckRendersDefinitionAndEvidence(t *testing.T) {
+// Without the application-layer read the tool refuses instead of falling back to an
+// unbounded store query.
+func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeAgentStore{
-		rules: []*store.QualityRuleMessage{{
-			ID:         460,
-			ResourceID: "r460",
-			Title:      "performed_at must be recent and not in the future",
-			RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-			State:      storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-			Revision:   2,
-			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
-				Range: &storepb.RangeConfig{Column: "performed_at", Min: qualityTestPtr("now - 1 day")},
-			}},
-		}},
-		executions: []*store.QualityExecutionMessage{{
-			ID:           4339,
-			RuleID:       460,
-			RuleRevision: 2,
-			Status:       storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			ErrorCode:    "BAD_VALUE",
-			ErrorMessage: `invalid input syntax for type timestamp with time zone: "now - 1 day"`,
-			StartedAt:    time.Date(2026, 11, 26, 6, 8, 55, 0, time.UTC),
-			FinishedAt:   time.Date(2026, 11, 26, 6, 8, 55, 0, time.UTC),
-		}},
-	}
-	tools := NewAgentTools(AgentDeps{Store: store})
-	result, err := tools.InspectCheck(context.Background(), AgentSession{
-		WorkspaceID: "ws",
-		TargetGUID:  "target-1",
-		TargetType:  storepb.MetaType_TABLE,
-	}, "")
-	require.NoError(t, err)
-	require.Contains(t, result, `"name":"qualityRules/r460"`)
-	require.Contains(t, result, `"type":"RANGE"`)
-	require.Contains(t, result, `"revision":2`)
-	require.Contains(t, result, `performed_at`)
-	require.Contains(t, result, `now - 1 day`)
-	require.Contains(t, result, `"errorCode":"BAD_VALUE"`)
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}})
+	_, err := tools.ListRecentExecutions(context.Background(), AgentSession{TargetGUID: "target-1"})
+	require.ErrorContains(t, err, "not configured")
+	_, err = tools.InspectCheck(context.Background(), AgentSession{TargetGUID: "target-1"}, "")
+	require.ErrorContains(t, err, "not configured")
 }
-
-// qualityTestPtr is a local pointer helper for the optional proto fields.
-func qualityTestPtr[T any](value T) *T { return &value }

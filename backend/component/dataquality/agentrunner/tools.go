@@ -204,5 +204,6 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		Now:          e.now,
 		TableContext: e.tableContext,
 		DraftChecks:  e.draftChecks,
+		Evidence:     e.evidence,
 	})
 }
