@@ -129,6 +129,12 @@ func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
 				Revision: 2,
 				Config:   `{"range":{"column":"performed_at","min":"now - 1 day"}}`,
 			},
+			Diagnosis: &dataquality.Diagnosis{
+				Class:      dataquality.ClassConfigValueInvalid,
+				Field:      "range.min",
+				Repairable: true,
+				Actions:    []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionEscalate},
+			},
 		},
 	}
 	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}, Evidence: evidence})
@@ -151,6 +157,8 @@ func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
 	require.Contains(t, inspected, `"name":"qualityRules/r460"`)
 	require.Contains(t, inspected, `"revision":2`)
 	require.Contains(t, inspected, `now - 1 day`)
+	require.Contains(t, inspected, `"class":"CONFIG_VALUE_INVALID"`)
+	require.Contains(t, inspected, `"field":"range.min"`)
 	require.Equal(t, "qualityRules/r460", evidence.rule)
 	require.Equal(t, 3, evidence.limit)
 }

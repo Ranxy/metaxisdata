@@ -11,12 +11,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
@@ -65,6 +67,7 @@ type Store interface {
 	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
 	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
+	ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentCaseMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -202,7 +205,8 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	}
 	wake := session.WakeCount + 1
 	wakeStartedAt := e.now()
-	instruction := wakePrompt(session, wake, pending, agent)
+	cases := e.openCases(ctx, session)
+	instruction := wakePrompt(session, wake, pending, agent, cases)
 	if systemChanged {
 		// The stored system prompt was rewritten on this wake. The notice is part of
 		// the wake message, so the transcript stays append-only and the model is told
@@ -223,11 +227,65 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if err != nil {
 		return Outcome{}, err
 	}
+	// A case is due work, not background: without this the session would sleep until its
+	// idle cadence and the case would wait a day. The runner merges it again at release,
+	// because a case can be opened by another pass while this wake is running.
+	if earliest := earliestCaseAction(cases, e.now()); earliest != nil {
+		if outcome.NextWakeAt == nil || earliest.Before(*outcome.NextWakeAt) {
+			outcome.NextWakeAt = earliest
+		}
+	}
 	if outcome.EngineState == nil {
 		outcome.EngineState = cloneEngineState(session.EngineState)
 	}
 	e.recordEngine(ctx, session, wake, 0, "wake finished: "+outcome.Summary)
 	return outcome, nil
+}
+
+// caseWakeFloor is the soonest a case may wake a session that is otherwise idle: the
+// session tick is three seconds, and a case whose action time is in the past must not make
+// the runner spin.
+const caseWakeFloor = time.Minute
+
+// openCases reads the target's unfinished work for the wake prompt and the next-wake
+// merge. A read failure degrades to "no work items" instead of failing the wake: the
+// transcript, not this read, is what the wake cannot lose.
+func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessionMessage) []*store.QualityAgentCaseMessage {
+	// Kind 2 is the owner conversation, which has no target; any other kind is a target
+	// session (Kind 1 in the database, unset in a focused test).
+	if session == nil || session.Kind == 2 || session.AgentID == 0 || session.TargetGUID == "" {
+		return nil
+	}
+	cases, err := e.store.ListOpenQualityAgentCasesByTarget(ctx, session.AgentID, session.TargetGUID, 3)
+	if err != nil {
+		slog.Warn("failed to read the target's open cases",
+			slog.String("session", session.ResourceID), log.WithError(err))
+		return nil
+	}
+	return cases
+}
+
+// earliestCaseAction turns the soonest due case into a wake time, clamped so a past-due
+// case does not make the runner spin.
+func earliestCaseAction(cases []*store.QualityAgentCaseMessage, now time.Time) *time.Time {
+	var earliest *time.Time
+	for _, openCase := range cases {
+		if openCase == nil || openCase.NextActionAt == nil {
+			continue
+		}
+		if earliest == nil || openCase.NextActionAt.Before(*earliest) {
+			at := openCase.NextActionAt.UTC()
+			earliest = &at
+		}
+	}
+	if earliest == nil {
+		return nil
+	}
+	floor := now.Add(caseWakeFloor)
+	if earliest.Before(floor) {
+		return &floor
+	}
+	return earliest
 }
 
 // runWake selects the model wake or the deterministic survey.
@@ -595,6 +653,16 @@ func (e *Engine) deterministicWake(
 		for _, event := range events {
 			if investigated >= maxDeterministicEvents {
 				break
+			}
+			// A health event names a check, not an execution: without a model there is no
+			// verdict to review, so the wake records it and moves on. Parking the session
+			// on an event that carries no failure would silence the target exactly when it
+			// is telling us it never concludes.
+			if !strings.HasPrefix(event.Reference, "qualityExecutions/") {
+				e.recordEngine(ctx, session, wake, 0, "deterministic health review: the check produced no verdict")
+				consumed = event.Seq
+				investigated++
+				continue
 			}
 			outcome, err := e.reviewFailedExecution(ctx, session, wake, event.Reference)
 			if err != nil {

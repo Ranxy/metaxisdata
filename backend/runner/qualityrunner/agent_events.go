@@ -39,14 +39,31 @@ func (r *Runner) intakeAgentEvents(ctx context.Context, workspaceID string, exec
 			continue
 		}
 		for _, session := range sessions {
-			r.intakeAgentEvent(ctx, workspaceID, execution, session, now)
+			r.appendSessionEvent(ctx, session, workspaceID, agentEvent{
+				Content:   executionEventContent(execution),
+				Reference: fmt.Sprintf("qualityExecutions/%d", execution.result.ID),
+				Key:       fmt.Sprintf("event:execution:%d", execution.result.ID),
+			}, now)
 		}
 	}
 }
 
-// intakeAgentEvent appends one execution event to one session when that session's
-// agent is active and still covers the target's database.
-func (r *Runner) intakeAgentEvent(ctx context.Context, workspaceID string, execution *ruleExecution, session *store.QualityAgentSessionMessage, now time.Time) {
+// agentEvent is one event to append to one session.
+type agentEvent struct {
+	// Content is the rendered prose the model reads.
+	Content string
+	// Reference names the fact the event is about; it is what a later tool call
+	// resolves when the model asks for the evidence behind the event.
+	Reference string
+	// Key makes the append idempotent: a retried batch, a replayed tick or a second
+	// session event about the same fact cannot append twice.
+	Key string
+}
+
+// appendSessionEvent appends one event to one session when that session's agent is
+// active, still covers the target's database and has not spent its hourly events.
+// Every refusal is a log line, never a batch failure: perception is best effort.
+func (r *Runner) appendSessionEvent(ctx context.Context, session *store.QualityAgentSessionMessage, workspaceID string, event agentEvent, now time.Time) {
 	if !sessionAcceptsAgentEvents(session) {
 		return
 	}
@@ -65,7 +82,7 @@ func (r *Runner) intakeAgentEvent(ctx context.Context, workspaceID string, execu
 	}
 	if events >= maxSessionEventsPerHour {
 		slog.Warn("skipped a quality agent event: the session already received its hourly events",
-			slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID))
+			slog.String("session", session.ResourceID), slog.String("event", event.Key))
 		return
 	}
 	_, appendErr := r.stores.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
@@ -74,13 +91,13 @@ func (r *Runner) intakeAgentEvent(ctx context.Context, workspaceID string, execu
 		Wake:           session.WakeCount + 1,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-		Content:        executionEventContent(execution),
-		Reference:      fmt.Sprintf("qualityExecutions/%d", execution.result.ID),
-		IdempotencyKey: fmt.Sprintf("event:execution:%d", execution.result.ID),
+		Content:        event.Content,
+		Reference:      event.Reference,
+		IdempotencyKey: event.Key,
 	})
 	if appendErr != nil {
 		slog.Warn("failed to append a quality agent event",
-			slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID), log.WithError(appendErr))
+			slog.String("session", session.ResourceID), slog.String("event", event.Key), log.WithError(appendErr))
 		return
 	}
 	if _, err := r.stores.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {

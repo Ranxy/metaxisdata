@@ -141,10 +141,12 @@ type CheckDefinition struct {
 	ConfigOmitted string `json:"configOmitted,omitempty"`
 }
 
-// CheckEvidence is one check with its own executions: the unit an inspection reads.
+// CheckEvidence is one check with its own executions and, when the newest run did not
+// produce a verdict, the deterministic diagnosis of it: the unit an inspection reads.
 type CheckEvidence struct {
 	Target     string              `json:"target"`
 	Rule       CheckDefinition     `json:"rule"`
+	Diagnosis  *Diagnosis          `json:"diagnosis,omitempty"`
 	Executions []ExecutionEvidence `json:"executions"`
 }
 

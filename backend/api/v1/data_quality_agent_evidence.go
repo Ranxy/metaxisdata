@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -74,7 +75,26 @@ func (s *DataQualityService) ReadCheckEvidence(ctx context.Context, agentPrincip
 			own = append(own, execution)
 		}
 	}
-	return dataquality.BuildCheckEvidence(targetGUID, rule, own, rules), nil
+	evidence := dataquality.BuildCheckEvidence(targetGUID, rule, own, rules)
+	if evidence == nil {
+		return nil, nil
+	}
+	// The diagnosis is what makes the evidence actionable: it names the class, the field
+	// and the verbs the class permits. It is computed here, where the registry read for a
+	// structure change is available, and never asked of the model.
+	if len(own) > 0 {
+		changed, err := s.targetSchemaChanges(ctx, []*store.QualityRuleMessage{rule})
+		if err != nil {
+			return nil, err
+		}
+		evidence.Diagnosis = dataquality.DiagnoseExecution(dataquality.DiagnosisInput{
+			Execution:     own[0],
+			Rule:          rule,
+			SchemaChanged: changed[rule.ID],
+			Now:           time.Now().UTC(),
+		})
+	}
+	return evidence, nil
 }
 
 // agentEvidenceScope resolves the agent principal and proves the target is inside its

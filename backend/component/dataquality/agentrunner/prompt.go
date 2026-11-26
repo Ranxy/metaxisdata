@@ -196,6 +196,7 @@ func wakePrompt(
 	wake int32,
 	pending []*store.QualityAgentTranscriptMessage,
 	agent *store.QualityAgentMessage,
+	cases []*store.QualityAgentCaseMessage,
 ) string {
 	events, asks := 0, 0
 	for _, message := range pending {
@@ -253,20 +254,56 @@ func wakePrompt(
 			"[triage wake %d] This target has no quality coverage yet.%s %s You cannot publish a contract or edit a check. If nothing is worth monitoring, say so briefly and record why. Do not repeat work you already recorded in an earlier triage. Target: %s. Objective: %s.",
 			wake, pendingNote, coverage, target, objective)
 	}
+	work := openCaseBlock(cases)
 	switch {
 	case asks > 0:
 		return fmt.Sprintf(
-			"[wake %d] A person asked something above. Answer it using the tools, then stop when the wake is done. %s Target: %s. Objective: %s.",
-			wake, adoptionRequestHint(agent), target, objective)
+			"[wake %d] A person asked something above. Answer it using the tools, then stop when the wake is done. %s%s Target: %s. Objective: %s.",
+			wake, adoptionRequestHint(agent), work, target, objective)
 	case events > 0:
 		return fmt.Sprintf(
-			"[wake %d] %d new event(s) arrived above. Decide whether they need action, record what you conclude, then stop when the wake is done. Target: %s. Objective: %s.",
-			wake, events, target, objective)
+			"[wake %d] %d new event(s) arrived above. Decide whether they need action, record what you conclude, then stop when the wake is done.%s Target: %s. Objective: %s.",
+			wake, events, work, target, objective)
 	default:
 		return fmt.Sprintf(
-			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop. Target: %s. Objective: %s.",
-			wake, target, objective)
+			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop.%s Target: %s. Objective: %s.",
+			wake, work, target, objective)
 	}
+}
+
+// maxWakeCases bounds how many work items one wake instructs the model about. The case
+// list is the agent's queue, and a queue read into a prompt must not grow with the target's
+// check count.
+const maxWakeCases = 3
+
+// maxWakeCaseSummary bounds one case's sentence in the prompt.
+const maxWakeCaseSummary = 200
+
+// openCaseBlock renders the target's unfinished work. It is part of the per-wake user
+// message, never the system prompt, so the tool schema and the cached prefix stay stable
+// while the queue changes.
+func openCaseBlock(cases []*store.QualityAgentCaseMessage) string {
+	if len(cases) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	_, _ = builder.WriteString("\n\nOpen work items for this target, highest value first:\n")
+	shown := 0
+	for _, openCase := range cases {
+		if openCase == nil || shown >= maxWakeCases {
+			continue
+		}
+		shown++
+		title := ""
+		if openCase.Summary != "" {
+			title = truncateRunes(openCase.Summary, maxWakeCaseSummary)
+		}
+		fmt.Fprintf(&builder, "%d. %s  %s  state %s  attempts %d/%d\n   %s\n",
+			shown, "qualityAgentCases/"+openCase.ResourceID, openCase.FailureClass,
+			openCase.State.Name(), openCase.Attempts, openCase.MaxAttempts, title)
+	}
+	_, _ = builder.WriteString("Work the highest-value item first; at most two items per wake. A case you cannot advance is reported, not retried.")
+	return builder.String()
 }
 
 // adoptionRequestHint is appended to an owner-question wake when the agent can
