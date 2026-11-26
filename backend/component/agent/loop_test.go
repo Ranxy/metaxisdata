@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -155,6 +156,27 @@ func TestRunLoopEnforcesConversationBudget(t *testing.T) {
 			require.True(t, ended, "a conversation exactly on the cap must reach its end event")
 		})
 	}
+}
+
+// The byte cap carries a cause a caller can classify, so a session with a compaction
+// mechanism treats it like a provider overflow instead of failing every wake on a
+// conversation it can never shrink.
+func TestRunLoopByteCapIsClassifiable(t *testing.T) {
+	t.Parallel()
+
+	events := collectEvents(t, RunLoop(context.Background(), Config{
+		History:              []Message{{Role: "user", Content: strings.Repeat("x", 200)}},
+		MaxConversationBytes: 64,
+	}))
+	var loopErr error
+	for _, evt := range events {
+		if evt.Type == EventError {
+			loopErr = evt.Error
+		}
+	}
+	require.Error(t, loopErr)
+	require.True(t, IsConversationTooLarge(loopErr))
+	require.False(t, IsConversationTooLarge(errors.New("the conversation is fine")))
 }
 
 // The loop's conversation seed: a session wake continues the caller's History

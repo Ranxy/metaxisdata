@@ -514,9 +514,10 @@ export function agentSessionContextRatio(
 
 /**
  * Where the sample sits: at the window it is critical, at the engine's compaction
- * trigger it is a warning, below both it is normal. The trigger is measured on the
- * engine's transcript pressure and the sample is the full model input, so the warning
- * is a conservative approximation of when compaction starts, not an exact boundary.
+ * trigger it is a warning, below both it is normal. The trigger is a threshold on the
+ * engine's own text estimate, which runs above the provider's count for a Latin
+ * transcript, so the warning is approximate by construction: it marks the provider
+ * figure that equals the threshold, not the figure at which compaction happens.
  */
 export function agentSessionContextLevel(
   usage?: QualityAgentSessionContextUsage

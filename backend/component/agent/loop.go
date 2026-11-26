@@ -27,6 +27,17 @@ const (
 	DefaultMaxConversationBytes = 4 << 20
 )
 
+// ErrConversationTooLarge is the cause of the byte-cap error. The cap is a context
+// size limit measured in memory rather than tokens, so a caller that can compact a
+// conversation answers it the same way as a provider context overflow instead of
+// failing the turn.
+var ErrConversationTooLarge = errors.New("the conversation no longer fits one request")
+
+// IsConversationTooLarge reports whether err is the loop's own conversation byte cap.
+func IsConversationTooLarge(err error) bool {
+	return errors.Is(err, ErrConversationTooLarge)
+}
+
 // conversationBudget tracks the size of the conversation in memory.
 type conversationBudget struct {
 	limit int
@@ -136,7 +147,7 @@ func run(ctx context.Context, cfg Config, ch chan<- Event) {
 		for _, message := range cfg.History {
 			if !budget.add(messageBudgetBytes(message)) {
 				sendEvent(ctx, ch, Event{Type: EventError,
-					Error: errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)})
+					Error: errors.Wrapf(ErrConversationTooLarge, "LLM conversation exceeded %d bytes", maxConversationBytes)})
 				return
 			}
 			messages = append(messages, message)
@@ -155,7 +166,7 @@ func run(ctx context.Context, cfg Config, ch chan<- Event) {
 	// request and the process's memory.
 	appendMessage := func(msg Message) error {
 		if !budget.add(messageBudgetBytes(msg)) {
-			return errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)
+			return errors.Wrapf(ErrConversationTooLarge, "LLM conversation exceeded %d bytes", maxConversationBytes)
 		}
 		messages = append(messages, msg)
 		return nil

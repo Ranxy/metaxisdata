@@ -108,10 +108,11 @@ func RepairToolCalls(messages []agent.Message) []agent.Message {
 	return repaired
 }
 
-// EstimateTokens approximates a conversation's token size. A provider's real
-// prompt_tokens is always preferred when a wake reported one; this estimate sizes
-// messages added since, leaning high so a Chinese-heavy conversation is not
-// undercounted.
+// EstimateTokens approximates a conversation's token size. The compaction decision
+// reads this estimate alone — a provider's prompt_tokens only reaches the session
+// rail — so it charges each script at a dense transcript's rate rather than a prose
+// average, and it over-counts the transcript this product stores by about half again.
+// That is deliberate: erring low reopens the overflow the dense rate exists to prevent.
 func EstimateTokens(messages []agent.Message) int {
 	total := 0
 	for _, message := range messages {
@@ -126,18 +127,30 @@ func EstimateTokens(messages []agent.Message) int {
 	return total
 }
 
-// EstimateTextTokens approximates one string's token count from both its byte and
-// its rune length and keeps the larger.
+// EstimateTextTokens approximates one string's token count. A tokenizer's rate depends
+// on the script, so the charge follows each rune's UTF-8 width: half a token per ASCII
+// character (prose runs nearer a quarter, but identifiers, digests and sample values
+// reach a half), five eighths for a two-byte rune, three quarters for a han character,
+// and one for a four-byte rune. Those are the dense case rather than the average — the
+// estimate is the only guard between a wake and the provider's window, and the trigger
+// reserves the model's output budget, so a wake that skips compaction still has to fit
+// beside it — except the four-byte rate, which is the byte floor: a tokenizer spends two
+// or three tokens on an emoji, and a transcript in this product holds none.
 func EstimateTextTokens(text string) int {
-	if text == "" {
-		return 0
+	eighths := 0
+	for _, r := range text {
+		switch {
+		case r < utf8.RuneSelf:
+			eighths += 4
+		case r < 0x800:
+			eighths += 5
+		case r < 0x10000:
+			eighths += 6
+		default:
+			eighths += 8
+		}
 	}
-	byBytes := (len(text) + 3) / 4
-	byRunes := (utf8.RuneCountInString(text)*3 + 3) / 4
-	if byBytes > byRunes {
-		return byBytes
-	}
-	return byRunes
+	return (eighths + 7) / 8
 }
 
 // MessageTokens estimates one entry's tokens, tool calls included.

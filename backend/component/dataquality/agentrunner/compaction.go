@@ -122,10 +122,18 @@ func (e *Engine) maybeCompact(
 		}
 	}
 	entries := transcriptEntries(messages)
+	// The trigger is a budget for the whole request, so the pressure it is compared
+	// against carries what is sent outside the transcript too: the live system prompt is
+	// counted here, the tool schemas are not — they are a fixed few thousand tokens that
+	// the trigger's headroom covers on any window wide enough to run an agent.
+	prompt := ""
+	if system != nil {
+		prompt = system.Content
+	}
 	// Prune first: replacing the middle of old tool results is free and may already be
 	// enough. Only when the pruned context is still over the trigger is a summary call
 	// worth its tokens.
-	pruned := transcript.PruneToolResults(transcript.BuildConversation("", session.Summary, entries), keepRecentToolResults)
+	pruned := transcript.PruneToolResults(transcript.BuildConversation(prompt, session.Summary, entries), keepRecentToolResults)
 	pressure := transcript.EstimateTokens(pruned)
 	if !forced && pressure <= trigger {
 		return 0, false, nil

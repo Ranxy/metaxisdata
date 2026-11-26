@@ -75,9 +75,10 @@ func TestDecideAgentConfig(t *testing.T) {
 	})
 }
 
-// A quality agent needs a model that can hold a conversation and compact it: the
-// output budget must clear the summary floor and the capacities must leave a
-// positive pressure budget.
+// A quality agent needs a model that can hold a conversation and compact it: the output
+// budget must clear the summary floor, and the compaction budget must leave room for the
+// fixed overhead every request carries besides the transcript (the system prompt and the
+// tool schemas), which is why the floor is a budget and not merely a positive number.
 func TestValidateAgentModel(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +89,16 @@ func TestValidateAgentModel(t *testing.T) {
 	err := validateAgentModel(smallOutput, "m")
 	require.Error(t, err)
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	// 65,536 - 24,576 - 8,192 is exactly the floor: the smallest pair an agent accepts.
+	atFloor := llm.ResolvedConfig{ModelName: "m", ContextWindow: 65536, MaxOutputTokens: 24576}
+	require.NoError(t, validateAgentModel(atFloor, "m"))
+
+	belowFloor := llm.ResolvedConfig{ModelName: "m", ContextWindow: 65536, MaxOutputTokens: 32768}
+	err = validateAgentModel(belowFloor, "m")
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "room to compact")
 
 	noRoom := llm.ResolvedConfig{ModelName: "m", ContextWindow: 32768, MaxOutputTokens: 32767}
 	err = validateAgentModel(noRoom, "m")
