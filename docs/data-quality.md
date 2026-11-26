@@ -503,9 +503,9 @@ its arguments and result, and the runner's notes. The transcript opens on the ne
 stay at the bottom; scroll back to read history and the previous page loads when you reach the top. A **Jump to latest** control appears
 when you have scrolled away, with the number of messages that arrived meanwhile, and **Show more** opens a blocked session's full reason.
 The run-state rail also shows how full the model's context is: the tokens the last model call used against the model's context window, where
-the engine starts compacting, and which model produced the reading. The reading is provider-reported when the provider returns usage and
-marked **estimated** otherwise; a session without a model has no reading. A new session shows that the input has not been measured yet until
-its first model wake.
+the engine starts compacting, and which model produced the reading. The used figure is provider-reported when the provider returns usage and
+marked **estimated** otherwise; the compaction point is the engine's own text estimate, so it is approximate. A session without a model has no
+reading, and a new session shows that the input has not been measured yet until its first model wake.
 The owner and administrators can read it; only an administrator can resume a stuck
 session.
 - **Settings → Quality agents** (`/settings/quality-agents`) is where an administrator creates and edits agents and turns the runtime on

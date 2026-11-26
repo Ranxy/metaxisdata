@@ -52,7 +52,9 @@ describe("QualityAgentContextUsage", () => {
     });
     expect(wrapper.text()).toContain("1,000 / 4,000");
     expect(wrapper.text()).toContain("25%");
-    expect(wrapper.text()).toContain("compacts near 3,000");
+    expect(wrapper.text()).toContain(
+      "the engine estimates compaction near 3,000"
+    );
     expect(wrapper.text()).toContain("provider-reported");
     expect(wrapper.text()).toContain("test-model");
     expect(
@@ -148,6 +150,6 @@ describe("QualityAgentContextUsage", () => {
       agentModelKnown: true,
     });
     expect(wrapper.text()).toContain("this model pair cannot compact");
-    expect(wrapper.text()).not.toContain("compacts near");
+    expect(wrapper.text()).not.toContain("estimates compaction");
   });
 });
