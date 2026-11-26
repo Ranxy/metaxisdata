@@ -569,19 +569,19 @@ enabled checks, executions by verdict, new and open problems, pending proposals 
 closing sections answer what the owner asks: what the agent fixed by itself this period (work items it closed, broken down by
 failure class) and what is waiting for a person (work items it escalated or froze, work still in progress, pending proposals, open
 issues). Reports are generated from records, do not call a model, and have no on-demand variant.
-- **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
-adoption pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
-names the most recent write failure. A work item the agent cannot finish arrives as one concrete change: the check, the config
-field, the value it would take, what kind of change that is and the agent's reason. The value has already passed the same
-validation a save runs, so it will store as written, and nothing has changed until you edit the check yourself — which is why the
-agent does not offer it as something it did. The owner answers or dismisses it from the agent's home; answering resumes the target's session,
-and a reply can ask the agent to adopt the pending drafts, while the proposal item offers an **Approve pending drafts** action to the
-agent's owner or an administrator; a person's approval does not need adoption to be enabled. The item closes once no pending draft is left,
-whether the agent adopted them or a person created or rejected the last one. The owner also gets an in-app notification.
+- **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an adoption
+pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. Work items dedupe
+**per target**: one card lists the checks still waiting there and closes once nothing does; a conversation's card closes when its session
+runs again, and a target holding no rows is a fact the report names rather than a card. The proposal item separates what policy skipped
+from what failed to write and names the last write failure. A work item the agent cannot finish arrives as one concrete change — the
+check, the config field, the value, the kind of change and the agent's reason — and the value already passed the validation a save runs,
+so nothing has changed until you edit the check yourself. The owner answers or dismisses it from the agent's home; answering resumes the
+target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
+agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them or a person created or
+rejected the last one, and the owner also gets an in-app notification.
 - **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the
-  failure class, the repair attempts spent and where it stands. An item that needs a person also appears in the attention list above
-  it, as a proposal to apply or a decision to make; the rest are the agent's own to-do list, visible so that "what is the agent stuck
-  on" has an answer that does not require reading a transcript.
+  failure class, the repair attempts spent and where it stands; the ones that need a person also appear above as a proposal to apply
+  or a decision to make, and the rest answer "what is the agent stuck on" without reading a transcript.
 - **Shows whether adoption is working.** The agent's home reports the last 24 hours — checks the agent adopted, checks a person
 approved, drafts that failed to write, and drafts still pending — plus the most recent write failure. **Approve pending drafts**
 creates the agent's pending drafts as your decision: the approval writes through the internal create path, so it needs no rule-write
