@@ -1073,12 +1073,20 @@ func TestWakePassesTheWakeStartToAdoption(t *testing.T) {
 	engine.SetAdoption(func(_ context.Context, _ *store.QualityAgentSessionMessage, since time.Time) {
 		got = since
 	})
-	session := testSession()
-	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
-
-	_, err := engine.Wake(context.Background(), session, Options{})
-	require.NoError(t, err)
-	require.Equal(t, fixed, got, "the hook sees the wake start")
+	for _, mode := range []storepb.QualityAgentSessionMode{
+		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+		storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
+	} {
+		// A monitoring wake drafts only when its check cannot express the intent, and the same
+		// guardrails decide whether the replacement is created; withholding the pass would leave
+		// that draft waiting for a person on the one path meant to avoid one.
+		got = time.Time{}
+		session := testSession()
+		session.Mode = mode
+		_, err := engine.Wake(context.Background(), session, Options{})
+		require.NoError(t, err)
+		require.Equal(t, fixed, got, "the hook sees the wake start for %s", mode)
+	}
 }
 
 // agentIDCheckedStore returns the agent only for the requested id, so a test proves the

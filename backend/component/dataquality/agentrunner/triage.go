@@ -34,7 +34,7 @@ func WithTableContext(reader TableContextReader) Option {
 	return func(engine *Engine) { engine.tableContext = reader }
 }
 
-// AdoptionFunc runs after a successful triage wake: it applies the agent's
+// AdoptionFunc runs after a successful target wake: it applies the agent's
 // auto-adoption guardrails to the drafts that wake queued. since is when the wake
 // started, so a draft that a previous pass merely refreshed cannot be mistaken for
 // a new one. A nil hook leaves every draft in the review queue.

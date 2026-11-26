@@ -96,7 +96,7 @@ type Engine struct {
 	// after the service exists, like adoption, because the engine is constructed
 	// first.
 	evidence quality.AgentEvidence
-	// adoption applies the agent's auto-adoption guardrails after a triage wake.
+	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
 	// process that does not wire it keeps the tool out of reach.
@@ -328,9 +328,12 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 		config, ok, err := e.resolveModel(ctx, agent)
 		if err == nil && ok {
 			outcome, wakeErr := e.modelWake(ctx, session, agent, wake, system, pending, config, options)
-			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 &&
-				session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
-				e.adoption != nil {
+			// Automatic adoption follows any target wake that queued a draft, not just a triage
+			// wake: a monitoring wake drafts only when its check cannot express the intent, and
+			// the same guardrails (mode, confidence, allowlist, critical switch, scope, daily
+			// ceiling) decide whether the replacement is created. The pass filters by the wake's
+			// start, so a wake that queued nothing adopts nothing.
+			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 && e.adoption != nil {
 				e.adoption(ctx, session, wakeStartedAt)
 			}
 			return outcome, wakeErr

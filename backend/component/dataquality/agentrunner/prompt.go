@@ -109,7 +109,7 @@ func adoptionPolicySection(agent *store.QualityAgentMessage) string {
 			"; daily ceiling: " + strconv.Itoa(int(limit)) + "; critical assets: " + critical + ".",
 		"- You may adopt pending check drafts only when the owner explicitly asks you in the current wake. The only tool for it is adopt_pending_drafts.",
 		"- Without draft ids the call applies the configuration above. With draft ids it accepts exactly those drafts as the owner's decision, even when their type or confidence would not satisfy automatic adoption.",
-		"- Automatic adoption also runs after a triage wake when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
+		"- Automatic adoption also runs after a wake that queued drafts, when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
 		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
 	}, "\n")
 }

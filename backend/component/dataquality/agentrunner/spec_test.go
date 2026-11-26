@@ -52,18 +52,18 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Equal(t, modelMaxTurns, monitor.MaxTurns)
 	require.Equal(t, triageMaxTurns, triage.MaxTurns)
 
-	// The base tool set is the same for both target products; the capability
-	// profiles add the coverage tools to triage only.
+	// The base tool set is the same for both target products, and the coverage tools follow the
+	// capability rather than the mode: a monitor wake that discovers its check cannot express
+	// the intent must be able to draft the one that can. What differs is the prompt and the
+	// turn budget.
 	require.Equal(t, specNames(monitor.Tools), specNames(triage.Tools))
 	require.Contains(t, specNames(monitor.Tools), "record_asset_fact", "a target session records its observations")
 	all := capabilityTestAgent(agentcapability.Suggest, agentcapability.Adopt, agentcapability.Patrol)
 	monitorTools := toolSpecNames(toolsFor(monitor, all))
 	triageTools := toolSpecNames(toolsFor(triage, all))
-	require.NotContains(t, monitorTools, "get_table_context")
-	require.NotContains(t, monitorTools, "draft_checks")
-	require.Contains(t, triageTools, "get_table_context")
-	require.Contains(t, triageTools, "draft_checks")
-	require.Subset(t, triageTools, monitorTools, "triage is monitoring plus its coverage tools")
+	require.Equal(t, monitorTools, triageTools, "the target products share one tool set; only their prompt and turn budget differ")
+	require.Contains(t, monitorTools, "get_table_context")
+	require.Contains(t, monitorTools, "draft_checks")
 	require.Contains(t, monitorTools, "adopt_pending_drafts")
 	require.Contains(t, triageTools, "adopt_pending_drafts")
 
@@ -139,7 +139,8 @@ func TestCapabilityMatrix(t *testing.T) {
 				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Pending proposals:"))
 			}
 			if spec.Name == monitorProduct.Name {
-				require.False(t, exposed("draft_checks"), "monitoring never drafts checks")
+				require.Equal(t, has(agentcapability.Suggest), exposed("draft_checks"), "a monitor wake drafts a replacement when its capability allows")
+				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Maintaining coverage:"))
 				require.Equal(t, has(agentcapability.Patrol), strings.Contains(prompt, "Monitoring:"))
 			}
 			require.Equal(t, has(agentcapability.Adopt), exposed("adopt_pending_drafts"))
