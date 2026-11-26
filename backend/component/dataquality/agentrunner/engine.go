@@ -479,12 +479,15 @@ func (e *Engine) modelWake(
 	executor := toolExecutor(ctx, set, truncatedTools, invocation)
 	runLoop := func(conversation []agent.Message) *agent.Event {
 		chatConfig := agent.Config{
-			Provider:             config,
-			Feature:              spec.Feature,
-			History:              conversation,
-			Tools:                agent.ToolDefs(set.Schemas()),
-			Executor:             executor,
-			MaxTurns:             spec.MaxTurns,
+			Provider: config,
+			Feature:  spec.Feature,
+			History:  conversation,
+			Tools:    agent.ToolDefs(set.Schemas()),
+			Executor: executor,
+			MaxTurns: spec.MaxTurns,
+			// The loop's byte cap can bind before the token trigger on a window wide
+			// enough that the conversation outgrows it, which is why a cap failure is
+			// compactable rather than a dead end.
 			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
@@ -568,9 +571,15 @@ func (e *Engine) modelWake(
 		// window, or the loop's own byte cap stopped the conversation. Compact as much as
 		// possible, rebuild, and retry once inside this wake instead of wasting a whole
 		// retry cycle.
-		_, _, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
+		_, compacted, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
 			options.CompactionTriggerTokens, true)
-		if compactErr == nil {
+		if compactErr == nil && !compacted {
+			// Nothing was worth summarizing, so a retry would resend the same oversized
+			// request; say why the wake is failing instead of spending another call on it.
+			e.recordEngine(ctx, session, wake, turn,
+				"retry skipped: the conversation has no region left to compact")
+		}
+		if compactErr == nil && compacted {
 			if conversation, err = buildContext(); err != nil {
 				return Outcome{}, err
 			}

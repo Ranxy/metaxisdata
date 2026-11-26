@@ -111,8 +111,8 @@ func RepairToolCalls(messages []agent.Message) []agent.Message {
 // EstimateTokens approximates a conversation's token size. The compaction decision
 // reads this estimate alone — a provider's prompt_tokens only reaches the session
 // rail — so it charges each script at a dense transcript's rate rather than a prose
-// average. The live system prompt and the tool schemas are outside it; the trigger's
-// headroom is what absorbs that fixed overhead.
+// average, and it over-counts the transcript this product stores by about half again.
+// That is deliberate: erring low reopens the overflow the dense rate exists to prevent.
 func EstimateTokens(messages []agent.Message) int {
 	total := 0
 	for _, message := range messages {

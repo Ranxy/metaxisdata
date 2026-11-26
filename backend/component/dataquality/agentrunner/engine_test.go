@@ -913,6 +913,29 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		"the retried estimate reflects the compacted conversation")
 }
 
+// A wake whose oversized request has nothing worth summarizing fails once, with an
+// explanation, instead of spending another call that resends the same conversation and
+// reports the same error.
+func TestWakeSkipsTheRetryWhenNothingCanBeCompacted(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	calls := 0
+	chat := func(_ context.Context, _ agent.Config) <-chan agent.Event {
+		calls++
+		events := make(chan agent.Event, 1)
+		defer close(events)
+		events <- agent.Event{Type: agent.EventError, Error: agent.ErrConversationTooLarge}
+		return events
+	}
+	engine := NewModelEngine(stores, chat, resolveToModel, nil)
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Contains(t, outcome.Summary, "the model call failed")
+	require.Equal(t, 1, calls, "a retry with nothing compacted would resend the same request")
+	require.Contains(t, engineContents(stores), "retry skipped")
+}
+
 // A turn stopped by the loop's own byte cap is the same condition as a provider
 // overflow — measured in memory instead of tokens — so the wake compacts and retries
 // instead of failing on a conversation it can never shrink. Everything else is a
