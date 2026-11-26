@@ -557,6 +557,28 @@ func TestDeterministicWakeReviewsPendingEventsUpToTheBound(t *testing.T) {
 	}
 }
 
+// A health event names a check, not an execution, and there is no verdict to review
+// without a model. The wake must record it and move on: parking the session would
+// silence the target exactly when it is reporting that it never concludes.
+func TestDeterministicWakeReviewsAHealthEventWithoutParking(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+		Content: "a check ran and produced no verdict", Reference: "qualityRules/r460",
+		IdempotencyKey: "health:NEVER_JUDGED:460:2026-11-26",
+	})
+	require.NoError(t, err)
+
+	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked, "a health event must not park the session")
+	require.Contains(t, engineNoteContent(stores.messages), "deterministic health review")
+	require.Equal(t, int64(1), outcome.ProcessedSeq)
+}
+
 // A crash between the assistant message and its tool result is repaired before the next
 // model request, so the stored transcript stays legal.
 func TestWakeRepairsADanglingToolCall(t *testing.T) {

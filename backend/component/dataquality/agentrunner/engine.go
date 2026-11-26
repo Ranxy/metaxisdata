@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -595,6 +596,16 @@ func (e *Engine) deterministicWake(
 		for _, event := range events {
 			if investigated >= maxDeterministicEvents {
 				break
+			}
+			// A health event names a check, not an execution: without a model there is no
+			// verdict to review, so the wake records it and moves on. Parking the session
+			// on an event that carries no failure would silence the target exactly when it
+			// is telling us it never concludes.
+			if !strings.HasPrefix(event.Reference, "qualityExecutions/") {
+				e.recordEngine(ctx, session, wake, 0, "deterministic health review: the check produced no verdict")
+				consumed = event.Seq
+				investigated++
+				continue
 			}
 			outcome, err := e.reviewFailedExecution(ctx, session, wake, event.Reference)
 			if err != nil {

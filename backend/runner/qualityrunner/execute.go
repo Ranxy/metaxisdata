@@ -172,8 +172,10 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// settled in both cases.
 	r.settleQualityExecutions(ctx, workspaceID, executions, storm, now)
 	// A failed check wakes its target's agent session: the agent should react while the
-	// failure is fresh, not on its next daily wake.
+	// failure is fresh, not on its next daily wake. A check that ran without concluding
+	// has no failure to report, so it gets its own event.
 	r.intakeAgentEvents(ctx, workspaceID, executions)
+	r.intakeHealthEvents(ctx, workspaceID, healthAssessments(executions))
 
 	if aborted || incomplete {
 		if incomplete {
