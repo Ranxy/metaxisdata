@@ -131,20 +131,39 @@ func (s *Store) GetOpenQualityAgentAttentionByDedupe(ctx context.Context, agentI
 	return message, nil
 }
 
-// SetOpenQualityAgentAttentionQuestion refreshes the wording of the one open item
-// for an agent/dedupe key. It never re-notifies: the notification is sent only when
-// the item is first created, while the question must stay truthful as later passes
-// change the counts behind it.
-func (s *Store) SetOpenQualityAgentAttentionQuestion(ctx context.Context, agentID int64, dedupeKey, question string) error {
+// RefreshOpenQualityAgentAttention rewrites the wording of the one open item for an
+// agent/dedupe key, and the work item it points at when that changed. It never
+// re-notifies: the notification is sent only when the item is first created, while
+// the question must stay truthful as later passes change what is behind it.
+func (s *Store) RefreshOpenQualityAgentAttention(ctx context.Context, agentID int64, dedupeKey, question, caseResourceID string) error {
 	_, err := s.GetDB().ExecContext(ctx, `
 		UPDATE quality_agent_attention
-		SET question = $3
-		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $4`,
-		agentID, dedupeKey, question, int16(QualityAgentAttentionStatusOpen))
+		SET question = $3, case_resource_id = COALESCE(NULLIF($4, ''), case_resource_id)
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $5`,
+		agentID, dedupeKey, question, caseResourceID, int16(QualityAgentAttentionStatusOpen))
 	if err != nil {
 		return errors.Wrap(err, "failed to update the open quality agent attention")
 	}
 	return nil
+}
+
+// ResolveOpenQualityAgentAttentionByDedupe closes the open item for a dedupe key. applied is false
+// when nothing was open, so a caller that runs on every pass is idempotent.
+func (s *Store) ResolveOpenQualityAgentAttentionByDedupe(ctx context.Context, agentID int64, dedupeKey string, now time.Time) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention
+		SET status = $3, resolved_at = $4
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $5`,
+		agentID, dedupeKey, int16(QualityAgentAttentionStatusResolved), now.UTC(),
+		int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to resolve the open quality agent attention")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read the resolved quality agent attention count")
+	}
+	return affected > 0, nil
 }
 
 // GetQualityAgentAttentionByResourceID reads one escalation; nil means absent.
@@ -218,6 +237,30 @@ func (s *Store) ResolveQualityAgentAttention(ctx context.Context, resourceID str
 		return nil, false, errors.Wrap(err, "failed to resolve the quality agent attention")
 	}
 	return attention, true, nil
+}
+
+// ResolveTargetCaseAttentions closes one target's legacy per-case cards. A card belongs to a target
+// now, so an old per-case card on the same target would ask the same question a second time; the
+// write that raises the target's card is where the leftover is cleared.
+func (s *Store) ResolveTargetCaseAttentions(ctx context.Context, agentID int64, targetGUID string, now time.Time) (int64, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention a
+		SET status = $3, resolved_at = $4
+		WHERE a.agent_id = $1 AND a.status = $5 AND a.dedupe_key LIKE 'case:%'
+			AND a.case_resource_id IN (
+				SELECT c.resource_id FROM quality_agent_case c
+				WHERE c.agent_id = $1 AND c.target_guid = $2
+			)`,
+		agentID, targetGUID, int16(QualityAgentAttentionStatusResolved), now.UTC(),
+		int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to resolve the target's per-case attentions")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to read the resolved per-case attention count")
+	}
+	return affected, nil
 }
 
 // ProposalAttentionDedupeKey is the dedupe key of the per-target proposal item.

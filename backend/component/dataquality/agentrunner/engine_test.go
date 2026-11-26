@@ -15,6 +15,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -702,6 +703,30 @@ func TestOpenCaseBlockIsBounded(t *testing.T) {
 	block := openCaseBlock(cases)
 	require.Equal(t, maxWakeCases, strings.Count(block, "qualityAgentCases/"))
 	require.Empty(t, openCaseBlock(nil))
+}
+
+// A case whose class describes the target is a fact the server settles, so the wake must not offer
+// it as work: an empty table once reached a person as one work item per check because the wake
+// rendered it and escalation was the only verb left.
+func TestOpenCaseBlockSkipsFactsNotWork(t *testing.T) {
+	t.Parallel()
+
+	block := openCaseBlock([]*store.QualityAgentCaseMessage{
+		{
+			ResourceID:   "fact",
+			FailureClass: string(dataquality.ClassNoVerdictEmpty),
+			State:        store.QualityAgentCaseStateDiagnosed,
+			Summary:      "the target holds no rows",
+		},
+		{
+			ResourceID:   "real",
+			FailureClass: string(dataquality.ClassConfigUnsupported),
+			State:        store.QualityAgentCaseStateDiagnosed,
+			Summary:      "the check asks for something the target cannot do",
+		},
+	})
+	require.NotContains(t, block, "qualityAgentCases/fact")
+	require.Contains(t, block, "qualityAgentCases/real")
 }
 
 // A crash between the assistant message and its tool result is repaired before the next

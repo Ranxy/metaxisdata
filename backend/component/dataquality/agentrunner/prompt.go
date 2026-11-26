@@ -267,11 +267,11 @@ func wakePrompt(
 			wake, adoptionRequestHint(agent), work, target, objective)
 	case events > 0:
 		return fmt.Sprintf(
-			"[wake %d] %d new event(s) arrived above. Decide whether they need action, record what you conclude, then stop when the wake is done.%s Target: %s. Objective: %s.",
+			"[wake %d] %d new event(s) arrived above. Decide whether they need action; record a durable fact only if you concluded one, then stop when the wake is done.%s Target: %s. Objective: %s.",
 			wake, events, work, target, objective)
 	default:
 		return fmt.Sprintf(
-			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop.%s Target: %s. Objective: %s.",
+			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record a fact only if you learned something a later wake could not rediscover, or do nothing and stop.%s Target: %s. Objective: %s.",
 			wake, work, target, objective)
 	}
 }
@@ -319,6 +319,11 @@ func openCaseBlock(cases []*store.QualityAgentCaseMessage) string {
 	shown := 0
 	for _, openCase := range cases {
 		if openCase == nil || shown >= maxWakeCases {
+			continue
+		}
+		// A fact is not an item to work: rendering it invites exactly one answer from a wake —
+		// escalate a question that has none — and it would take the slot of a real one.
+		if dataquality.IsFactNotWork(dataquality.FailureClass(openCase.FailureClass)) {
 			continue
 		}
 		shown++

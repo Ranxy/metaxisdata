@@ -142,3 +142,31 @@ func TestLocateConfigField(t *testing.T) {
 	field, _ = locateConfigField(twoBounds, "some unquoted driver message")
 	assert.Empty(t, field, "two candidates and no quoted value is a guess, not a diagnosis")
 }
+
+// The fact classes are the one list the intake, the sweep and the escalation guard read. A class
+// that is a fact without a stored resolution would close a case with an empty history, and a class
+// missing from the list would reopen the escalation path the redesign closed.
+func TestFactNotWorkClassesAreSettledWithAReason(t *testing.T) {
+	t.Parallel()
+
+	classes := FactNotWorkClasses()
+	require.Contains(t, classes, ClassNoVerdictEmpty)
+	require.True(t, IsFactNotWork(ClassNoVerdictEmpty))
+	require.False(t, IsFactNotWork(ClassConfigUnsupported),
+		"a definition that cannot run is a defect a person or a repair can act on")
+	require.False(t, IsFactNotWork(ClassDataFailure), "a failed check concluded; it is not a fact")
+	require.False(t, IsFactNotWork(""))
+	for _, class := range classes {
+		require.NotEmpty(t, FactResolution(class), "class %s needs a sentence for the case history", class)
+	}
+	require.NotEqual(t, FactResolution(ClassNoVerdictEmpty), FactResolution(""),
+		"an unknown class gets the generic sentence")
+}
+
+// The report read spells the empty-target class itself because the store cannot import this
+// package; the two spellings must stay one fact.
+func TestTheStoreSpellingOfTheEmptyClassMatchesTheClass(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, string(ClassNoVerdictEmpty), store.QualityAgentFailureClassNoVerdictEmpty)
+}

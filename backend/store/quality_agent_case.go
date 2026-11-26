@@ -273,10 +273,78 @@ func (s *Store) ListOpenQualityAgentCases(ctx context.Context, agentID int64, li
 // FindQualityAgentCaseMessage selects one agent's work items for the read-only case view.
 type FindQualityAgentCaseMessage struct {
 	AgentID *int64
+	// TargetGUID scopes the list to one target, which is how a decision card is rebuilt from the
+	// work items still open on it.
+	TargetGUID *string
 	// States restricts the lifecycle; an empty slice lists every state, closed ones included.
 	States []QualityAgentCaseState
 	Limit  int
 	Offset int
+}
+
+// QualityAgentCaseSettled is one agent and target whose settled cases were closed together, so the
+// caller can refresh that target's decision card once instead of per case.
+type QualityAgentCaseSettled struct {
+	AgentID    int64
+	TargetGUID string
+	Cases      int64
+}
+
+// ResolveQualityAgentCasesByClass closes every open case of one failure class. It is the set-based
+// settlement of a class that describes the target rather than a defect: an empty table is a fact,
+// so those work items must not wait for a model or a person. Intake settles them too, but only when
+// a batch runs, and an empty target may produce no execution for hours.
+func (s *Store) ResolveQualityAgentCasesByClass(ctx context.Context, class, resolution string, now time.Time) ([]QualityAgentCaseSettled, error) {
+	if strings.TrimSpace(class) == "" {
+		return nil, common.Errorf(common.Invalid, "a failure class is required")
+	}
+	// An escalated case of a fact class is included on purpose: the class says no decision exists,
+	// so a case in ESCALATED contradicts its own class and must be settled too — otherwise the work
+	// item outlives the reason it was opened for.
+	rows, err := s.GetDB().QueryContext(ctx, `
+		WITH settled AS (
+			UPDATE quality_agent_case
+			SET state = $2, resolution = $3, next_action_at = NULL, updated_at = $4
+			WHERE failure_class = $1 AND state = ANY($5)
+			RETURNING agent_id, target_guid, resource_id
+		), closed AS (
+			UPDATE quality_agent_attention a
+			SET status = $6, resolved_at = $4
+			WHERE a.status = $7 AND a.dedupe_key LIKE 'case:%'
+				AND a.case_resource_id IN (SELECT resource_id FROM settled)
+		)
+		SELECT agent_id, target_guid FROM settled`,
+		class, int16(QualityAgentCaseStateResolved), resolution, now.UTC(),
+		pq.Array([]int16{
+			int16(QualityAgentCaseStateOpen), int16(QualityAgentCaseStateDiagnosed),
+			int16(QualityAgentCaseStateEscalated),
+		}),
+		int16(QualityAgentAttentionStatusResolved), int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to resolve the quality agent cases of one class")
+	}
+	defer rows.Close()
+	settled := make([]QualityAgentCaseSettled, 0, 4)
+	index := make(map[QualityAgentCaseSettled]int)
+	for rows.Next() {
+		var agentID int64
+		var targetGUID string
+		if scanErr := rows.Scan(&agentID, &targetGUID); scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to read a settled quality agent case")
+		}
+		key := QualityAgentCaseSettled{AgentID: agentID, TargetGUID: targetGUID}
+		position, seen := index[key]
+		if !seen {
+			index[key] = len(settled)
+			settled = append(settled, QualityAgentCaseSettled{AgentID: agentID, TargetGUID: targetGUID, Cases: 1})
+			continue
+		}
+		settled[position].Cases++
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the settled quality agent cases")
+	}
+	return settled, nil
 }
 
 // ListQualityAgentCases lists one agent's work items for the board: the ones still open first,
@@ -292,6 +360,10 @@ func (s *Store) ListQualityAgentCases(ctx context.Context, find *FindQualityAgen
 	}
 	where := "agent_id = $1"
 	args := []any{*find.AgentID}
+	if find.TargetGUID != nil {
+		args = append(args, *find.TargetGUID)
+		where += " AND target_guid = $" + strconv.Itoa(len(args))
+	}
 	if len(find.States) > 0 {
 		states := make([]int16, 0, len(find.States))
 		for _, state := range find.States {

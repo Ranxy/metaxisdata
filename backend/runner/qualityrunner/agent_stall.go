@@ -25,6 +25,42 @@ const (
 	stallSweepGrace = 2 * time.Minute
 )
 
+// sweepFactCases settles the work items whose failure class describes the target rather than a
+// defect. Intake already refuses to open them and resolves them when a batch runs, but a target
+// that produces no execution for hours leaves the case open, and an open fact is worse than no
+// case: a wake can only run it again or escalate it, and escalating it hands a person a question
+// with no answer.
+func (r *Runner) sweepFactCases(ctx context.Context, now time.Time) {
+	for _, class := range dataquality.FactNotWorkClasses() {
+		settled, err := r.stores.ResolveQualityAgentCasesByClass(ctx, string(class), dataquality.FactResolution(class), now)
+		if err != nil {
+			slog.Warn("failed to settle the quality agent cases that are facts, not work",
+				slog.String("class", string(class)), log.WithError(err))
+			continue
+		}
+		for _, group := range settled {
+			r.metrics.ObserveAgentCaseTransitions(store.QualityAgentCaseStateResolved.Name(), group.Cases)
+			slog.Info("settled quality agent cases that are facts, not work",
+				slog.String("class", string(class)), slog.String("target", group.TargetGUID),
+				slog.Int64("cases", group.Cases))
+			// The settled items were the reason the target had a decision card; the card must not
+			// outlive them.
+			r.refreshTargetCard(ctx, group.AgentID, group.TargetGUID)
+		}
+	}
+}
+
+// refreshTargetCard recomputes one target's decision card after work items settled. A read failure
+// is logged and dropped: the card is a notice, not the record.
+func (r *Runner) refreshTargetCard(ctx context.Context, agentID int64, targetGUID string) {
+	agent, err := r.stores.GetQualityAgentByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return
+	}
+	raiser := &agentattention.Raiser{Store: r.stores, Notifier: r.notifier}
+	raiser.Refresh(ctx, agent, targetGUID)
+}
+
 // sweepStalledChecks tells each target session about the checks that have stopped running.
 //
 // It exists because such a check produces nothing: no execution, no failure event, no health event,
@@ -39,6 +75,10 @@ func (r *Runner) sweepStalledChecks(ctx context.Context) {
 	if !r.currentSettings().AgentRunnerEnabled {
 		return
 	}
+	// Same tick, different question: which work items are not work at all. It runs before the
+	// staleness read because it settles rows that would otherwise be rendered to a wake as an
+	// item no verb can advance — the one situation a model answers with an escalation.
+	r.sweepFactCases(ctx, now)
 	workspaceID, err := r.stores.GetWorkspaceID(ctx)
 	if err != nil {
 		slog.Warn("failed to resolve the workspace for the stall sweep", log.WithError(err))

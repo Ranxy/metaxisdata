@@ -83,3 +83,32 @@ func TestRenderNamesWhatWasFixedAndWhatIsWaiting(t *testing.T) {
 	// The same snapshot renders byte-identically, so a retried report does not churn the body.
 	require.Equal(t, english, Render(snapshot, start, end, time.UTC, "en-US"))
 }
+
+// An empty target is a fact the report states once, not a decision per silenced check: the
+// escalation path used to hand the owner one work item per check on a table that holds no rows.
+func TestRenderStatesEmptyTargetsAsAFact(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	snapshot := &store.QualityAgentReportSnapshot{
+		TargetCount: 2, RuleCount: 9, RepairedCount: 9,
+		EmptyTargets: []store.QualityAgentTargetCaseCount{
+			{TargetGUID: "test-pg-1;gug;public;stock_alert", Cases: 8},
+			{TargetGUID: "test-pg-1;gug;;audit_log", Cases: 1},
+		},
+	}
+
+	english := Render(snapshot, start, end, time.UTC, "en-US")
+	require.Contains(t, english, "- 2 target(s) could not be judged at all because they hold no rows, silencing 9 check(s)")
+	require.Contains(t, english, "public.stock_alert (8)")
+	require.Contains(t, english, "audit_log (1)", "a MySQL-wire path names the database, not an empty schema")
+
+	chinese := Render(snapshot, start, end, time.UTC, "zh-CN")
+	require.Contains(t, chinese, "- 2 个目标因 0 行数据无法判定，共 9 条检查")
+	require.Contains(t, chinese, "public.stock_alert (8)")
+	require.Contains(t, chinese, "这是数据事实，不是检查缺陷")
+
+	// A period with no empty target says nothing at all about them.
+	require.NotContains(t, Render(&store.QualityAgentReportSnapshot{}, start, end, time.UTC, "en-US"), "hold no rows")
+}

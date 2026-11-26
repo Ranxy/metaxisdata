@@ -119,3 +119,23 @@ func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 		AttentionTitle(English, store.QualityAgentAttentionKindProposalPending),
 		AttentionTitle(Chinese, store.QualityAgentAttentionKindProposalPending))
 }
+
+// One target's decision card lists what still waits there: the newest hand-off, then the others, so
+// a person decides about a target instead of opening one card per silenced check.
+func TestCaseListQuestionAggregatesOneTarget(t *testing.T) {
+	t.Parallel()
+
+	newest := "检查「a」：引擎拒绝了这个定义。"
+	require.Equal(t, newest, CaseListQuestion("zh-CN", newest, nil),
+		"a single hand-off is not given a heading it does not need")
+
+	english := CaseListQuestion("en-US", "Check \"a\": the engine refused it.", []string{"check \"b\": gave up"})
+	require.Contains(t, english, "Check \"a\"")
+	require.Contains(t, english, "Also waiting on this target:")
+	require.Contains(t, english, "- check \"b\": gave up")
+
+	chinese := CaseListQuestion("zh-CN", newest, []string{"check \"b\": gave up", "  "})
+	require.Contains(t, chinese, "同一目标上还在等你决定：")
+	require.Contains(t, chinese, "- check \"b\": gave up")
+	require.NotContains(t, chinese, "-  \n", "a blank summary contributes no bullet")
+}

@@ -370,7 +370,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	if !created {
 		// The owner already has one open item for this target. Keep its wording
 		// truthful as later passes change the counts; only a new item notifies.
-		if updateErr := s.store.SetOpenQualityAgentAttentionQuestion(ctx, session.AgentID, "proposal:"+targetGUID, question); updateErr != nil {
+		if updateErr := s.store.RefreshOpenQualityAgentAttention(ctx, session.AgentID, "proposal:"+targetGUID, question, ""); updateErr != nil {
 			slog.Warn("failed to refresh a proposal attention", log.WithError(updateErr))
 		}
 		return result

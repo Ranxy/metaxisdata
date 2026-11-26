@@ -229,10 +229,16 @@ func targetToolSpecs() []toolSpec {
 			meta:        readMeta(),
 		},
 		{
-			name:        "record_asset_fact",
-			description: "Record a deterministic observation about the target as an asset fact.",
+			name: "record_asset_fact",
+			description: "Record one durable fact about the target — what it is, what it holds, how it behaves — in a sentence a " +
+				"later wake reads and recognizes. Write it once, in stable wording, and keep the reasoning in your message: a wake's " +
+				"analysis is not a fact, and a fact restated in new words on every wake stops being one. Record nothing when a wake " +
+				"concluded nothing new.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"statement": map[string]any{"type": "string"},
+				"statement": map[string]any{
+					"type":        "string",
+					"description": "one durable sentence about the asset, e.g. the table holds no rows, or created_at is filled by the application on insert",
+				},
 			}, "required": []string{"statement"}},
 			meta: proposeMeta(),
 		},
@@ -240,11 +246,12 @@ func targetToolSpecs() []toolSpec {
 			name: "escalate_case",
 			description: "Hand one work item to its owner and stop working on it: a change you may not make, a failure no field change " +
 				"fixes, a decision that is not yours. The case becomes escalated and the owner is told, with your reason as the question. " +
-				"Use this instead of reporting a blocker: a blocked session stops every target it covers.",
+				"Use this instead of reporting a blocker: a blocked session stops every target it covers. It acts on a work item only: a " +
+				"check that produced a FAIL has none, because a failing check is a finding the issue ledger already reports to your owner.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
+					"description": "the qualityAgentCases id from the work list above — never an execution or a check id; without a work list entry there is nothing to escalate",
 				},
 				"reason": map[string]any{
 					"type":        "string",

@@ -100,15 +100,29 @@ type Diagnosis struct {
 // judge, a person cannot make the check work by approving an edit, and every run of it would produce
 // the same honest "no verdict". Leaving it as work parks a permanent item that no verb can close.
 func IsFactNotWork(class FailureClass) bool {
+	for _, fact := range FactNotWorkClasses() {
+		if class == fact {
+			return true
+		}
+	}
+	return false
+}
+
+// FactNotWorkClasses lists the classes that describe the target rather than a defect in the check.
+// It is the one list the intake, the sweep and the escalation guard read, so a new fact class
+// cannot be settled by one path and escalated by another.
+func FactNotWorkClasses() []FailureClass {
+	return []FailureClass{ClassNoVerdictEmpty}
+}
+
+// FactResolution is the sentence stored on a case a fact settles. It is written by the server, not
+// the model: the case history should say why it closed without a person having said anything.
+func FactResolution(class FailureClass) string {
 	switch class {
 	case ClassNoVerdictEmpty:
-		return true
-	case ClassConfigValueInvalid, ClassConfigUnsupported, ClassStructureDrift,
-		ClassNoVerdictNoBaseline, ClassNoVerdictNoValue, ClassStuckInflight,
-		ClassSourceFault, ClassDataFailure, ClassExecutionFault, "":
-		return false
+		return "the target held no rows, so no verdict was possible; closed as a fact about the data, not a defect in the check"
 	default:
-		return false
+		return "closed as a fact about the target"
 	}
 }
 
