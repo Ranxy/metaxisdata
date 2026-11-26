@@ -14589,6 +14589,20 @@ components:
                 generateTime:
                     type: string
                     format: date-time
+                repairedCount:
+                    type: integer
+                    description: |-
+                        Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+                         They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+                         counted from the agent's own cases, not from the checks.
+                    format: int32
+                escalatedCount:
+                    type: integer
+                    format: int32
+                openCaseCount:
+                    type: integer
+                    description: Work items still in progress when the report was generated. Not period-bounded.
+                    format: int32
             description: QualityAgentReport is one deterministic patrol report over an agent's scope.
         QualityAgentReportSchedule:
             type: object

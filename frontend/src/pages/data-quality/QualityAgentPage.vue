@@ -444,7 +444,8 @@
                 targets: report.targetCount,
                 rules: report.ruleCount,
                 failed: report.failedCount,
-                issues: report.openIssueCount,
+                repaired: report.repairedCount,
+                waiting: report.escalatedCount + report.openCaseCount,
               }) }}
             </p>
           </div>

@@ -7654,6 +7654,27 @@ export declare type QualityAgentReport = Message<"metaxisdata.v1.QualityAgentRep
    * @generated from field: google.protobuf.Timestamp generate_time = 25;
    */
   generateTime?: Timestamp;
+
+  /**
+   * Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+   * They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+   * counted from the agent's own cases, not from the checks.
+   *
+   * @generated from field: int32 repaired_count = 26;
+   */
+  repairedCount: number;
+
+  /**
+   * @generated from field: int32 escalated_count = 27;
+   */
+  escalatedCount: number;
+
+  /**
+   * Work items still in progress when the report was generated. Not period-bounded.
+   *
+   * @generated from field: int32 open_case_count = 28;
+   */
+  openCaseCount: number;
 };
 
 /**

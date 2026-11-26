@@ -106,6 +106,16 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 | --- | --- |
 | An agent's provider or model is missing or no longer enabled | the wake has no model: the conversation answers with the deterministic scope summary, triage parks `needs-human`, the agent is shown as unavailable; never a silent switch. A changed pair the registry cannot run is refused before the agent row exists |
 
+## The patrol report
+
+The report is a deterministic aggregate, rendered by `component/dataquality/agentreport` and stored with its counts as columns. It
+leads with the scope and the period's executions, then answers the two questions an owner actually asks: **what the agent fixed** —
+the work items it closed by itself in the period, broken down by failure class — and **what is waiting for you** — the items it
+escalated or froze, the ones still in progress, the drafts still pending and the issues still open. The work-item counts are the
+agent's own cases, read by agent rather than by target, so a report never counts another agent's work. Both sections state their
+honest zero: "nothing was settled by the agent" is different from "the agent fixed nothing because there was nothing to fix", and a
+report that hides the difference cannot show whether delegating the database is working.
+
 ## Where to look
 
 | Path | Owns |

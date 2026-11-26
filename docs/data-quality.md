@@ -565,8 +565,10 @@ conversation for that target, and the agent can record verified asset facts to r
 - **Converses with its owner.** The owner's questions join the same long-lived conversation. An agent without a configured model still
 answers with a deterministic scope summary.
 - **Reports.** On its schedule the agent produces a deterministic patrol report for its scope — scope health, targets and coverage,
-enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Reports are
-generated from records, do not call a model, and have no on-demand variant.
+enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Its two
+closing sections answer what the owner asks: what the agent fixed by itself this period (work items it closed, broken down by
+failure class) and what is waiting for a person (work items it escalated or froze, work still in progress, pending proposals, open
+issues). Reports are generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
 adoption pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
 names the most recent write failure. A work item the agent cannot finish arrives as one concrete change: the check, the config

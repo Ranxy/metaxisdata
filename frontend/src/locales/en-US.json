@@ -3426,7 +3426,7 @@
     "originUnspecified": "Origin",
     "originWake": "Wake",
     "readOnly": "Administrators can read only; only the owner can talk to this agent.",
-    "reportCounts": "Targets {targets} · checks {rules} · failed {failed} · open issues {issues}",
+    "reportCounts": "Targets {targets} · checks {rules} · failed {failed} · repaired {repaired} · waiting for you {waiting}",
     "reportDialogTitle": "Patrol report",
     "reportView": "View",
     "reportsEmpty": "No reports yet.",

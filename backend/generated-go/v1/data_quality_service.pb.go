@@ -16459,8 +16459,15 @@ type QualityAgentReport struct {
 	BodyMarkdown         string                 `protobuf:"bytes,22,opt,name=body_markdown,json=bodyMarkdown,proto3" json:"body_markdown,omitempty"`
 	CreateTime           *timestamppb.Timestamp `protobuf:"bytes,24,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	GenerateTime         *timestamppb.Timestamp `protobuf:"bytes,25,opt,name=generate_time,json=generateTime,proto3" json:"generate_time,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+	// They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+	// counted from the agent's own cases, not from the checks.
+	RepairedCount  int32 `protobuf:"varint,26,opt,name=repaired_count,json=repairedCount,proto3" json:"repaired_count,omitempty"`
+	EscalatedCount int32 `protobuf:"varint,27,opt,name=escalated_count,json=escalatedCount,proto3" json:"escalated_count,omitempty"`
+	// Work items still in progress when the report was generated. Not period-bounded.
+	OpenCaseCount int32 `protobuf:"varint,28,opt,name=open_case_count,json=openCaseCount,proto3" json:"open_case_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualityAgentReport) Reset() {
@@ -16638,6 +16645,27 @@ func (x *QualityAgentReport) GetGenerateTime() *timestamppb.Timestamp {
 		return x.GenerateTime
 	}
 	return nil
+}
+
+func (x *QualityAgentReport) GetRepairedCount() int32 {
+	if x != nil {
+		return x.RepairedCount
+	}
+	return 0
+}
+
+func (x *QualityAgentReport) GetEscalatedCount() int32 {
+	if x != nil {
+		return x.EscalatedCount
+	}
+	return 0
+}
+
+func (x *QualityAgentReport) GetOpenCaseCount() int32 {
+	if x != nil {
+		return x.OpenCaseCount
+	}
+	return 0
 }
 
 type ListQualityAgentReportsRequest struct {
@@ -22771,7 +22799,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\tafter_seq\x18\x04 \x01(\x03R\bafterSeq\"\xd1\x01\n" +
 	",ListQualityAgentConversationMessagesResponse\x12y\n" +
 	"#quality_agent_conversation_messages\x18\x01 \x03(\v2*.metaxisdata.v1.QualityAgentSessionMessageR qualityAgentConversationMessages\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc3\b\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbb\t\n" +
 	"\x12QualityAgentReport\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\x12I\n" +
@@ -22799,7 +22827,10 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\rbody_markdown\x18\x16 \x01(\tR\fbodyMarkdown\x12;\n" +
 	"\vcreate_time\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12?\n" +
-	"\rgenerate_time\x18\x19 \x01(\v2\x1a.google.protobuf.TimestampR\fgenerateTime:f\xeaAc\n" +
+	"\rgenerate_time\x18\x19 \x01(\v2\x1a.google.protobuf.TimestampR\fgenerateTime\x12%\n" +
+	"\x0erepaired_count\x18\x1a \x01(\x05R\rrepairedCount\x12'\n" +
+	"\x0fescalated_count\x18\x1b \x01(\x05R\x0eescalatedCount\x12&\n" +
+	"\x0fopen_case_count\x18\x1c \x01(\x05R\ropenCaseCount:f\xeaAc\n" +
 	"\x1emetaxisdata/QualityAgentReport\x12Aworkspaces/{workspace}/qualityAgentReports/{quality_agent_report}J\x04\b\x03\x10\x04J\x04\b\b\x10\tJ\x04\b\x15\x10\x16J\x04\b\x17\x10\x18R\atriggerR\x05stateR\vtokens_usedR\x0efailure_reason\"\x96\x01\n" +
 	"\x1eListQualityAgentReportsRequest\x128\n" +
 	"\x06parent\x18\x01 \x01(\tB \xe0A\x02\xfaA\x1a\n" +

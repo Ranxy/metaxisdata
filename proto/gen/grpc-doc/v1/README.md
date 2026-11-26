@@ -7245,6 +7245,9 @@ QualityAgentReport is one deterministic patrol report over an agent&#39;s scope.
 | body_markdown | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | generate_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| repaired_count | [int32](#int32) |  | Work items the agent closed by itself inside the period, and the ones it escalated or froze. They are the report&#39;s answer to &#34;what did it fix&#34; and &#34;what is waiting for me&#34;; both were counted from the agent&#39;s own cases, not from the checks. |
+| escalated_count | [int32](#int32) |  |  |
+| open_case_count | [int32](#int32) |  | Work items still in progress when the report was generated. Not period-bounded. |
 
 
 

@@ -3426,7 +3426,7 @@
     "originUnspecified": "来源",
     "originWake": "唤醒",
     "readOnly": "管理员只读查看；只有 owner 可以和这个 Agent 对话。",
-    "reportCounts": "目标 {targets} · 检查 {rules} · 失败 {failed} · 未解决问题 {issues}",
+    "reportCounts": "目标 {targets} · 检查 {rules} · 失败 {failed} · 已修复 {repaired} · 待你决定 {waiting}",
     "reportDialogTitle": "巡检报告",
     "reportView": "查看",
     "reportsEmpty": "还没有报告。",

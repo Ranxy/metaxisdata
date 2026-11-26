@@ -4020,6 +4020,13 @@ message QualityAgentReport {
   string body_markdown = 22;
   google.protobuf.Timestamp create_time = 24;
   google.protobuf.Timestamp generate_time = 25;
+  // Work items the agent closed by itself inside the period, and the ones it escalated or froze.
+  // They are the report's answer to "what did it fix" and "what is waiting for me"; both were
+  // counted from the agent's own cases, not from the checks.
+  int32 repaired_count = 26;
+  int32 escalated_count = 27;
+  // Work items still in progress when the report was generated. Not period-bounded.
+  int32 open_case_count = 28;
 }
 
 message ListQualityAgentReportsRequest {
