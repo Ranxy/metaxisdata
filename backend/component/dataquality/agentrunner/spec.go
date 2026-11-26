@@ -229,10 +229,16 @@ func targetToolSpecs() []toolSpec {
 			meta:        readMeta(),
 		},
 		{
-			name:        "record_asset_fact",
-			description: "Record a deterministic observation about the target as an asset fact.",
+			name: "record_asset_fact",
+			description: "Record one durable fact about the target — what it is, what it holds, how it behaves — in a sentence a " +
+				"later wake reads and recognizes. Write it once, in stable wording, and keep the reasoning in your message: a wake's " +
+				"analysis is not a fact, and a fact restated in new words on every wake stops being one. Record nothing when a wake " +
+				"concluded nothing new.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"statement": map[string]any{"type": "string"},
+				"statement": map[string]any{
+					"type":        "string",
+					"description": "one durable sentence about the asset, e.g. the table holds no rows, or created_at is filled by the application on insert",
+				},
 			}, "required": []string{"statement"}},
 			meta: proposeMeta(),
 		},

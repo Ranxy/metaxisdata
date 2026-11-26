@@ -124,7 +124,7 @@ The agent's language is one setting (`en-US`/`zh-CN`, empty follows the owner's 
 
 ## Memory
 
-Memory holds only confirmed asset facts: agents write them, a fact for the same subject supersedes the older one, and `get_memory` is the only reader.
+Memory holds only confirmed asset facts: agents write them, a fact for the same subject supersedes the older one, and `get_memory` is the only reader. What a fact *is* is prompt guidance, not a constraint — the tool accepts any sentence, because a hard one-line limit would block the fact someone genuinely needs to record. The guidance says a fact is durable knowledge about the asset, written once in stable wording so a later wake recognizes it, with the reasoning left in the message: without that, a wake's analysis became one 500-character "fact" per wake.
 
 ## Invariants — what must not break
 

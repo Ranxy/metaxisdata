@@ -55,3 +55,26 @@ func TestMonitorPromptSaysAFailingCheckIsNotAWorkItem(t *testing.T) {
 	require.NotContains(t, sections[0].Text, "Escalate a blocker that needs a person instead of guessing",
 		"an unqualified escalation invitation is what produced a fabricated case id")
 }
+
+// A fact is durable knowledge, not a wake log. The dev agent stored 188 "facts" averaging 500
+// characters, one per wake, because both the tool and the wake wording invited a summary of the
+// reasoning; the guidance now says what a fact is, without constraining what the tool accepts.
+func TestFactRecordingIsGuidedNotConstrained(t *testing.T) {
+	t.Parallel()
+
+	var recordSpec toolSpec
+	for _, spec := range triageSpec().Tools {
+		if spec.name == "record_asset_fact" {
+			recordSpec = spec
+		}
+	}
+	require.Equal(t, "record_asset_fact", recordSpec.name, "the fact tool is on the triage product")
+	require.Contains(t, recordSpec.description, "durable fact")
+	require.Contains(t, recordSpec.description, "reasoning in your message")
+	require.Contains(t, recordSpec.description, "Record nothing when a wake concluded nothing new")
+
+	profile, ok := profileFor(agentcapability.Patrol)
+	require.True(t, ok)
+	sections := profile.Prompt(monitorSpec())
+	require.Contains(t, sections[0].Text, "one durable sentence per fact")
+}
