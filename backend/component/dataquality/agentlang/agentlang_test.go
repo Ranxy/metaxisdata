@@ -79,6 +79,7 @@ func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 	}{
 		{"blocked question", func(language string) string { return BlockedQuestion(language, "model failed") }, "model failed"},
 		{"case revision question", func(language string) string { return CaseRevisionQuestion(language, revision) }, "2024-01-01T00:00:00Z"},
+		{"case frozen question", func(language string) string { return CaseFrozenQuestion(language, "performed_at must be recent", 2) }, "performed_at must be recent"},
 		{"proposal question", func(language string) string { return ProposalQuestion(language, counts) }, "boom-xyz"},
 		{"report question", func(language string) string { return ReportQuestion(language, 1234, 5678) }, "1234"},
 		{"report ready", func(language string) string { return ReportReady(language, "2026-11-01", "2026-11-07") }, "2026-11-01"},

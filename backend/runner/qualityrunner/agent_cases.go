@@ -93,6 +93,11 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						slog.String("from", openCase.State.Name()),
 						slog.String("to", state.Name()),
 						slog.String("outcome", string(verification.Outcome)))
+					if state == store.QualityAgentCaseStateFrozen {
+						// A frozen case is the agent saying "I cannot fix this": nobody else can see
+						// that from the table, so it has to reach the owner.
+						r.escalateFrozenCase(ctx, openCase, assessment.Rule)
+					}
 				}
 				continue
 			}

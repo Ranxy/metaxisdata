@@ -8,6 +8,8 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -109,4 +111,27 @@ func (r *Runner) stallSweepDue(now time.Time) bool {
 	}
 	r.stallSweepAt = now
 	return true
+}
+
+// escalateFrozenCase tells the owner that the agent exhausted its repair budget on one check. It is
+// best effort, like every other escalation: the case row is the durable record, and a failed notice
+// must never fail the batch that produced it.
+func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.QualityAgentCaseMessage, rule *store.QualityRuleMessage) {
+	agent, err := r.stores.GetQualityAgentByID(ctx, openCase.AgentID)
+	if err != nil || agent == nil {
+		return
+	}
+	language, _ := agentattention.OwnerLanguage(ctx, r.stores, agent)
+	title := ""
+	if rule != nil {
+		title = rule.Title
+		if title == "" {
+			title = "qualityRules/" + rule.ResourceID
+		}
+	}
+	raiser := &agentattention.Raiser{Store: r.stores, Notifier: r.notifier}
+	raiser.Raise(ctx, openCase, agent, agentattention.Notice{
+		Kind:     store.QualityAgentAttentionKindBlocked,
+		Question: agentlang.CaseFrozenQuestion(language, title, openCase.Attempts),
+	})
 }

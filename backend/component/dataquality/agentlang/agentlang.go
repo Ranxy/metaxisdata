@@ -202,6 +202,20 @@ func RevisionEffectLabel(lang, effect string) string {
 	}
 }
 
+// CaseFrozenQuestion is the escalation body for a work item the agent gave up on: it tried the
+// budget of repairs and the check still fails the same way. The sentence has to say that the agent
+// stopped and that a person now owns the decision, because a frozen item that reads like an
+// in-progress repair is a silent dead end.
+func CaseFrozenQuestion(lang, check string, attempts int32) string {
+	check = strings.TrimSpace(check)
+	attemptsText := fmt.Sprintf("%d", attempts)
+	if IsChinese(lang) {
+		return "检查「" + check + "」在 " + attemptsText + " 次修复后仍以同样原因失败，Agent 已停止尝试。需要你决定是修改这条检查，还是处理目标本身的问题。"
+	}
+	return "The check \"" + check + "\" still fails the same way after " + attemptsText + " repair attempt(s), so the agent stopped. " +
+		"A person decides whether the check or the target needs to change."
+}
+
 // ProposalCounts is the outcome of one adoption pass for one target.
 type ProposalCounts struct {
 	Remaining int
