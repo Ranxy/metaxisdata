@@ -16177,6 +16177,20 @@ components:
                          is not affected. It is scheduling metadata, not part of the rule definition:
                          editing it does not append a revision.
                     format: enum
+                manualLock:
+                    type: boolean
+                    description: |-
+                        A person manages this check. The agent may still read it and propose changes, but it never
+                         rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+                         and the only one — editing a check never creates a lock.
+                pinnedFields:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+                         everything below it. Both this and manual_lock are head-only metadata: they are not part of
+                         the definition and write no revision.
             description: QualityRule is one data quality check.
         QualityRuleConfig:
             type: object

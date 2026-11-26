@@ -1204,6 +1204,16 @@ message QualityRule {
   // editing it does not append a revision.
   QualityFrequencyTier frequency_tier = 20;
 
+  // A person manages this check. The agent may still read it and propose changes, but it never
+  // rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+  // and the only one — editing a check never creates a lock.
+  bool manual_lock = 22;
+
+  // Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+  // everything below it. Both this and manual_lock are head-only metadata: they are not part of
+  // the definition and write no revision.
+  repeated string pinned_fields = 23;
+
   // Scheduling is a property of the target, not of one rule: see
   // QualityTargetSchedule and UpdateQualityTargetSchedule.
   reserved 11;

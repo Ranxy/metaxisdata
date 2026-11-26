@@ -1242,3 +1242,33 @@ func TestQualitySuggestionQueueSummaryCarriesRejections(t *testing.T) {
 	empty := qualitySuggestionQueueSummary(summary, nil)
 	require.Empty(t, empty.GetRejectedDrafts())
 }
+
+// A pin is head-only metadata: writing it must not look like a definition change, or the update
+// path would revalidate and append a revision for a column that records who manages the check.
+func TestParseQualityRuleUpdateWritesPinsWithoutADefinitionChange(t *testing.T) {
+	t.Parallel()
+
+	update, err := parseQualityRuleUpdate(&v1pb.QualityRule{
+		ManualLock:   true,
+		PinnedFields: []string{" range.min ", "", "range.max"},
+	}, []string{"manual_lock", "pinned_fields"})
+	require.NoError(t, err)
+	require.True(t, update.PinChanged)
+	require.False(t, update.DefinitionChanged)
+	require.NotNil(t, update.Patch.ManualLock)
+	require.True(t, *update.Patch.ManualLock)
+	require.NotNil(t, update.Patch.PinnedFields)
+	require.Equal(t, []string{"range.min", "range.max"}, *update.Patch.PinnedFields)
+
+	// Clearing the pins is a real write: an empty mask entry must not read as "leave them alone".
+	cleared, err := parseQualityRuleUpdate(&v1pb.QualityRule{PinnedFields: []string{}}, []string{"pinned_fields"})
+	require.NoError(t, err)
+	require.NotNil(t, cleared.Patch.PinnedFields)
+	require.Empty(t, *cleared.Patch.PinnedFields)
+
+	// Unlocking is the other direction of the same column.
+	unlocked, err := parseQualityRuleUpdate(&v1pb.QualityRule{ManualLock: false}, []string{"manual_lock"})
+	require.NoError(t, err)
+	require.NotNil(t, unlocked.Patch.ManualLock)
+	require.False(t, *unlocked.Patch.ManualLock)
+}

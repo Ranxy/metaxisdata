@@ -150,6 +150,24 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
    * @generated from field: metaxisdata.v1.QualityFrequencyTier frequency_tier = 20;
    */
   frequencyTier: QualityFrequencyTier;
+
+  /**
+   * A person manages this check. The agent may still read it and propose changes, but it never
+   * rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+   * and the only one — editing a check never creates a lock.
+   *
+   * @generated from field: bool manual_lock = 22;
+   */
+  manualLock: boolean;
+
+  /**
+   * Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+   * everything below it. Both this and manual_lock are head-only metadata: they are not part of
+   * the definition and write no revision.
+   *
+   * @generated from field: repeated string pinned_fields = 23;
+   */
+  pinnedFields: string[];
 };
 
 /**

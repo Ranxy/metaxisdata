@@ -8039,6 +8039,8 @@ QualityRule is one data quality check.
 | tags | [string](#string) | repeated |  |
 | viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this rule&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.update&#34;. Output only; a page uses it to gate row actions without a second request. |
 | frequency_tier | [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier) |  | How often this check needs to run inside the target&#39;s schedule. The target tick is the floor, so a tier denser than the target is a no-op; a manual run is not affected. It is scheduling metadata, not part of the rule definition: editing it does not append a revision. |
+| manual_lock | [bool](#bool) |  | A person manages this check. The agent may still read it and propose changes, but it never rewrites it: the lock is the explicit, revocable way to take a check out of the agent&#39;s reach, and the only one — editing a check never creates a lock. |
+| pinned_fields | [string](#string) | repeated | Config paths a person pinned, in dotted form (&#34;range.min&#34;). A pin on a parent path covers everything below it. Both this and manual_lock are head-only metadata: they are not part of the definition and write no revision. |
 
 
 

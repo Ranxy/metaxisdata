@@ -62,6 +62,11 @@ does so through the check itself or by answering the escalation.
 
 How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the delegation default) or `TUNE`. It cascades — the agent row, the database row the operator chose when delegating, then an enrollment-level exception — and an unset slot inherits the level above it rather than resetting, so narrowing one table does not re-declare the rest. The level is per target, so it cannot live in the byte-stable system prompt: the wake instruction states the resolved level and what it permits. A **pin** is the only way to take a check out of the agent's reach, and it is always a person's explicit act: `quality_rule.manual_lock` pins the whole check, `pinned_fields` pins named config paths (a pin on `range` covers `range.min`), and editing a check never creates one. Both are head-only metadata like the frequency tier — they write no revision.
 
+A pin is written by a person through the ordinary rule update (`manual_lock` and `pinned_fields` are two mask paths), on the
+check's own row in the checks list: the lock is the button there, and per-field pins are the same metadata through the API. It is
+audited like any other rule write, changes no definition, writes no revision, and is revocable in one click. That is deliberate —
+the delegation's safety rests on the escape hatch being easier to reach than the thing it guards against.
+
 ## Wake rendering and scheduling
 
 The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.

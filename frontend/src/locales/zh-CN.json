@@ -360,8 +360,12 @@
       "description": "跨所有目标的检查，用于审计与搜索；创建和编辑在目标的契约工作台中进行。",
       "emptyDescription": "打开一个质量目标，在那里添加第一条检查。",
       "emptyTitle": "还没有检查",
+      "lockForAgent": "锁定这条检查：Agent 只能提案，不会直接修改",
+      "lockedForAgent": "已锁定：Agent 对这条检查只提案，不修改",
       "openTarget": "打开目标",
-      "title": "检查"
+      "title": "检查",
+      "unlockForAgent": "解除锁定，交回给 Agent",
+      "unlockedForAgent": "已解锁：Agent 可以继续修复这条检查"
     },
     "clearOwnerFilter": "清除负责人筛选",
     "clearRuleFilter": "清除检查筛选",

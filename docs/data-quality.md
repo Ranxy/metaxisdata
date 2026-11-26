@@ -598,6 +598,10 @@ tool; a person's approval is recorded under its own origin but never spends it.
 - **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
   that is usually empty — is flagged with its reason, and a flagged draft is never adopted automatically: it waits for a person, who
   reads the objection in the review queue beside the draft. Flagging is a doubt, not a refusal: you can still approve the draft.
+- **Can be held back, check by check.** Each row in the checks list has a lock: locking a check tells the agent it may read the
+  check and propose changes but never write it, and unlocking hands it back. Pinning a single field (for example only
+  `range.min`) is the same metadata, set through the API. A lock is recorded in the audit log, changes no definition, and is the
+  only way to take a check away from the agent — editing a check yourself never does.
 - **Does not write freely.** An agent never approves on its own. It may adopt drafts the owner explicitly asks for — applying the
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the

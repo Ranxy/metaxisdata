@@ -2904,6 +2904,14 @@ type QualityRule struct {
 	// is not affected. It is scheduling metadata, not part of the rule definition:
 	// editing it does not append a revision.
 	FrequencyTier QualityFrequencyTier `protobuf:"varint,20,opt,name=frequency_tier,json=frequencyTier,proto3,enum=metaxisdata.v1.QualityFrequencyTier" json:"frequency_tier,omitempty"`
+	// A person manages this check. The agent may still read it and propose changes, but it never
+	// rewrites it: the lock is the explicit, revocable way to take a check out of the agent's reach,
+	// and the only one — editing a check never creates a lock.
+	ManualLock bool `protobuf:"varint,22,opt,name=manual_lock,json=manualLock,proto3" json:"manual_lock,omitempty"`
+	// Config paths a person pinned, in dotted form ("range.min"). A pin on a parent path covers
+	// everything below it. Both this and manual_lock are head-only metadata: they are not part of
+	// the definition and write no revision.
+	PinnedFields  []string `protobuf:"bytes,23,rep,name=pinned_fields,json=pinnedFields,proto3" json:"pinned_fields,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3076,6 +3084,20 @@ func (x *QualityRule) GetFrequencyTier() QualityFrequencyTier {
 		return x.FrequencyTier
 	}
 	return QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED
+}
+
+func (x *QualityRule) GetManualLock() bool {
+	if x != nil {
+		return x.ManualLock
+	}
+	return false
+}
+
+func (x *QualityRule) GetPinnedFields() []string {
+	if x != nil {
+		return x.PinnedFields
+	}
+	return nil
 }
 
 // QualityTarget is what a rule observes.
@@ -21511,7 +21533,7 @@ var File_v1_data_quality_service_proto protoreflect.FileDescriptor
 
 const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1dv1/data_quality_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\x1a\x1cv1/explain_sql_service.proto\x1a\x18v1/setting_service.proto\"\x81\t\n" +
+	"\x1dv1/data_quality_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x19v1/database_service.proto\x1a\x1cv1/explain_sql_service.proto\x1a\x18v1/setting_service.proto\"\xc7\t\n" +
 	"\vQualityRule\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
@@ -21538,7 +21560,10 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"mute_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tmuteUntil\x12\x12\n" +
 	"\x04tags\x18\x13 \x03(\tR\x04tags\x122\n" +
 	"\x12viewer_permissions\x18\x15 \x03(\tB\x03\xe0A\x03R\x11viewerPermissions\x12K\n" +
-	"\x0efrequency_tier\x18\x14 \x01(\x0e2$.metaxisdata.v1.QualityFrequencyTierR\rfrequencyTier:P\xeaAM\n" +
+	"\x0efrequency_tier\x18\x14 \x01(\x0e2$.metaxisdata.v1.QualityFrequencyTierR\rfrequencyTier\x12\x1f\n" +
+	"\vmanual_lock\x18\x16 \x01(\bR\n" +
+	"manualLock\x12#\n" +
+	"\rpinned_fields\x18\x17 \x03(\tR\fpinnedFields:P\xeaAM\n" +
 	"\x17metaxisdata/QualityRule\x122workspaces/{workspace}/qualityRules/{quality_rule}J\x04\b\v\x10\fR\x11schedule_interval\"\xb4\x01\n" +
 	"\rQualityTarget\x12\x1b\n" +
 	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x125\n" +

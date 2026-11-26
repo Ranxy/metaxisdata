@@ -503,6 +503,33 @@
                       <Zap class="h-4 w-4" />
                     </Button>
                     <Button
+                      v-if="canPinRule(rule)"
+                      variant="ghost"
+                      size="icon"
+                      class="h-8 w-8"
+                      :title="
+                        rule.manualLock
+                          ? t('dataQuality.checks.unlockForAgent')
+                          : t('dataQuality.checks.lockForAgent')
+                      "
+                      :aria-label="
+                        rule.manualLock
+                          ? t('dataQuality.checks.unlockForAgent')
+                          : t('dataQuality.checks.lockForAgent')
+                      "
+                      :disabled="pinBusy === rule.name"
+                      @click="togglePin(rule)"
+                    >
+                      <LockOpen
+                        v-if="rule.manualLock"
+                        class="h-4 w-4"
+                      />
+                      <Lock
+                        v-else
+                        class="h-4 w-4"
+                      />
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
@@ -550,6 +577,8 @@
 <script setup lang="ts">
 import {
   ExternalLink,
+  Lock,
+  LockOpen,
   Plus,
   RefreshCcw,
   ShieldCheck,
@@ -563,6 +592,7 @@ import {
   listQualityRules,
   qualityRuleID,
   runQualityRules,
+  updateQualityRule,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -659,6 +689,16 @@ function canRunRule(rule: QualityRule): boolean {
     qualityRuleViewerCan(rule, "metaxisdata.dataQuality.rules.run")
   );
 }
+
+// A pin is the way a person takes a check away from the agent, so the control
+// follows rules.update on the rule's target rather than the agent's settings.
+function canPinRule(rule: QualityRule): boolean {
+  return (
+    canEdit.value ||
+    qualityRuleViewerCan(rule, "metaxisdata.dataQuality.rules.update")
+  );
+}
+const pinBusy = ref("");
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
 );
@@ -1128,6 +1168,34 @@ function targetTitle(rule: QualityRule): string {
 /** The owner's email from the directory (raw name if unknown), or "unassigned". */
 function ownerName(rule: QualityRule): string {
   return rule.owner ? emailOf(rule.owner) : t("dataQuality.unassignedOwner");
+}
+
+/**
+ * togglePin locks a check for the agent, or hands it back. The lock is head-only
+ * metadata: it writes no revision, changes no definition, and the agent keeps
+ * reading the check (it may still propose changes, it just never writes them).
+ */
+async function togglePin(rule: QualityRule) {
+  pinBusy.value = rule.name;
+  try {
+    const updated = await updateQualityRule(
+      { ...rule, manualLock: !rule.manualLock },
+      ["manual_lock"]
+    );
+    const index = rules.value.findIndex((entry) => entry.name === rule.name);
+    if (index >= 0) {
+      rules.value[index] = updated;
+    }
+    notify.success(
+      updated.manualLock
+        ? t("dataQuality.checks.lockedForAgent")
+        : t("dataQuality.checks.unlockedForAgent")
+    );
+  } catch (err) {
+    handleError(err);
+  } finally {
+    pinBusy.value = "";
+  }
 }
 
 async function runRule(rule: QualityRule) {

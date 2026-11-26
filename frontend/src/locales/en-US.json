@@ -360,8 +360,12 @@
       "description": "Every check across targets, for audit and search. Create and edit checks inside a target's contract workspace.",
       "emptyDescription": "Open a target and add its first check there.",
       "emptyTitle": "No checks yet",
+      "lockForAgent": "Lock this check: the agent may propose changes but never writes it",
+      "lockedForAgent": "The check is locked: the agent will only propose changes to it",
       "openTarget": "Open target",
-      "title": "Checks"
+      "title": "Checks",
+      "unlockForAgent": "Unlock this check for the agent",
+      "unlockedForAgent": "The check is unlocked: the agent may repair it again"
     },
     "clearOwnerFilter": "Clear owner filter",
     "clearRuleFilter": "Clear check filter",
