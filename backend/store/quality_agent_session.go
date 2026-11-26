@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -382,7 +384,37 @@ func (s *Store) UpdateQualityAgentSessionState(ctx context.Context, resourceID s
 		}
 		return nil, false, errors.Wrap(err, "failed to update the quality agent session")
 	}
+	// The session runs again, so the notice about its block is stale. Closing it here covers every
+	// path that clears a block — a person's resume, the budget window reopening, an enrollment
+	// enabling a dormant session — because they all go through this one write.
+	if state == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED {
+		if closeErr := s.resolveSessionBlockedAttentions(ctx, message.ID, time.Now().UTC()); closeErr != nil {
+			slog.Warn("failed to close a resumed session's block notice",
+				slog.String("session", resourceID), log.WithError(closeErr))
+		}
+	}
 	return message, true, nil
+}
+
+// SessionBlockedAttentionDedupeKey is the key of the notice about one blocked session. The session
+// and the code are both in it: a session blocked for a different reason is a different question.
+func SessionBlockedAttentionDedupeKey(sessionResourceID, code string) string {
+	return "blocked:" + sessionResourceID + ":" + code
+}
+
+// resolveSessionBlockedAttentions closes the block notices of one session. A case card hangs off the
+// same session but its dedupe key is the target's, so only the block notices are touched.
+func (s *Store) resolveSessionBlockedAttentions(ctx context.Context, sessionID int64, now time.Time) error {
+	_, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_attention
+		SET status = $2, resolved_at = $3
+		WHERE session_id = $1 AND status = $4 AND dedupe_key LIKE 'blocked:%'`,
+		sessionID, int16(QualityAgentAttentionStatusResolved), now,
+		int16(QualityAgentAttentionStatusOpen))
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve the session's block notices")
+	}
+	return nil
 }
 
 // MarkQualityAgentSessionManualResume records that a person resumed a blocked session. The next

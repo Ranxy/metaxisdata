@@ -332,7 +332,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			SessionID:   &session.ID,
 			Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindBlocked),
 			Question:    agentlang.BlockedQuestion(language, reason),
-			DedupeKey:   "blocked:" + session.ResourceID + ":" + code,
+			DedupeKey:   store.SessionBlockedAttentionDedupeKey(session.ResourceID, code),
 			CreatedAt:   time.Now().UTC(),
 		})
 		if err != nil || !created {
