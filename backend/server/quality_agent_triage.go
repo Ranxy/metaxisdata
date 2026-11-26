@@ -33,13 +33,14 @@ func (c *qualityTriageContext) ReadTableContext(ctx context.Context, targetGUID 
 	}
 	target := resolution.Target
 	context := &agentrunner.TableContext{
-		TargetGUID: targetGUID,
-		TargetType: targetType.String(),
-		Engine:     target.Engine.String(),
-		Instance:   target.InstanceResourceID,
-		Database:   target.Database,
-		Schema:     target.Schema,
-		Object:     target.Table,
+		TargetGUID:       targetGUID,
+		TargetType:       targetType.String(),
+		Engine:           target.Engine.String(),
+		Instance:         target.InstanceResourceID,
+		Database:         target.Database,
+		Schema:           target.Schema,
+		Object:           target.Table,
+		AllowedRuleTypes: triageAllowedRuleTypes(targetType, target.Engine),
 	}
 	keyColumns := make(map[string]bool, len(target.KeyColumns))
 	for _, column := range target.KeyColumns {
@@ -207,4 +208,21 @@ func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string,
 		titles = append(titles, suggestion.Payload.GetRule().GetTitle())
 	}
 	return titles, rejections, summary, nil
+}
+
+// triageAllowedRuleTypes renders the check types draft_checks can propose on a
+// target: the vocabulary the drafting prompt offers, short-named as the rest of the
+// model-facing surface spells it. It is deliberately narrower than the rule types
+// that can run there — a view runs custom SQL and schema drift but neither is ever
+// drafted — so the field cannot contradict the drafting tool's own contract.
+func triageAllowedRuleTypes(metaType storepb.MetaType, engine storepb.Engine) []string {
+	types := dataquality.DraftableRuleTypes(metaType, engine)
+	if len(types) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(types))
+	for _, ruleType := range types {
+		names = append(names, dataquality.RuleTypeShortName(ruleType))
+	}
+	return names
 }

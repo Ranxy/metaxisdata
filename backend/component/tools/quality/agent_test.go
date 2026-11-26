@@ -109,6 +109,61 @@ func TestGetTargetSummaryCarriesAdoptionAndPendingDrafts(t *testing.T) {
 	require.Contains(t, result, `"title":"id must be unique"`)
 }
 
+// The summary's failure block is the last 24 hours, so a failure from before that
+// window must not reach the model: a stale cause rendered beside failedLast24h:0
+// reads as the current one, and the model would blame the present configuration for
+// a write that failed last week.
+func TestGetTargetSummaryHidesAFailureOutsideTheWindow(t *testing.T) {
+	t.Parallel()
+
+	failedAt := time.Date(2026, 11, 19, 6, 4, 0, 0, time.UTC)
+	tests := []struct {
+		name    string
+		status  *store.QualityAgentAdoptionStatusMessage
+		present bool
+	}{
+		{
+			name: "a stale failure keeps its reason out of the window",
+			status: &store.QualityAgentAdoptionStatusMessage{
+				FailedLast24h:     0,
+				LastFailureReason: "rule creation failed: the dimension is required",
+				LastFailureTime:   &failedAt,
+			},
+			present: false,
+		},
+		{
+			name: "a failure inside the window carries its reason and time",
+			status: &store.QualityAgentAdoptionStatusMessage{
+				FailedLast24h:     1,
+				LastFailureReason: "rule creation failed (invalid_argument): the dimension is required",
+				LastFailureTime:   &failedAt,
+			},
+			present: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{status: test.status}})
+			result, err := tools.GetTargetSummary(context.Background(), AgentSession{
+				WorkspaceID: "ws",
+				AgentID:     1,
+				TargetGUID:  "target-1",
+				TargetType:  storepb.MetaType_TABLE,
+			})
+			require.NoError(t, err)
+			require.Contains(t, result, `"failedLast24h":`)
+			if test.present {
+				require.Contains(t, result, `"lastFailureReason":"rule creation failed (invalid_argument): the dimension is required"`)
+				require.Contains(t, result, `"lastFailureTime":"2026-11-19T06:04:00Z"`)
+				return
+			}
+			require.NotContains(t, result, "lastFailureReason")
+			require.NotContains(t, result, "lastFailureTime")
+		})
+	}
+}
+
 // The evidence tools are adapters over the application-layer read: they must pass the
 // agent principal and the session target through, and marshal what the read returns.
 // The projection itself is the application layer's job (and is tested there).

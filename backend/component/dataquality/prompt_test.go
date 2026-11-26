@@ -439,6 +439,38 @@ func TestDraftRuleSpecsAreClosed(t *testing.T) {
 	require.NotEqual(t, "tampered", DraftRuleSpecs()[0].Name)
 }
 
+// The vocabulary a draft prompt offers is the pipeline's own answer for the target.
+// A view has no column authority, so offering range or null_percent only produces a
+// draft the pipeline refuses after the model has already spent the round trip.
+func TestBuildRuleDraftPromptOffersOnlyTheTypesTheTargetCanRun(t *testing.T) {
+	t.Parallel()
+
+	table := promptTestTarget()
+	tableSystem, _ := BuildRuleDraftPrompt(RuleDraftContext{Language: "en"}, table, nil, "price must be non-negative", nil)
+	require.Contains(t, tableSystem, "- range:")
+	require.NotContains(t, tableSystem, "runs only the")
+
+	view := promptTestTarget()
+	view.MetaType = storepb.MetaType_VIEW
+	viewSystem, _ := BuildRuleDraftPrompt(RuleDraftContext{Language: "en"}, view, nil, "price must be non-negative", nil)
+	require.Contains(t, viewSystem, "- row_count:")
+	require.Contains(t, viewSystem, "VIEW")
+	require.Contains(t, viewSystem, "runs only the")
+	for _, refused := range []string{"- range:", "- null_percent:", "- accepted_values:", "- regex:", "- unique:"} {
+		require.NotContainsf(t, viewSystem, refused, "a view prompt must not offer %s", refused)
+	}
+
+	// The list a model is shown as "what can I draft here" is the prompt's own
+	// vocabulary, not the pipeline's wider rule-type set: custom SQL and schema
+	// drift can run on a view but are never drafted.
+	draftable := DraftableRuleTypes(storepb.MetaType_VIEW, storepb.Engine_POSTGRES)
+	require.Contains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)
+	require.Contains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT)
+	require.NotContains(t, draftable, storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE)
+}
+
 // The rule-draft prompt must name the labels of an enum column so the model can
 // write accepted values from the declared set instead of inventing one.
 func TestBuildRuleDraftPromptCarriesEnumLabels(t *testing.T) {

@@ -113,12 +113,6 @@ func labelSemanticTypeShortName(semantic storepb.QualitySemanticType) string {
 	return strings.TrimPrefix(semantic.String(), "QUALITY_SEMANTIC_TYPE_")
 }
 
-// labelRuleTypeShortName renders the enum name without its proto prefix:
-// "QUALITY_RULE_TYPE_UNIQUE" becomes "UNIQUE".
-func labelRuleTypeShortName(ruleType storepb.QualityRuleType) string {
-	return strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
-}
-
 // labelParseSemanticType resolves a semantic-type spelling. Both the short name
 // ("EMAIL") and the full proto name ("QUALITY_SEMANTIC_TYPE_EMAIL") are accepted,
 // case-insensitively; the prompt asks for the short form.
@@ -136,7 +130,7 @@ func labelParseSemanticType(name string) (storepb.QualitySemanticType, bool) {
 func labelParseRuleType(name string) (storepb.QualityRuleType, bool) {
 	normalized := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(name)), "QUALITY_RULE_TYPE_")
 	for _, ruleType := range labelRuleTypes {
-		if labelRuleTypeShortName(ruleType) == normalized {
+		if RuleTypeShortName(ruleType) == normalized {
 			return ruleType, true
 		}
 	}
@@ -771,10 +765,10 @@ func validateLabelResponse(response labelResponseWire, columns []string) error {
 				return fmt.Errorf("column %q names rule type %q, which is not a known rule type", column, name)
 			}
 			if _, ok := candidates[ruleType]; !ok {
-				return fmt.Errorf("column %q with semantic type %s cannot suggest rule type %s", column, labelSemanticTypeShortName(label), labelRuleTypeShortName(ruleType))
+				return fmt.Errorf("column %q with semantic type %s cannot suggest rule type %s", column, labelSemanticTypeShortName(label), RuleTypeShortName(ruleType))
 			}
 			if _, ok := seenRules[ruleType]; ok {
-				return fmt.Errorf("column %q suggests rule type %s more than once", column, labelRuleTypeShortName(ruleType))
+				return fmt.Errorf("column %q suggests rule type %s more than once", column, RuleTypeShortName(ruleType))
 			}
 			seenRules[ruleType] = struct{}{}
 		}

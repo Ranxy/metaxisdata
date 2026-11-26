@@ -1,6 +1,8 @@
 package dataquality
 
 import (
+	"strings"
+
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -38,6 +40,31 @@ func RuleTypeForTarget(metaType storepb.MetaType, ruleType storepb.QualityRuleTy
 	default:
 		return false
 	}
+}
+
+// AllowedRuleTypes lists the rule types this build can run against a target of the
+// given registry type and engine, in proto enum order. It applies the same two
+// gates RequireTarget does, so a caller can show a model what will be accepted
+// instead of letting it propose a type the pipeline refuses.
+func AllowedRuleTypes(metaType storepb.MetaType, engine storepb.Engine) []storepb.QualityRuleType {
+	allowed := make([]storepb.QualityRuleType, 0, len(ruleTypeSpecs))
+	for _, spec := range ruleTypeSpecs {
+		if !RuleTypeForTarget(metaType, spec.Type) {
+			continue
+		}
+		if ok, _ := Supported(engine, spec.Type); !ok {
+			continue
+		}
+		allowed = append(allowed, spec.Type)
+	}
+	return allowed
+}
+
+// RuleTypeShortName renders the enum name without its proto prefix:
+// "QUALITY_RULE_TYPE_UNIQUE" becomes "UNIQUE". Models read this spelling in
+// evidence, target summaries, prompt vocabularies and refusal messages.
+func RuleTypeShortName(ruleType storepb.QualityRuleType) string {
+	return strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
 }
 
 // IsMetadataRule reports whether a rule type observes the metadata registry

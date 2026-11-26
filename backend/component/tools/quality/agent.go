@@ -122,6 +122,10 @@ type TableContext struct {
 	Downstream  int32                 `json:"downstreamConsumers"`
 	Upstream    int32                 `json:"upstreamSources"`
 	SchemaStale bool                  `json:"schemaChangedRecently,omitempty"`
+	// AllowedRuleTypes are the check types draft_checks can propose on this target,
+	// short-named as the rest of the surface spells them. A draft naming any other
+	// type is refused, so the model reads this before it writes an intent.
+	AllowedRuleTypes []string `json:"allowedRuleTypes"`
 }
 
 // TableContextReader loads the table context one triage wake reads. Production
@@ -508,12 +512,18 @@ func (t *AgentTools) adoptionView(ctx context.Context, session AgentSession) map
 		return nil
 	}
 	view := map[string]any{
-		"adoptedLast24h":    status.AdoptedLast24h,
-		"failedLast24h":     status.FailedLast24h,
-		"lastFailureReason": status.LastFailureReason,
+		"adoptedLast24h": status.AdoptedLast24h,
+		"failedLast24h":  status.FailedLast24h,
 	}
-	if status.LastFailureTime != nil {
-		view["lastFailureTime"] = status.LastFailureTime.UTC().Format(time.RFC3339)
+	// The reason is the latest failure ever, which can be weeks older than the
+	// window beside it; rendering it next to failedLast24h:0 made a stale cause read
+	// as the current one. The settings page still shows the whole history, with its
+	// timestamp, because a person can act on it.
+	if status.FailedLast24h > 0 {
+		view["lastFailureReason"] = status.LastFailureReason
+		if status.LastFailureTime != nil {
+			view["lastFailureTime"] = status.LastFailureTime.UTC().Format(time.RFC3339)
+		}
 	}
 	return view
 }
@@ -549,7 +559,7 @@ func (t *AgentTools) targetPendingDrafts(ctx context.Context, session AgentSessi
 			"confidence": row.Confidence,
 		}
 		if ruleType, ok := dataquality.RuleTypeForDraftConfig(row.Payload.GetRule().GetConfig()); ok {
-			view["ruleType"] = strings.TrimPrefix(ruleType.String(), "QUALITY_RULE_TYPE_")
+			view["ruleType"] = dataquality.RuleTypeShortName(ruleType)
 		}
 		views = append(views, view)
 	}

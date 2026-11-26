@@ -107,6 +107,9 @@ func adoptionPolicySection(agent *store.QualityAgentMessage) string {
 		"- Configuration: mode " + mode + "; eligible check types: " + adoptionRuleTypeList(agent.AdoptionRuleTypes) +
 			"; minimum model confidence: " + strconv.FormatFloat(threshold, 'f', 2, 64) +
 			"; daily ceiling: " + strconv.Itoa(int(limit)) + "; critical assets: " + critical + ".",
+		// Stated as configuration, not as advice: a wake that keeps drafting outside
+		// the gate learns the consequence only by watching an adoption be skipped.
+		"- Automatic adoption considers only those check types and that confidence floor; a draft outside them waits for a person in the review queue.",
 		"- You may adopt pending check drafts only when the owner explicitly asks you in the current wake. The only tool for it is adopt_pending_drafts.",
 		"- Without draft ids the call applies the configuration above. With draft ids it accepts exactly those drafts as the owner's decision, even when their type or confidence would not satisfy automatic adoption.",
 		"- Automatic adoption also runs after a wake that queued drafts, when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",

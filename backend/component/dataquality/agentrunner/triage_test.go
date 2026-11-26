@@ -43,6 +43,9 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
 	require.Contains(t, result, `"enumValues":["draft","published"]`)
+	// The drafting guidance points at this field, so it must reach the model with
+	// the spelling the tool description promises.
+	require.Contains(t, result, `"allowedRuleTypes":["ROW_COUNT","ROW_COUNT_CHANGE"]`)
 }
 
 func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
@@ -125,6 +128,7 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 			{Name: "amount", Type: "decimal", Nullable: true},
 			{Name: "status", Type: "enum('draft','published')", EnumValues: []string{"draft", "published"}},
 		},
-		Downstream: 3,
+		Downstream:       3,
+		AllowedRuleTypes: []string{"ROW_COUNT", "ROW_COUNT_CHANGE"},
 	}, nil
 }
