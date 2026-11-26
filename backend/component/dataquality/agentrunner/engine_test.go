@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -910,6 +911,21 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 	require.True(t, stores.contextUsage[1].GetEstimated())
 	require.Less(t, stores.contextUsage[1].GetUsedTokens(), stores.contextUsage[0].GetUsedTokens(),
 		"the retried estimate reflects the compacted conversation")
+}
+
+// A turn stopped by the loop's own byte cap is the same condition as a provider
+// overflow — measured in memory instead of tokens — so the wake compacts and retries
+// instead of failing on a conversation it can never shrink. Everything else is a
+// failure a smaller context would not fix.
+func TestCompactableCoversTheByteCapAndTheProviderOverflow(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, compactable(&llm.ResponseError{Code: llm.FailureContextOverflow}))
+	require.True(t, compactable(agent.ErrConversationTooLarge))
+	require.True(t, compactable(fmt.Errorf("wrapped: %w", agent.ErrConversationTooLarge)),
+		"a wrapped cause must still classify")
+	require.False(t, compactable(errors.New("the provider is unreachable")))
+	require.False(t, compactable(nil))
 }
 
 // denyingChecker refuses every permission and records which half of the scoped

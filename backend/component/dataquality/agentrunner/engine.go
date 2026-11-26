@@ -563,9 +563,11 @@ func (e *Engine) modelWake(
 	}
 	recordEstimate()
 	failure := runLoop(conversation)
-	if failure != nil && llm.IsContextOverflow(failure.Error) {
-		// The provider rejected the context as too large. Compact as much as possible,
-		// rebuild, and retry once inside this wake instead of wasting a whole retry cycle.
+	if failure != nil && compactable(failure.Error) {
+		// The request was too large for the model: the provider rejected the context
+		// window, or the loop's own byte cap stopped the conversation. Compact as much as
+		// possible, rebuild, and retry once inside this wake instead of wasting a whole
+		// retry cycle.
 		_, _, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
 			options.CompactionTriggerTokens, true)
 		if compactErr == nil {
@@ -1123,6 +1125,14 @@ func toolCallsToStore(calls []llm.ToolCall) *storepb.QualityToolCallList {
 		})
 	}
 	return list
+}
+
+// compactable reports whether a failed turn is the request being too large: the
+// provider's context window, or the loop's conversation byte cap, which is the same
+// condition measured in memory. Compacting answers both; every other failure is a
+// provider or tool problem that a smaller context would not fix.
+func compactable(err error) bool {
+	return llm.IsContextOverflow(err) || agent.IsConversationTooLarge(err)
 }
 
 func usageTokens(usage *llm.Usage) int32 {
