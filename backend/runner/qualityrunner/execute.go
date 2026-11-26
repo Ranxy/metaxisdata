@@ -155,7 +155,7 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 
 	now := time.Now().UTC()
 	workspaceID := ""
-	if r.notifier != nil {
+	if r.notifier != nil || r.currentSettings().AgentRunnerEnabled {
 		workspaceID = r.workspaceID(ctx)
 	}
 	// A task that never produced a written verdict (a read or mark failure, a
@@ -176,6 +176,10 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// has no failure to report, so it gets its own event.
 	r.intakeAgentEvents(ctx, workspaceID, executions)
 	r.intakeHealthEvents(ctx, workspaceID, healthAssessments(executions))
+	// A check that cannot conclude is work the agent must resume across wakes, not a
+	// message it reads once. Opening the case here is what makes the agent's progress
+	// durable; deciding what to do about it is a later wake's job.
+	r.intakeAgentCases(ctx, workspaceID, healthAssessments(executions))
 
 	if aborted || incomplete {
 		if incomplete {

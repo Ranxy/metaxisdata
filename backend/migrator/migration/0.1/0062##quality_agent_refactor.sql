@@ -16,6 +16,10 @@ ALTER TABLE quality_suggestion DROP CONSTRAINT IF EXISTS quality_suggestion_agen
 UPDATE quality_suggestion SET agent_id = NULL WHERE agent_id IS NOT NULL;
 
 -- The agent tables reference each other and quality_agent, so drop the children first.
+-- A later migration that adds a child of quality_agent belongs in this list too: this
+-- file is replayed on top of LATEST, where the child exists.
+DROP TABLE IF EXISTS quality_agent_case_action;
+DROP TABLE IF EXISTS quality_agent_case;
 DROP TABLE IF EXISTS quality_agent_attention;
 DROP TABLE IF EXISTS quality_agent_report;
 DROP TABLE IF EXISTS quality_agent_adoption;
