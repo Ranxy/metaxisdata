@@ -25,6 +25,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -68,6 +69,7 @@ type Store interface {
 	ListQualitySuggestions(ctx context.Context, find *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error)
 	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
 	ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentCaseMessage, error)
+	GetQualityAgentParticipation(ctx context.Context, agentID int64, databaseRef, targetGUID string) (*store.QualityAgentParticipationLevels, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -94,7 +96,9 @@ type Engine struct {
 	// after the service exists, like adoption, because the engine is constructed
 	// first.
 	evidence quality.AgentEvidence
-	// adoption applies the agent's auto-adoption guardrails after a triage wake.
+	// control applies a state change to one case. It is a setter for the same reason.
+	control quality.ControlFunc
+	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
 	// process that does not wire it keeps the tool out of reach.
@@ -121,6 +125,13 @@ func (e *Engine) SetAdoption(adoption AdoptionFunc) {
 // report that the read is not configured instead of falling back to a store query.
 func (e *Engine) SetEvidence(evidence quality.AgentEvidence) {
 	e.evidence = evidence
+}
+
+// SetControl wires the control verb after the API service exists, for the same reason
+// SetAdoption is a setter. Without it the control tool reports that the verb is not configured
+// instead of silently doing nothing.
+func (e *Engine) SetControl(control quality.ControlFunc) {
+	e.control = control
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service
@@ -206,7 +217,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	wake := session.WakeCount + 1
 	wakeStartedAt := e.now()
 	cases := e.openCases(ctx, session)
-	instruction := wakePrompt(session, wake, pending, agent, cases)
+	instruction := wakePrompt(session, wake, pending, agent, cases, e.participation(ctx, session))
 	if systemChanged {
 		// The stored system prompt was rewritten on this wake. The notice is part of
 		// the wake message, so the transcript stays append-only and the model is told
@@ -265,6 +276,38 @@ func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessi
 	return cases
 }
 
+// participation resolves how far this agent may go on this target. A read failure degrades to
+// the delegation default rather than failing the wake: the prompt is a view of the policy, and
+// the verbs re-read it when one is requested.
+func (e *Engine) participation(ctx context.Context, session *store.QualityAgentSessionMessage) agentpolicy.Participation {
+	if session == nil || session.Kind == 2 || session.AgentID == 0 {
+		return agentpolicy.DefaultParticipation
+	}
+	levels, err := e.store.GetQualityAgentParticipation(ctx, session.AgentID, session.DatabaseRef, session.TargetGUID)
+	if err != nil || levels == nil {
+		if err != nil {
+			slog.Warn("failed to read the agent's participation",
+				slog.String("session", session.ResourceID), log.WithError(err))
+		}
+		return agentpolicy.DefaultParticipation
+	}
+	return agentpolicy.Effective(
+		agentpolicy.Participation(levels.Agent),
+		participationOf(levels.Database),
+		participationOf(levels.Target),
+	)
+}
+
+// participationOf maps the store's optional level onto the policy's, keeping nil as nil so the
+// cascade can tell "inherit" from "the same value written down".
+func participationOf(level *store.QualityAgentParticipation) *agentpolicy.Participation {
+	if level == nil {
+		return nil
+	}
+	converted := agentpolicy.Participation(*level)
+	return &converted
+}
+
 // earliestCaseAction turns the soonest due case into a wake time, clamped so a past-due
 // case does not make the runner spin.
 func earliestCaseAction(cases []*store.QualityAgentCaseMessage, now time.Time) *time.Time {
@@ -294,9 +337,12 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 		config, ok, err := e.resolveModel(ctx, agent)
 		if err == nil && ok {
 			outcome, wakeErr := e.modelWake(ctx, session, agent, wake, system, pending, config, options)
-			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 &&
-				session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
-				e.adoption != nil {
+			// Automatic adoption follows any target wake that queued a draft, not just a triage
+			// wake: a monitoring wake drafts only when its check cannot express the intent, and
+			// the same guardrails (mode, confidence, allowlist, critical switch, scope, daily
+			// ceiling) decide whether the replacement is created. The pass filters by the wake's
+			// start, so a wake that queued nothing adopts nothing.
+			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 && e.adoption != nil {
 				e.adoption(ctx, session, wakeStartedAt)
 			}
 			return outcome, wakeErr

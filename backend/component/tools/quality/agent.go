@@ -145,7 +145,7 @@ type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType sto
 // instead of letting them fall back to an unbounded store read.
 type AgentEvidence interface {
 	ReadTargetExecutions(ctx context.Context, agentPrincipalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error)
-	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
+	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, agentID int64, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
 }
 
 // AgentDeps is everything the agent tools need from their product.
@@ -160,6 +160,8 @@ type AgentDeps struct {
 	DraftChecks DraftChecksFunc
 	// Evidence is the application-layer evidence read; nil reports it as not configured.
 	Evidence AgentEvidence
+	// Control applies a state change to one case; nil reports it as not configured.
+	Control ControlFunc
 }
 
 // AgentTools runs the built-in quality agent's tools.
@@ -355,7 +357,7 @@ func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arg
 	if t.deps.Evidence == nil {
 		return "", errors.New("the evidence read is not configured in this process")
 	}
-	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.TargetGUID, input.Rule, input.Executions)
+	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.AgentID, session.TargetGUID, input.Rule, input.Executions)
 	if err != nil {
 		return "", err
 	}
@@ -576,3 +578,56 @@ func emptyIfNil(values []string) []string {
 
 // ptrInt32 returns a pointer to value.
 func ptrInt32(value int32) *int32 { return &value }
+
+// ControlOutcome is what one state change did, in the shape the tool reports. It carries no
+// service type so the application layer stays free to change its own response struct.
+type ControlOutcome struct {
+	Check    string
+	State    string
+	Revision int32
+	Reason   string
+}
+
+// ControlFunc applies one control action to the case the model named. A nil func reports the
+// capability as not configured, in the same way the other product tools do.
+type ControlFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, action string) (ControlOutcome, error)
+
+// ControlCheck pauses a check through the application layer. The runtime gates it: the case,
+// the participation level, the pins and the diagnosis are all re-read server-side, so this tool
+// is a request, never the authority.
+func (t *AgentTools) ControlCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case   string `json:"case"`
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid control_check arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Action) == "" {
+		return "", errors.New("control_check needs a case and an action")
+	}
+	if t.deps.Control == nil {
+		return "", errors.New("the control verb is not configured in this process")
+	}
+	outcome, err := t.deps.Control(ctx, session.AgentPrincipalID, input.Case, input.Action)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":     sessionCaseName(input.Case),
+		"check":    outcome.Check,
+		"state":    outcome.State,
+		"revision": outcome.Revision,
+		"reason":   outcome.Reason,
+	})
+}
+
+// sessionCaseName keeps the model's case reference as it wrote it, so the result and its request
+// name the same thing; a bare id is returned unchanged.
+func sessionCaseName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if index := strings.LastIndex(trimmed, "/"); index >= 0 {
+		return trimmed[index+1:]
+	}
+	return trimmed
+}

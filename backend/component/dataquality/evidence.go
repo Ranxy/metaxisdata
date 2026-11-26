@@ -144,10 +144,14 @@ type CheckDefinition struct {
 // CheckEvidence is one check with its own executions and, when the newest run did not
 // produce a verdict, the deterministic diagnosis of it: the unit an inspection reads.
 type CheckEvidence struct {
-	Target     string              `json:"target"`
-	Rule       CheckDefinition     `json:"rule"`
-	Diagnosis  *Diagnosis          `json:"diagnosis,omitempty"`
-	Executions []ExecutionEvidence `json:"executions"`
+	Target    string          `json:"target"`
+	Rule      CheckDefinition `json:"rule"`
+	Diagnosis *Diagnosis      `json:"diagnosis,omitempty"`
+	// AllowedActions is the diagnosis's class-based list filtered by the agent's delegation, the
+	// check's pins and the case's state. It is computed by the same policy the verbs enforce, so
+	// the model never reads a permission it does not have.
+	AllowedActions []RepairAction      `json:"allowedActions,omitempty"`
+	Executions     []ExecutionEvidence `json:"executions"`
 }
 
 // BuildCheckEvidence renders one check's definition and executions. rules resolves

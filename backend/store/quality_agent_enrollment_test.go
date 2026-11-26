@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,8 @@ func TestScanQualityAgentEnrollment(t *testing.T) {
 		int64(5), "enr-res", "ws", int64(3), "i;d;public;t", int16(4), "instances/i/databases/d",
 		int16(2), int16(2), int32(450), "rules,failing", "admission-limit",
 		(*int64)(nil), int32(1), (*time.Time)(nil), (*time.Time)(nil),
-		discovered, discovered, int32(3), discovered, discovered,
+		discovered, discovered, sql.NullInt16{Int16: int16(QualityAgentParticipationObserve), Valid: true},
+		int32(3), discovered, discovered,
 	}
 	enrollment, err := scanQualityAgentEnrollment(&fakeScanner{values: values})
 	require.NoError(t, err)
@@ -34,6 +36,8 @@ func TestScanQualityAgentEnrollment(t *testing.T) {
 	require.Equal(t, "admission-limit", enrollment.BlockedReason)
 	require.Nil(t, enrollment.SessionID)
 	require.Equal(t, int32(3), enrollment.Revision)
+	require.NotNil(t, enrollment.Participation)
+	require.Equal(t, QualityAgentParticipationObserve, *enrollment.Participation)
 	require.Equal(t, discovered, enrollment.DiscoveredAt)
 }
 

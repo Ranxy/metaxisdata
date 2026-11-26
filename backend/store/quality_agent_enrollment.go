@@ -37,15 +37,17 @@ type QualityAgentEnrollmentMessage struct {
 	NextReviewAt   *time.Time
 	DiscoveredAt   time.Time
 	LastSeenAt     time.Time
-	Revision       int32
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Participation is the per-target exception; nil inherits the database level.
+	Participation *QualityAgentParticipation
+	Revision      int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, target_guid, target_type,
 	database_ref, state, mode, priority, priority_reason, blocked_reason, session_id,
 	triage_count, last_triaged_at, next_review_at, discovered_at, last_seen_at,
-	revision, created_at, updated_at`
+	participation, revision, created_at, updated_at`
 
 // qualityAgentEnrollmentColumnsQualified is qualityAgentEnrollmentColumns qualified with
 // the enrollment alias. The qualification is load-bearing: a read that aliases the queue
@@ -56,7 +58,7 @@ const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, 
 const qualityAgentEnrollmentColumnsQualified = `e.id, e.resource_id, e.workspace_id,
 	e.agent_id, e.target_guid, e.target_type, e.database_ref, e.state, e.mode, e.priority,
 	e.priority_reason, e.blocked_reason, e.session_id, e.triage_count, e.last_triaged_at,
-	e.next_review_at, e.discovered_at, e.last_seen_at,
+	e.next_review_at, e.discovered_at, e.last_seen_at, e.participation,
 	e.revision, e.created_at, e.updated_at`
 
 // QualityAgentEnrollmentUpsert is one discovered object. The store mints a resource id
@@ -696,10 +698,11 @@ func (s *Store) RequeueQualityAgentEnrollments(ctx context.Context, resourceIDs 
 // scanQualityAgentEnrollment scans one enrollment row.
 func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*QualityAgentEnrollmentMessage, error) {
 	var (
-		enrollment QualityAgentEnrollmentMessage
-		targetType int16
-		state      int16
-		mode       int16
+		enrollment    QualityAgentEnrollmentMessage
+		targetType    int16
+		state         int16
+		mode          int16
+		participation sql.NullInt16
 	)
 	if err := scanner.Scan(
 		&enrollment.ID, &enrollment.ResourceID, &enrollment.WorkspaceID, &enrollment.AgentID,
@@ -707,13 +710,17 @@ func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*
 		&enrollment.Priority, &enrollment.PriorityReason, &enrollment.BlockedReason,
 		&enrollment.SessionID, &enrollment.TriageCount, &enrollment.LastTriagedAt,
 		&enrollment.NextReviewAt, &enrollment.DiscoveredAt, &enrollment.LastSeenAt,
-		&enrollment.Revision, &enrollment.CreatedAt, &enrollment.UpdatedAt,
+		&participation, &enrollment.Revision, &enrollment.CreatedAt, &enrollment.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	enrollment.TargetType = storepb.MetaType(targetType)
 	enrollment.State = storepb.QualityAgentEnrollmentState(state)
 	enrollment.Mode = storepb.QualityAgentSessionMode(mode)
+	if participation.Valid {
+		level := QualityAgentParticipation(participation.Int16)
+		enrollment.Participation = &level
+	}
 	return &enrollment, nil
 }
 

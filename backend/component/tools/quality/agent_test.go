@@ -25,6 +25,7 @@ type fakeAgentEvidence struct {
 	target     string
 	limit      int
 	rule       string
+	agent      int64
 }
 
 func (f *fakeAgentEvidence) ReadTargetExecutions(_ context.Context, principalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error) {
@@ -32,8 +33,8 @@ func (f *fakeAgentEvidence) ReadTargetExecutions(_ context.Context, principalID 
 	return f.executions, f.err
 }
 
-func (f *fakeAgentEvidence) ReadCheckEvidence(_ context.Context, principalID int32, targetGUID, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error) {
-	f.principal, f.target, f.rule, f.limit = principalID, targetGUID, ruleResourceID, limit
+func (f *fakeAgentEvidence) ReadCheckEvidence(_ context.Context, principalID int32, agentID int64, targetGUID, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error) {
+	f.principal, f.agent, f.target, f.rule, f.limit = principalID, agentID, targetGUID, ruleResourceID, limit
 	return f.check, f.err
 }
 
@@ -133,13 +134,15 @@ func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
 				Class:      dataquality.ClassConfigValueInvalid,
 				Field:      "range.min",
 				Repairable: true,
-				Actions:    []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionEscalate},
+				Actions:    []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionProposeRevision, dataquality.ActionEscalate},
 			},
+			AllowedActions: []dataquality.RepairAction{dataquality.ActionProposeRevision, dataquality.ActionEscalate},
 		},
 	}
 	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}, Evidence: evidence})
 	session := AgentSession{
 		WorkspaceID:      "ws",
+		AgentID:          1,
 		AgentPrincipalID: 110,
 		TargetGUID:       "target-1",
 		TargetType:       storepb.MetaType_TABLE,
@@ -159,6 +162,8 @@ func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
 	require.Contains(t, inspected, `now - 1 day`)
 	require.Contains(t, inspected, `"class":"CONFIG_VALUE_INVALID"`)
 	require.Contains(t, inspected, `"field":"range.min"`)
+	require.Contains(t, inspected, `"allowedActions":["PROPOSE_REVISION","ESCALATE"]`, "the dossier carries the policy-filtered list")
+	require.Equal(t, int64(1), evidence.agent, "the dossier needs the agent to resolve its delegation")
 	require.Equal(t, "qualityRules/r460", evidence.rule)
 	require.Equal(t, 3, evidence.limit)
 }
@@ -173,4 +178,46 @@ func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
 	require.ErrorContains(t, err, "not configured")
 	_, err = tools.InspectCheck(context.Background(), AgentSession{TargetGUID: "target-1"}, "")
 	require.ErrorContains(t, err, "not configured")
+}
+
+// control_check is a request, not the authority: it passes the agent principal, the case the
+// model named and the action through, and reports what the application layer actually did. A
+// process without the verb refuses instead of pretending.
+func TestControlCheckPassesTheRequestThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase, gotAction string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Control: func(_ context.Context, principalID int32, caseResourceID, action string) (ControlOutcome, error) {
+			gotPrincipal, gotCase, gotAction = principalID, caseResourceID, action
+			return ControlOutcome{
+				Check: "qualityRules/r460", State: "PAUSED", Revision: 3,
+				Reason: "the agent paused the check because it cannot run",
+			}, nil
+		},
+	})
+	result, err := tools.ControlCheck(context.Background(), AgentSession{
+		AgentPrincipalID: 110,
+		TargetGUID:       "target-1",
+	}, `{"case":"workspaces/ws/qualityAgentCases/c9","action":"PAUSE"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualityAgentCases/c9", gotCase)
+	require.Equal(t, "PAUSE", gotAction)
+	require.Contains(t, result, `"state":"PAUSED"`)
+	require.Contains(t, result, `"revision":3`)
+	require.Contains(t, result, `"case":"c9"`)
+}
+
+func TestControlCheckRequiresTheVerbAndItsArguments(t *testing.T) {
+	t.Parallel()
+
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}})
+	_, err := tools.ControlCheck(context.Background(), AgentSession{}, `{"case":"c9","action":"PAUSE"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = tools.ControlCheck(context.Background(), AgentSession{}, `{"action":"PAUSE"}`)
+	require.ErrorContains(t, err, "needs a case and an action")
 }

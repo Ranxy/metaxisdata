@@ -2005,3 +2005,31 @@ COMMENT ON TABLE quality_agent_case IS 'One durable agent work item: the state a
 COMMENT ON COLUMN quality_agent_case.state IS '1 OPEN, 2 DIAGNOSED, 3 ACTED, 4 AWAITING_VERIFICATION, 5 RESOLVED, 6 FROZEN, 7 ESCALATED; 5-7 release the subject';
 COMMENT ON COLUMN quality_agent_case.subject_key IS 'target|rule|kind: the identity an open case claims; one open case per agent and subject';
 COMMENT ON COLUMN quality_agent_case.kind IS 'EXECUTION for a check that cannot conclude; COVERAGE and STRUCTURE are reserved';
+-- How far one agent may go on one target. The agent row is the delegation, the database row
+-- is what the operator chose when they delegated, and the enrollment row is an explicit
+-- per-target exception; NULL inherits from the level above, so a narrower level is an
+-- addition rather than a rewrite. 2 (REPAIR) is the delegation default: the agent maintains
+-- the target, while changing what a check considers acceptable is an opt-in.
+ALTER TABLE quality_agent
+    ADD COLUMN IF NOT EXISTS participation INT2 NOT NULL DEFAULT 2
+    CHECK (participation BETWEEN 1 AND 3);
+ALTER TABLE quality_agent_database
+    ADD COLUMN IF NOT EXISTS participation INT2
+    CHECK (participation IS NULL OR participation BETWEEN 1 AND 3);
+ALTER TABLE quality_agent_enrollment
+    ADD COLUMN IF NOT EXISTS participation INT2
+    CHECK (participation IS NULL OR participation BETWEEN 1 AND 3);
+COMMENT ON COLUMN quality_agent.participation IS '1 OBSERVE, 2 REPAIR, 3 TUNE: the delegation default for this agent';
+COMMENT ON COLUMN quality_agent_database.participation IS 'Optional override at the moment the database was delegated; NULL inherits the agent';
+COMMENT ON COLUMN quality_agent_enrollment.participation IS 'Optional per-target exception; NULL inherits the database';
+-- A pin is the only way to take a check out of an agent's reach. It is explicit and
+-- revocable, and editing a check never creates one: the alternative (authorship) made one
+-- human edit disable the agent forever, which is the opposite of delegating a database.
+--
+-- manual_lock pins the whole check; pinned_fields pins only the listed config fields, so
+-- "this number is mine, the rest is yours" is expressible. Both are head-only metadata like
+-- frequency_tier: they are not part of the definition and write no revision.
+ALTER TABLE quality_rule ADD COLUMN IF NOT EXISTS manual_lock BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE quality_rule ADD COLUMN IF NOT EXISTS pinned_fields TEXT[] NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN quality_rule.manual_lock IS 'A person manages this check; the agent may only propose changes to it';
+COMMENT ON COLUMN quality_rule.pinned_fields IS 'Config fields a person pinned, in dotted form (range.min); the agent may not rewrite them';

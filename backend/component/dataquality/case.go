@@ -5,47 +5,9 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// CaseState is where one agent work item stands. A case is durable state: it survives a
-// restart, a compaction and a model change, which is what "the agent continues where it
-// left off" actually requires.
-type CaseState string
-
-const (
-	// CaseOpen is "something is wrong and nobody has looked yet".
-	CaseOpen CaseState = "OPEN"
-	// CaseDiagnosed carries a class and the actions that class permits.
-	CaseDiagnosed CaseState = "DIAGNOSED"
-	// CaseActed means a repair was applied and a verification run is expected.
-	CaseActed CaseState = "ACTED"
-	// CaseAwaitingVerification means the verification run exists but has not finished.
-	CaseAwaitingVerification CaseState = "AWAITING_VERIFICATION"
-	// CaseResolved means the check concluded, or the case turned out to be "no verdict
-	// possible" with no defect in the check.
-	CaseResolved CaseState = "RESOLVED"
-	// CaseFrozen means repeated attempts made no progress. The rule keeps running; the
-	// agent stops touching it and a person decides.
-	CaseFrozen CaseState = "FROZEN"
-	// CaseEscalated means a person has been asked to decide.
-	CaseEscalated CaseState = "ESCALATED"
-)
-
-// Terminal reports whether the state releases its subject. A subject with a terminal
-// case can open a new one; without this, one frozen case would make the check
-// permanently invisible to the agent.
-func (s CaseState) Terminal() bool {
-	switch s {
-	case CaseResolved, CaseFrozen, CaseEscalated:
-		return true
-	case CaseOpen, CaseDiagnosed, CaseActed, CaseAwaitingVerification:
-		return false
-	default:
-		return false
-	}
-}
-
 // defaultCaseMaxAttempts is how many same-class repairs a case tolerates before it
 // freezes: one repair and one retry, then a person.
-const defaultCaseMaxAttempts = 2
+const defaultCaseMaxAttempts int32 = 2
 
 // VerificationOutcome is what one verification run means for the case.
 type VerificationOutcome string
@@ -71,7 +33,7 @@ const (
 type Verification struct {
 	Outcome VerificationOutcome
 	// Attempts is the new attempt count; it only moves on a same-class failure.
-	Attempts int
+	Attempts int32
 	// Class is the case's class after verification.
 	Class FailureClass
 	// Reason explains the outcome in one sentence for the transcript and the report.
@@ -80,12 +42,13 @@ type Verification struct {
 
 // VerificationInput is everything one verification is decided from.
 type VerificationInput struct {
-	// State and Class are the case as it stands.
-	State    CaseState
+	// State and Class are the case as it stands. The store's state type is reused so the
+	// domain and the row cannot drift into two enums describing the same lifecycle.
+	State    store.QualityAgentCaseState
 	Class    FailureClass
-	Attempts int
+	Attempts int32
 	// MaxAttempts overrides defaultCaseMaxAttempts when positive.
-	MaxAttempts int
+	MaxAttempts int32
 	// Execution is the verification run; nil when no row was produced at all.
 	Execution *store.QualityExecutionMessage
 	// NewClass is the diagnosis of that run, empty for a judged verdict. The caller
@@ -103,6 +66,12 @@ func VerifyCase(input VerificationInput) Verification {
 	maxAttempts := input.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = defaultCaseMaxAttempts
+	}
+	// A case that is already closed has nothing to verify: the caller decides when to look,
+	// and a stale read must not reopen a terminal row.
+	if input.State.Terminal() {
+		return Verification{Outcome: VerifyRearm, Attempts: input.Attempts, Class: input.Class,
+			Reason: "the case is already closed"}
 	}
 	// A check that can no longer run must not stay in a waiting state: PAUSE and ARCHIVE
 	// both stop executions, so the verification would never arrive.

@@ -3,7 +3,6 @@ package dataquality
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -29,67 +28,67 @@ func TestVerifyCaseReadsTheRunDeterministically(t *testing.T) {
 	}{
 		{
 			name: "a verdict closes the case",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_FAIL, 4)},
 			want: VerifyResolved,
 		},
 		{
 			name: "the same class spends an attempt",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, Attempts: 0, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, Attempts: 0, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_ERROR, 0), NewClass: ClassConfigValueInvalid},
 			want: VerifyRetry,
 		},
 		{
 			name: "the attempt budget freezes the case",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, Attempts: 1, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, Attempts: 1, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_ERROR, 0), NewClass: ClassConfigValueInvalid},
 			want: VerifyFrozen,
 		},
 		{
 			name: "a different class re-diagnoses without spending an attempt",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, Attempts: 1, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, Attempts: 1, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_ERROR, 0), NewClass: ClassSourceFault},
 			want: VerifyReopen,
 		},
 		{
 			name: "an unfinished run waits and spends nothing",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: enabled,
 				Execution: verificationExecution(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 0)},
 			want: VerifyRearm,
 		},
 		{
 			name: "an abandoned run waits and spends nothing",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: enabled,
 				Execution: verificationExecution(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_ABANDONED, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, 0)},
 			want: VerifyRearm,
 		},
 		{
 			name: "an empty target stays an answer when that was the case",
-			input: VerificationInput{State: CaseActed, Class: ClassNoVerdictEmpty, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassNoVerdictEmpty, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 0), NewClass: ClassNoVerdictEmpty},
 			want: VerifyResolved,
 		},
 		{
 			name: "an empty target does not resolve a different case",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: enabled,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: enabled,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 0), NewClass: ClassNoVerdictEmpty},
 			want: VerifyReopen,
 		},
 		{
 			name: "a paused check cannot be verified, so it escalates",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_PASS, 1)},
 			want: VerifyEscalated,
 		},
 		{
 			name: "an archived check closes its case",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED,
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED,
 				Execution: verificationExecution(completed, storepb.QualityStatus_QUALITY_STATUS_PASS, 1)},
 			want: VerifyResolved,
 		},
 		{
 			name:  "no run yet waits",
-			input: VerificationInput{State: CaseActed, Class: ClassConfigValueInvalid, RuleState: enabled},
+			input: VerificationInput{State: store.QualityAgentCaseStateActed, Class: ClassConfigValueInvalid, RuleState: enabled},
 			want:  VerifyRearm,
 		},
 	}
@@ -103,23 +102,8 @@ func TestVerifyCaseReadsTheRunDeterministically(t *testing.T) {
 				require.Equal(t, test.input.Attempts, verification.Attempts, "waiting and re-diagnosing spend no attempt")
 			}
 			if test.want == VerifyFrozen {
-				require.Equal(t, 2, verification.Attempts)
+				require.Equal(t, int32(2), verification.Attempts)
 			}
 		})
 	}
-}
-
-// A frozen, resolved or escalated case releases its subject. Without that, one frozen
-// case would make the check permanently invisible to the agent.
-func TestCaseTerminalStatesReleaseTheSubject(t *testing.T) {
-	t.Parallel()
-
-	for _, state := range []CaseState{CaseResolved, CaseFrozen, CaseEscalated} {
-		assert.True(t, state.Terminal(), string(state))
-	}
-	for _, state := range []CaseState{CaseOpen, CaseDiagnosed, CaseActed, CaseAwaitingVerification} {
-		assert.False(t, state.Terminal(), string(state))
-	}
-	// An unset state is not a terminal one: it must not read as "done".
-	assert.False(t, CaseState("").Terminal())
 }

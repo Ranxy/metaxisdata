@@ -53,6 +53,7 @@ const (
 	DataQualityRulesGet                Permission = "metaxisdata.dataQuality.rules.get"
 	DataQualityRulesList               Permission = "metaxisdata.dataQuality.rules.list"
 	DataQualityRulesEvidence           Permission = "metaxisdata.dataQuality.rules.evidence"
+	DataQualityRulesRepair             Permission = "metaxisdata.dataQuality.rules.repair"
 	DataQualityRulesCreate             Permission = "metaxisdata.dataQuality.rules.create"
 	DataQualityRulesUpdate             Permission = "metaxisdata.dataQuality.rules.update"
 	DataQualityRulesDelete             Permission = "metaxisdata.dataQuality.rules.delete"
@@ -161,6 +162,7 @@ var allPermissions = []Permission{
 	DataQualityRulesGet,
 	DataQualityRulesList,
 	DataQualityRulesEvidence,
+	DataQualityRulesRepair,
 	DataQualityRulesCreate,
 	DataQualityRulesUpdate,
 	DataQualityRulesDelete,

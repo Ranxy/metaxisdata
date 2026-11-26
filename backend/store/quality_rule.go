@@ -24,7 +24,7 @@ import (
 const qualityRuleColumns = `id, resource_id, title, description, dimension, rule_type,
 	target_guid, target_type, target_path, target_meta_hash, config, severity, state,
 	frequency_tier, owner_id, tags, mute_until, revision,
-	created_by, updated_by, created_at, updated_at, deleted`
+	created_by, updated_by, created_at, updated_at, deleted, manual_lock, pinned_fields`
 
 // qualifyQualityRuleColumns prefixes qualityRuleColumns with a table alias. A
 // query that joins quality_rule with tables that also carry target_guid or
@@ -77,6 +77,12 @@ type QualityRuleMessage struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Deleted   bool
+	// ManualLock is a person's decision to manage this check themselves; the agent may only
+	// propose changes to it.
+	ManualLock bool
+	// PinnedFields are the config fields a person owns, in dotted form ("range.min"). An empty
+	// list pins nothing. Like FrequencyTier, both are head-only and write no revision.
+	PinnedFields []string
 }
 
 // QualityRuleRevisionMessage is one immutable snapshot from
@@ -191,6 +197,7 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 		muteUntil      sql.NullTime
 		createdBy      sql.NullInt32
 		updatedBy      sql.NullInt32
+		pinnedFields   pq.StringArray
 	)
 	if err := row.Scan(
 		&msg.ID,
@@ -216,6 +223,8 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 		&msg.CreatedAt,
 		&msg.UpdatedAt,
 		&msg.Deleted,
+		&msg.ManualLock,
+		&pinnedFields,
 	); err != nil {
 		return nil, err
 	}
@@ -233,6 +242,7 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 	msg.MuteUntil = qualityRuleTime(muteUntil)
 	msg.CreatedBy = qualityRuleInt32(createdBy)
 	msg.UpdatedBy = qualityRuleInt32(updatedBy)
+	msg.PinnedFields = []string(pinnedFields)
 	return &msg, nil
 }
 
@@ -1123,4 +1133,22 @@ func (s *Store) ListQualityRulesByTargets(ctx context.Context, keys []MetaGUIDKe
 		return nil, errors.Wrap(err, "failed to iterate the quality rules of the targets")
 	}
 	return rules, nil
+}
+
+// GetQualityRuleByID reads one rule row by its internal id, without the archived filter: an
+// execution row and a case both carry the id, and a caller that already holds that evidence
+// must be able to render the rule even when it has since been archived.
+func (s *Store) GetQualityRuleByID(ctx context.Context, id int64) (*QualityRuleMessage, error) {
+	if id <= 0 {
+		return nil, common.Errorf(common.Invalid, "a quality rule id is required")
+	}
+	rule, err := scanQualityRule(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityRuleColumns+` FROM quality_rule WHERE id = $1`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the quality rule")
+	}
+	return rule, nil
 }

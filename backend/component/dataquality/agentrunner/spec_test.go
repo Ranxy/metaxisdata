@@ -8,7 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -49,18 +52,18 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Equal(t, modelMaxTurns, monitor.MaxTurns)
 	require.Equal(t, triageMaxTurns, triage.MaxTurns)
 
-	// The base tool set is the same for both target products; the capability
-	// profiles add the coverage tools to triage only.
+	// The base tool set is the same for both target products, and the coverage tools follow the
+	// capability rather than the mode: a monitor wake that discovers its check cannot express
+	// the intent must be able to draft the one that can. What differs is the prompt and the
+	// turn budget.
 	require.Equal(t, specNames(monitor.Tools), specNames(triage.Tools))
 	require.Contains(t, specNames(monitor.Tools), "record_asset_fact", "a target session records its observations")
 	all := capabilityTestAgent(agentcapability.Suggest, agentcapability.Adopt, agentcapability.Patrol)
 	monitorTools := toolSpecNames(toolsFor(monitor, all))
 	triageTools := toolSpecNames(toolsFor(triage, all))
-	require.NotContains(t, monitorTools, "get_table_context")
-	require.NotContains(t, monitorTools, "draft_checks")
-	require.Contains(t, triageTools, "get_table_context")
-	require.Contains(t, triageTools, "draft_checks")
-	require.Subset(t, triageTools, monitorTools, "triage is monitoring plus its coverage tools")
+	require.Equal(t, monitorTools, triageTools, "the target products share one tool set; only their prompt and turn budget differ")
+	require.Contains(t, monitorTools, "get_table_context")
+	require.Contains(t, monitorTools, "draft_checks")
 	require.Contains(t, monitorTools, "adopt_pending_drafts")
 	require.Contains(t, triageTools, "adopt_pending_drafts")
 
@@ -99,8 +102,8 @@ func TestPromptsMentionOnlyTheirSpecTools(t *testing.T) {
 			agent := capabilityTestAgent(capabilities...)
 			conversation := &store.QualityAgentSessionMessage{Mode: mode, Kind: 2}
 			text := renderSystemPrompt(spec, agent, "en-US") + "\n" +
-				wakePrompt(session, 1, nil, agent, nil) + "\n" +
-				wakePrompt(conversation, 1, nil, agent, nil)
+				wakePrompt(session, 1, nil, agent, nil, agentpolicy.ParticipationUnset) + "\n" +
+				wakePrompt(conversation, 1, nil, agent, nil, agentpolicy.ParticipationUnset)
 			allowed := toolSpecNames(toolsFor(spec, agent))
 			for _, candidate := range namePattern.FindAllString(text, -1) {
 				if !known[candidate] {
@@ -136,7 +139,8 @@ func TestCapabilityMatrix(t *testing.T) {
 				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Pending proposals:"))
 			}
 			if spec.Name == monitorProduct.Name {
-				require.False(t, exposed("draft_checks"), "monitoring never drafts checks")
+				require.Equal(t, has(agentcapability.Suggest), exposed("draft_checks"), "a monitor wake drafts a replacement when its capability allows")
+				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Maintaining coverage:"))
 				require.Equal(t, has(agentcapability.Patrol), strings.Contains(prompt, "Monitoring:"))
 			}
 			require.Equal(t, has(agentcapability.Adopt), exposed("adopt_pending_drafts"))
@@ -149,7 +153,7 @@ func TestCapabilityMatrix(t *testing.T) {
 				Origin: storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			}}
 			target := &store.QualityAgentSessionMessage{TargetGUID: "1;shop;;orders", Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR}
-			instruction := wakePrompt(target, 1, ask, agent, nil)
+			instruction := wakePrompt(target, 1, ask, agent, nil, agentpolicy.ParticipationUnset)
 			require.Equal(t, has(agentcapability.Adopt), strings.Contains(instruction, "adopt_pending_drafts"),
 				"an owner-question wake mentions the adoption tool only when adopt is configured")
 		}
@@ -222,4 +226,23 @@ func allToolNames(spec *Spec) []string {
 		names = append(names, toolSpecNames(profile.Tools(spec))...)
 	}
 	return names
+}
+
+// A tool gated by a permission no role grants would fail for every agent at call time, so
+// the boot check refuses it instead of letting a wake discover it. "Holdable" includes the
+// member baseline, because the workspace check short-circuits on it for every principal.
+func TestValidateToolPermission(t *testing.T) {
+	t.Parallel()
+
+	declaration := func(authz tool.AuthzMode, perm permission.Permission) toolSpec {
+		return toolSpec{name: "a_tool", meta: tool.Meta{Authz: authz, Permission: string(perm)}}
+	}
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzInternal, "")))
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzPermission, permission.DataQualityRulesList)))
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzPermission, permission.DataQualityRulesEvidence)))
+
+	require.ErrorContains(t, validateToolPermission(declaration(tool.AuthzPermission, "")), "declares no permission")
+	err := validateToolPermission(declaration(tool.AuthzPermission, "metaxisdata.dataQuality.notAThing"))
+	require.ErrorContains(t, err, "a_tool")
+	require.ErrorContains(t, err, "notAThing")
 }

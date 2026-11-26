@@ -115,8 +115,11 @@ func validateCapabilityProfiles() error {
 	return nil
 }
 
-// suggestProfile is the coverage capability: it drafts checks during triage and
-// explains the pending queue in the owner conversation.
+// suggestProfile is the coverage capability: it drafts checks wherever the agent needs a new
+// or a replacement check, and explains the pending queue in the owner conversation. The tools
+// follow the capability, not the session mode: a monitor wake that discovers its check cannot
+// express the intent must be able to draft the one that can, and the same target may be
+// triaged and monitored in the same session.
 func suggestProfile() capabilityProfile {
 	return capabilityProfile{
 		ID: agentcapability.Suggest,
@@ -129,6 +132,14 @@ func suggestProfile() capabilityProfile {
 					"- Draft concrete checks with draft_checks. A draft is a proposal, never a running check.",
 					"- Do not repeat work an earlier triage already recorded.",
 					"- The Adoption section decides whether a draft is created automatically; the owner can also ask you to adopt pending drafts.",
+				}, "\n")}}
+			case monitorProduct.Name:
+				return []agent.PromptSection{{Name: "capability-suggest", Text: strings.Join([]string{
+					"Maintaining coverage:",
+					"- When a check cannot express the intent — a value the database refuses, the wrong check type for a rolling window — draft the check that can with draft_checks instead of forcing the broken definition to work.",
+					"- Read the target's schema, profiles, labels and consumers with get_table_context before drafting.",
+					"- A draft is a proposal, never a running check. The Adoption section decides whether it is created automatically; otherwise a person reviews it.",
+					"- A check that cannot run at all may be paused with control_check once its case is diagnosed; the case is then escalated so a person decides whether to resume, archive or replace it. You cannot archive or resume a check.",
 				}, "\n")}}
 			case conversationProduct.Name:
 				return []agent.PromptSection{{Name: "capability-suggest", Text: strings.Join([]string{
@@ -143,7 +154,10 @@ func suggestProfile() capabilityProfile {
 		},
 		Tools: func(spec *Spec) []toolSpec {
 			switch spec.Name {
-			case triageProduct.Name:
+			case triageProduct.Name, monitorProduct.Name:
+				// Both target products draft. Which one is running is expressible from the
+				// session's mode in the prompt, not by withholding the tool: a monitor wake that
+				// cannot draft can only escalate a check it knows how to replace.
 				return []toolSpec{getTableContextSpec(), draftChecksSpec()}
 			case conversationProduct.Name:
 				return []toolSpec{listPendingProposalsSpec()}

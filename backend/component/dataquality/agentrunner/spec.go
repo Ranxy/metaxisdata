@@ -46,6 +46,21 @@ func evidenceMeta() tool.Meta {
 	return meta
 }
 
+// repairMeta is the metadata of a tool that changes one check through the application layer. It
+// is a publish-class write: the pipeline audits it, and the permission is rules.repair rather
+// than rules.update, so the catalog reads as "this actor may not rewrite an arbitrary
+// definition".
+func repairMeta() tool.Meta {
+	return tool.Meta{
+		Group:          "quality",
+		Scope:          tool.ScopeProductOnly,
+		Authz:          tool.AuthzPermission,
+		SideEffect:     tool.SideEffectPublish,
+		Permission:     string(permission.DataQualityRulesRepair),
+		MaxResultBytes: maxToolResultBytes,
+	}
+}
+
 // proposeMeta is the metadata of a tool that records a proposal or evidence
 // through an RPC handler.
 func proposeMeta() tool.Meta {
@@ -103,6 +118,23 @@ func targetToolSpecs() []toolSpec {
 				},
 			}},
 			meta: evidenceMeta(),
+		},
+		{
+			name: "control_check",
+			description: "Pause a check that cannot run, so its failures stop while a person decides what to do with it. " +
+				"The check's case becomes escalated. You cannot archive or resume a check.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+				"action": map[string]any{
+					"type":        "string",
+					"enum":        []string{"PAUSE"},
+					"description": "the state change to apply",
+				},
+			}, "required": []string{"case", "action"}},
+			meta: repairMeta(),
 		},
 		{
 			name:        "get_memory",
@@ -285,12 +317,40 @@ func ValidateSpecs() error {
 			if !handlesTool(declaration.name) {
 				return fmt.Errorf("spec %s declares tool %q but the engine has no execution branch", spec.Name, declaration.name)
 			}
+			if err := validateToolPermission(declaration); err != nil {
+				return fmt.Errorf("spec %s: %w", spec.Name, err)
+			}
 		}
 		if _, err := registry.Resolve(toolSpecNames(declarations)); err != nil {
 			return fmt.Errorf("spec %s: %w", spec.Name, err)
 		}
 	}
 	return nil
+}
+
+// validateToolPermission checks that a tool's declared permission is one the agent
+// principal can actually hold. A tool gated by a permission no role grants would fail at
+// call time for every agent, which is a declaration bug worth a boot error rather than a
+// wake-time surprise.
+//
+// "Holdable" means the member baseline or the quality agent role grants it. The baseline
+// counts because Manager.CheckPermission short-circuits on it for every principal, which is
+// also why a baseline permission cannot scope a read to one database.
+func validateToolPermission(declaration toolSpec) error {
+	if declaration.meta.Authz != tool.AuthzPermission {
+		return nil
+	}
+	perm := permission.Permission(declaration.meta.Permission)
+	if perm == "" {
+		return fmt.Errorf("tool %q declares no permission", declaration.name)
+	}
+	for _, roleID := range []string{store.WorkspaceMemberRole, store.QualityAgentRole} {
+		if role := store.GetPredefinedRole(roleID); role != nil && role.Permissions[perm] {
+			return nil
+		}
+	}
+	return fmt.Errorf("tool %q declares %q, which neither the member baseline nor the quality agent role grants",
+		declaration.name, perm)
 }
 
 // toolSpecNames lists a declaration slice's tool names in order.

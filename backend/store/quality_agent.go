@@ -26,6 +26,23 @@ const (
 	QualityAgentStateDisabled QualityAgentState = 4
 )
 
+// QualityAgentParticipation is how far one agent may go on one target. The values mirror
+// agentpolicy.Participation; the store keeps its own copy because the domain packages import
+// this one, so a dependency back would be a cycle. Zero on a database or enrollment row means
+// "inherit"; the agent row is never stored as zero (the column defaults to REPAIR).
+type QualityAgentParticipation int16
+
+const (
+	QualityAgentParticipationObserve QualityAgentParticipation = 1
+	QualityAgentParticipationRepair  QualityAgentParticipation = 2
+	QualityAgentParticipationTune    QualityAgentParticipation = 3
+)
+
+// Valid reports whether the value is one of the stored levels.
+func (p QualityAgentParticipation) Valid() bool {
+	return p >= QualityAgentParticipationObserve && p <= QualityAgentParticipationTune
+}
+
 // QualityAgentReportFrequency is the patrol report cadence.
 type QualityAgentReportFrequency int16
 
@@ -90,6 +107,10 @@ type QualityAgentMessage struct {
 	MaxNewSessionsPerHour       int32
 	MaxActiveSessions           int32
 
+	// Participation is the delegation default for this agent; every database and target
+	// inherits it unless a narrower row says otherwise.
+	Participation QualityAgentParticipation
+
 	CreatedBy *int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -101,7 +122,7 @@ const qualityAgentColumns = `id, resource_id, principal_id, display_name, descri
 	adoption_rule_types, adoption_confidence_threshold, adoption_allow_critical,
 	adoption_max_per_day, conversation_messages_per_hour, tokens_per_hour,
 	wakes_per_hour, max_concurrent_sessions, max_new_sessions_per_hour,
-	max_active_sessions, created_by, created_at, updated_at`
+	max_active_sessions, participation, created_by, created_at, updated_at`
 
 // CreateQualityAgent creates the agent principal and its row with the default
 // runtime configuration. The principal holds no workspace policy binding; the
@@ -450,6 +471,7 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 		reportFrequency  int16
 		adoptionMode     int16
 		ruleTypes        []byte
+		participation    int16
 		createdBy        sql.NullInt32
 	)
 	if err := scanner.Scan(
@@ -461,7 +483,7 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 		&message.AdoptionConfidenceThreshold, &message.AdoptionAllowCritical,
 		&message.AdoptionMaxPerDay, &message.ConversationMessagesPerHour,
 		&message.TokensPerHour, &message.WakesPerHour, &message.MaxConcurrentSessions,
-		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions, &createdBy,
+		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions, &participation, &createdBy,
 		&message.CreatedAt, &message.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -469,6 +491,7 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 	message.State = QualityAgentState(state)
 	message.ReportFrequency = QualityAgentReportFrequency(reportFrequency)
 	message.AdoptionMode = QualityAgentAdoptionMode(adoptionMode)
+	message.Participation = QualityAgentParticipation(participation)
 	if ownerPrincipalID.Valid {
 		id := ownerPrincipalID.Int32
 		message.OwnerPrincipalID = &id
@@ -539,4 +562,47 @@ func nullableInt32(value *int32) any {
 		return nil
 	}
 	return *value
+}
+
+// QualityAgentParticipationLevels is the delegation cascade's three slots: the agent row,
+// the database override and the target override. A nil override inherits the level above it.
+type QualityAgentParticipationLevels struct {
+	Agent    QualityAgentParticipation
+	Database *QualityAgentParticipation
+	Target   *QualityAgentParticipation
+}
+
+// GetQualityAgentParticipation reads the three cascade slots for one agent, database and
+// target in one query. A missing agent returns nil; a missing database or enrollment row
+// leaves its slot nil, which the policy reads as "inherit".
+func (s *Store) GetQualityAgentParticipation(ctx context.Context, agentID int64, databaseRef, targetGUID string) (*QualityAgentParticipationLevels, error) {
+	var (
+		agentLevel    int16
+		databaseLevel sql.NullInt16
+		targetLevel   sql.NullInt16
+	)
+	err := s.GetDB().QueryRowContext(ctx, `
+		SELECT a.participation, d.participation, e.participation
+		FROM quality_agent a
+		LEFT JOIN quality_agent_database d
+			ON d.agent_id = a.id AND d.database_ref = $2
+		LEFT JOIN quality_agent_enrollment e
+			ON e.agent_id = a.id AND e.target_guid = $3
+		WHERE a.id = $1`, agentID, databaseRef, targetGUID).Scan(&agentLevel, &databaseLevel, &targetLevel)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the agent's participation levels")
+	}
+	levels := &QualityAgentParticipationLevels{Agent: QualityAgentParticipation(agentLevel)}
+	if databaseLevel.Valid {
+		level := QualityAgentParticipation(databaseLevel.Int16)
+		levels.Database = &level
+	}
+	if targetLevel.Valid {
+		level := QualityAgentParticipation(targetLevel.Int16)
+		levels.Target = &level
+	}
+	return levels, nil
 }

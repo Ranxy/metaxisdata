@@ -10,6 +10,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -108,7 +109,7 @@ func adoptionPolicySection(agent *store.QualityAgentMessage) string {
 			"; daily ceiling: " + strconv.Itoa(int(limit)) + "; critical assets: " + critical + ".",
 		"- You may adopt pending check drafts only when the owner explicitly asks you in the current wake. The only tool for it is adopt_pending_drafts.",
 		"- Without draft ids the call applies the configuration above. With draft ids it accepts exactly those drafts as the owner's decision, even when their type or confidence would not satisfy automatic adoption.",
-		"- Automatic adoption also runs after a triage wake when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
+		"- Automatic adoption also runs after a wake that queued drafts, when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
 		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
 	}, "\n")
 }
@@ -197,6 +198,7 @@ func wakePrompt(
 	pending []*store.QualityAgentTranscriptMessage,
 	agent *store.QualityAgentMessage,
 	cases []*store.QualityAgentCaseMessage,
+	participation agentpolicy.Participation,
 ) string {
 	events, asks := 0, 0
 	for _, message := range pending {
@@ -222,8 +224,8 @@ func wakePrompt(
 		switch {
 		case asks > 0:
 			return fmt.Sprintf(
-				"[wake %d] The owner asked something above. Answer it from the tools, then stop when the wake is done. %s",
-				wake, adoptionRequestHint(agent))
+				"[wake %d] The owner asked something above. Answer it from the tools, then stop when the wake is done. %s%s",
+				wake, adoptionRequestHint(agent), participationBlock(participation))
 		case events > 0:
 			return fmt.Sprintf(
 				"[wake %d] %d new event(s) arrived above. Review them and tell the owner what matters; stop when the wake is done.",
@@ -254,7 +256,7 @@ func wakePrompt(
 			"[triage wake %d] This target has no quality coverage yet.%s %s You cannot publish a contract or edit a check. If nothing is worth monitoring, say so briefly and record why. Do not repeat work you already recorded in an earlier triage. Target: %s. Objective: %s.",
 			wake, pendingNote, coverage, target, objective)
 	}
-	work := openCaseBlock(cases)
+	work := participationBlock(participation) + openCaseBlock(cases)
 	switch {
 	case asks > 0:
 		return fmt.Sprintf(
@@ -269,6 +271,29 @@ func wakePrompt(
 			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop.%s Target: %s. Objective: %s.",
 			wake, work, target, objective)
 	}
+}
+
+// participationBlock states the authority the target session runs under. It is part of the
+// per-wake user message because the level is per target, and it repeats the boundary in the
+// model's words so the prompt and the runtime gate cannot disagree: the gate re-reads the
+// level when a verb is requested, and this sentence is only its view.
+func participationBlock(participation agentpolicy.Participation) string {
+	level := participation
+	if level == agentpolicy.ParticipationUnset {
+		level = agentpolicy.DefaultParticipation
+	}
+	var sentence string
+	switch level {
+	case agentpolicy.ParticipationObserve:
+		sentence = "you may read evidence, run a check, record facts, propose a change and escalate; you may not change a check or stop it."
+	case agentpolicy.ParticipationRepair:
+		sentence = "you may fix what makes a check unable to run, pause one that cannot conclude, run a check, propose and escalate; changing what a check accepts needs a tune-level delegation, so propose it instead."
+	case agentpolicy.ParticipationTune:
+		sentence = "you may also change what a check accepts, but every such change is replayed against the recent executions and refused when it would turn a failing run into a pass."
+	default:
+		sentence = "you may read and propose."
+	}
+	return "\n\nParticipation for this target: " + level.Name() + " — " + sentence
 }
 
 // maxWakeCases bounds how many work items one wake instructs the model about. The case

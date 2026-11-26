@@ -47,6 +47,7 @@ var scopeablePermissions = map[Permission]bool{
 	DataQualityRulesGet:         true,
 	DataQualityRulesList:        true,
 	DataQualityRulesEvidence:    true,
+	DataQualityRulesRepair:      true,
 	DataQualityRulesCreate:      true,
 	DataQualityRulesUpdate:      true,
 	DataQualityRulesDelete:      true,
