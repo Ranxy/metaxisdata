@@ -3456,6 +3456,7 @@
     "reportsEmpty": "No reports yet.",
     "reportsHint": "Deterministic reports generated on the agent's configured schedule.",
     "reportsTitle": "Patrol reports",
+    "resumeHeld": "The session is parked again: {reason}",
     "resumeSession": "Resume session",
     "resumed": "Session resumed",
     "roleAssistant": "Agent",

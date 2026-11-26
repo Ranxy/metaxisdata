@@ -149,6 +149,13 @@ func configureGrpcRouters(
 				State:     result.State,
 			}, nil
 		})
+		sessionEngine.SetEscalate(func(ctx context.Context, agentPrincipalID int32, caseResourceID, reason string) (quality.EscalationOutcome, error) {
+			result, err := dataQualityService.EscalateAgentCase(ctx, agentPrincipalID, caseResourceID, reason)
+			if err != nil {
+				return quality.EscalationOutcome{}, err
+			}
+			return quality.EscalationOutcome{Check: result.Check, State: result.State, Reason: result.Reason}, nil
+		})
 		sessionEngine.SetFlag(func(ctx context.Context, agentPrincipalID int32, draftResourceID, concern string) (quality.FlagOutcome, error) {
 			result, err := dataQualityService.FlagAgentProposal(ctx, agentPrincipalID, draftResourceID, concern)
 			if err != nil {

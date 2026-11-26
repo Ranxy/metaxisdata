@@ -34,9 +34,12 @@ import (
 )
 
 const (
-	// modelMaxTurns bounds one wake's LLM calls; the conversation it builds is
-	// bounded by the wake deadline as well.
-	modelMaxTurns = 8
+	// modelMaxTurns bounds one wake's LLM calls. It is deliberately generous while the product is
+	// being brought up: a wake that inspects three checks and acts on two needs more than a handful of
+	// turns, and a model that runs out mid-investigation leaves the work half done. The conversation
+	// is bounded by compaction and by the wake deadline, so this is the last line of defence against a
+	// runaway loop, not a cost control.
+	modelMaxTurns = 40
 	// blockedThreshold is how many consecutive wakes must report the same blocker
 	// before the session parks for a person.
 	blockedThreshold = 3
@@ -106,6 +109,8 @@ type Engine struct {
 	revise quality.ReviseFunc
 	// flag records the agent's own objection to a draft it queued. It is a setter for the same reason.
 	flag quality.FlagFunc
+	// escalate hands one work item to a person. It is a setter for the same reason.
+	escalate quality.EscalateFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -165,6 +170,12 @@ func (e *Engine) SetRevise(revise quality.ReviseFunc) {
 // SetAdoption is a setter.
 func (e *Engine) SetFlag(flag quality.FlagFunc) {
 	e.flag = flag
+}
+
+// SetEscalate wires the escalation verb after the API service exists, for the same reason
+// SetAdoption is a setter.
+func (e *Engine) SetEscalate(escalate quality.EscalateFunc) {
+	e.escalate = escalate
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service

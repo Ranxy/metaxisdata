@@ -392,3 +392,36 @@ func TestFlagProposalPassesTheConcernThrough(t *testing.T) {
 		`{"draft":"s1"}`)
 	require.ErrorContains(t, err, "needs a draft and a concern")
 }
+
+// escalate_case is the model's exit for a decision it may not make: it carries the work item and the
+// question to the application layer, which turns it into an escalated case and an owner attention.
+func TestEscalateCasePassesTheQuestionThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase, gotReason string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Escalate: func(_ context.Context, principalID int32, caseResourceID, reason string) (EscalationOutcome, error) {
+			gotPrincipal, gotCase, gotReason = principalID, caseResourceID, reason
+			return EscalationOutcome{Check: "qualityRules/r460", State: "ESCALATED", Reason: reason}, nil
+		},
+	})
+	result, err := tools.EscalateCase(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"case":"workspaces/ws/qualityAgentCases/c9","reason":"the bound is a business decision"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualityAgentCases/c9", gotCase)
+	require.Equal(t, "the bound is a business decision", gotReason)
+	require.Contains(t, result, `"case":"c9"`)
+	require.Contains(t, result, `"state":"ESCALATED"`)
+	require.Contains(t, result, "owes this decision")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).EscalateCase(context.Background(), AgentSession{},
+		`{"case":"c9","reason":"x"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).EscalateCase(context.Background(), AgentSession{},
+		`{"case":"c9"}`)
+	require.ErrorContains(t, err, "needs a case and a reason")
+}

@@ -41,6 +41,10 @@ const (
 	// caseWakeFloor is the soonest a due case may wake a session, so a past-due case cannot
 	// make the three-second tick spin.
 	caseWakeFloor = time.Minute
+	// unattendedCaseDelay is how far a wake pushes a case it looked at and did not advance. It is an
+	// hour because the case's own evidence only changes when the check runs again, which is the
+	// target's cadence at the fastest.
+	unattendedCaseDelay = time.Hour
 )
 
 // SessionStore is the slice of *store.Store the runner needs.
@@ -59,9 +63,11 @@ type SessionStore interface {
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
+	ClearQualityAgentSessionManualResume(ctx context.Context, resourceID string) error
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
 	EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error)
+	DeferQualityAgentCases(ctx context.Context, agentID int64, before, until time.Time) (int64, error)
 	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
@@ -237,13 +243,22 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 	if tokenLimit <= 0 {
 		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
 	}
+	// A person pressed "resume". The budgets still describe the hour, but the decision to run now is
+	// theirs, so the marker is spent here and the wake proceeds. It is cleared immediately: one wake,
+	// not a standing exemption.
+	manual := session.ManualResumeAt != nil
+	if manual {
+		if clearErr := r.store.ClearQualityAgentSessionManualResume(ctx, session.ResourceID); clearErr != nil {
+			slog.Warn("failed to clear a manual resume", slog.String("session", session.ResourceID), log.WithError(clearErr))
+		}
+	}
 	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
 		r.block(ctx, session, "internal-error", "the agent token spend could not be read",
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if spent >= tokenLimit {
+	if spent >= tokenLimit && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "token-budget", "the hourly agent token budget is spent", &nextWindow)
 		return
@@ -258,7 +273,7 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if wakes >= wakeLimit {
+	if wakes >= wakeLimit && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "wake-budget", "the hourly agent wake budget is spent", &nextWindow)
 		return
@@ -316,6 +331,16 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		review := r.triageReviewAt()
 		if next == nil || review.Before(*next) {
 			next = &review
+		}
+	}
+	// A case nobody advanced is not due work, however past its time: push its next look out before the
+	// merge reads it. Without this the release path merged the same stale instant into every wake and
+	// the clamp turned it into one wake a minute, each of which read the same evidence and concluded
+	// nothing had changed.
+	if session.Kind != 2 {
+		if _, deferErr := r.store.DeferQualityAgentCases(ctx, session.AgentID, r.now(), r.now().Add(unattendedCaseDelay)); deferErr != nil {
+			slog.Warn("failed to defer the agent's untended cases",
+				slog.String("session", session.ResourceID), log.WithError(deferErr))
 		}
 	}
 	// A case is due work. The engine merges what it saw before the wake; this read catches a

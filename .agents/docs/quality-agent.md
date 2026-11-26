@@ -62,6 +62,20 @@ does so through the check itself or by answering the escalation.
 
 How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the delegation default) or `TUNE`. It cascades — the agent row, the database row the operator chose when delegating, then an enrollment-level exception — and an unset slot inherits the level above it rather than resetting, so narrowing one table does not re-declare the rest. The level is per target, so it cannot live in the byte-stable system prompt: the wake instruction states the resolved level and what it permits. A **pin** is the only way to take a check out of the agent's reach, and it is always a person's explicit act: `quality_rule.manual_lock` pins the whole check, `pinned_fields` pins named config paths (a pin on `range` covers `range.min`), and editing a check never creates one. Both are head-only metadata like the frequency tier — they write no revision.
 
+## Blocking is for the runtime, escalating is for a decision
+
+A session blocks only on the runtime: a spent token or wake budget, a transient internal error, a concurrency limit. Those really do
+stop everything in the session, and they are retryable. Everything else — a change the delegation withholds, a failure no field
+change fixes, a decision that is not the agent's — is a **case escalation**: `escalate_case` moves one work item to `ESCALATED` and
+raises one attention with the agent's reason as the question. The distinction is the difference between losing one target's queue and
+losing one question.
+
+It used to be the other way round, and the cost was visible: eight sessions were parked on decision codes (`RULES_NEVER_EVALUATED`,
+`AWAITING_DRAFT_REVIEW`, `EXECUTIONS_NOT_EVALUATED`, …) and nothing could wake them — not a failing check, not a health event, not a
+new case, because the claim query only takes enabled or retryably blocked sessions. A parked session was a permanent, invisible
+silence of every target it covered. The model may no longer park on such a code (the tool refuses and names `escalate_case`), and a
+one-time migration released the sessions the old design had parked that way.
+
 A pin is written by a person through the ordinary rule update (`manual_lock` and `pinned_fields` are two mask paths), on the
 check's own row in the checks list: the lock is the button there, and per-field pins are the same metadata through the API. It is
 audited like any other rule write, changes no definition, writes no revision, and is revocable in one click. That is deliberate —
@@ -69,11 +83,28 @@ the delegation's safety rests on the escape hatch being easier to reach than the
 
 ## Wake rendering and scheduling
 
-The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.
+The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. A person resuming a blocked session outranks the budget once: `ResumeQualityAgentSession` writes `manual_resume_at`, the next
+budget check spends it instead of refusing the wake, and it is cleared as soon as it is used. It buys one wake, not a standing
+exemption. The page confirms the resume four seconds later and, if the runtime parked the session again, says so with the runtime's
+own reason — the button used to look like it did nothing, because the session it had just enabled was blocked again before the next
+poll.
+
+A wake that read a case and decided there was nothing to do pushes that case's next look out by an hour (`DeferQualityAgentCases`)
+before the release path merges it. Without that, the merge saw the same past-due instant after every wake, the clamp turned it into one
+wake a minute, and — because the merge is agent-wide — every one of the agent's target sessions woke with it: eight sessions woke
+fifty-three times in twelve minutes, each read the same evidence and concluded nothing had changed. Only `OPEN` and `DIAGNOSED`
+cases are deferred; a case waiting for a verification run keeps its own timing, because that run really is due.
+
+The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.
 
 ## Perception: events and check health
 
 Failure and error executions fan out to every session covering the target, always on, idempotent per execution and capped at 20 events per session per hour. A check that finishes `NOT_EVALUATED` is not a failure and produces no such event, so the batch also asks `dataquality.DiagnoseCheckHealth` about every check it ran: a check that ran without concluding becomes a health event (`NEVER_JUDGED`, `NO_VERDICT_EMPTY`, `STALLED`), one per check per UTC day and on the same hourly budget. The classes are deterministic and read the newest execution first, because an empty target is not a broken check and telling those apart is what the agent needs to stop guessing. A wake without a model consumes a health event as a note instead of parking the session: there is no verdict to review, and parking would silence the target exactly when it reports that it never concludes.
+
+The case is the channel for a check that cannot conclude: the batch opens the case *before* the health events, and an event for a
+check that already has an open case is suppressed, because the wake prompt renders open cases and a message repeating one would only
+be read and discarded. Nine checks used to arrive as eighteen messages (one health event and one stall event each) and a wake spent
+its whole turn budget on them; the same nine checks now arrive as one work list.
 
 A check that has stopped running is invisible to both of those paths, because it produces no execution at all. The scheduler therefore carries a stall sweep, throttled to a minute on its ten-second tick: it starts from the target's schedule instead of from an execution, compares each enabled check's newest completed run with two of the target's cadences (`DiagnoseStaleCheck`, the same stall rule the batch reader applies) and tells the target's sessions about the checks that have stopped. The event is keyed per check per day and shares the failure path's hourly budget, and it names the check rather than an execution, because there is no execution to name. A check younger than its window is pending rather than stalled, so a rule that joined the schedule a minute ago does not page anyone.
 

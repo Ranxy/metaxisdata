@@ -85,6 +85,14 @@ func (f *fakeStore) EarliestOpenQualityAgentCaseActionAt(context.Context, int64)
 	return f.caseAction, nil
 }
 
+func (*fakeStore) DeferQualityAgentCases(context.Context, int64, time.Time, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (*fakeStore) ClearQualityAgentSessionManualResume(context.Context, string) error {
+	return nil
+}
+
 func (f *fakeStore) MaxQualityAgentInputSeqAfter(context.Context, int64, int64) (int64, error) {
 	return f.pendingInputSeq, nil
 }

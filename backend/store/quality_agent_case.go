@@ -386,7 +386,33 @@ func (s *Store) ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID i
 	return cases, nil
 }
 
-// EarliestOpenQualityAgentCaseActionAt reports the soonest next look among an agent's open
+// DeferQualityAgentCases pushes the next look of the agent's due, untended cases. A wake that read a
+// case and decided there was nothing to do used to leave its next_action_at in the past, and the
+// release path merges that past-due instant into the next wake clamped to a minute: every session of
+// the agent then woke every minute for work the model had already declined. Only OPEN and DIAGNOSED
+// move — a case waiting for a verification run keeps its own timing, because a run really is due.
+func (s *Store) DeferQualityAgentCases(ctx context.Context, agentID int64, before, until time.Time) (int64, error) {
+	if agentID <= 0 || until.IsZero() {
+		return 0, common.Errorf(common.Invalid, "deferring cases needs an agent and a time")
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_case
+		SET next_action_at = $3, updated_at = NOW()
+		WHERE agent_id = $1 AND state IN ($4, $5)
+			AND next_action_at IS NOT NULL AND next_action_at <= $2`,
+		agentID, before.UTC(), until.UTC(),
+		int16(QualityAgentCaseStateOpen), int16(QualityAgentCaseStateDiagnosed))
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to defer the quality agent cases")
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count the deferred quality agent cases")
+	}
+	return rows, nil
+}
+
+// EarliestOpenQualityAgentCaseActionAt// EarliestOpenQualityAgentCaseActionAt reports the soonest next look among an agent's open
 // cases. The session runner merges it into the next wake so a case opened after a wake
 // began is not left sleeping until the idle cadence.
 func (s *Store) EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error) {

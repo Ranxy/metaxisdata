@@ -39,11 +39,15 @@ type QualityAgentSessionMessage struct {
 	ContextUsage      *storepb.QualityAgentSessionContextUsage
 	NextWakeAt        *time.Time
 	LeaseUntil        *time.Time
-	RestartCount      int32
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	ArchivedAt        *time.Time
-	Mode              storepb.QualityAgentSessionMode
+	// ManualResumeAt is set when a person resumed a blocked session. The next wake spends it to
+	// bypass the hourly budget once, so "resume" cannot be silently undone by the budget it was
+	// meant to override.
+	ManualResumeAt *time.Time
+	RestartCount   int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ArchivedAt     *time.Time
+	Mode           storepb.QualityAgentSessionMode
 	// Kind is 1 for a target work thread and 2 for the agent's conversation.
 	Kind int16
 	// LastActivityAt is the newest message's created_at; set by the read queries that
@@ -79,7 +83,8 @@ const qualityAgentSessionColumns = `id, resource_id, workspace_id, target_guid, 
 	COALESCE((SELECT principal_id FROM quality_agent WHERE quality_agent.id = agent_id), 0) AS agent_principal_id,
 	state, blocked_code, blocked_reason, revision, wake_count, summary,
 	summary_through_seq, processed_seq, engine_state, next_wake_at, lease_until,
-	restart_count, created_at, updated_at, archived_at, mode, kind, context_usage`
+	restart_count, created_at, updated_at, archived_at, mode, kind, context_usage,
+	manual_resume_at`
 
 // qualityAgentSessionReadColumns adds the newest message timestamp the list and detail
 // readers show as "last activity".
@@ -287,6 +292,14 @@ func retryableSessionBlockedCodes() []string {
 	return []string{"token-budget", "wake-budget", "internal-error", "concurrency-limit"}
 }
 
+// QualityAgentSessionBlockedCodeInfrastructure reports whether a block is about the runtime rather
+// than about a decision: a budget window, a transient internal error, a concurrency limit. The agent
+// may not park a session for anything else — a decision belongs to a case, which the attention list
+// tracks, while a parked session silenced every target it covered and no event could wake it.
+func QualityAgentSessionBlockedCodeInfrastructure(code string) bool {
+	return QualityAgentSessionBlockedCodeRetryable(code)
+}
+
 // QualityAgentSessionBlockedCodeRetryable reports whether a block is transient (a
 // budget window, a transient internal error). The check runner uses it to keep
 // appending failure events while the session is parked on such a block.
@@ -370,6 +383,27 @@ func (s *Store) UpdateQualityAgentSessionState(ctx context.Context, resourceID s
 		return nil, false, errors.Wrap(err, "failed to update the quality agent session")
 	}
 	return message, true, nil
+}
+
+// MarkQualityAgentSessionManualResume records that a person resumed a blocked session. The next
+// budget check spends the marker to allow one wake; it is not a permanent exemption.
+func (s *Store) MarkQualityAgentSessionManualResume(ctx context.Context, resourceID string, at time.Time) error {
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session SET manual_resume_at = $2, updated_at = NOW()
+		WHERE resource_id = $1 AND archived_at IS NULL`, resourceID, at.UTC()); err != nil {
+		return errors.Wrap(err, "failed to record a manual resume")
+	}
+	return nil
+}
+
+// ClearQualityAgentSessionManualResume consumes the marker once the wake it bought has run.
+func (s *Store) ClearQualityAgentSessionManualResume(ctx context.Context, resourceID string) error {
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session SET manual_resume_at = NULL, updated_at = NOW()
+		WHERE resource_id = $1 AND manual_resume_at IS NOT NULL`, resourceID); err != nil {
+		return errors.Wrap(err, "failed to clear a manual resume")
+	}
+	return nil
 }
 
 // QualityAgentSessionWakeResult is what one wake persists on the session row.
@@ -699,8 +733,13 @@ func (s *Store) SumQualityAgentSessionTokensSince(ctx context.Context, workspace
 	return total, nil
 }
 
-// CountQualityAgentSessionWakesSince counts the wakes a workspace started since one
-// instant, the hourly wake budget.
+// CountQualityAgentSessionWakesSince counts the wakes one agent's target sessions performed since
+// an instant: the wake budget's read.
+//
+// Only a wake counts. An event message is not a wake — a dozen events are folded into one wake, and
+// they have their own per-session ceiling (CountQualityAgentSessionEventsSince). Counting each event
+// here let a burst of perception spend the capacity to think, which parked the session exactly when
+// it had something to act on.
 func (s *Store) CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error) {
 	var total int64
 	if err := s.GetDB().QueryRowContext(ctx, `
@@ -708,12 +747,9 @@ func (s *Store) CountQualityAgentSessionWakesSince(ctx context.Context, workspac
 		FROM quality_agent_message m
 		JOIN quality_agent_session s ON s.id = m.session_id
 		WHERE m.workspace_id = $1 AND s.agent_id = $2 AND m.created_at > $3
-			AND m.role = $4 AND s.kind = 1
-			AND m.origin IN ($5, $6, $7)`, workspaceID, agentID, since,
-		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT),
-		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK)).Scan(&total); err != nil {
+			AND s.kind = 1
+			AND m.origin = $4`, workspaceID, agentID, since,
+		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE)).Scan(&total); err != nil {
 		return 0, errors.Wrap(err, "failed to count the session wakes")
 	}
 	return total, nil
@@ -750,7 +786,7 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		&message.SummaryThroughSeq, &message.ProcessedSeq, &engineState,
 		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount,
 		&message.CreatedAt, &message.UpdatedAt, &message.ArchivedAt,
-		&mode, &kind, &contextUsage,
+		&mode, &kind, &contextUsage, &message.ManualResumeAt,
 	}
 	if withLastActivity {
 		dest = append(dest, &message.LastActivityAt)

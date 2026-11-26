@@ -136,7 +136,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"action": map[string]any{
 					"type":        "string",
@@ -153,7 +153,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 			}, "required": []string{"case"}},
 			meta: repairMeta(),
@@ -167,7 +167,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"field": map[string]any{
 					"type":        "string",
@@ -188,7 +188,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"field": map[string]any{
 					"type":        "string",
@@ -237,8 +237,27 @@ func targetToolSpecs() []toolSpec {
 			meta: proposeMeta(),
 		},
 		{
-			name:        "block_session",
-			description: "Report a blocker that needs a person. The same code must persist for three consecutive wakes before the session parks.",
+			name: "escalate_case",
+			description: "Hand one work item to its owner and stop working on it: a change you may not make, a failure no field change " +
+				"fixes, a decision that is not yours. The case becomes escalated and the owner is told, with your reason as the question. " +
+				"Use this instead of reporting a blocker: a blocked session stops every target it covers.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
+				},
+				"reason": map[string]any{
+					"type":        "string",
+					"description": "what the owner has to decide, in one or two sentences",
+				},
+			}, "required": []string{"case", "reason"}},
+			meta: proposeMeta(),
+		},
+		{
+			name: "block_session",
+			description: "Park this session on an infrastructure failure only: a spend or wake budget, a transient internal error, a concurrency " +
+				"limit. The same code must persist for three consecutive wakes before the session parks. A decision about a check goes to " +
+				"escalate_case instead, because a parked session stops every target it covers.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"code":   map[string]any{"type": "string"},
 				"reason": map[string]any{"type": "string"},

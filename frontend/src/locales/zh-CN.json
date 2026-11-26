@@ -3456,6 +3456,7 @@
     "reportsEmpty": "还没有报告。",
     "reportsHint": "Agent 按配置的频率生成确定性报告。",
     "reportsTitle": "巡检报告",
+    "resumeHeld": "会话又被拦住了：{reason}",
     "resumeSession": "恢复会话",
     "resumed": "会话已恢复",
     "roleAssistant": "Agent",

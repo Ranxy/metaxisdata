@@ -119,6 +119,24 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				}
 				continue
 			}
+			if dataquality.IsFactNotWork(diagnosis.Class) {
+				// The class describes the target, not the check: an empty table is an answer, not a
+				// repair. Closing a case that already exists is the same honesty one step later —
+				// otherwise the item would sit here for ever, because no verb can settle it.
+				if openCase == nil {
+					continue
+				}
+				if _, applied, closeErr := r.stores.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+					openCase.State, store.QualityAgentCaseStateResolved, openCase.Attempts, nil,
+					diagnosis.Summary); closeErr != nil {
+					slog.Warn("failed to resolve a case about a target holding no rows",
+						slog.String("case", openCase.ResourceID), log.WithError(closeErr))
+				} else if applied {
+					resolved++
+					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
+				}
+				continue
+			}
 			if openCase != nil {
 				// The problem is already claimed; re-diagnosing it is a later wake's job.
 				continue

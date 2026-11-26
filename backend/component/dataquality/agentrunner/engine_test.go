@@ -348,8 +348,29 @@ func TestWakeSchedulesAnEarlierWake(t *testing.T) {
 	require.Contains(t, outcome.Summary, "scheduled an earlier wake")
 }
 
-// The same blocker has to persist for three wakes before the session parks for a person.
+// The same infrastructure blocker has to persist for three wakes before the session parks.
 func TestWakeParksTheSessionAfterRepeatedBlocker(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	session := testSession()
+	session.EngineState = &storepb.QualityAgentSessionEngineState{BlockedCode: "wake-budget", BlockedRounds: 2}
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "blocked", toolCalls: []llm.ToolCall{toolCall("call_1", "block_session", `{"code":"wake-budget","reason":"the hourly budget is spent"}`)}},
+		{content: "stopping"},
+	}), resolveToModel, nil)
+
+	outcome, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.True(t, outcome.Blocked)
+	require.Equal(t, "wake-budget", outcome.BlockedCode)
+	require.Contains(t, outcome.BlockedReason, "hourly budget")
+	require.Equal(t, int32(3), outcome.EngineState.GetBlockedRounds())
+}
+
+// A decision never parks the session: blocking is for the runtime, and a work item goes to
+// escalate_case. A parked session silenced every target it covered and nothing could wake it.
+func TestWakeRefusesToParkTheSessionForADecision(t *testing.T) {
 	t.Parallel()
 
 	stores := newFakeStore()
@@ -357,15 +378,13 @@ func TestWakeParksTheSessionAfterRepeatedBlocker(t *testing.T) {
 	session.EngineState = &storepb.QualityAgentSessionEngineState{BlockedCode: "needs-data", BlockedRounds: 2}
 	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
 		{content: "blocked", toolCalls: []llm.ToolCall{toolCall("call_1", "block_session", `{"code":"needs-data","reason":"the source table is empty"}`)}},
-		{content: "stopping"},
+		{content: "escalating"},
 	}), resolveToModel, nil)
 
 	outcome, err := engine.Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
-	require.True(t, outcome.Blocked)
-	require.Equal(t, "needs-data", outcome.BlockedCode)
-	require.Contains(t, outcome.BlockedReason, "source table is empty")
-	require.Equal(t, int32(3), outcome.EngineState.GetBlockedRounds())
+	require.False(t, outcome.Blocked, "a decision is a case escalation, not a session park")
+	require.Empty(t, outcome.BlockedCode)
 }
 
 // Without a model the wake still surveys the target and writes a note to the transcript.

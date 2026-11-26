@@ -202,6 +202,17 @@ func RevisionEffectLabel(lang, effect string) string {
 	}
 }
 
+// CaseEscalationQuestion is the escalation body for a work item the agent handed to a person. The
+// reason comes from the model and is shown as-is; only the framing is localized.
+func CaseEscalationQuestion(lang, check, reason string) string {
+	check = strings.TrimSpace(check)
+	reason = strings.TrimSpace(reason)
+	if IsChinese(lang) {
+		return "检查「" + check + "」：" + reason + " Agent 已在这个工作项上停下，需要你决定。"
+	}
+	return "Check \"" + check + "\": " + reason + " The agent has stopped on this work item and needs your decision."
+}
+
 // CaseFrozenQuestion is the escalation body for a work item the agent gave up on: it tried the
 // budget of repairs and the check still fails the same way. The sentence has to say that the agent
 // stopped and that a person now owns the decision, because a frozen item that reads like an

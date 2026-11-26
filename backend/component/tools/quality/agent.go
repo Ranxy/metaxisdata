@@ -170,6 +170,8 @@ type AgentDeps struct {
 	Revise ReviseFunc
 	// Flag records the agent's own objection to a draft it queued; nil reports it as not configured.
 	Flag FlagFunc
+	// Escalate hands one work item to a person; nil reports it as not configured.
+	Escalate EscalateFunc
 }
 
 // RunOutcome is what one diagnostic run did.
@@ -268,6 +270,46 @@ func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, argu
 		result["execution"] = outcome.Execution
 	}
 	return marshalJSON(result)
+}
+
+// EscalationOutcome is the work item one escalation handed to a person.
+type EscalationOutcome struct {
+	Check  string
+	State  string
+	Reason string
+}
+
+// EscalateFunc hands one case to a person through the application layer.
+type EscalateFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, reason string) (EscalationOutcome, error)
+
+// EscalateCase hands one work item to a person. It is the model's exit for everything it cannot
+// settle, and the reason is required: an escalation without a question is a parked session in
+// disguise.
+func (t *AgentTools) EscalateCase(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case   string `json:"case"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid escalate_case arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Reason) == "" {
+		return "", errors.New("escalate_case needs a case and a reason")
+	}
+	if t.deps.Escalate == nil {
+		return "", errors.New("the escalate verb is not configured in this process")
+	}
+	outcome, err := t.deps.Escalate(ctx, session.AgentPrincipalID, input.Case, input.Reason)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":   sessionCaseName(input.Case),
+		"check":  outcome.Check,
+		"state":  outcome.State,
+		"reason": outcome.Reason,
+		"note":   "the owner now owes this decision; the work item is closed to you",
+	})
 }
 
 // FlagOutcome is what one flagged draft recorded.
