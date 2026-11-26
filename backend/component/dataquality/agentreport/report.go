@@ -47,6 +47,9 @@ func Render(snapshot *store.QualityAgentReportSnapshot, periodStart, periodEnd t
 	} else {
 		_, _ = body.WriteString("- No work item was settled by the agent in this period.\n")
 	}
+	if line := emptyTargetsLine(snapshot.EmptyTargets, "en"); line != "" {
+		_, _ = body.WriteString(line)
+	}
 	_, _ = body.WriteString("\n## What is waiting for you\n\n")
 	waiting := false
 	if snapshot.EscalatedCount > 0 {
@@ -74,6 +77,58 @@ func Render(snapshot *store.QualityAgentReportSnapshot, periodStart, periodEnd t
 		_, _ = body.WriteString("- Nothing needs a decision in this period.\n")
 	}
 	return body.String()
+}
+
+// emptyTargetsLine renders the targets that could not be judged at all because they hold no rows.
+// It belongs under what the agent settled rather than under what waits for a person: an empty table
+// is an answer, so the report states it once instead of one escalation per silenced check.
+func emptyTargetsLine(targets []store.QualityAgentTargetCaseCount, language string) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		parts = append(parts, fmt.Sprintf("%s (%d)", targetLabel(target.TargetGUID), target.Cases))
+	}
+	list := strings.Join(parts, ", ")
+	if language == "zh" {
+		return fmt.Sprintf("- %d 个目标因 0 行数据无法判定，共 %d 条检查（%s）。这是数据事实，不是检查缺陷。\n",
+			len(targets), countCases(targets), list)
+	}
+	return fmt.Sprintf("- %d target(s) could not be judged at all because they hold no rows, silencing %d check(s) (%s). That is a fact about the data, not a defect in the checks.\n",
+		len(targets), countCases(targets), list)
+}
+
+// countCases sums the checks one fact silenced.
+func countCases(targets []store.QualityAgentTargetCaseCount) int32 {
+	var total int32
+	for _, target := range targets {
+		total += target.Cases
+	}
+	return total
+}
+
+// targetLabel renders a target GUID as the object a person names it by: schema.object on the
+// engines that have schemas, database.object on the MySQL-wire family, and the GUID when the path is
+// not shaped the usual way (instance;database;schema;object).
+func targetLabel(targetGUID string) string {
+	parts := strings.Split(targetGUID, ";")
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last == "" {
+		return targetGUID
+	}
+	if len(parts) >= 4 {
+		if schema := strings.TrimSpace(parts[len(parts)-2]); schema != "" {
+			return schema + "." + last
+		}
+		if database := strings.TrimSpace(parts[len(parts)-3]); database != "" {
+			return database + "." + last
+		}
+	}
+	if len(parts) >= 2 {
+		return strings.TrimSpace(parts[len(parts)-2]) + "." + last
+	}
+	return last
 }
 
 // repairedClasses renders the failure classes the agent settled, in the order the read returned
@@ -122,6 +177,9 @@ func renderChinese(snapshot *store.QualityAgentReportSnapshot, periodStart, peri
 			snapshot.RepairedCount, repairedClasses(snapshot.RepairedByClass, "zh"))
 	} else {
 		_, _ = body.WriteString("- 本周期没有由 Agent 自行收敛的工作项。\n")
+	}
+	if line := emptyTargetsLine(snapshot.EmptyTargets, "zh"); line != "" {
+		_, _ = body.WriteString(line)
 	}
 	_, _ = body.WriteString("\n## 等你决定\n\n")
 	waiting := false

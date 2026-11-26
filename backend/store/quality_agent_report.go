@@ -171,6 +171,25 @@ type QualityAgentReportSnapshot struct {
 	EscalatedCount  int32
 	OpenCaseCount   int32
 	RepairedByClass []QualityAgentCaseClassCount
+	// EmptyTargets names the targets where a check could not judge because the target held no rows,
+	// with how many checks each one silenced. That is a fact about the data, so the report states it
+	// where a person will read it; it is never escalated, because there is nothing to decide.
+	EmptyTargets []QualityAgentTargetCaseCount
+}
+
+// QualityAgentFailureClassNoVerdictEmpty is the failure class of a work item whose target held no
+// rows. The class itself belongs to dataquality (ClassNoVerdictEmpty); it is spelled here because the
+// store cannot import that package — it imports the store — and a test keeps the two equal.
+const QualityAgentFailureClassNoVerdictEmpty = "NO_VERDICT_EMPTY"
+
+// maxReportEmptyTargets bounds how many empty targets the report body names. A report is prose: the
+// count is exact and the list is the ones worth opening.
+const maxReportEmptyTargets = 8
+
+// QualityAgentTargetCaseCount is one target and how many of its work items share a fate.
+type QualityAgentTargetCaseCount struct {
+	TargetGUID string
+	Cases      int32
 }
 
 // QualityAgentCaseClassCount is one failure class and how many work items of it the agent settled.
@@ -300,6 +319,31 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 		int16(QualityAgentCaseStateEscalated), int16(QualityAgentCaseStateFrozen),
 	).Scan(&snapshot.EscalatedCount, &snapshot.OpenCaseCount); err != nil {
 		return nil, errors.Wrap(err, "failed to count the report escalated work items")
+	}
+	// A target that held no rows is not a decision anyone owes; it is a fact about the data, and the
+	// report is where a fact belongs. The list is bounded because it is prose, not a table.
+	emptyRows, err := s.GetDB().QueryContext(ctx, `
+		SELECT target_guid, COUNT(*) FROM quality_agent_case
+		WHERE agent_id = $1 AND state = $2 AND failure_class = $3
+			AND updated_at >= $4 AND updated_at < $5
+		GROUP BY target_guid ORDER BY COUNT(*) DESC, target_guid LIMIT $6`,
+		agentID, int16(QualityAgentCaseStateResolved), QualityAgentFailureClassNoVerdictEmpty,
+		since, until, maxReportEmptyTargets)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to count the report empty targets")
+	}
+	defer emptyRows.Close()
+	for emptyRows.Next() {
+		var targetGUID string
+		var count int32
+		if err := emptyRows.Scan(&targetGUID, &count); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a report empty target")
+		}
+		snapshot.EmptyTargets = append(snapshot.EmptyTargets,
+			QualityAgentTargetCaseCount{TargetGUID: targetGUID, Cases: count})
+	}
+	if err := emptyRows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the report empty targets")
 	}
 	return snapshot, nil
 }

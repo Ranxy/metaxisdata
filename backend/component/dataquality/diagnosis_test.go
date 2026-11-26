@@ -162,3 +162,11 @@ func TestFactNotWorkClassesAreSettledWithAReason(t *testing.T) {
 	require.NotEqual(t, FactResolution(ClassNoVerdictEmpty), FactResolution(""),
 		"an unknown class gets the generic sentence")
 }
+
+// The report read spells the empty-target class itself because the store cannot import this
+// package; the two spellings must stay one fact.
+func TestTheStoreSpellingOfTheEmptyClassMatchesTheClass(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, string(ClassNoVerdictEmpty), store.QualityAgentFailureClassNoVerdictEmpty)
+}
