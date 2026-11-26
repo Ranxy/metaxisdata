@@ -149,7 +149,7 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 		return nil, nil, err
 	}
 	if openCase == nil {
-		return nil, nil, connect.NewError(connect.CodeNotFound, errors.Errorf("case %q not found", resourceID))
+		return nil, nil, caseNotFoundError(resourceID)
 	}
 	agent, err := s.store.GetQualityAgentByID(ctx, openCase.AgentID)
 	if err != nil {
@@ -162,6 +162,14 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 		return nil, nil, err
 	}
 	return openCase, agent, nil
+}
+
+// caseNotFoundError explains the id space a verb was handed. A model that has no work item still wants
+// to hand a persistent failure over, and the only reference it holds is the execution it just read, so
+// the refusal has to say what that reference is missing rather than only that it is unknown.
+func caseNotFoundError(resourceID string) error {
+	return connect.NewError(connect.CodeNotFound, errors.Errorf(
+		"case %q not found: these verbs act on a work item (qualityAgentCases/<id>), and a check or an execution is not one. A check that produced a FAIL has no work item because the issue ledger already reported it to the owner; record what you concluded and leave it there", resourceID))
 }
 
 // checkTitle names a check for prose, falling back to its id when a person never titled it.

@@ -39,3 +39,19 @@ func TestAdoptionPolicySectionRendersTheConfiguredGate(t *testing.T) {
 	// cannot use.
 	require.Contains(t, adoptionPolicySection(capabilityTestAgent(agentcapability.Suggest)), "Adoption is unavailable")
 }
+
+// A monitoring wake must be told what a blocker is not. It once read "escalate a blocker instead of
+// guessing", judged a persistent FAIL a blocker, and invented a case id out of the execution it had
+// — while the issue ledger had already reported that failure to the owner.
+func TestMonitorPromptSaysAFailingCheckIsNotAWorkItem(t *testing.T) {
+	t.Parallel()
+
+	profile, ok := profileFor(agentcapability.Patrol)
+	require.True(t, ok, "the patrol capability has a profile")
+	sections := profile.Prompt(monitorSpec())
+	require.Len(t, sections, 1)
+	require.Contains(t, sections[0].Text, "A failing check is a finding, not a work item")
+	require.Contains(t, sections[0].Text, "issue ledger")
+	require.NotContains(t, sections[0].Text, "Escalate a blocker that needs a person instead of guessing",
+		"an unqualified escalation invitation is what produced a fabricated case id")
+}

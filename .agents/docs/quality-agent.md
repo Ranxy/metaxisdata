@@ -67,8 +67,10 @@ How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the
 A session blocks only on the runtime: a spent token or wake budget, a transient internal error, a concurrency limit. Those really do
 stop everything in the session, and they are retryable. Everything else — a change the delegation withholds, a failure no field
 change fixes, a decision that is not the agent's — is a **case escalation**: `escalate_case` moves one work item to `ESCALATED` and
-raises one attention with the agent's reason as the question. The distinction is the difference between losing one target's queue and
-losing one question.
+raises one attention with the agent's reason as the question. It acts on a work item only. A check that produced a FAIL has none — the
+issue ledger already reported it to the owner — so a wake has no case id to name there and must not manufacture one from an execution
+it read; the tool's refusal names the id space for exactly that reason. The distinction is the difference between losing one target's
+queue and losing one question.
 
 It used to be the other way round, and the cost was visible: eight sessions were parked on decision codes (`RULES_NEVER_EVALUATED`,
 `AWAITING_DRAFT_REVIEW`, `EXECUTIONS_NOT_EVALUATED`, …) and nothing could wake them — not a failing check, not a health event, not a

@@ -240,11 +240,12 @@ func targetToolSpecs() []toolSpec {
 			name: "escalate_case",
 			description: "Hand one work item to its owner and stop working on it: a change you may not make, a failure no field change " +
 				"fixes, a decision that is not yours. The case becomes escalated and the owner is told, with your reason as the question. " +
-				"Use this instead of reporting a blocker: a blocked session stops every target it covers.",
+				"Use this instead of reporting a blocker: a blocked session stops every target it covers. It acts on a work item only: a " +
+				"check that produced a FAIL has none, because a failing check is a finding the issue ledger already reports to your owner.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
+					"description": "the qualityAgentCases id from the work list above — never an execution or a check id; without a work list entry there is nothing to escalate",
 				},
 				"reason": map[string]any{
 					"type":        "string",

@@ -28,3 +28,17 @@ func TestFactCaseEscalationIsRefused(t *testing.T) {
 	require.Contains(t, err.Error(), "fact about the target")
 	require.Contains(t, err.Error(), "record_asset_fact")
 }
+
+// A model with no work item still tries to hand a persistent failure over, naming the execution it
+// just read. The refusal must explain the id space rather than only that the id is unknown, because
+// the model's next move is what the sentence is for.
+func TestCaseNotFoundExplainsTheIdSpace(t *testing.T) {
+	t.Parallel()
+
+	err := caseNotFoundError("4792")
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	require.Contains(t, err.Error(), `case "4792" not found`)
+	require.Contains(t, err.Error(), "qualityAgentCases/<id>")
+	require.Contains(t, err.Error(), "a check or an execution is not one")
+	require.Contains(t, err.Error(), "issue ledger already reported it")
+}
