@@ -135,3 +135,19 @@ func TestCaseTransition(t *testing.T) {
 		}
 	}
 }
+
+// The wake prompt renders the case summary, and the model resolves the check by it. A summary
+// that did not name the check would leave several open cases on one target indistinguishable.
+func TestCaseSummaryNamesTheCheck(t *testing.T) {
+	t.Parallel()
+
+	rule := &store.QualityRuleMessage{ID: 460, ResourceID: "r460", Title: "performed_at must be recent"}
+	diagnosis := &dataquality.Diagnosis{Class: dataquality.ClassConfigValueInvalid, Summary: "the target database refused a bound value"}
+	summary := caseSummary(rule, diagnosis)
+	require.Contains(t, summary, `check "performed_at must be recent"`)
+	require.Contains(t, summary, "qualityRules/r460")
+	require.Contains(t, summary, "refused a bound value")
+
+	require.Empty(t, caseSummary(nil, diagnosis))
+	require.Empty(t, caseSummary(rule, nil))
+}
