@@ -285,12 +285,40 @@ func ValidateSpecs() error {
 			if !handlesTool(declaration.name) {
 				return fmt.Errorf("spec %s declares tool %q but the engine has no execution branch", spec.Name, declaration.name)
 			}
+			if err := validateToolPermission(declaration); err != nil {
+				return fmt.Errorf("spec %s: %w", spec.Name, err)
+			}
 		}
 		if _, err := registry.Resolve(toolSpecNames(declarations)); err != nil {
 			return fmt.Errorf("spec %s: %w", spec.Name, err)
 		}
 	}
 	return nil
+}
+
+// validateToolPermission checks that a tool's declared permission is one the agent
+// principal can actually hold. A tool gated by a permission no role grants would fail at
+// call time for every agent, which is a declaration bug worth a boot error rather than a
+// wake-time surprise.
+//
+// "Holdable" means the member baseline or the quality agent role grants it. The baseline
+// counts because Manager.CheckPermission short-circuits on it for every principal, which is
+// also why a baseline permission cannot scope a read to one database.
+func validateToolPermission(declaration toolSpec) error {
+	if declaration.meta.Authz != tool.AuthzPermission {
+		return nil
+	}
+	perm := permission.Permission(declaration.meta.Permission)
+	if perm == "" {
+		return fmt.Errorf("tool %q declares no permission", declaration.name)
+	}
+	for _, roleID := range []string{store.WorkspaceMemberRole, store.QualityAgentRole} {
+		if role := store.GetPredefinedRole(roleID); role != nil && role.Permissions[perm] {
+			return nil
+		}
+	}
+	return fmt.Errorf("tool %q declares %q, which neither the member baseline nor the quality agent role grants",
+		declaration.name, perm)
 }
 
 // toolSpecNames lists a declaration slice's tool names in order.

@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -222,4 +224,23 @@ func allToolNames(spec *Spec) []string {
 		names = append(names, toolSpecNames(profile.Tools(spec))...)
 	}
 	return names
+}
+
+// A tool gated by a permission no role grants would fail for every agent at call time, so
+// the boot check refuses it instead of letting a wake discover it. "Holdable" includes the
+// member baseline, because the workspace check short-circuits on it for every principal.
+func TestValidateToolPermission(t *testing.T) {
+	t.Parallel()
+
+	declaration := func(authz tool.AuthzMode, perm permission.Permission) toolSpec {
+		return toolSpec{name: "a_tool", meta: tool.Meta{Authz: authz, Permission: string(perm)}}
+	}
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzInternal, "")))
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzPermission, permission.DataQualityRulesList)))
+	require.NoError(t, validateToolPermission(declaration(tool.AuthzPermission, permission.DataQualityRulesEvidence)))
+
+	require.ErrorContains(t, validateToolPermission(declaration(tool.AuthzPermission, "")), "declares no permission")
+	err := validateToolPermission(declaration(tool.AuthzPermission, "metaxisdata.dataQuality.notAThing"))
+	require.ErrorContains(t, err, "a_tool")
+	require.ErrorContains(t, err, "notAThing")
 }
