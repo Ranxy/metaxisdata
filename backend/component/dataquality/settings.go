@@ -89,6 +89,12 @@ const (
 	// run with: below it a compaction summary cannot carry the checkpoint, so an
 	// agent's provider/model pair is rejected at write time.
 	MinAgentModelOutputTokens = 2048
+	// MinAgentCompactionTriggerTokens is the smallest pressure budget a quality agent
+	// may run with. The trigger is what a wake compares its text estimate against, and
+	// every request also carries the system prompt and the tool schemas, a fixed few
+	// thousand tokens: a smaller budget compacts on every wake and still crosses the
+	// window on a dense transcript, so the pair is refused at write time instead.
+	MinAgentCompactionTriggerTokens = 32768
 	// DefaultAgentRunnerIdleWakeSeconds is how long a session sleeps between wakes
 	// when no event or person wakes it sooner.
 	DefaultAgentRunnerIdleWakeSeconds = 86_400

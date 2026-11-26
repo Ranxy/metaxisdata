@@ -661,8 +661,8 @@ request is rejected and the failed analysis reports a provider-status diagnostic
 
 Settings → Quality agents (`/settings/quality-agents`) is the agent control panel: the **Pause all agents** switch, the agent list, and
 the create/edit dialog for each agent, including the provider profile and model each agent runs on. A model can be pinned only when its
-output budget is at least 2,048 tokens and its capacities leave room for compaction; a model too small for an agent is reported as
-unavailable rather than silently swapped. The agent's home is where its owner
+output budget is at least 2,048 tokens and its capacities leave at least 32,768 tokens of compaction budget; a model too small for an
+agent is reported as unavailable rather than silently swapped. The agent's home is where its owner
 talks to it, reads its reports and answers its attention.
 
 ## Retention

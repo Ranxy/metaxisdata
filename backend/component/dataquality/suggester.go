@@ -246,10 +246,11 @@ func validateAgentModel(config llm.ResolvedConfig, model string) error {
 			"model %q has an output budget of %d tokens; a quality agent needs at least %d",
 			model, resolved.MaxOutputTokens, MinAgentModelOutputTokens))
 	}
-	if trigger := llm.CompactionTrigger(resolved.ContextWindow, resolved.MaxOutputTokens); trigger <= 0 {
+	trigger := llm.CompactionTrigger(resolved.ContextWindow, resolved.MaxOutputTokens)
+	if trigger < MinAgentCompactionTriggerTokens {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
-			"model %q leaves no room to compact a conversation (context window %d, output budget %d); raise the context window or lower the output budget",
-			model, resolved.ContextWindow, resolved.MaxOutputTokens))
+			"model %q leaves %d tokens of room to compact a conversation (context window %d, output budget %d); a quality agent needs at least %d, so raise the context window or lower the output budget",
+			model, trigger, resolved.ContextWindow, resolved.MaxOutputTokens, MinAgentCompactionTriggerTokens))
 	}
 	return nil
 }
