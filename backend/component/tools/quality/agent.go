@@ -10,7 +10,6 @@ package quality
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -140,6 +139,15 @@ type TableContextReader interface {
 // silently retrying the same intent.
 type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error)
 
+// AgentEvidence is the slice of the quality application layer the evidence tools read
+// through. It is the same read the RPC and MCP surfaces use, which is what keeps one
+// projection from drifting into three. A nil reader disables the evidence tools
+// instead of letting them fall back to an unbounded store read.
+type AgentEvidence interface {
+	ReadTargetExecutions(ctx context.Context, agentPrincipalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error)
+	ReadCheckEvidence(ctx context.Context, agentPrincipalID int32, targetGUID string, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error)
+}
+
 // AgentDeps is everything the agent tools need from their product.
 type AgentDeps struct {
 	// Store is the domain store the tools read and write.
@@ -150,6 +158,8 @@ type AgentDeps struct {
 	TableContext TableContextReader
 	// DraftChecks is the triage drafting capability; nil reports it as not configured.
 	DraftChecks DraftChecksFunc
+	// Evidence is the application-layer evidence read; nil reports it as not configured.
+	Evidence AgentEvidence
 }
 
 // AgentTools runs the built-in quality agent's tools.
@@ -176,12 +186,13 @@ type evidence struct {
 	PlanState   string
 	Criticality string
 	Gaps        []string
-	Executions  []string
 	Memories    []string
 	RuleCount   int
 }
 
-// gatherEvidence assembles the target's plan, recent executions and confirmed memories.
+// gatherEvidence assembles the target's plan, rule count and confirmed memories. The
+// execution evidence is read through the application layer instead, so it has one
+// projection rather than a third one built here.
 func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (*evidence, error) {
 	result := &evidence{
 		TargetGUID: session.TargetGUID,
@@ -208,15 +219,6 @@ func (t *AgentTools) gatherEvidence(ctx context.Context, session AgentSession) (
 			continue
 		}
 		result.Gaps = append(result.Gaps, GapLabel(requirement))
-	}
-	limit := 5
-	executions, err := t.deps.Store.ListQualityExecutions(ctx, &store.FindQualityExecutionMessage{TargetGUID: &session.TargetGUID, Limit: &limit})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's executions")
-	}
-	for _, execution := range executions {
-		result.Executions = append(result.Executions, fmt.Sprintf("%s %s (%d failed rows)",
-			executionIDName(execution.ID), execution.Status, execution.FailedRows))
 	}
 	memoryLimit := 20
 	memories, err := t.deps.Store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Limit: &memoryLimit})
@@ -318,13 +320,49 @@ func (t *AgentTools) targetPendingDrafts(ctx context.Context, session AgentSessi
 	return views, len(rows), true
 }
 
-// ListRecentExecutions lists the target's recent executions.
+// ListRecentExecutions lists the target's recent executions through the application
+// layer. The execution is the fact, so the projection carries the check it belongs to
+// and the engine's own failure code and message: a list of statuses and counts alone
+// once led the agent to blame the evaluation pipeline for a bound the database refused.
 func (t *AgentTools) ListRecentExecutions(ctx context.Context, session AgentSession) (string, error) {
-	evidence, err := t.gatherEvidence(ctx, session)
+	if t.deps.Evidence == nil {
+		return "", errors.New("the evidence read is not configured in this process")
+	}
+	executions, err := t.deps.Evidence.ReadTargetExecutions(ctx, session.AgentPrincipalID, session.TargetGUID, 0)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"executions": emptyIfNil(evidence.Executions)})
+	if executions == nil {
+		executions = []dataquality.ExecutionEvidence{}
+	}
+	return marshalJSON(map[string]any{"executions": executions})
+}
+
+// InspectCheck renders one check's definition and its own executions. It is the tool
+// that turns "an execution failed" into "this check, at this revision, with this
+// config, failed for this reason": the read that lets a model decide whether the
+// check or the data is wrong.
+func (t *AgentTools) InspectCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Rule       string `json:"rule"`
+		Executions int    `json:"executions"`
+	}
+	if strings.TrimSpace(arguments) != "" {
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid inspect_check arguments")
+		}
+	}
+	if t.deps.Evidence == nil {
+		return "", errors.New("the evidence read is not configured in this process")
+	}
+	evidence, err := t.deps.Evidence.ReadCheckEvidence(ctx, session.AgentPrincipalID, session.TargetGUID, input.Rule, input.Executions)
+	if err != nil {
+		return "", err
+	}
+	if evidence == nil {
+		return "", errors.Errorf("the target has no check %q", input.Rule)
+	}
+	return marshalJSON(evidence)
 }
 
 // GetMemory lists the target's confirmed memories.
@@ -517,11 +555,6 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 	default:
 		return "EXPERIMENTAL"
 	}
-}
-
-// executionIDName renders an execution resource name for a tool result.
-func executionIDName(id int64) string {
-	return fmt.Sprintf("qualityExecutions/%d", id)
 }
 
 // marshalJSON renders a tool result.

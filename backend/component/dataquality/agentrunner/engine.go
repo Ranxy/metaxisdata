@@ -87,6 +87,10 @@ type Engine struct {
 	// instead of pretending to have analysed the table.
 	tableContext TableContextReader
 	draftChecks  DraftChecksFunc
+	// evidence is the application-layer read the evidence tools use. It is wired
+	// after the service exists, like adoption, because the engine is constructed
+	// first.
+	evidence quality.AgentEvidence
 	// adoption applies the agent's auto-adoption guardrails after a triage wake.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -107,6 +111,13 @@ type Engine struct {
 // this is a setter rather than an option.
 func (e *Engine) SetAdoption(adoption AdoptionFunc) {
 	e.adoption = adoption
+}
+
+// SetEvidence wires the application-layer evidence read after the API service
+// exists, for the same reason SetAdoption is a setter. Without it the evidence tools
+// report that the read is not configured instead of falling back to a store query.
+func (e *Engine) SetEvidence(evidence quality.AgentEvidence) {
+	e.evidence = evidence
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service

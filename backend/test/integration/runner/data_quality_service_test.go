@@ -5606,3 +5606,63 @@ func TestQualityOwnerScopedContractRealServerIntegration(t *testing.T) {
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(ownerToken, otherTarget)))
 	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(labelUpdate(strangerToken, fixture.usersGUID)))
 }
+
+// TestDataQualityRuleRejectsAnExpressionRangeBoundRealServerIntegration covers the
+// rule that motivated the BAD_VALUE class: a range bound of "now - 1 day" saved, was
+// adopted automatically, and then failed every scheduled run with SQLSTATE 22007.
+// The create path must refuse the expression and name the supported shapes, while
+// the same rule with an ISO-8601 bound must still save and probe cleanly. A rolling
+// window belongs to a freshness check or a filter time variable, never to a bound.
+func TestDataQualityRuleRejectsAnExpressionRangeBoundRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env, ctx, instanceID, sourceDatabase, databaseName := setupPostgresServiceDatabase(t)
+	require.NoError(t, env.ExecPostgres(ctx, sourceDatabase, `
+CREATE TABLE public.event_log (
+  id BIGSERIAL PRIMARY KEY,
+  performed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO public.event_log (performed_at) VALUES ('2026-01-02 00:00:00+00');
+`))
+	_, err := env.CreateDataSource(ctx, common.FormatInstance(instanceID), &v1pb.DataSource{
+		Type:     v1pb.DataSourceType_READ_ONLY,
+		Username: "postgres",
+		Password: "postgres",
+		Host:     env.PostgresHost,
+		Port:     env.PostgresPort,
+	}, "readonly", false)
+	require.NoError(t, err)
+	env.SyncDatabase(ctx, t, databaseName)
+
+	tableGUID := waitForMetaGUIDByName(ctx, t, env,
+		fmt.Sprintf("%s;%s", instanceID, sourceDatabase), storepb.MetaType_TABLE, "event_log")
+	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
+	newRule := func(bound string) *v1pb.QualityRule {
+		return &v1pb.QualityRule{
+			Title:     "performed_at must be recent",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+			Target:    &v1pb.QualityTarget{MetaGuid: tableGUID, MetaType: v1pb.MetaType_TABLE},
+			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_Range{
+				Range: &v1pb.RangeConfig{Column: "performed_at", Min: qualityPtr(bound)},
+			}},
+			Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		}
+	}
+
+	_, err = client.CreateQualityRule(ctx, withToken(env.AdminToken(), &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   newRule("now - 1 day"),
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "not a date or timestamp")
+	require.Contains(t, err.Error(), "freshness", "the message names the supported way to express a rolling window")
+
+	created, err := client.CreateQualityRule(ctx, withToken(env.AdminToken(), &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule:   newRule("2026-01-01T00:00:00Z"),
+	}))
+	require.NoError(t, err, "an ISO-8601 bound must save and pass the create-time dry run")
+	require.NotEmpty(t, created.Msg.GetName())
+}

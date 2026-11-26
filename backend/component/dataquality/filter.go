@@ -267,7 +267,18 @@ func convertFilterValue(column ColumnInfo, value string) (any, error) {
 			return nil, common.Errorf(common.Invalid, "filter value %q is not a boolean for column %q", value, column.Name)
 		}
 		return parsed, nil
-	case ColumnKindString, ColumnKindTemporal:
+	case ColumnKindString:
+		return value, nil
+	case ColumnKindTemporal:
+		// A time variable is resolved before a filter is compiled, so a surviving
+		// token here is a caller that skipped resolution; leave it to that path's own
+		// error instead of guessing what it renders to.
+		if ContainsTimeVariable(value) {
+			return value, nil
+		}
+		if !parseTemporalLiteral(column, value) {
+			return nil, temporalLiteralError("filter value", column, strings.TrimSpace(value))
+		}
 		return value, nil
 	case ColumnKindUnknown:
 		return nil, common.Errorf(common.Invalid, "column %q has a type this build cannot filter on", column.Name)

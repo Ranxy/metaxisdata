@@ -447,6 +447,14 @@ func TestValidateRange(t *testing.T) {
 			Min:    validationPtr("2026-01-01"),
 			Max:    validationPtr("2026-12-31"),
 		})},
+		{name: "temporal bound is an expression", config: validationRangeConfig(&storepb.RangeConfig{
+			Column: "created_at",
+			Min:    validationPtr("now - 1 day"),
+		}), wantErr: true},
+		{name: "temporal bound is a time of day", config: validationRangeConfig(&storepb.RangeConfig{
+			Column: "created_at",
+			Min:    validationPtr("18:30:00"),
+		}), wantErr: true},
 		{name: "no bounds", config: validationRangeConfig(&storepb.RangeConfig{Column: "amount"}), wantErr: true},
 		{name: "string column", config: validationRangeConfig(&storepb.RangeConfig{Column: "name", Min: validationPtr("a")}), wantErr: true},
 		{name: "missing column", config: validationRangeConfig(&storepb.RangeConfig{Column: "missing", Min: validationPtr("1")}), wantErr: true},

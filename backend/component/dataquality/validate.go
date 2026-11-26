@@ -570,8 +570,8 @@ func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.Quality
 
 // validateRangeConfig checks the range rule: a numeric or temporal column, at
 // least one bound, bounds the column's type can represent, and an ordered numeric
-// pair. A temporal pair stays a string and its order is the engine's cast, so only
-// non-emptiness is checked here.
+// pair. A temporal pair stays a string and its order is the engine's cast, so its
+// order is not compared here; each bound must still be a parseable ISO-8601 literal.
 func validateRangeConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	rangeConfig := config.GetRange()
 	if rangeConfig == nil {
@@ -610,15 +610,24 @@ func validateRangeConfig(target ResolvedTarget, config *storepb.QualityRuleConfi
 }
 
 // validateRangeBound checks one range bound. A numeric bound must parse; a temporal
-// bound stays as written (the engine casts it) but must not be empty.
+// bound must be one ISO-8601 literal. Both stay bound as parameters and the engine
+// casts them, but a value that cannot parse would only surface as an execution
+// error on the next run, which is a save-time mistake, not a data verdict.
 func validateRangeBound(column ColumnInfo, name, value string) error {
-	if strings.TrimSpace(value) == "" {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
 		return invalidConfig("range %s must not be empty", name)
 	}
-	if column.Kind == ColumnKindNumeric {
-		if _, err := convertFilterValue(column, value); err != nil {
+	switch column.Kind {
+	case ColumnKindNumeric:
+		if _, err := convertFilterValue(column, trimmed); err != nil {
 			return err
 		}
+	case ColumnKindTemporal:
+		if !parseTemporalLiteral(column, trimmed) {
+			return temporalLiteralError("range "+name, column, trimmed)
+		}
+	default:
 	}
 	return nil
 }

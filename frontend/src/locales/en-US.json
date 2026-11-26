@@ -780,6 +780,7 @@
     "errorCode": {
       "auth": "Authentication failed",
       "badData": "Bad data",
+      "badValue": "Value rejected by the database",
       "connection": "Connection failed",
       "limitExceeded": "Limit exceeded",
       "orphaned": "Target unavailable",

@@ -110,7 +110,7 @@ var PredefinedRoles = []*RoleMessage{
 	{
 		ResourceID:  QualityAgentRole,
 		Name:        "Quality agent",
-		Description: "The built-in quality agent's internal IAM actor: read quality plans and checks, write suggested checks and plan declarations. It cannot publish, approve or edit rules.",
+		Description: "The built-in quality agent's internal IAM actor: read the evidence, plans and checks of the databases it is delegated, and write suggested checks and plan declarations. It cannot publish, approve or edit rules.",
 		Permissions: qualityAgentPermissions,
 	},
 	{
@@ -128,6 +128,11 @@ var PredefinedRoles = []*RoleMessage{
 var qualityAgentPermissions = permissionSet(
 	permission.DataQualityRulesGet,
 	permission.DataQualityRulesList,
+	// Evidence is the agent's own read: the execution, its failure and the check's
+	// definition. It is deliberately not in the member baseline, because a baseline
+	// permission is granted to every principal on every target — the scoped grant
+	// this role receives is the only thing that bounds the agent to its databases.
+	permission.DataQualityRulesEvidence,
 	permission.DataQualitySuggest,
 	permission.DataQualityPlansUpdate,
 )

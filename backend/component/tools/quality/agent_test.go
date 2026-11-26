@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -14,6 +15,26 @@ import (
 type fakeAgentStore struct {
 	suggestions []*store.QualitySuggestionMessage
 	status      *store.QualityAgentAdoptionStatusMessage
+}
+
+type fakeAgentEvidence struct {
+	executions []dataquality.ExecutionEvidence
+	check      *dataquality.CheckEvidence
+	err        error
+	principal  int32
+	target     string
+	limit      int
+	rule       string
+}
+
+func (f *fakeAgentEvidence) ReadTargetExecutions(_ context.Context, principalID int32, targetGUID string, limit int) ([]dataquality.ExecutionEvidence, error) {
+	f.principal, f.target, f.limit = principalID, targetGUID, limit
+	return f.executions, f.err
+}
+
+func (f *fakeAgentEvidence) ReadCheckEvidence(_ context.Context, principalID int32, targetGUID, ruleResourceID string, limit int) (*dataquality.CheckEvidence, error) {
+	f.principal, f.target, f.rule, f.limit = principalID, targetGUID, ruleResourceID, limit
+	return f.check, f.err
 }
 
 func (*fakeAgentStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
@@ -85,4 +106,63 @@ func TestGetTargetSummaryCarriesAdoptionAndPendingDrafts(t *testing.T) {
 	require.Contains(t, result, `"id":"workspaces/ws/qualitySuggestions/s1"`)
 	require.Contains(t, result, `"ruleType":"UNIQUE"`)
 	require.Contains(t, result, `"title":"id must be unique"`)
+}
+
+// The evidence tools are adapters over the application-layer read: they must pass the
+// agent principal and the session target through, and marshal what the read returns.
+// The projection itself is the application layer's job (and is tested there).
+func TestEvidenceToolsReadThroughTheApplicationLayer(t *testing.T) {
+	t.Parallel()
+
+	evidence := &fakeAgentEvidence{
+		executions: []dataquality.ExecutionEvidence{{
+			Execution: "qualityExecutions/4339",
+			Rule:      "qualityRules/r460",
+			Status:    "ERROR",
+			ErrorCode: "BAD_VALUE",
+		}},
+		check: &dataquality.CheckEvidence{
+			Target: "target-1",
+			Rule: dataquality.CheckDefinition{
+				Name:     "qualityRules/r460",
+				Type:     "RANGE",
+				Revision: 2,
+				Config:   `{"range":{"column":"performed_at","min":"now - 1 day"}}`,
+			},
+		},
+	}
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}, Evidence: evidence})
+	session := AgentSession{
+		WorkspaceID:      "ws",
+		AgentPrincipalID: 110,
+		TargetGUID:       "target-1",
+		TargetType:       storepb.MetaType_TABLE,
+	}
+
+	executions, err := tools.ListRecentExecutions(context.Background(), session)
+	require.NoError(t, err)
+	require.Contains(t, executions, `"execution":"qualityExecutions/4339"`)
+	require.Contains(t, executions, `"errorCode":"BAD_VALUE"`)
+	require.Equal(t, int32(110), evidence.principal)
+	require.Equal(t, "target-1", evidence.target)
+
+	inspected, err := tools.InspectCheck(context.Background(), session, `{"rule":"qualityRules/r460","executions":3}`)
+	require.NoError(t, err)
+	require.Contains(t, inspected, `"name":"qualityRules/r460"`)
+	require.Contains(t, inspected, `"revision":2`)
+	require.Contains(t, inspected, `now - 1 day`)
+	require.Equal(t, "qualityRules/r460", evidence.rule)
+	require.Equal(t, 3, evidence.limit)
+}
+
+// Without the application-layer read the tool refuses instead of falling back to an
+// unbounded store query.
+func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
+	t.Parallel()
+
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}})
+	_, err := tools.ListRecentExecutions(context.Background(), AgentSession{TargetGUID: "target-1"})
+	require.ErrorContains(t, err, "not configured")
+	_, err = tools.InspectCheck(context.Background(), AgentSession{TargetGUID: "target-1"}, "")
+	require.ErrorContains(t, err, "not configured")
 }

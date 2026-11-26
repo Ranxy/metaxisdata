@@ -198,13 +198,21 @@ func CountResults(statuses []storepb.QualityStatus) (*storepb.QualityStatusCount
 // Error codes are the strings a result stores in error_code. They are stable
 // because the frontend maps them to localized messages.
 const (
-	ErrCodeConnection    = "CONNECTION"
-	ErrCodeAuth          = "AUTH"
-	ErrCodeTimeout       = "TIMEOUT"
-	ErrCodePermission    = "PERMISSION"
-	ErrCodeUnsupported   = "UNSUPPORTED"
-	ErrCodeSQLSyntax     = "SQL_SYNTAX"
-	ErrCodeBadData       = "BAD_DATA"
+	ErrCodeConnection  = "CONNECTION"
+	ErrCodeAuth        = "AUTH"
+	ErrCodeTimeout     = "TIMEOUT"
+	ErrCodePermission  = "PERMISSION"
+	ErrCodeUnsupported = "UNSUPPORTED"
+	ErrCodeSQLSyntax   = "SQL_SYNTAX"
+	ErrCodeBadData     = "BAD_DATA"
+	// ErrCodeBadValue is recorded when the target engine refused a value the rule
+	// bound to a column: a literal that does not parse as the column's type, or one
+	// outside its domain. It differs from BAD_DATA (the result set did not match the
+	// compiled statement's shape) and from SQL_SYNTAX (the statement did not parse):
+	// here the statement ran and the engine rejected one bound value. It is the one
+	// class a person fixes by editing a bound, so its stored message keeps the
+	// engine's own text, which names the offending literal.
+	ErrCodeBadValue      = "BAD_VALUE"
 	ErrCodeLimitExceeded = "LIMIT_EXCEEDED"
 	ErrCodeOrphaned      = "ORPHANED"
 	// ErrCodeQuota is legacy: capacity contention is deferred before a run starts,

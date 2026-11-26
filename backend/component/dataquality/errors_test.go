@@ -11,6 +11,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
@@ -194,6 +195,33 @@ func TestClassifyErrorDoesNotEchoClassifiedDriverText(t *testing.T) {
 	require.NotContains(t, message, "hunter2")
 	require.NotContains(t, message, "password=")
 	require.Equal(t, classMessage(ErrCodeAuth), message)
+}
+
+// BAD_VALUE is the one classified code that keeps the engine's text: the text names
+// the literal the engine refused, and that literal is the only pointer to the field
+// to fix. The sample that motivated the class stored EXECUTION with
+// `invalid input syntax for type timestamp with time zone: "now - 1 day"`.
+func TestClassifyErrorKeepsTheBadValueLiteral(t *testing.T) {
+	t.Parallel()
+
+	code, message := ClassifyError(&pgconn.PgError{
+		Code:    "22007",
+		Message: `invalid input syntax for type timestamp with time zone: "now - 1 day"`,
+	})
+	require.Equal(t, ErrCodeBadValue, code)
+	assert.Contains(t, message, classMessage(ErrCodeBadValue))
+	assert.Contains(t, message, `"now - 1 day"`)
+}
+
+// The MySQL and SQL Server spellings of the same mistake classify the same way.
+func TestClassifyErrorBadValueAcrossEngines(t *testing.T) {
+	t.Parallel()
+
+	code, _ := ClassifyError(&mysql.MySQLError{Number: 1366, Message: "Incorrect datetime value"})
+	assert.Equal(t, ErrCodeBadValue, code)
+
+	code, _ = ClassifyError(mssql.Error{Number: 241, Message: "Conversion failed when converting date and/or time from character string."})
+	assert.Equal(t, ErrCodeBadValue, code)
 }
 
 // An unclassified error keeps its text because it is the only explanation, but a

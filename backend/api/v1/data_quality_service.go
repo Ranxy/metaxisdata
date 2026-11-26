@@ -524,6 +524,13 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if err := requireReadOnlySourceForNewRule(ruleType, validated); err != nil {
 		return nil, nil, err
 	}
+	// The editor previews before it saves, but a batch item, a script and the
+	// agent's adoption path never do. A rule that stores without a dry run can only
+	// fail on its first scheduled execution, which costs a cycle and — for an
+	// adopted rule — the person who has to read the failure.
+	if err := s.probeNewQualityRule(ctx, ruleType, validated); err != nil {
+		return nil, nil, err
+	}
 	if err := requireReferenceConnectionBudget(validated); err != nil {
 		return nil, nil, err
 	}
@@ -887,6 +894,27 @@ func requireReadOnlySourceForNewRule(ruleType storepb.QualityRuleType, validated
 		return connectErrorInvalid("the reconciliation's reference target has no instance")
 	}
 	return requireReadOnlySource(reference.Resolution.Instance, "the reconciliation's reference instance")
+}
+
+// probeNewQualityRule proves a rule that is about to be stored can run. It differs
+// from PreviewQualityRule in one way: a saturated connection budget skips the probe
+// and logs it, because contention on the instance is not a defect in the author's
+// rule, while the create path has already refused a missing READ_ONLY source. A
+// metadata rule compiles to no statement and skips the probe entirely.
+func (s *DataQualityService) probeNewQualityRule(ctx context.Context, ruleType storepb.QualityRuleType, validated *dataquality.ValidatedRule) error {
+	if s.dbFactory == nil || !dryRunNeedsProbe(ruleType) || validated == nil {
+		return nil
+	}
+	if err := s.probeQualityRule(ctx, validated); err != nil {
+		var connectErr *connect.Error
+		if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeResourceExhausted {
+			slog.Warn("skipped the create-time dry run: the instance connection budget is saturated",
+				slog.String("target", validated.Target.GUID))
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // requireReadOnlySource refuses an instance with no READ_ONLY data source, naming

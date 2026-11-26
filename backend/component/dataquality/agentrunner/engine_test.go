@@ -776,10 +776,14 @@ func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
 		name              string
 		tool              string
 		conversation      bool
+		wantPermission    permission.Permission
 		wantResourceCheck bool
 	}{
-		{name: "target session checks the session target", tool: "list_recent_executions", wantResourceCheck: true},
-		{name: "conversation session keeps the capability check", tool: "get_scope_summary", conversation: true},
+		// The evidence tool declares rules.evidence: a baseline permission such as
+		// rules.list is granted to every principal on every target, so it could not
+		// scope the read to the agent's databases.
+		{name: "target session checks the session target", tool: "list_recent_executions", wantPermission: permission.DataQualityRulesEvidence, wantResourceCheck: true},
+		{name: "conversation session keeps the capability check", tool: "get_scope_summary", wantPermission: permission.DataQualityRulesList, conversation: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -800,7 +804,7 @@ func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
 			outcome, err := engine.Wake(context.Background(), session, Options{})
 			require.NoError(t, err)
 			require.False(t, outcome.Blocked)
-			require.Equal(t, []permission.Permission{permission.DataQualityRulesList}, checker.asked)
+			require.Equal(t, []permission.Permission{test.wantPermission}, checker.asked)
 			if test.wantResourceCheck {
 				require.Equal(t, 1, checker.resourceCalls)
 				require.Zero(t, checker.capabilityCalls)
@@ -817,7 +821,7 @@ func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
 				}
 			}
 			require.NotNil(t, toolRow)
-			require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
+			require.Contains(t, toolRow.Content, "does not hold "+string(test.wantPermission))
 			require.NotEmpty(t, toolRow.Error)
 		})
 	}

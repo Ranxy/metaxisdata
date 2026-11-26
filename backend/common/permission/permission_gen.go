@@ -52,6 +52,7 @@ const (
 	ExplainSQLExplain                  Permission = "metaxisdata.explainSql.explain"
 	DataQualityRulesGet                Permission = "metaxisdata.dataQuality.rules.get"
 	DataQualityRulesList               Permission = "metaxisdata.dataQuality.rules.list"
+	DataQualityRulesEvidence           Permission = "metaxisdata.dataQuality.rules.evidence"
 	DataQualityRulesCreate             Permission = "metaxisdata.dataQuality.rules.create"
 	DataQualityRulesUpdate             Permission = "metaxisdata.dataQuality.rules.update"
 	DataQualityRulesDelete             Permission = "metaxisdata.dataQuality.rules.delete"
@@ -159,6 +160,7 @@ var allPermissions = []Permission{
 	ExplainSQLExplain,
 	DataQualityRulesGet,
 	DataQualityRulesList,
+	DataQualityRulesEvidence,
 	DataQualityRulesCreate,
 	DataQualityRulesUpdate,
 	DataQualityRulesDelete,
