@@ -149,6 +149,31 @@ func targetToolSpecs() []toolSpec {
 			meta: repairMeta(),
 		},
 		{
+			name: "propose_revision",
+			description: "Ask the owner to change one field of a check you may not rewrite yourself: a bound that never binds, " +
+				"a threshold, a field a person pinned. The change is validated but not applied, and the case becomes escalated. " +
+				"Name the field the diagnosis pointed at.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+				"field": map[string]any{
+					"type":        "string",
+					"description": "the dotted config field the diagnosis named, e.g. range.min",
+				},
+				"value": map[string]any{
+					"type":        "string",
+					"description": "the value the field should take",
+				},
+				"rationale": map[string]any{
+					"type":        "string",
+					"description": "why this change, in one or two sentences, for the owner",
+				},
+			}, "required": []string{"case", "field", "value"}},
+			meta: proposeMeta(),
+		},
+		{
 			name:        "get_memory",
 			description: "List the target's confirmed asset facts.",
 			parameters:  emptyParameters(),

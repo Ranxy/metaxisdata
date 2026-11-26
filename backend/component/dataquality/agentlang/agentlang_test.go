@@ -68,12 +68,17 @@ func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 	t.Parallel()
 
 	counts := ProposalCounts{Remaining: 31, Adopted: 12, Skipped: 13, Failed: 14, Failure: "boom-xyz"}
+	revision := CaseRevision{
+		Check: "performed_at must be recent", Field: "range.min", From: "now - 1 day",
+		To: "2024-01-01T00:00:00Z", Effect: "CRITERION", Rationale: "the engine refused this bound",
+	}
 	tests := []struct {
 		name   string
 		render func(language string) string
 		value  string
 	}{
 		{"blocked question", func(language string) string { return BlockedQuestion(language, "model failed") }, "model failed"},
+		{"case revision question", func(language string) string { return CaseRevisionQuestion(language, revision) }, "2024-01-01T00:00:00Z"},
 		{"proposal question", func(language string) string { return ProposalQuestion(language, counts) }, "boom-xyz"},
 		{"report question", func(language string) string { return ReportQuestion(language, 1234, 5678) }, "1234"},
 		{"report ready", func(language string) string { return ReportReady(language, "2026-11-01", "2026-11-07") }, "2026-11-01"},
@@ -90,6 +95,22 @@ func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 			require.Contains(t, english, test.value)
 			require.Contains(t, chinese, test.value)
 		})
+	}
+
+	// A proposal that reads like an applied change is worse than no proposal: the body has to say
+	// that nothing has changed yet, in both languages.
+	for _, language := range []string{English, Chinese} {
+		question := CaseRevisionQuestion(language, revision)
+		require.Contains(t, question, "range.min")
+		require.Contains(t, question, "now - 1 day")
+		require.Contains(t, question, RevisionEffectLabel(language, "CRITERION"))
+	}
+	require.Contains(t, CaseRevisionQuestion(English, revision), "Nothing changes until")
+	require.Contains(t, CaseRevisionQuestion(Chinese, revision), "保持原样")
+
+	// A field that holds nothing yet reads as "set", not as "change from an empty value".
+	for _, language := range []string{English, Chinese} {
+		require.NotContains(t, CaseRevisionQuestion(language, CaseRevision{Check: "c", Field: "f", To: "v"}), revision.From)
 	}
 
 	// Titles carry no caller value; the language alone decides them.

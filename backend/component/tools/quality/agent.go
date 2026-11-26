@@ -164,6 +164,8 @@ type AgentDeps struct {
 	Control ControlFunc
 	// Run asks the runner to execute one check now; nil reports it as not configured.
 	Run RunFunc
+	// Propose records one proposed change for the owner; nil reports it as not configured.
+	Propose ProposeFunc
 }
 
 // RunOutcome is what one diagnostic run did.
@@ -201,6 +203,53 @@ func (t *AgentTools) RunCheck(ctx context.Context, session AgentSession, argumen
 		"execution": outcome.Execution,
 		"state":     outcome.State,
 		"note":      "the runner picks the execution up within its tick; the verdict closes or advances the case",
+	})
+}
+
+// ProposalOutcome is what one proposal asked for. It carries no service type, for the same
+// reason RunOutcome does not.
+type ProposalOutcome struct {
+	Check  string
+	Field  string
+	Value  string
+	Effect string
+	State  string
+}
+
+// ProposeFunc records one proposed change on one case through the application layer.
+type ProposeFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value, rationale string) (ProposalOutcome, error)
+
+// ProposeRevision asks the owner to apply one change the agent may not make itself. The field
+// must be the one the failure's diagnosis named; the application layer re-derives the diagnosis
+// and refuses any other field, so the model cannot use this verb to redirect a check.
+func (t *AgentTools) ProposeRevision(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case      string `json:"case"`
+		Field     string `json:"field"`
+		Value     string `json:"value"`
+		Rationale string `json:"rationale"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid propose_revision arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Field) == "" || input.Value == "" {
+		return "", errors.New("propose_revision needs a case, a field and a value")
+	}
+	if t.deps.Propose == nil {
+		return "", errors.New("the propose verb is not configured in this process")
+	}
+	outcome, err := t.deps.Propose(ctx, session.AgentPrincipalID, input.Case, input.Field, input.Value, input.Rationale)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":   sessionCaseName(input.Case),
+		"check":  outcome.Check,
+		"field":  outcome.Field,
+		"value":  outcome.Value,
+		"effect": outcome.Effect,
+		"state":  outcome.State,
+		"note":   "the owner decides whether to apply the change; nothing has been written yet",
 	})
 }
 

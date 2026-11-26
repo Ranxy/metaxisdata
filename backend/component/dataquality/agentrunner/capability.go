@@ -140,6 +140,7 @@ func suggestProfile() capabilityProfile {
 					"- Read the target's schema, profiles, labels and consumers with get_table_context before drafting.",
 					"- A draft is a proposal, never a running check. The Adoption section decides whether it is created automatically; otherwise a person reviews it.",
 					"- A check that cannot run at all may be paused with control_check once its case is diagnosed; the case is then escalated so a person decides whether to resume, archive or replace it. You cannot archive or resume a check.",
+					"- A value only a person may set — a criterion, a field someone pinned — goes to the owner with propose_revision: it validates the value and records it on the case, and the case becomes escalated. Proposing is not writing.",
 				}, "\n")}}
 			case conversationProduct.Name:
 				return []agent.PromptSection{{Name: "capability-suggest", Text: strings.Join([]string{

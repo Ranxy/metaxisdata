@@ -102,7 +102,10 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 	} else {
 		// An escalated case is a decision the owner owes, so it has to reach them. The notice is
 		// deduped per case: a retried verb must not page twice.
-		s.raiseCaseAttention(ctx, openCase, agent, reason)
+		s.raiseCaseAttention(ctx, openCase, agent, caseNotice{
+			Kind:     store.QualityAgentAttentionKindBlocked,
+			Question: reason,
+		})
 	}
 	return &AgentControlResult{
 		Case:     openCase.ResourceID,
@@ -143,6 +146,17 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 		return nil, nil, err
 	}
 	return openCase, agent, nil
+}
+
+// checkTitle names a check for prose, falling back to its id when a person never titled it.
+func checkTitle(rule *store.QualityRuleMessage) string {
+	if rule == nil {
+		return ""
+	}
+	if title := strings.TrimSpace(rule.Title); title != "" {
+		return title
+	}
+	return "qualityRules/" + rule.ResourceID
 }
 
 // agentPolicy resolves how far the agent may go on one target.
@@ -312,17 +326,148 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 	}, nil
 }
 
+// caseNotice is what one verb tells the owner about its case. It is a value rather than a set of
+// parameters because a notice is one thing: the kind picks the headline, the patch says what to
+// change, and the question says why.
+type caseNotice struct {
+	Kind store.QualityAgentAttentionKind
+	// Title overrides the kind's default headline. A proposal that asks for one concrete value is
+	// a different thing from a queue of drafts, though both are pending decisions.
+	Title string
+	// Question is the body, in the owner's language.
+	Question string
+	// Patch is the change the owner is asked to make, when there is exactly one. It is stored on
+	// the notice so the owner reviews a field and a value, not a paragraph.
+	Patch *storepb.QualityAgentFieldPatch
+}
+
+// agentOwnerLanguage resolves the language an agent's server prose is written in for its owner.
+func (s *DataQualityService) agentOwnerLanguage(ctx context.Context, agent *store.QualityAgentMessage) (string, *store.UserMessage) {
+	var owner *store.UserMessage
+	if agent != nil && agent.OwnerPrincipalID != nil {
+		owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
+	}
+	return agentlang.ForAgent(agent, owner), owner
+}
+
+// AgentProposalResult is what one proposal asked for: the change, the case it escalated and the
+// check it is about.
+type AgentProposalResult struct {
+	Case   string `json:"case"`
+	Check  string `json:"check"`
+	Field  string `json:"field"`
+	Value  string `json:"value"`
+	Effect string `json:"effect"`
+	State  string `json:"state"`
+}
+
+// ProposeAgentRevision asks the owner to apply one change the delegation withholds: a criterion,
+// a field a person pinned, a value on a check someone else manages. It is what makes "the agent
+// cannot fix this" a concrete request instead of a paragraph.
+//
+// The proposal never writes the check. It validates the value with the same pipeline a save runs,
+// so the owner is never handed a change that would not store, and it records the change on the
+// escalation, so what the owner reads is the field and the value rather than a summary of them.
+// The participation level, the pins and the replay gate all permit a proposal: they withhold the
+// write, and asking a person is precisely the alternative they name.
+func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value, rationale string) (*AgentProposalResult, error) {
+	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesEvidence)
+	if err != nil {
+		return nil, err
+	}
+	if openCase.RuleID == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the case is not about one check"))
+	}
+	rule, err := s.store.GetQualityRuleByID(ctx, *openCase.RuleID)
+	if err != nil {
+		return nil, err
+	}
+	if rule == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the case's check no longer exists"))
+	}
+	policy, err := s.agentPolicy(ctx, agent, openCase.TargetGUID)
+	if err != nil {
+		return nil, err
+	}
+	diagnosis, err := s.agentCaseDiagnosis(ctx, rule, openCase)
+	if err != nil {
+		return nil, err
+	}
+	field = strings.TrimSpace(field)
+	verdict := policy.DecidePropose(agentpolicy.CaseFacts{
+		State:        openCase.State,
+		Attempts:     openCase.Attempts,
+		Diagnosis:    diagnosis,
+		ManualLock:   rule.ManualLock,
+		PinnedFields: rule.PinnedFields,
+	}, agentpolicy.FieldChange{Field: field})
+	if !verdict.Allowed {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
+	}
+	// The proposed value must be one the check could save. The patch is applied to a copy and
+	// validated; nothing is written and no probe runs, because a proposal is a request for a
+	// decision, not a run. A value that would not store is worth refusing here: a person who
+	// applies a broken patch learns nothing about the failure the case is about.
+	patched, err := dataquality.PatchField(rule.Config, field, value)
+	if err != nil {
+		return nil, connectErrorInvalid("%v", err)
+	}
+	if _, _, err := s.validateRuleInput(ctx, openCase.WorkspaceID, rule.RuleType, rule.TargetGUID, rule.TargetType, patched); err != nil {
+		return nil, connectErrorInvalid("the proposed value would not save: %v", err)
+	}
+	effect := agentpolicy.EffectOf(diagnosis)
+	patch := &storepb.QualityAgentFieldPatch{
+		Field:        field,
+		Value:        value,
+		BaseRevision: rule.Revision,
+		Effect:       effect.Name(),
+		Rationale:    common.TruncateUTF8Bytes(strings.TrimSpace(rationale), 1000),
+	}
+	language, _ := s.agentOwnerLanguage(ctx, agent)
+	question := agentlang.CaseRevisionQuestion(language, agentlang.CaseRevision{
+		Check:     checkTitle(rule),
+		Field:     field,
+		From:      diagnosis.FieldValue,
+		To:        value,
+		Effect:    patch.GetEffect(),
+		Rationale: patch.GetRationale(),
+	})
+	reason := "the agent proposed " + field + " = " + value + "; a person decides whether to apply it"
+	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+		openCase.State, store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason); caseErr != nil {
+		slog.Warn("failed to escalate the case after a proposal",
+			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
+	} else if !applied {
+		slog.Warn("the case changed before it could be escalated", slog.String("case", openCase.ResourceID))
+	} else {
+		s.raiseCaseAttention(ctx, openCase, agent, caseNotice{
+			Kind:     store.QualityAgentAttentionKindProposalPending,
+			Title:    agentlang.CaseRevisionTitle(language),
+			Question: question,
+			Patch:    patch,
+		})
+	}
+	return &AgentProposalResult{
+		Case:   openCase.ResourceID,
+		Check:  "qualityRules/" + rule.ResourceID,
+		Field:  field,
+		Value:  value,
+		Effect: patch.GetEffect(),
+		State:  store.QualityAgentCaseStateEscalated.Name(),
+	}, nil
+}
+
 // raiseCaseAttention tells the owner that a case needs a decision. It is best effort: a failed
 // notice never undoes the write it reports, and the case row stays the durable record.
-func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, question string) {
+func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, notice caseNotice) {
 	if openCase == nil || agent == nil {
 		return
 	}
-	var owner *store.UserMessage
-	if agent.OwnerPrincipalID != nil {
-		owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
+	language, owner := s.agentOwnerLanguage(ctx, agent)
+	title := notice.Title
+	if title == "" {
+		title = agentlang.AttentionTitle(language, notice.Kind)
 	}
-	language := agentlang.ForAgent(agent, owner)
 	// Link the target session when there is one, so the card carries the target; an unlinked
 	// item is still an agent-level notice rather than a lost one.
 	var sessionID *int64
@@ -334,16 +479,17 @@ func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *s
 			}
 		}
 	}
-	kind := store.QualityAgentAttentionKindBlocked
 	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID: openCase.WorkspaceID,
-		AgentID:     agent.ID,
-		Kind:        kind,
-		SessionID:   sessionID,
-		Title:       agentlang.AttentionTitle(language, kind),
-		Question:    common.TruncateUTF8Bytes(question, 2000),
-		DedupeKey:   "case:" + openCase.ResourceID,
-		CreatedAt:   time.Now().UTC(),
+		WorkspaceID:    openCase.WorkspaceID,
+		AgentID:        agent.ID,
+		Kind:           notice.Kind,
+		SessionID:      sessionID,
+		Title:          title,
+		Question:       common.TruncateUTF8Bytes(notice.Question, 2000),
+		DedupeKey:      "case:" + openCase.ResourceID,
+		CaseResourceID: openCase.ResourceID,
+		SuggestedPatch: notice.Patch,
+		CreatedAt:      time.Now().UTC(),
 	})
 	if err != nil || !created {
 		return
@@ -354,13 +500,13 @@ func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *s
 	detail := &storepb.QualityAgentAttentionDetail{
 		Agent:     common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
 		Attention: common.FormatWorkspace(openCase.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
-		Kind:      int32(kind),
+		Kind:      int32(notice.Kind),
 		Title:     attention.Title,
 		Question:  attention.Question,
 	}
 	dedupeKey := "dqagent:" + attention.ResourceID
-	if agent.OwnerPrincipalID != nil {
-		if sendErr := s.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+	if owner != nil {
+		if sendErr := s.notifier.SendQualityAgentAttention(ctx, int32(owner.ID), dedupeKey, detail); sendErr != nil {
 			slog.Warn("failed to send a case attention notification", log.WithError(sendErr))
 		}
 		return

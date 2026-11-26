@@ -136,6 +136,97 @@ func TestDecideReviseRefusesInPipelineOrder(t *testing.T) {
 
 // The effect is server-derived from the class: a model that could label its own change
 // "executability" would hold the authority the table withholds.
+// A proposal is the alternative a withheld write names, not a weaker write: the case has to be
+// diagnosed and the field has to be the one the diagnosis named, while the pins, the delegation
+// level and the replay deliberately do not refuse it. A pin that refused a proposal would leave
+// the owner with nothing to decide.
+func TestDecideProposeAllowsExactlyWhatTheDiagnosisNames(t *testing.T) {
+	t.Parallel()
+
+	valueInvalid := &dataquality.Diagnosis{
+		Class:      dataquality.ClassConfigValueInvalid,
+		Field:      "range.min",
+		FieldValue: "now - 1 day",
+		Actions:    []dataquality.RepairAction{dataquality.ActionReviseField, dataquality.ActionProposeRevision},
+	}
+	dataFailure := &dataquality.Diagnosis{
+		Class:   dataquality.ClassDataFailure,
+		Actions: []dataquality.RepairAction{dataquality.ActionRunNow, dataquality.ActionEscalate},
+	}
+	unsupported := &dataquality.Diagnosis{
+		Class:   dataquality.ClassConfigUnsupported,
+		Actions: []dataquality.RepairAction{dataquality.ActionControl, dataquality.ActionProposeRevision},
+	}
+	policy := Policy{Participation: ParticipationObserve}
+
+	t.Run("a pinned field can still be proposed", func(t *testing.T) {
+		t.Parallel()
+		verdict := policy.DecidePropose(CaseFacts{
+			State:        store.QualityAgentCaseStateDiagnosed,
+			Diagnosis:    valueInvalid,
+			ManualLock:   true,
+			PinnedFields: []string{"range.min"},
+		}, FieldChange{Field: "range.min"})
+		require.True(t, verdict.Allowed)
+	})
+
+	t.Run("an observe-level delegation may propose", func(t *testing.T) {
+		t.Parallel()
+		verdict := Policy{Participation: ParticipationObserve}.DecidePropose(CaseFacts{
+			State: store.QualityAgentCaseStateDiagnosed, Diagnosis: valueInvalid,
+		}, FieldChange{Field: "range.min"})
+		require.True(t, verdict.Allowed)
+	})
+
+	t.Run("a field the diagnosis did not name is refused", func(t *testing.T) {
+		t.Parallel()
+		verdict := policy.DecidePropose(CaseFacts{
+			State: store.QualityAgentCaseStateDiagnosed, Diagnosis: valueInvalid,
+		}, FieldChange{Field: "range.max"})
+		require.False(t, verdict.Allowed)
+		require.Contains(t, verdict.Reason, "range.min")
+	})
+
+	t.Run("a diagnosis with no field asks for an escalation instead", func(t *testing.T) {
+		t.Parallel()
+		verdict := policy.DecidePropose(CaseFacts{
+			State: store.QualityAgentCaseStateDiagnosed, Diagnosis: unsupported,
+		}, FieldChange{Field: "range.min"})
+		require.False(t, verdict.Allowed)
+		require.Contains(t, verdict.Reason, "escalate")
+	})
+
+	t.Run("a class that repairs nothing by field cannot be proposed on", func(t *testing.T) {
+		t.Parallel()
+		verdict := policy.DecidePropose(CaseFacts{
+			State: store.QualityAgentCaseStateDiagnosed, Diagnosis: dataFailure,
+		}, FieldChange{Field: "range.min"})
+		require.False(t, verdict.Allowed)
+	})
+
+	t.Run("only a diagnosed case may be proposed on", func(t *testing.T) {
+		t.Parallel()
+		for _, state := range []store.QualityAgentCaseState{
+			store.QualityAgentCaseStateOpen,
+			store.QualityAgentCaseStateActed,
+			store.QualityAgentCaseStateAwaiting,
+			store.QualityAgentCaseStateResolved,
+			store.QualityAgentCaseStateEscalated,
+		} {
+			verdict := policy.DecidePropose(CaseFacts{State: state, Diagnosis: valueInvalid},
+				FieldChange{Field: "range.min"})
+			require.False(t, verdict.Allowed, state.Name())
+		}
+	})
+
+	t.Run("no diagnosis means no proposal", func(t *testing.T) {
+		t.Parallel()
+		verdict := policy.DecidePropose(CaseFacts{State: store.QualityAgentCaseStateDiagnosed},
+			FieldChange{Field: "range.min"})
+		require.False(t, verdict.Allowed)
+	})
+}
+
 func TestEffectOfComesFromTheClass(t *testing.T) {
 	t.Parallel()
 

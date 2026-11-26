@@ -183,6 +183,52 @@ func TestEvidenceToolsRequireTheApplicationLayer(t *testing.T) {
 // control_check is a request, not the authority: it passes the agent principal, the case the
 // model named and the action through, and reports what the application layer actually did. A
 // process without the verb refuses instead of pretending.
+// propose_revision is a request for a person's decision: it passes the agent principal, the case
+// and the change through, and reports the state the application layer actually reached. A process
+// without the verb refuses instead of reporting a change nobody recorded.
+func TestProposeRevisionPassesTheRequestThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotCase, gotField, gotValue, gotRationale string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Propose: func(_ context.Context, principalID int32, caseResourceID, field, value, rationale string) (ProposalOutcome, error) {
+			gotPrincipal, gotCase, gotField, gotValue, gotRationale = principalID, caseResourceID, field, value, rationale
+			return ProposalOutcome{
+				Check: "qualityRules/r460", Field: field, Value: value,
+				Effect: "CRITERION", State: "ESCALATED",
+			}, nil
+		},
+	})
+	result, err := tools.ProposeRevision(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"case":"workspaces/ws/qualityAgentCases/c9","field":"range.min","value":"2024-01-01T00:00:00Z","rationale":"the bound never binds"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "workspaces/ws/qualityAgentCases/c9", gotCase)
+	require.Equal(t, "range.min", gotField)
+	require.Equal(t, "2024-01-01T00:00:00Z", gotValue)
+	require.Equal(t, "the bound never binds", gotRationale)
+	require.Contains(t, result, `"case":"c9"`)
+	require.Contains(t, result, `"effect":"CRITERION"`)
+	require.Contains(t, result, `"state":"ESCALATED"`)
+	require.Contains(t, result, "nothing has been written")
+}
+
+func TestProposeRevisionRequiresTheVerbAndItsArguments(t *testing.T) {
+	t.Parallel()
+
+	tools := NewAgentTools(AgentDeps{Store: &fakeAgentStore{}})
+	_, err := tools.ProposeRevision(context.Background(), AgentSession{}, `{"case":"c9","field":"range.min","value":"x"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = tools.ProposeRevision(context.Background(), AgentSession{}, `{"case":"c9","field":"range.min"}`)
+	require.ErrorContains(t, err, "needs a case, a field and a value")
+
+	_, err = tools.ProposeRevision(context.Background(), AgentSession{}, `{"field":"range.min","value":"x"}`)
+	require.ErrorContains(t, err, "needs a case, a field and a value")
+}
+
 func TestControlCheckPassesTheRequestThrough(t *testing.T) {
 	t.Parallel()
 

@@ -567,9 +567,12 @@ answers with a deterministic scope summary.
 - **Reports.** On its schedule the agent produces a deterministic patrol report for its scope — scope health, targets and coverage,
 enabled checks, executions by verdict, new and open problems, pending proposals — and appends a note to the conversation. Reports are
 generated from records, do not call a model, and have no on-demand variant.
-- **Escalates.** Three things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
-adoption pass, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
-names the most recent write failure. The owner answers or dismisses it from the agent's home; answering resumes the target's session,
+- **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an
+adoption pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. The proposal item separates what policy skipped from what failed to write and
+names the most recent write failure. A work item the agent cannot finish arrives as one concrete change: the check, the config
+field, the value it would take, what kind of change that is and the agent's reason. The value has already passed the same
+validation a save runs, so it will store as written, and nothing has changed until you edit the check yourself — which is why the
+agent does not offer it as something it did. The owner answers or dismisses it from the agent's home; answering resumes the target's session,
 and a reply can ask the agent to adopt the pending drafts, while the proposal item offers an **Approve pending drafts** action to the
 agent's owner or an administrator; a person's approval does not need adoption to be enabled. The item closes once no pending draft is left,
 whether the agent adopted them or a person created or rejected the last one. The owner also gets an in-app notification.
@@ -590,7 +593,7 @@ tool; a person's approval is recorded under its own origin but never spends it.
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the
 person's own decision: it turns the agent's queued drafts into checks without the guardrails or the ceiling, but with rule
-validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only. A check that cannot run at all is the one exception: the agent may pause it, the case is escalated, and a person still decides whether to resume, archive or replace it. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
+validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only; the agent's route to a definition it may not change is `propose_revision`, which asks the owner for one value and escalates the work item. A check that cannot run at all is the one exception: the agent may pause it, the case is escalated, and a person still decides whether to resume, archive or replace it. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
 the agent's owner (or by the approver when there is none), and MCP stays read-only.
 
 ### Budgets, blocks and work sessions

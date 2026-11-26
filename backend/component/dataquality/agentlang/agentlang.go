@@ -105,6 +105,103 @@ func BlockedQuestion(lang, reason string) string {
 	return "The session is blocked: " + reason
 }
 
+// CaseRevisionTitle is the localized headline of a proposal that asks for one concrete value on
+// one existing check. It is a different thing from a queue of drafts, though both are pending
+// decisions: here the check exists, and one of its values is the owner's to set.
+func CaseRevisionTitle(lang string) string {
+	if IsChinese(lang) {
+		return "有一条检查需要你改一个值"
+	}
+	return "One check needs a value only you can set"
+}
+
+// CaseRevision is one proposed change to one check, as the owner reads it. Every value is shown
+// verbatim: these are config values, and a person compares the two strings the check would store.
+type CaseRevision struct {
+	// Check names the check, by title with the id as the fallback.
+	Check string
+	// Field is the dotted config path.
+	Field string
+	// From is the current value; empty when the field holds nothing yet.
+	From string
+	// To is the value the agent proposes.
+	To string
+	// Effect is the change's class (agentpolicy.Effect.Name): a criterion, the subject,
+	// executability, state or removal.
+	Effect string
+	// Rationale is the agent's reason, already bounded by the caller.
+	Rationale string
+}
+
+// CaseRevisionQuestion is the escalation body for a proposed change. It states what would change,
+// from what to what, and that nothing changes until the owner acts: a proposal that reads like an
+// applied change is worse than no proposal.
+func CaseRevisionQuestion(lang string, revision CaseRevision) string {
+	check := strings.TrimSpace(revision.Check)
+	rationale := strings.TrimSpace(revision.Rationale)
+	effect := RevisionEffectLabel(lang, revision.Effect)
+	if IsChinese(lang) {
+		question := "检查「" + check + "」需要你改一个值："
+		if revision.From != "" {
+			question += "把 " + revision.Field + " 从「" + revision.From + "」改为「" + revision.To + "」"
+		} else {
+			question += "把 " + revision.Field + " 设为「" + revision.To + "」"
+		}
+		question += "（" + effect + "类改动）。"
+		if rationale != "" {
+			question += "理由：" + rationale + "。"
+		}
+		question += "在你修改之前这条检查保持原样。"
+		return question
+	}
+	question := "The check \"" + check + "\" needs a value only you can set: "
+	if revision.From != "" {
+		question += "change " + revision.Field + " from \"" + revision.From + "\" to \"" + revision.To + "\""
+	} else {
+		question += "set " + revision.Field + " to \"" + revision.To + "\""
+	}
+	question += " (" + effect + " change)."
+	if rationale != "" {
+		question += " Reason: " + rationale + "."
+	}
+	question += " Nothing changes until you make the edit."
+	return question
+}
+
+// RevisionEffectLabel renders one change class for the owner.
+func RevisionEffectLabel(lang, effect string) string {
+	zh := IsChinese(lang)
+	switch strings.ToUpper(strings.TrimSpace(effect)) {
+	case "CRITERION":
+		if zh {
+			return "判定标准"
+		}
+		return "criterion"
+	case "SUBJECT":
+		if zh {
+			return "判定对象"
+		}
+		return "subject"
+	case "EXECUTABILITY":
+		if zh {
+			return "可执行性"
+		}
+		return "executability"
+	case "STATE":
+		if zh {
+			return "状态"
+		}
+		return "state"
+	case "REMOVAL":
+		if zh {
+			return "移除"
+		}
+		return "removal"
+	default:
+		return strings.ToLower(strings.TrimSpace(effect))
+	}
+}
+
 // ProposalCounts is the outcome of one adoption pass for one target.
 type ProposalCounts struct {
 	Remaining int
