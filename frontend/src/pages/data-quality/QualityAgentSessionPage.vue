@@ -750,10 +750,34 @@ async function resume() {
     );
     notify.success(t("qualityAgent.resumed"));
     syncPolling();
+    // A resume grants exactly one wake past the hourly budget. If the runtime refuses it again, the
+    // page must say why: before this the button looked like it did nothing at all.
+    window.setTimeout(() => void confirmResumeHeld(), 4000);
   } catch (err) {
     error.value = formatError(err);
   } finally {
     resuming.value = false;
+  }
+}
+
+/** confirmResumeHeld reports a resume the runtime refused again, with the reason it gave. */
+async function confirmResumeHeld() {
+  if (!session.value) {
+    return;
+  }
+  try {
+    const refreshed = await getQualityAgentSession(session.value.name);
+    session.value = refreshed;
+    if (
+      refreshed.state === QualityAgentSessionState.BLOCKED &&
+      refreshed.blockedReason
+    ) {
+      notify.warning(
+        t("qualityAgent.resumeHeld", { reason: refreshed.blockedReason })
+      );
+    }
+  } catch {
+    // The poll already surfaces read failures; a failed confirmation is not an error of its own.
   }
 }
 

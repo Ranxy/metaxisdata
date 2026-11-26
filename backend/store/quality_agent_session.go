@@ -39,11 +39,15 @@ type QualityAgentSessionMessage struct {
 	ContextUsage      *storepb.QualityAgentSessionContextUsage
 	NextWakeAt        *time.Time
 	LeaseUntil        *time.Time
-	RestartCount      int32
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	ArchivedAt        *time.Time
-	Mode              storepb.QualityAgentSessionMode
+	// ManualResumeAt is set when a person resumed a blocked session. The next wake spends it to
+	// bypass the hourly budget once, so "resume" cannot be silently undone by the budget it was
+	// meant to override.
+	ManualResumeAt *time.Time
+	RestartCount   int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ArchivedAt     *time.Time
+	Mode           storepb.QualityAgentSessionMode
 	// Kind is 1 for a target work thread and 2 for the agent's conversation.
 	Kind int16
 	// LastActivityAt is the newest message's created_at; set by the read queries that
@@ -79,7 +83,8 @@ const qualityAgentSessionColumns = `id, resource_id, workspace_id, target_guid, 
 	COALESCE((SELECT principal_id FROM quality_agent WHERE quality_agent.id = agent_id), 0) AS agent_principal_id,
 	state, blocked_code, blocked_reason, revision, wake_count, summary,
 	summary_through_seq, processed_seq, engine_state, next_wake_at, lease_until,
-	restart_count, created_at, updated_at, archived_at, mode, kind, context_usage`
+	restart_count, created_at, updated_at, archived_at, mode, kind, context_usage,
+	manual_resume_at`
 
 // qualityAgentSessionReadColumns adds the newest message timestamp the list and detail
 // readers show as "last activity".
@@ -378,6 +383,27 @@ func (s *Store) UpdateQualityAgentSessionState(ctx context.Context, resourceID s
 		return nil, false, errors.Wrap(err, "failed to update the quality agent session")
 	}
 	return message, true, nil
+}
+
+// MarkQualityAgentSessionManualResume records that a person resumed a blocked session. The next
+// budget check spends the marker to allow one wake; it is not a permanent exemption.
+func (s *Store) MarkQualityAgentSessionManualResume(ctx context.Context, resourceID string, at time.Time) error {
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session SET manual_resume_at = $2, updated_at = NOW()
+		WHERE resource_id = $1 AND archived_at IS NULL`, resourceID, at.UTC()); err != nil {
+		return errors.Wrap(err, "failed to record a manual resume")
+	}
+	return nil
+}
+
+// ClearQualityAgentSessionManualResume consumes the marker once the wake it bought has run.
+func (s *Store) ClearQualityAgentSessionManualResume(ctx context.Context, resourceID string) error {
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session SET manual_resume_at = NULL, updated_at = NOW()
+		WHERE resource_id = $1 AND manual_resume_at IS NOT NULL`, resourceID); err != nil {
+		return errors.Wrap(err, "failed to clear a manual resume")
+	}
+	return nil
 }
 
 // QualityAgentSessionWakeResult is what one wake persists on the session row.
@@ -760,7 +786,7 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		&message.SummaryThroughSeq, &message.ProcessedSeq, &engineState,
 		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount,
 		&message.CreatedAt, &message.UpdatedAt, &message.ArchivedAt,
-		&mode, &kind, &contextUsage,
+		&mode, &kind, &contextUsage, &message.ManualResumeAt,
 	}
 	if withLastActivity {
 		dest = append(dest, &message.LastActivityAt)

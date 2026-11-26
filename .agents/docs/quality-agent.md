@@ -83,7 +83,13 @@ the delegation's safety rests on the escape hatch being easier to reach than the
 
 ## Wake rendering and scheduling
 
-The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. A wake that read a case and decided there was nothing to do pushes that case's next look out by an hour (`DeferQualityAgentCases`)
+The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. A person resuming a blocked session outranks the budget once: `ResumeQualityAgentSession` writes `manual_resume_at`, the next
+budget check spends it instead of refusing the wake, and it is cleared as soon as it is used. It buys one wake, not a standing
+exemption. The page confirms the resume four seconds later and, if the runtime parked the session again, says so with the runtime's
+own reason — the button used to look like it did nothing, because the session it had just enabled was blocked again before the next
+poll.
+
+A wake that read a case and decided there was nothing to do pushes that case's next look out by an hour (`DeferQualityAgentCases`)
 before the release path merges it. Without that, the merge saw the same past-due instant after every wake, the clamp turned it into one
 wake a minute, and — because the merge is agent-wide — every one of the agent's target sessions woke with it: eight sessions woke
 fifty-three times in twelve minutes, each read the same evidence and concluded nothing had changed. Only `OPEN` and `DIAGNOSED`

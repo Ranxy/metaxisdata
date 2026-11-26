@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -126,6 +128,13 @@ func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req 
 		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, &now)
 	if err != nil {
 		return nil, err
+	}
+	// A resume is a person's decision, and the next budget check must not silently overrule it: the
+	// marker buys exactly one wake past the hourly ceiling, then it is consumed.
+	if _, resourceID, nameErr := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName()); nameErr == nil {
+		if markErr := s.store.MarkQualityAgentSessionManualResume(ctx, resourceID, now); markErr != nil {
+			slog.Warn("failed to record the manual resume", log.WithError(markErr))
+		}
 	}
 	// The queued row may still carry the admission hint that it was skipped because a
 	// person paused the session; resuming clears it.

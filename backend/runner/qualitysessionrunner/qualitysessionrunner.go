@@ -63,6 +63,7 @@ type SessionStore interface {
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
+	ClearQualityAgentSessionManualResume(ctx context.Context, resourceID string) error
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
 	EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error)
@@ -242,13 +243,22 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 	if tokenLimit <= 0 {
 		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
 	}
+	// A person pressed "resume". The budgets still describe the hour, but the decision to run now is
+	// theirs, so the marker is spent here and the wake proceeds. It is cleared immediately: one wake,
+	// not a standing exemption.
+	manual := session.ManualResumeAt != nil
+	if manual {
+		if clearErr := r.store.ClearQualityAgentSessionManualResume(ctx, session.ResourceID); clearErr != nil {
+			slog.Warn("failed to clear a manual resume", slog.String("session", session.ResourceID), log.WithError(clearErr))
+		}
+	}
 	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
 		r.block(ctx, session, "internal-error", "the agent token spend could not be read",
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if spent >= tokenLimit {
+	if spent >= tokenLimit && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "token-budget", "the hourly agent token budget is spent", &nextWindow)
 		return
@@ -263,7 +273,7 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if wakes >= wakeLimit {
+	if wakes >= wakeLimit && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "wake-budget", "the hourly agent wake budget is spent", &nextWindow)
 		return
