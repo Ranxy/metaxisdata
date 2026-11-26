@@ -287,6 +287,14 @@ func retryableSessionBlockedCodes() []string {
 	return []string{"token-budget", "wake-budget", "internal-error", "concurrency-limit"}
 }
 
+// QualityAgentSessionBlockedCodeInfrastructure reports whether a block is about the runtime rather
+// than about a decision: a budget window, a transient internal error, a concurrency limit. The agent
+// may not park a session for anything else — a decision belongs to a case, which the attention list
+// tracks, while a parked session silenced every target it covered and no event could wake it.
+func QualityAgentSessionBlockedCodeInfrastructure(code string) bool {
+	return QualityAgentSessionBlockedCodeRetryable(code)
+}
+
 // QualityAgentSessionBlockedCodeRetryable reports whether a block is transient (a
 // budget window, a transient internal error). The check runner uses it to keep
 // appending failure events while the session is parked on such a block.

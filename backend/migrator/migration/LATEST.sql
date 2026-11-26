@@ -2116,3 +2116,15 @@ ALTER TABLE quality_agent
     ADD COLUMN IF NOT EXISTS run_max_per_rule_per_day INT4 NOT NULL DEFAULT 0;
 COMMENT ON COLUMN quality_agent.repair_max_per_day IS 'Writes to checks the agent may make per rolling day; zero means the server default';
 COMMENT ON COLUMN quality_agent.run_max_per_rule_per_day IS 'Immediate runs the agent may request per check per rolling day; zero means the server default';
+-- The redesign moved "needs a person" from the session to the case. A parked session silenced every
+-- target it covered, nothing could wake it (no event, no case, no failing check), and the only way
+-- out was a person finding it in a list. Sessions parked on a decision code are released here: they
+-- wake, re-diagnose from evidence, and either act or hand one case to the owner.
+--
+-- Infrastructure blocks are untouched. A budget window or a transient internal error really does stop
+-- everything in the session, and those blocks are retryable by design.
+UPDATE quality_agent_session
+SET state = 1, blocked_code = '', blocked_reason = '', next_wake_at = NOW(), updated_at = NOW()
+WHERE state = 3
+    AND blocked_code <> ''
+    AND blocked_code NOT IN ('token-budget', 'wake-budget', 'internal-error', 'concurrency-limit');

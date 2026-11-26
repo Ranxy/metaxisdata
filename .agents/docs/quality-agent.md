@@ -62,6 +62,20 @@ does so through the check itself or by answering the escalation.
 
 How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the delegation default) or `TUNE`. It cascades — the agent row, the database row the operator chose when delegating, then an enrollment-level exception — and an unset slot inherits the level above it rather than resetting, so narrowing one table does not re-declare the rest. The level is per target, so it cannot live in the byte-stable system prompt: the wake instruction states the resolved level and what it permits. A **pin** is the only way to take a check out of the agent's reach, and it is always a person's explicit act: `quality_rule.manual_lock` pins the whole check, `pinned_fields` pins named config paths (a pin on `range` covers `range.min`), and editing a check never creates one. Both are head-only metadata like the frequency tier — they write no revision.
 
+## Blocking is for the runtime, escalating is for a decision
+
+A session blocks only on the runtime: a spent token or wake budget, a transient internal error, a concurrency limit. Those really do
+stop everything in the session, and they are retryable. Everything else — a change the delegation withholds, a failure no field
+change fixes, a decision that is not the agent's — is a **case escalation**: `escalate_case` moves one work item to `ESCALATED` and
+raises one attention with the agent's reason as the question. The distinction is the difference between losing one target's queue and
+losing one question.
+
+It used to be the other way round, and the cost was visible: eight sessions were parked on decision codes (`RULES_NEVER_EVALUATED`,
+`AWAITING_DRAFT_REVIEW`, `EXECUTIONS_NOT_EVALUATED`, …) and nothing could wake them — not a failing check, not a health event, not a
+new case, because the claim query only takes enabled or retryably blocked sessions. A parked session was a permanent, invisible
+silence of every target it covered. The model may no longer park on such a code (the tool refuses and names `escalate_case`), and a
+one-time migration released the sessions the old design had parked that way.
+
 A pin is written by a person through the ordinary rule update (`manual_lock` and `pinned_fields` are two mask paths), on the
 check's own row in the checks list: the lock is the button there, and per-field pins are the same metadata through the API. It is
 audited like any other rule write, changes no definition, writes no revision, and is revocable in one click. That is deliberate —

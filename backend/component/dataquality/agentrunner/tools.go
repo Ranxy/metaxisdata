@@ -53,7 +53,7 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "run_check",
-		"repair_check", "propose_revision", "flag_proposal", "get_memory",
+		"repair_check", "propose_revision", "flag_proposal", "escalate_case", "get_memory",
 		"record_asset_fact", "block_session", "schedule_wake",
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
@@ -93,6 +93,8 @@ func (e *Engine) executeTool(
 		return tools.ProposeRevision(ctx, agentSession, arguments)
 	case "flag_proposal":
 		return tools.FlagProposal(ctx, agentSession, arguments)
+	case "escalate_case":
+		return tools.EscalateCase(ctx, agentSession, arguments)
 	case "get_memory":
 		return tools.GetMemory(ctx, agentSession)
 	case "record_asset_fact":
@@ -113,6 +115,13 @@ func (e *Engine) executeTool(
 		}
 		if input.Code == "" || input.Reason == "" {
 			return "", errors.New("block_session needs a code and a reason")
+		}
+		// A parked session silences every target it covers and nothing but a retryable budget block can
+		// wake it, so a decision never parks one: it becomes an escalated case, which the owner's
+		// attention list tracks and which blocks exactly one question.
+		if !store.QualityAgentSessionBlockedCodeInfrastructure(input.Code) {
+			return "", errors.Errorf("block_session is for infrastructure failures only; escalate the work item with "+
+				"escalate_case instead of parking the session (code %q)", input.Code)
 		}
 		control.blocked = true
 		control.blockedCode = input.Code
@@ -221,5 +230,6 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		Propose:      e.propose,
 		Revise:       e.revise,
 		Flag:         e.flag,
+		Escalate:     e.escalate,
 	})
 }

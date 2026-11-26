@@ -683,6 +683,73 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 	return result, nil
 }
 
+// AgentEscalationResult is the work item one escalation handed to a person.
+type AgentEscalationResult struct {
+	Case   string `json:"case"`
+	Check  string `json:"check"`
+	State  string `json:"state"`
+	Reason string `json:"reason"`
+}
+
+// EscalateAgentCase hands one work item to a person. It is the model's exit for everything it cannot
+// settle — a change the delegation withholds, a failure no field change fixes, a decision that is
+// not its to make — and it is what replaced blocking the session: a parked session silenced every
+// target it covered and nothing could wake it, while an escalated case silences exactly one question
+// and the attention tells the owner what the question is.
+func (s *DataQualityService) EscalateAgentCase(ctx context.Context, agentPrincipalID int32, caseResourceID, reason string) (*AgentEscalationResult, error) {
+	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesEvidence)
+	if err != nil {
+		return nil, err
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, connectErrorInvalid("escalating a case needs a reason a person can act on")
+	}
+	switch openCase.State {
+	case store.QualityAgentCaseStateOpen, store.QualityAgentCaseStateDiagnosed:
+	case store.QualityAgentCaseStateActed, store.QualityAgentCaseStateAwaiting:
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("a repair is already waiting for its verification run; escalate after it concludes"))
+	default:
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Errorf("the case is %s and cannot be escalated", openCase.State.Name()))
+	}
+	var rule *store.QualityRuleMessage
+	if openCase.RuleID != nil {
+		if rule, err = s.store.GetQualityRuleByID(ctx, *openCase.RuleID); err != nil {
+			return nil, err
+		}
+	}
+	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+		openCase.State, store.QualityAgentCaseStateEscalated, openCase.Attempts, nil,
+		common.TruncateUTF8Bytes(reason, 500)); caseErr != nil {
+		return nil, errors.Wrap(caseErr, "failed to escalate the case")
+	} else if !applied {
+		return nil, connect.NewError(connect.CodeAborted,
+			errors.New("the case changed before it could be escalated"))
+	}
+	s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
+	language, _ := s.agentOwnerLanguage(ctx, agent)
+	s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
+		Kind:     store.QualityAgentAttentionKindBlocked,
+		Question: agentlang.CaseEscalationQuestion(language, checkTitle(rule), reason),
+	})
+	return &AgentEscalationResult{
+		Case:   openCase.ResourceID,
+		Check:  checkResourceName(rule),
+		State:  store.QualityAgentCaseStateEscalated.Name(),
+		Reason: reason,
+	}, nil
+}
+
+// checkResourceName names a check for a result, empty when the case is about no check.
+func checkResourceName(rule *store.QualityRuleMessage) string {
+	if rule == nil {
+		return ""
+	}
+	return "qualityRules/" + rule.ResourceID
+}
+
 // AgentProposalResult is what one proposal asked for: the change, the case it escalated and the
 // check it is about.
 type AgentProposalResult struct {

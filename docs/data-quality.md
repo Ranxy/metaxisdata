@@ -603,6 +603,9 @@ tool; a person's approval is recorded under its own origin but never spends it.
   three runs per check). At a ceiling the agent does not stall: proposing a change, recording a fact and escalating still work, and
   the budgets reset the next day. Every write it does make is recorded — which check, which field, which revision, which failure
   class — so "what has it changed" and "how much has it changed this week" are answerable without reading transcripts.
+- **Escalates one question, not a whole target.** When the agent cannot settle a work item it hands that item to you — the case
+  becomes escalated, you get the attention with its reason — and keeps working on everything else. A target's session only stops on
+  something about the runtime itself (a spent budget, a transient server error, a concurrency limit), which clears on its own.
 - **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
   which revision to which, the failure class it acted on and when — newest first, and each work item has a **History** dialog with
   just its own writes. An execution the write planned is one click away. This is the same record the daily write budget counts, so

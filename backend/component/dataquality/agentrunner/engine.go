@@ -106,6 +106,8 @@ type Engine struct {
 	revise quality.ReviseFunc
 	// flag records the agent's own objection to a draft it queued. It is a setter for the same reason.
 	flag quality.FlagFunc
+	// escalate hands one work item to a person. It is a setter for the same reason.
+	escalate quality.EscalateFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
 	adoption AdoptionFunc
 	// ownerAdoption executes an owner-requested adoption from the model tool. A
@@ -165,6 +167,12 @@ func (e *Engine) SetRevise(revise quality.ReviseFunc) {
 // SetAdoption is a setter.
 func (e *Engine) SetFlag(flag quality.FlagFunc) {
 	e.flag = flag
+}
+
+// SetEscalate wires the escalation verb after the API service exists, for the same reason
+// SetAdoption is a setter.
+func (e *Engine) SetEscalate(escalate quality.EscalateFunc) {
+	e.escalate = escalate
 }
 
 // SetOwnerAdoption wires the owner-requested adoption path after the API service
