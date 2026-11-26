@@ -238,6 +238,10 @@ func refuse(level Participation, step string) Verdict {
 	return Verdict{Reason: step + " (current participation: " + level.Name() + ")"}
 }
 
+// EffectiveLevel is the participation the policy runs at, with the unset default resolved. A
+// refusal names it, so the message a model reads and the metric a dashboard counts agree.
+func (p Policy) EffectiveLevel() Participation { return p.level() }
+
 // CanTune reports whether the policy may change a criterion at all. The prompt and the case
 // view use it to say what is possible without enumerating verbs.
 func (p Policy) CanTune() bool {

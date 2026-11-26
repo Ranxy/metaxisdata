@@ -116,6 +116,14 @@ agent's own cases, read by agent rather than by target, so a report never counts
 honest zero: "nothing was settled by the agent" is different from "the agent fixed nothing because there was nothing to fix", and a
 report that hides the difference cannot show whether delegating the database is working.
 
+## Instrumentation
+
+Three counters describe how autonomous the agent is: work items opened (by failure class), work-item transitions (by the state
+reached) and writes refused (by verb, participation level and effect). The ratios a dashboard wants — autonomy is resolved over
+resolved plus escalated and frozen, a reopen rate is a second transition of the same subject — are computed from those counters
+rather than recorded as gauges, so the definition can change without a deploy. A refused write is the one signal that the prompt is
+inviting the model somewhere the policy will not follow.
+
 ## Where to look
 
 | Path | Owns |

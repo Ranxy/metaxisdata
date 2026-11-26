@@ -88,6 +88,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						slog.String("case", openCase.ResourceID), log.WithError(updateErr))
 				} else if applied {
 					resolved++
+					r.metrics.ObserveAgentCaseTransition(state.Name())
 					slog.Info("advanced a quality agent case",
 						slog.String("case", openCase.ResourceID),
 						slog.String("from", openCase.State.Name()),
@@ -114,6 +115,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						slog.String("case", openCase.ResourceID), log.WithError(closeErr))
 				} else if applied {
 					resolved++
+					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
 				}
 				continue
 			}
@@ -145,6 +147,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 			}
 			if created {
 				opened++
+				r.metrics.ObserveAgentCaseOpened(string(diagnosis.Class))
 			}
 		}
 	}

@@ -73,6 +73,9 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 		PinnedFields: rule.PinnedFields,
 	}, requested)
 	if !verdict.Allowed {
+		// A refusal is worth counting: it is how a dashboard notices that the prompt is inviting the
+		// model somewhere the policy will not follow.
+		s.metrics.ObserveAgentWriteRefused("control", policy.EffectiveLevel().Name(), agentpolicy.EffectState.Name())
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
 	paused := storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
@@ -102,6 +105,7 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 		slog.Warn("the case changed before it could be escalated",
 			slog.String("case", openCase.ResourceID))
 	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
 		// An escalated case is a decision the owner owes, so it has to reach them. The notice is
 		// deduped per case: a retried verb must not page twice.
 		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
@@ -327,6 +331,8 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
 	} else if !applied {
 		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateActed.Name())
 	}
 	return &AgentRunResult{
 		Case:      openCase.ResourceID,
@@ -460,6 +466,7 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 		ReplayAvailable: replay.Available,
 	}, agentpolicy.FieldChange{Field: field})
 	if !verdict.Allowed {
+		s.metrics.ObserveAgentWriteRefused("repair", policy.EffectiveLevel().Name(), agentpolicy.EffectOf(diagnosis).Name())
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
 	if len(replay.Loosened) > 0 {
@@ -514,6 +521,8 @@ func (s *DataQualityService) ReviseAgentField(ctx context.Context, agentPrincipa
 			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
 	} else if !applied {
 		slog.Warn("the case changed before it could be marked acted", slog.String("case", openCase.ResourceID))
+	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateActed.Name())
 	}
 	result := &AgentRevisionResult{
 		Case:      openCase.ResourceID,
@@ -586,6 +595,7 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 		PinnedFields: rule.PinnedFields,
 	}, agentpolicy.FieldChange{Field: field})
 	if !verdict.Allowed {
+		s.metrics.ObserveAgentWriteRefused("propose", policy.EffectiveLevel().Name(), "")
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(verdict.Reason))
 	}
 	// The proposed value must be one the check could save. The patch is applied to a copy and
@@ -624,6 +634,7 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 	} else if !applied {
 		slog.Warn("the case changed before it could be escalated", slog.String("case", openCase.ResourceID))
 	} else {
+		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
 		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
 			Kind:     store.QualityAgentAttentionKindProposalPending,
 			Title:    agentlang.CaseRevisionTitle(language),
