@@ -602,6 +602,9 @@ describe("qualityErrorCodeKey", () => {
     expect(qualityErrorCodeKey("BAD_DATA")).toBe(
       "dataQuality.errorCode.badData"
     );
+    expect(qualityErrorCodeKey("BAD_VALUE")).toBe(
+      "dataQuality.errorCode.badValue"
+    );
     expect(qualityErrorCodeKey("LIMIT_EXCEEDED")).toBe(
       "dataQuality.errorCode.limitExceeded"
     );

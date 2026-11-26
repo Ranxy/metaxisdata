@@ -18,7 +18,10 @@ import (
 // the version whenever a prompt change can alter an answer.
 const (
 	// RuleDraftPromptVersion is the L1 prompt: natural language -> rule drafts.
-	RuleDraftPromptVersion = "dq.rule_draft.v2"
+	// v3 states that a range bound is a fixed value and that a rolling window is a
+	// freshness check or a filter time variable; v2 left that unsaid and drafts wrote
+	// expressions such as "now - 1 day" into a bound.
+	RuleDraftPromptVersion = "dq.rule_draft.v3"
 	// ExplainPromptVersion is the L2 prompt: a failed result -> hypotheses.
 	ExplainPromptVersion = "dq.explain.v1"
 )
@@ -150,7 +153,7 @@ var draftRuleSpecs = []DraftRuleSpec{
 	},
 	{
 		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, Name: "range",
-		Summary:      "a numeric or date column must stay inside a range",
+		Summary:      "a numeric or date column must stay inside fixed bounds",
 		Fields:       []string{"column", "min", "max", "inclusive", "fail_threshold", "warn_threshold"},
 		ColumnFields: []string{"column"},
 	},
@@ -317,6 +320,8 @@ func buildRuleDraftSystemPrompt(language string) string {
 	}
 	_, _ = builder.WriteString("- cross_column's op is one of EQ, NE, LT, LTE, GT, GTE.\n")
 	_, _ = builder.WriteString("- range bounds and accepted values may be JSON strings or bare literals.\n")
+	_, _ = builder.WriteString("- A range bound is ONE fixed value. For a date or timestamp column write an ISO-8601 literal such as 2026-01-31 or 2026-01-31T00:00:00Z. Never write an expression such as \"now - 1 day\" into a bound.\n")
+	_, _ = builder.WriteString("- A rolling window (\"the last 24 hours\", \"recent\", \"yesterday onwards\") is a freshness check with max_lag_seconds, or a filter value that is one time variable such as ${today-7d}; it is never a range bound.\n")
 	_, _ = builder.WriteString("\nAllowed severity values: WARNING, ERROR, CRITICAL.\n")
 	return builder.String()
 }

@@ -73,13 +73,13 @@ func ClassifyError(err error) (code string, message string) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if classified := classifyPostgresCode(pgErr.Code); classified != "" {
-			return classified, classMessage(classified)
+			return classified, classifiedMessage(classified, err)
 		}
 	}
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) {
 		if classified := classifyMySQLNumber(mysqlErr.Number); classified != "" {
-			return classified, classMessage(classified)
+			return classified, classifiedMessage(classified, err)
 		}
 	}
 	// go-mssqldb returns Error values, but a caller may wrap a pointer, so both
@@ -87,18 +87,18 @@ func ClassifyError(err error) (code string, message string) {
 	var mssqlErr mssql.Error
 	if errors.As(err, &mssqlErr) {
 		if classified := classifyMSSQLNumber(mssqlErr.Number); classified != "" {
-			return classified, classMessage(classified)
+			return classified, classifiedMessage(classified, err)
 		}
 	}
 	var mssqlPtr *mssql.Error
 	if errors.As(err, &mssqlPtr) && mssqlPtr != nil {
 		if classified := classifyMSSQLNumber(mssqlPtr.Number); classified != "" {
-			return classified, classMessage(classified)
+			return classified, classifiedMessage(classified, err)
 		}
 	}
 
 	if classified := classifyErrorText(strings.ToLower(err.Error())); classified != "" {
-		return classified, classMessage(classified)
+		return classified, classifiedMessage(classified, err)
 	}
 	return ErrCodeExecution, sanitizeErrorMessage(err.Error())
 }
@@ -121,10 +121,25 @@ func classMessage(code string) string {
 		return "the instance has no read-only data source; add one in the instance settings"
 	case ErrCodeBadData:
 		return "the query result did not match the rule's expected shape"
+	case ErrCodeBadValue:
+		return "the target database refused a value the rule bound"
 	case ErrCodeExecution, ErrCodeSQLSyntax, ErrCodeUnsupported, ErrCodeOrphaned, ErrCodeQuota:
 		return "the query failed"
 	}
 	return "the query failed"
+}
+
+// classifiedMessage is the stored description of one classified failure. BAD_VALUE
+// keeps the engine's own text because that text names the offending literal, and
+// the literal is the only clue that leads to the field to fix; every other class
+// gets the generic description, because a driver message can echo a connection
+// string. The whole message is sanitized and truncated.
+func classifiedMessage(code string, err error) string {
+	message := classMessage(code)
+	if code == ErrCodeBadValue && err != nil {
+		message += ": " + err.Error()
+	}
+	return sanitizeErrorMessage(message)
 }
 
 // classifyPostgresCode maps the PostgreSQL SQLSTATE classes a quality query can
@@ -149,6 +164,11 @@ func classifyPostgresCode(code string) string {
 	case "53200", "53100":
 		// out_of_memory, disk_full: the engine refused the work, not the query.
 		return ErrCodeLimitExceeded
+	case "22P02", "22007", "22008", "22018", "22023":
+		// invalid_text_representation, invalid_datetime_format, datetime_field_overflow,
+		// invalid_character_value_for_cast, invalid_parameter_value: the statement
+		// parsed and bound, and the engine refused the value itself.
+		return ErrCodeBadValue
 	default:
 		return ""
 	}
@@ -173,6 +193,11 @@ func classifyMySQLNumber(number uint16) string {
 		// ER_QUERY_TIMEOUT (max_execution_time), lock wait timeout,
 		// deadlock: the work was interrupted, not rejected as invalid.
 		return ErrCodeTimeout
+	case 1292, 1366, 1411, 1690:
+		// ER_TRUNCATED_WRONG_VALUE, ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
+		// ER_WRONG_VALUE_FOR_TYPE, ER_DATA_OUT_OF_RANGE: a bound value the column
+		// cannot represent.
+		return ErrCodeBadValue
 	default:
 		return ""
 	}
@@ -195,6 +220,11 @@ func classifyMSSQLNumber(number int32) string {
 	case 1222:
 		// Lock request time out.
 		return ErrCodeTimeout
+	case 206, 241, 245, 8114, 8115:
+		// Operand type clash, conversion failed for date/time or from a character
+		// string, error converting data type, arithmetic overflow: the value reached
+		// the engine and did not fit the column.
+		return ErrCodeBadValue
 	default:
 		return ""
 	}

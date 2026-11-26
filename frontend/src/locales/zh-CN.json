@@ -780,6 +780,7 @@
     "errorCode": {
       "auth": "认证失败",
       "badData": "数据异常",
+      "badValue": "数据库拒绝了该取值",
       "connection": "连接失败",
       "limitExceeded": "超出限制",
       "orphaned": "目标不可用",

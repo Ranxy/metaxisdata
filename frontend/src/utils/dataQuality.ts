@@ -715,6 +715,8 @@ export function qualityErrorCodeKey(code: string): string {
       return "dataQuality.errorCode.sqlSyntax";
     case "BAD_DATA":
       return "dataQuality.errorCode.badData";
+    case "BAD_VALUE":
+      return "dataQuality.errorCode.badValue";
     case "LIMIT_EXCEEDED":
       return "dataQuality.errorCode.limitExceeded";
     case "ORPHANED":
