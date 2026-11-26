@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // QualityAgentCaseActionKind is the write one ledger row records.
@@ -40,6 +42,7 @@ type QualityAgentCaseActionMessage struct {
 	CaseID     *int64
 	AgentID    int64
 	TargetGUID string
+	TargetType storepb.MetaType
 	RuleID     *int64
 	Instance   string
 	Action     QualityAgentCaseActionKind
@@ -76,11 +79,12 @@ func (s *Store) RecordQualityAgentCaseAction(ctx context.Context, message *Quali
 	var rowID int64
 	if err := s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_case_action
-			(case_id, agent_id, target_guid, rule_id, instance, action, field,
+			(case_id, agent_id, target_guid, target_type, rule_id, instance, action, field,
 			 from_revision, to_revision, execution_id, outcome, reason, requested_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id`,
-		message.CaseID, message.AgentID, message.TargetGUID, message.RuleID, message.Instance,
+		message.CaseID, message.AgentID, message.TargetGUID, int16(message.TargetType),
+		message.RuleID, message.Instance,
 		int16(message.Action), message.Field, message.FromRevision, message.ToRevision,
 		message.ExecutionID, int16(outcome), message.Reason, message.RequestedBy, createdAt,
 	).Scan(&rowID); err != nil {
@@ -105,6 +109,103 @@ type FindQualityAgentCaseActionMessage struct {
 	RuleID *int64
 	// Since is the inclusive start of the window; a zero value counts everything recorded.
 	Since time.Time
+}
+
+// qualityAgentCaseActionColumns lists the ledger columns every read returns, in the order the
+// scanner consumes them.
+const qualityAgentCaseActionColumns = `id, case_id, agent_id, target_guid, target_type, rule_id, instance,
+	action, field, from_revision, to_revision, execution_id, outcome, reason, requested_by,
+	created_at`
+
+// FindQualityAgentCaseActionList narrows the ledger read: one agent, optionally one work item, one
+// page. The activity view pages through everything the agent did; a case view pages one history.
+type FindQualityAgentCaseActionList struct {
+	AgentID int64
+	// CaseID narrows the list to one work item's writes.
+	CaseID *int64
+	Limit  int
+	Offset int
+}
+
+// ListQualityAgentCaseActions reads the ledger newest first.
+func (s *Store) ListQualityAgentCaseActions(ctx context.Context, find *FindQualityAgentCaseActionList) ([]*QualityAgentCaseActionMessage, error) {
+	if find == nil || find.AgentID <= 0 {
+		return nil, common.Errorf(common.Invalid, "a ledger list needs an agent")
+	}
+	limit := find.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	where := "agent_id = $1"
+	args := []any{find.AgentID}
+	if find.CaseID != nil {
+		args = append(args, *find.CaseID)
+		where += " AND case_id = $" + strconv.Itoa(len(args))
+	}
+	args = append(args, limit, find.Offset)
+	rows, err := s.GetDB().QueryContext(ctx,
+		`SELECT `+qualityAgentCaseActionColumns+` FROM quality_agent_case_action
+		 WHERE `+where+`
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)),
+		args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality agent case actions")
+	}
+	defer rows.Close()
+	actions := make([]*QualityAgentCaseActionMessage, 0, limit)
+	for rows.Next() {
+		action, scanErr := scanQualityAgentCaseAction(rows)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to read a quality agent case action")
+		}
+		actions = append(actions, action)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality agent case actions")
+	}
+	return actions, nil
+}
+
+// scanQualityAgentCaseAction maps one ledger row.
+func scanQualityAgentCaseAction(scanner interface{ Scan(dest ...any) error }) (*QualityAgentCaseActionMessage, error) {
+	var (
+		message     QualityAgentCaseActionMessage
+		caseID      sql.NullInt64
+		ruleID      sql.NullInt64
+		action      int16
+		executionID sql.NullInt64
+		outcome     int16
+		requestedBy sql.NullInt32
+		targetType  int16
+	)
+	if err := scanner.Scan(
+		&message.ID, &caseID, &message.AgentID, &message.TargetGUID, &targetType, &ruleID, &message.Instance,
+		&action, &message.Field, &message.FromRevision, &message.ToRevision, &executionID,
+		&outcome, &message.Reason, &requestedBy, &message.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if caseID.Valid {
+		value := caseID.Int64
+		message.CaseID = &value
+	}
+	if ruleID.Valid {
+		value := ruleID.Int64
+		message.RuleID = &value
+	}
+	if executionID.Valid {
+		value := executionID.Int64
+		message.ExecutionID = &value
+	}
+	if requestedBy.Valid {
+		value := requestedBy.Int32
+		message.RequestedBy = &value
+	}
+	message.TargetType = storepb.MetaType(targetType)
+	message.Action = QualityAgentCaseActionKind(action)
+	message.Outcome = QualityAgentCaseActionOutcome(outcome)
+	return &message, nil
 }
 
 // CountQualityAgentCaseActions counts the applied writes a budget question asks about.

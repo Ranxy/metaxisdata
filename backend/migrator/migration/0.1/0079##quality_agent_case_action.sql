@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_case_action (
     -- The check's target and instance are copied rather than joined: the budget reads by rule and by
     -- instance, and the ledger stays readable after a rule is archived.
     target_guid TEXT COLLATE "C" NOT NULL DEFAULT '',
+    -- The target's registry type, copied with the GUID so the row renders without a join.
+    target_type INT2 NOT NULL DEFAULT 0,
     rule_id INT8 REFERENCES quality_rule(id) ON DELETE SET NULL,
     instance TEXT NOT NULL DEFAULT '',
     -- 1 REVISE, 2 CONTROL, 3 RUN, 4 PROPOSE (store.QualityAgentCaseActionKind).

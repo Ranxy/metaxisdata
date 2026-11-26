@@ -57,6 +57,9 @@ export const DYNAMIC_PREFIXES = [
   // qualityAgentAttentionText() in src/lib/notificationText.ts returns the title
   // key for an agent escalation; the checker cannot follow a key a helper returns.
   "notifications.qualityAgent",
+  // actionKindKey() in src/components/data-quality/QualityAgentCaseActivity.vue maps a
+  // ledger action kind to its label key; the checker cannot follow the returned key.
+  "qualityAgent.activity.kind",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.

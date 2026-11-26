@@ -154,6 +154,11 @@ after the verb is authorized, so a write that would be refused costs nothing; it
 ledger failure is logged rather than raised, because the check is already changed and losing the row only means one write goes
 uncounted.
 
+The ledger is readable: `ListQualityAgentCaseActions` lists one agent's writes newest first, optionally narrowed to one work item, and
+the agent home renders it twice — a whole-agent **Activity** list that pages forward, and a per-work-item **History** dialog that
+answers "what did it do to this check". Both are owner-and-administrator reads. A write that names a case the agent does not own is
+refused rather than answered with an empty page, because "no history" and "not your case" are different facts.
+
 ## Instrumentation
 
 Three counters describe how autonomous the agent is: work items opened (by failure class), work-item transitions (by the state

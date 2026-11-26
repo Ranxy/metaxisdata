@@ -331,12 +331,30 @@
                   max: workItem.maxAttempts,
                 }) }}
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="ml-auto h-7 px-2 text-xs"
+                @click="openCaseHistory(workItem)"
+              >
+                {{ t("qualityAgent.activity.caseHistory") }}
+              </Button>
             </div>
             <p class="mt-1 text-sm">
               {{ workItem.summary }}
             </p>
           </li>
         </ul>
+      </CardContent>
+    </Card>
+
+    <Card v-if="agent">
+      <CardHeader class="border-b">
+        <CardTitle class="text-base">{{ t("qualityAgent.activity.title") }}</CardTitle>
+        <CardDescription>{{ t("qualityAgent.activity.hint") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <QualityAgentCaseActivity :agent-name="agentName" />
       </CardContent>
     </Card>
 
@@ -461,6 +479,23 @@
     </Card>
 
     <Dialog
+      :open="caseHistoryOpen"
+      @update:open="caseHistoryOpen = $event"
+    >
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ t("qualityAgent.activity.caseHistoryTitle") }}</DialogTitle>
+        </DialogHeader>
+        <QualityAgentCaseActivity
+          v-if="caseHistoryCase"
+          :agent-name="agentName"
+          :case-name="caseHistoryCase.name"
+          :empty="t('qualityAgent.activity.caseHistoryEmpty')"
+        />
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
       :open="reportOpen"
       @update:open="reportOpen = $event"
     >
@@ -509,6 +544,7 @@ import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
 import QualityAgentAttentionItem from "@/components/data-quality/QualityAgentAttentionItem.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
+import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -573,6 +609,8 @@ const busy = ref(false);
 
 const attentions = ref<QualityAgentAttention[]>([]);
 const cases = ref<QualityAgentCase[]>([]);
+const caseHistoryOpen = ref(false);
+const caseHistoryCase = ref<QualityAgentCase>();
 const reports = ref<QualityAgentReport[]>([]);
 const reportOpen = ref(false);
 const selectedReport = ref<QualityAgentReport>();
@@ -743,6 +781,12 @@ async function loadAttentions() {
   } catch {
     attentions.value = [];
   }
+}
+
+/** openCaseHistory shows what the agent did to one work item's check. */
+function openCaseHistory(workItem: QualityAgentCase) {
+  caseHistoryCase.value = workItem;
+  caseHistoryOpen.value = true;
 }
 
 /** The agent's open work items: what it is carrying right now. */

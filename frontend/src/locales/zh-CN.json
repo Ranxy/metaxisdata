@@ -3331,6 +3331,25 @@
     "viewRun": "查看运行"
   },
   "qualityAgent": {
+    "activity": {
+      "caseHistory": "历史",
+      "caseHistoryEmpty": "还没有写入：这个工作项仍在诊断。",
+      "caseHistoryTitle": "Agent 对这条检查做了什么",
+      "empty": "Agent 还没有对任何检查做过写入。",
+      "hint": "Agent 对检查做过的每一次写入：改了什么、从哪个修订到哪个修订、为什么。它也是每日写预算背后的记录。",
+      "kind": {
+        "control": "暂停",
+        "propose": "提案",
+        "revise": "修复",
+        "run": "运行",
+        "unknown": "其他"
+      },
+      "loadMore": "加载更多",
+      "openExecution": "查看这次运行",
+      "revision": "修订 {revision}",
+      "revisionChange": "修订 {from} → {to}",
+      "title": "活动记录"
+    },
     "adoptPending": "批准全部待处理草案",
     "adoptPendingSuccess": "已批准 {adopted} 条，跳过 {skipped} 条，失败 {failed} 条；仍有 {remaining} 条待处理。",
     "adoptionDisable": "关闭自动采纳",

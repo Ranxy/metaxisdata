@@ -5669,6 +5669,59 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/caseActions:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the writes one agent made to checks, newest first: the ledger behind the write budget
+                 and the answer to "what has it changed". A case narrows it to one work item's history.
+            operationId: DataQualityService_ListQualityAgentCaseActions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: case
+                  in: query
+                  description: |-
+                    Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+                     the agent made, which is the activity view; a case lists that work item's history.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+                     value is 200; values above 200 are coerced to 200.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentCaseActionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/cases:
         get:
             tags:
@@ -12487,6 +12540,15 @@ components:
                         $ref: '#/components/schemas/QualityAgentAttention'
                 nextPageToken:
                     type: string
+        ListQualityAgentCaseActionsResponse:
+            type: object
+            properties:
+                qualityAgentCaseActions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentCaseAction'
+                nextPageToken:
+                    type: string
         ListQualityAgentCasesResponse:
             type: object
             properties:
@@ -14505,6 +14567,60 @@ components:
                  failure class that explains why, and the state the next wake resumes from. It is not the issue
                  ledger — a FAIL is a conclusion about the data and becomes an issue, while a check that cannot
                  produce a verdict becomes a case.
+        QualityAgentCaseAction:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                case:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+                         belonged to no work item (an owner-requested run).
+                check:
+                    type: string
+                    description: 'Format: qualityRules/{rule}; empty when the check has since been hard-deleted.'
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                action:
+                    enum:
+                        - QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED
+                        - QUALITY_AGENT_CASE_ACTION_KIND_REVISE
+                        - QUALITY_AGENT_CASE_ACTION_KIND_CONTROL
+                        - QUALITY_AGENT_CASE_ACTION_KIND_RUN
+                        - QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE
+                    type: string
+                    format: enum
+                field:
+                    type: string
+                    description: The config field a REVISE or PROPOSE named, in dotted form.
+                fromRevision:
+                    type: integer
+                    description: The definition revisions the write produced; equal for an action that wrote no definition.
+                    format: int32
+                toRevision:
+                    type: integer
+                    format: int32
+                execution:
+                    type: string
+                    description: 'Format: qualityExecutions/{execution}; the run the write planned, when it planned one.'
+                class:
+                    type: string
+                    description: The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID.
+                reason:
+                    type: string
+                    description: 'The action''s own note: the requested control action, or the field the run diagnosed.'
+                createTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+                 which definition revision to which, which execution it planned, and why. Only applied writes are
+                 recorded — a refused write is a metric, not a spent budget.
         QualityAgentFieldPatch:
             type: object
             properties:

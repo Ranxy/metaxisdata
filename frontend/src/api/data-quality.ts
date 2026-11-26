@@ -56,6 +56,7 @@ import {
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityAgentAttentionsRequestSchema,
+  ListQualityAgentCaseActionsRequestSchema,
   ListQualityAgentCasesRequestSchema,
   ListQualityAgentConversationMessagesRequestSchema,
   type ListQualityAgentConversationMessagesResponse,
@@ -82,6 +83,7 @@ import {
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
   type QualityAgentCase,
+  type QualityAgentCaseAction,
   QualityAgentCaseState,
   type QualityAgentReport,
   QualityAgentReportFrequency,
@@ -1732,6 +1734,40 @@ export async function listQualityAgentCases(
     signal,
   });
   return response.qualityAgentCases;
+}
+
+/**
+ * The writes one agent made to checks, newest first. A case narrows it to that work item's history.
+ * It is the record behind the write budget: what it changed, from which revision to which, and why.
+ */
+export async function listQualityAgentCaseActions(
+  agentName: string,
+  options: {
+    caseName?: string;
+    pageToken?: string;
+    pageSize?: number;
+    signal?: AbortSignal;
+  } = {}
+): Promise<{
+  actions: QualityAgentCaseAction[];
+  nextPageToken: string;
+}> {
+  const request = create(ListQualityAgentCaseActionsRequestSchema, {
+    parent: agentName,
+    case: options.caseName ?? "",
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityAgentCaseActions(
+    request,
+    {
+      signal: options.signal,
+    }
+  );
+  return {
+    actions: response.qualityAgentCaseActions,
+    nextPageToken: response.nextPageToken,
+  };
 }
 
 /** Answer an escalation as the owner; resumes the target session and resolves it. */

@@ -223,6 +223,9 @@ const (
 	// DataQualityServiceListQualityAgentCasesProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityAgentCases RPC.
 	DataQualityServiceListQualityAgentCasesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentCases"
+	// DataQualityServiceListQualityAgentCaseActionsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentCaseActions RPC.
+	DataQualityServiceListQualityAgentCaseActionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentCaseActions"
 	// DataQualityServiceReplyQualityAgentAttentionProcedure is the fully-qualified name of the
 	// DataQualityService's ReplyQualityAgentAttention RPC.
 	DataQualityServiceReplyQualityAgentAttentionProcedure = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
@@ -530,6 +533,9 @@ type DataQualityServiceClient interface {
 	// record of a check it could not settle by itself; the owner and administrators may read
 	// it to see what the agent is working on and what it has given up on.
 	ListQualityAgentCases(context.Context, *connect.Request[v1.ListQualityAgentCasesRequest]) (*connect.Response[v1.ListQualityAgentCasesResponse], error)
+	// List the writes one agent made to checks, newest first: the ledger behind the write budget
+	// and the answer to "what has it changed". A case narrows it to one work item's history.
+	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
 	// Answer an escalation as the owner. The reply is appended to the target session,
 	// the session is resumed, and the attention is resolved; a retry on a closed
 	// attention is a no-op.
@@ -975,6 +981,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentCases")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityAgentCaseActions: connect.NewClient[v1.ListQualityAgentCaseActionsRequest, v1.ListQualityAgentCaseActionsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentCaseActionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentCaseActions")),
+			connect.WithClientOptions(opts...),
+		),
 		replyQualityAgentAttention: connect.NewClient[v1.ReplyQualityAgentAttentionRequest, v1.QualityAgentAttention](
 			httpClient,
 			baseURL+DataQualityServiceReplyQualityAgentAttentionProcedure,
@@ -1139,6 +1151,7 @@ type dataQualityServiceClient struct {
 	listQualityAgentReports              *connect.Client[v1.ListQualityAgentReportsRequest, v1.ListQualityAgentReportsResponse]
 	listQualityAgentAttentions           *connect.Client[v1.ListQualityAgentAttentionsRequest, v1.ListQualityAgentAttentionsResponse]
 	listQualityAgentCases                *connect.Client[v1.ListQualityAgentCasesRequest, v1.ListQualityAgentCasesResponse]
+	listQualityAgentCaseActions          *connect.Client[v1.ListQualityAgentCaseActionsRequest, v1.ListQualityAgentCaseActionsResponse]
 	replyQualityAgentAttention           *connect.Client[v1.ReplyQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	dismissQualityAgentAttention         *connect.Client[v1.DismissQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	setQualityAgentAdoption              *connect.Client[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent]
@@ -1474,6 +1487,11 @@ func (c *dataQualityServiceClient) ListQualityAgentAttentions(ctx context.Contex
 // ListQualityAgentCases calls metaxisdata.v1.DataQualityService.ListQualityAgentCases.
 func (c *dataQualityServiceClient) ListQualityAgentCases(ctx context.Context, req *connect.Request[v1.ListQualityAgentCasesRequest]) (*connect.Response[v1.ListQualityAgentCasesResponse], error) {
 	return c.listQualityAgentCases.CallUnary(ctx, req)
+}
+
+// ListQualityAgentCaseActions calls metaxisdata.v1.DataQualityService.ListQualityAgentCaseActions.
+func (c *dataQualityServiceClient) ListQualityAgentCaseActions(ctx context.Context, req *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error) {
+	return c.listQualityAgentCaseActions.CallUnary(ctx, req)
 }
 
 // ReplyQualityAgentAttention calls metaxisdata.v1.DataQualityService.ReplyQualityAgentAttention.
@@ -1817,6 +1835,9 @@ type DataQualityServiceHandler interface {
 	// record of a check it could not settle by itself; the owner and administrators may read
 	// it to see what the agent is working on and what it has given up on.
 	ListQualityAgentCases(context.Context, *connect.Request[v1.ListQualityAgentCasesRequest]) (*connect.Response[v1.ListQualityAgentCasesResponse], error)
+	// List the writes one agent made to checks, newest first: the ledger behind the write budget
+	// and the answer to "what has it changed". A case narrows it to one work item's history.
+	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
 	// Answer an escalation as the owner. The reply is appended to the target session,
 	// the session is resumed, and the attention is resolved; a retry on a closed
 	// attention is a no-op.
@@ -2258,6 +2279,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentCases")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityAgentCaseActionsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentCaseActionsProcedure,
+		svc.ListQualityAgentCaseActions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentCaseActions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceReplyQualityAgentAttentionHandler := connect.NewUnaryHandler(
 		DataQualityServiceReplyQualityAgentAttentionProcedure,
 		svc.ReplyQualityAgentAttention,
@@ -2482,6 +2509,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityAgentAttentionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityAgentCasesProcedure:
 			dataQualityServiceListQualityAgentCasesHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentCaseActionsProcedure:
+			dataQualityServiceListQualityAgentCaseActionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceReplyQualityAgentAttentionProcedure:
 			dataQualityServiceReplyQualityAgentAttentionHandler.ServeHTTP(w, r)
 		case DataQualityServiceDismissQualityAgentAttentionProcedure:
@@ -2773,6 +2802,10 @@ func (UnimplementedDataQualityServiceHandler) ListQualityAgentAttentions(context
 
 func (UnimplementedDataQualityServiceHandler) ListQualityAgentCases(context.Context, *connect.Request[v1.ListQualityAgentCasesRequest]) (*connect.Response[v1.ListQualityAgentCasesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentCases is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentCaseActions is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error) {

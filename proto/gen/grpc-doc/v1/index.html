@@ -1487,6 +1487,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentCaseActionsRequest"><span class="badge">M</span>ListQualityAgentCaseActionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentCaseActionsResponse"><span class="badge">M</span>ListQualityAgentCaseActionsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityAgentCasesRequest"><span class="badge">M</span>ListQualityAgentCasesRequest</a>
                 </li>
               
@@ -1680,6 +1688,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentCase"><span class="badge">M</span>QualityAgentCase</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentCaseAction"><span class="badge">M</span>QualityAgentCaseAction</a>
                 </li>
               
                 <li>
@@ -2089,6 +2101,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentAttentionStatus"><span class="badge">E</span>QualityAgentAttentionStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentCaseActionKind"><span class="badge">E</span>QualityAgentCaseActionKind</a>
                 </li>
               
                 <li>
@@ -17968,6 +17984,84 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListQualityAgentCaseActionsRequest">ListQualityAgentCaseActionsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>case</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+the agent made, which is the activity view; a case lists that work item&#39;s history. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+value is 200; values above 200 are coerced to 200. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentCaseActionsResponse">ListQualityAgentCaseActionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_agent_case_actions</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentCaseAction">QualityAgentCaseAction</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListQualityAgentCasesRequest">ListQualityAgentCasesRequest</h3>
         <p></p>
 
@@ -20651,6 +20745,115 @@ sleeping until the session&#39;s idle cadence. </p></td>
               
                 <tr>
                   <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentCaseAction">QualityAgentCaseAction</h3>
+        <p>QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from</p><p>which definition revision to which, which execution it planned, and why. Only applied writes are</p><p>recorded — a refused write is a metric, not a spent budget.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>case</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+belonged to no work item (an owner-requested run). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: qualityRules/{rule}; empty when the check has since been hard-deleted. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>action</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentCaseActionKind">QualityAgentCaseActionKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>field</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The config field a REVISE or PROPOSE named, in dotted form. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>from_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The definition revisions the write produced; equal for an action that wrote no definition. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>to_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>execution</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: qualityExecutions/{execution}; the run the write planned, when it planned one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>class</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The action&#39;s own note: the requested control action, or the field the run diagnosed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -27095,6 +27298,47 @@ resolved zone is what the target stores and what reads return. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityAgentCaseActionKind">QualityAgentCaseActionKind</h3>
+        <p>QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it</p><p>spends no repair budget; it is listed because "what did the agent decide" is part of the record.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_CASE_ACTION_KIND_REVISE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_CASE_ACTION_KIND_CONTROL</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_CASE_ACTION_KIND_RUN</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityAgentCaseState">QualityAgentCaseState</h3>
         <p>QualityAgentCaseState is where one work item stands. The last three are terminal and release</p><p>the case's subject, so a later occurrence opens a new case instead of staying invisible.</p>
         <table class="enum-table">
@@ -29676,6 +29920,14 @@ it to see what the agent is working on and what it has given up on.</p></td>
               </tr>
             
               <tr>
+                <td>ListQualityAgentCaseActions</td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentCaseActionsRequest">ListQualityAgentCaseActionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentCaseActionsResponse">ListQualityAgentCaseActionsResponse</a></td>
+                <td><p>List the writes one agent made to checks, newest first: the ledger behind the write budget
+and the answer to &#34;what has it changed&#34;. A case narrows it to one work item&#39;s history.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ReplyQualityAgentAttention</td>
                 <td><a href="#metaxisdata.v1.ReplyQualityAgentAttentionRequest">ReplyQualityAgentAttentionRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityAgentAttention">QualityAgentAttention</a></td>
@@ -30403,6 +30655,16 @@ action.</p></td>
                 <td>ListQualityAgentCases</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*/qualityAgents/*}/cases</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityAgentCaseActions</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*/qualityAgents/*}/caseActions</td>
                 <td></td>
               </tr>
               

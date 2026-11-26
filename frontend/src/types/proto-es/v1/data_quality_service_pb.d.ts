@@ -8104,6 +8104,165 @@ export declare type ListQualityAgentCasesResponse = Message<"metaxisdata.v1.List
 export declare const ListQualityAgentCasesResponseSchema: GenMessage<ListQualityAgentCasesResponse>;
 
 /**
+ * QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+ * which definition revision to which, which execution it planned, and why. Only applied writes are
+ * recorded — a refused write is a metric, not a spent budget.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentCaseAction
+ */
+export declare type QualityAgentCaseAction = Message<"metaxisdata.v1.QualityAgentCaseAction"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+   * belonged to no work item (an owner-requested run).
+   *
+   * @generated from field: string case = 3;
+   */
+  case: string;
+
+  /**
+   * Format: qualityRules/{rule}; empty when the check has since been hard-deleted.
+   *
+   * @generated from field: string check = 4;
+   */
+  check: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 5;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentCaseActionKind action = 6;
+   */
+  action: QualityAgentCaseActionKind;
+
+  /**
+   * The config field a REVISE or PROPOSE named, in dotted form.
+   *
+   * @generated from field: string field = 7;
+   */
+  field: string;
+
+  /**
+   * The definition revisions the write produced; equal for an action that wrote no definition.
+   *
+   * @generated from field: int32 from_revision = 8;
+   */
+  fromRevision: number;
+
+  /**
+   * @generated from field: int32 to_revision = 9;
+   */
+  toRevision: number;
+
+  /**
+   * Format: qualityExecutions/{execution}; the run the write planned, when it planned one.
+   *
+   * @generated from field: string execution = 10;
+   */
+  execution: string;
+
+  /**
+   * The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID.
+   *
+   * @generated from field: string class = 11;
+   */
+  class: string;
+
+  /**
+   * The action's own note: the requested control action, or the field the run diagnosed.
+   *
+   * @generated from field: string reason = 12;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 13;
+   */
+  createTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentCaseAction.
+ * Use `create(QualityAgentCaseActionSchema)` to create a new message.
+ */
+export declare const QualityAgentCaseActionSchema: GenMessage<QualityAgentCaseAction>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentCaseActionsRequest
+ */
+export declare type ListQualityAgentCaseActionsRequest = Message<"metaxisdata.v1.ListQualityAgentCaseActionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+   * the agent made, which is the activity view; a case lists that work item's history.
+   *
+   * @generated from field: string case = 2;
+   */
+  case: string;
+
+  /**
+   * The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+   * value is 200; values above 200 are coerced to 200.
+   *
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentCaseActionsRequest.
+ * Use `create(ListQualityAgentCaseActionsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentCaseActionsRequestSchema: GenMessage<ListQualityAgentCaseActionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentCaseActionsResponse
+ */
+export declare type ListQualityAgentCaseActionsResponse = Message<"metaxisdata.v1.ListQualityAgentCaseActionsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentCaseAction quality_agent_case_actions = 1;
+   */
+  qualityAgentCaseActions: QualityAgentCaseAction[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentCaseActionsResponse.
+ * Use `create(ListQualityAgentCaseActionsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentCaseActionsResponseSchema: GenMessage<ListQualityAgentCaseActionsResponse>;
+
+/**
  * @generated from message metaxisdata.v1.ListQualityAgentAttentionsRequest
  */
 export declare type ListQualityAgentAttentionsRequest = Message<"metaxisdata.v1.ListQualityAgentAttentionsRequest"> & {
@@ -12084,6 +12243,44 @@ export enum QualityAgentCaseState {
 export declare const QualityAgentCaseStateSchema: GenEnum<QualityAgentCaseState>;
 
 /**
+ * QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it
+ * spends no repair budget; it is listed because "what did the agent decide" is part of the record.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentCaseActionKind
+ */
+export enum QualityAgentCaseActionKind {
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_ACTION_KIND_REVISE = 1;
+   */
+  REVISE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_ACTION_KIND_CONTROL = 2;
+   */
+  CONTROL = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_ACTION_KIND_RUN = 3;
+   */
+  RUN = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE = 4;
+   */
+  PROPOSE = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentCaseActionKind.
+ */
+export declare const QualityAgentCaseActionKindSchema: GenEnum<QualityAgentCaseActionKind>;
+
+/**
  * QualityContractChangeKind says which sections of a version changed against its
  * predecessor.
  *
@@ -13055,6 +13252,17 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityAgentCasesRequestSchema;
     output: typeof ListQualityAgentCasesResponseSchema;
+  },
+  /**
+   * List the writes one agent made to checks, newest first: the ledger behind the write budget
+   * and the answer to "what has it changed". A case narrows it to one work item's history.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentCaseActions
+   */
+  listQualityAgentCaseActions: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentCaseActionsRequestSchema;
+    output: typeof ListQualityAgentCaseActionsResponseSchema;
   },
   /**
    * Answer an escalation as the owner. The reply is appended to the target session,

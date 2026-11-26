@@ -3331,6 +3331,25 @@
     "viewRun": "View Run"
   },
   "qualityAgent": {
+    "activity": {
+      "caseHistory": "History",
+      "caseHistoryEmpty": "No write yet: this work item is still being diagnosed.",
+      "caseHistoryTitle": "What the agent did to this check",
+      "empty": "The agent has not written to any check yet.",
+      "hint": "Every write the agent made to a check: what it changed, from which revision to which, and why. It is the record behind the write budget.",
+      "kind": {
+        "control": "Pause",
+        "propose": "Proposed",
+        "revise": "Repair",
+        "run": "Run",
+        "unknown": "Other"
+      },
+      "loadMore": "Load more",
+      "openExecution": "Open the run",
+      "revision": "revision {revision}",
+      "revisionChange": "revision {from} → {to}",
+      "title": "Activity"
+    },
     "adoptPending": "Approve all pending drafts",
     "adoptPendingSuccess": "Approved {adopted}, skipped {skipped}, failed {failed}; {remaining} still pending.",
     "adoptionDisable": "Turn off auto-adoption",

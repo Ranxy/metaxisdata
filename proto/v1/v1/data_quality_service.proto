@@ -659,6 +659,13 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
+  // List the writes one agent made to checks, newest first: the ledger behind the write budget
+  // and the answer to "what has it changed". A case narrows it to one work item's history.
+  rpc ListQualityAgentCaseActions(ListQualityAgentCaseActionsRequest) returns (ListQualityAgentCaseActionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/caseActions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
   // Answer an escalation as the owner. The reply is appended to the target session,
   // the session is resumed, and the attention is resolved; a retry on a closed
   // attention is a no-op.
@@ -4206,6 +4213,65 @@ message ListQualityAgentCasesRequest {
 
 message ListQualityAgentCasesResponse {
   repeated QualityAgentCase quality_agent_cases = 1;
+  string next_page_token = 2;
+}
+
+// QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it
+// spends no repair budget; it is listed because "what did the agent decide" is part of the record.
+enum QualityAgentCaseActionKind {
+  QUALITY_AGENT_CASE_ACTION_KIND_UNSPECIFIED = 0;
+  QUALITY_AGENT_CASE_ACTION_KIND_REVISE = 1;
+  QUALITY_AGENT_CASE_ACTION_KIND_CONTROL = 2;
+  QUALITY_AGENT_CASE_ACTION_KIND_RUN = 3;
+  QUALITY_AGENT_CASE_ACTION_KIND_PROPOSE = 4;
+}
+
+// QualityAgentCaseAction is one write an agent made to one check: what it did, to which field, from
+// which definition revision to which, which execution it planned, and why. Only applied writes are
+// recorded — a refused write is a metric, not a spent budget.
+message QualityAgentCaseAction {
+  // Format: workspaces/{workspace}/qualityAgentCaseActions/{quality_agent_case_action}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when the write
+  // belonged to no work item (an owner-requested run).
+  string case = 3;
+  // Format: qualityRules/{rule}; empty when the check has since been hard-deleted.
+  string check = 4;
+  QualityTarget target = 5;
+  QualityAgentCaseActionKind action = 6;
+  // The config field a REVISE or PROPOSE named, in dotted form.
+  string field = 7;
+  // The definition revisions the write produced; equal for an action that wrote no definition.
+  int32 from_revision = 8;
+  int32 to_revision = 9;
+  // Format: qualityExecutions/{execution}; the run the write planned, when it planned one.
+  string execution = 10;
+  // The failure class the verb acted on, e.g. CONFIG_VALUE_INVALID.
+  string class = 11;
+  // The action's own note: the requested control action, or the field the run diagnosed.
+  string reason = 12;
+  google.protobuf.Timestamp create_time = 13;
+}
+
+message ListQualityAgentCaseActionsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}. Empty lists every write
+  // the agent made, which is the activity view; a case lists that work item's history.
+  string case = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentCase"}];
+  // The maximum number of actions to return. If unspecified, at most 50 are returned. The maximum
+  // value is 200; values above 200 are coerced to 200.
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentCaseActionsResponse {
+  repeated QualityAgentCaseAction quality_agent_case_actions = 1;
   string next_page_token = 2;
 }
 

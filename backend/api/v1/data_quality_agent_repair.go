@@ -387,6 +387,7 @@ func caseActionLedger(openCase *store.QualityAgentCaseMessage, agent *store.Qual
 		caseID := openCase.ID
 		action.CaseID = &caseID
 		action.TargetGUID = openCase.TargetGUID
+		action.TargetType = openCase.TargetType
 		action.Instance = openCase.Instance
 	}
 	if rule != nil {
