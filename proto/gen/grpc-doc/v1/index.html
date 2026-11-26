@@ -1671,6 +1671,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityAgentFieldPatch"><span class="badge">M</span>QualityAgentFieldPatch</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityAgentReport"><span class="badge">M</span>QualityAgentReport</a>
                 </li>
               
@@ -20343,6 +20347,23 @@ attention. The owner sees what is waiting before replying, without needing
 the suggestion queue&#39;s own permission. </p></td>
                 </tr>
               
+                <tr>
+                  <td>case</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
+escalation that is not about one agent work item. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggested_patch</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentFieldPatch">QualityAgentFieldPatch</a></td>
+                  <td></td>
+                  <td><p>The concrete change the agent asks for, when the escalation is a proposal. The owner
+reviews a field, a value and a reason instead of a paragraph; empty when the escalation
+asks for a decision that has no single change behind it. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -20400,6 +20421,59 @@ the suggestion queue&#39;s own permission. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentFieldPatch">QualityAgentFieldPatch</h3>
+        <p>QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the</p><p>value it would take, and why. The agent may not apply it, so the patch is what a person</p><p>reads before editing: the value already passed the same validation a save runs.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>field</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The dotted config path, e.g. range.min. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The value the field would take. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The revision the proposal was computed from; zero when the check has no revision. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>effect</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the
+failure the case diagnosed, never sent by the agent. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rationale</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the agent proposes it. </p></td>
                 </tr>
               
             </tbody>

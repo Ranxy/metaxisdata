@@ -7791,6 +7791,23 @@ export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgent
    * @generated from field: repeated string pending_draft_titles = 13;
    */
   pendingDraftTitles: string[];
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
+   * escalation that is not about one agent work item.
+   *
+   * @generated from field: string case = 14;
+   */
+  case: string;
+
+  /**
+   * The concrete change the agent asks for, when the escalation is a proposal. The owner
+   * reviews a field, a value and a reason instead of a paragraph; empty when the escalation
+   * asks for a decision that has no single change behind it.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentFieldPatch suggested_patch = 15;
+   */
+  suggestedPatch?: QualityAgentFieldPatch;
 };
 
 /**
@@ -7798,6 +7815,57 @@ export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgent
  * Use `create(QualityAgentAttentionSchema)` to create a new message.
  */
 export declare const QualityAgentAttentionSchema: GenMessage<QualityAgentAttention>;
+
+/**
+ * QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
+ * value it would take, and why. The agent may not apply it, so the patch is what a person
+ * reads before editing: the value already passed the same validation a save runs.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentFieldPatch
+ */
+export declare type QualityAgentFieldPatch = Message<"metaxisdata.v1.QualityAgentFieldPatch"> & {
+  /**
+   * The dotted config path, e.g. range.min.
+   *
+   * @generated from field: string field = 1;
+   */
+  field: string;
+
+  /**
+   * The value the field would take.
+   *
+   * @generated from field: string value = 2;
+   */
+  value: string;
+
+  /**
+   * The revision the proposal was computed from; zero when the check has no revision.
+   *
+   * @generated from field: int32 base_revision = 3;
+   */
+  baseRevision: number;
+
+  /**
+   * SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the
+   * failure the case diagnosed, never sent by the agent.
+   *
+   * @generated from field: string effect = 4;
+   */
+  effect: string;
+
+  /**
+   * Why the agent proposes it.
+   *
+   * @generated from field: string rationale = 5;
+   */
+  rationale: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentFieldPatch.
+ * Use `create(QualityAgentFieldPatchSchema)` to create a new message.
+ */
+export declare const QualityAgentFieldPatchSchema: GenMessage<QualityAgentFieldPatch>;
 
 /**
  * @generated from message metaxisdata.v1.ListQualityAgentAttentionsRequest

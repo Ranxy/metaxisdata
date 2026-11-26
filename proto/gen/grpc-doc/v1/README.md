@@ -387,6 +387,7 @@
     - [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus)
     - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
+    - [QualityAgentFieldPatch](#metaxisdata-v1-QualityAgentFieldPatch)
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
     - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
     - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
@@ -7095,6 +7096,8 @@ QualityAgentAttention is one owner escalation inside an agent.
 | resolved_by | [string](#string) |  | Format: users/{user}; empty while open. |
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target this escalation is about. Empty for an agent-level event such as a report anomaly. |
 | pending_draft_titles | [string](#string) | repeated | Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING attention. The owner sees what is waiting before replying, without needing the suggestion queue&#39;s own permission. |
+| case | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an escalation that is not about one agent work item. |
+| suggested_patch | [QualityAgentFieldPatch](#metaxisdata-v1-QualityAgentFieldPatch) |  | The concrete change the agent asks for, when the escalation is a proposal. The owner reviews a field, a value and a reason instead of a paragraph; empty when the escalation asks for a decision that has no single change behind it. |
 
 
 
@@ -7116,6 +7119,27 @@ default; the workspace hard caps still apply.
 | max_new_sessions_per_hour | [int32](#int32) |  |  |
 | max_active_sessions | [int32](#int32) |  |  |
 | conversation_messages_per_hour | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentFieldPatch"></a>
+
+### QualityAgentFieldPatch
+QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
+value it would take, and why. The agent may not apply it, so the patch is what a person
+reads before editing: the value already passed the same validation a save runs.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| field | [string](#string) |  | The dotted config path, e.g. range.min. |
+| value | [string](#string) |  | The value the field would take. |
+| base_revision | [int32](#int32) |  | The revision the proposal was computed from; zero when the check has no revision. |
+| effect | [string](#string) |  | SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the failure the case diagnosed, never sent by the agent. |
+| rationale | [string](#string) |  | Why the agent proposes it. |
 
 
 

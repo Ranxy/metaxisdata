@@ -235,6 +235,10 @@ type Runner struct {
 	// batches serial across ticks as well as within a pass.
 	scheduledInstances map[string]struct{}
 	mu                 sync.Mutex
+	// stallSweepAt is when the stall sweep last ran. The sweep is throttled to a
+	// minute because a check that has not run for two of its target's cadences does
+	// not become urgent between two ten-second ticks.
+	stallSweepAt time.Time
 }
 
 // NewRunner creates the data-quality runner. The executor is stateless, so one
@@ -340,6 +344,9 @@ func (r *Runner) Run(ctx context.Context) {
 		case manual := <-r.manual:
 			r.executeManualBatch(ctx, manual)
 		case <-ticker.C:
+			// The stall sweep runs before the due scan so a check that cannot run is
+			// reported even when the scan has nothing due.
+			r.sweepStalledChecks(ctx)
 			r.scanDue(ctx)
 		}
 	}

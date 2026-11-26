@@ -106,6 +106,27 @@ const (
 	EffectRemoval Effect = 5
 )
 
+// Name is the stable upper-case label the patch, the report and the prompt render. It is the
+// label a person reads in "a criterion change", so it must not be the Go constant's spelling.
+func (e Effect) Name() string {
+	switch e {
+	case EffectNone:
+		return ""
+	case EffectExecutability:
+		return "EXECUTABILITY"
+	case EffectCriterion:
+		return "CRITERION"
+	case EffectSubject:
+		return "SUBJECT"
+	case EffectState:
+		return "STATE"
+	case EffectRemoval:
+		return "REMOVAL"
+	default:
+		return ""
+	}
+}
+
 // Decision is one requested action reduced to what the policy decides on.
 type Decision struct {
 	Action dataquality.RepairAction

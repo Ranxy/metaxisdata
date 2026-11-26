@@ -220,6 +220,10 @@ func convertQualityAgentAttentionToV1(workspaceID, agentResourceID string, sessi
 		view.Session = common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + session.ResourceID
 		view.Target = convertQualityAgentSessionTargetToV1(session)
 	}
+	if attention.CaseResourceID != "" {
+		view.Case = common.FormatWorkspace(workspaceID) + "/" + qualityAgentCasePrefix + attention.CaseResourceID
+	}
+	view.SuggestedPatch = convertQualityAgentFieldPatchToV1(attention.SuggestedPatch)
 	view.PendingDraftTitles = draftTitles
 	if attention.ResolvedAt != nil {
 		view.ResolveTime = timestamppb.New(*attention.ResolvedAt)
@@ -228,6 +232,20 @@ func convertQualityAgentAttentionToV1(workspaceID, agentResourceID string, sessi
 		view.ResolvedBy = common.FormatUserUID(int(*attention.ResolvedBy))
 	}
 	return view
+}
+
+// convertQualityAgentFieldPatchToV1 renders the change a proposal asks for.
+func convertQualityAgentFieldPatchToV1(patch *storepb.QualityAgentFieldPatch) *v1pb.QualityAgentFieldPatch {
+	if patch == nil || patch.GetField() == "" {
+		return nil
+	}
+	return &v1pb.QualityAgentFieldPatch{
+		Field:        patch.GetField(),
+		Value:        patch.GetValue(),
+		BaseRevision: patch.GetBaseRevision(),
+		Effect:       patch.GetEffect(),
+		Rationale:    patch.GetRationale(),
+	}
 }
 
 func qualityAgentAttentionKindToV1(kind store.QualityAgentAttentionKind) v1pb.QualityAgentAttentionKind {

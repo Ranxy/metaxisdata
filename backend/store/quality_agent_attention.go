@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -45,11 +46,18 @@ type QualityAgentAttentionMessage struct {
 	ResolvedBy  *int32
 	ResolvedAt  *time.Time
 	CreatedAt   time.Time
+	// CaseResourceID names the agent work item the escalation unblocks, so the owner can read
+	// its evidence before deciding. It is a name rather than a foreign key: a case is pruned
+	// after its retention window, while the inbox item records what the owner was told.
+	CaseResourceID string
+	// SuggestedPatch is the one concrete change a proposal asks for. Nil means the
+	// escalation asks for a decision with no single change behind it.
+	SuggestedPatch *storepb.QualityAgentFieldPatch
 }
 
 const qualityAgentAttentionColumns = `id, resource_id, workspace_id, agent_id, kind,
 	session_id, title, question, status, dedupe_key, resolved_by, resolved_at,
-	created_at`
+	created_at, case_resource_id, suggested_patch`
 
 // CreateQualityAgentAttention inserts one open escalation. The partial unique
 // index on (agent_id, dedupe_key) makes a retried runner pass converge on the
@@ -72,16 +80,25 @@ func (s *Store) CreateQualityAgentAttention(ctx context.Context, message *Qualit
 			return nil, false, errors.Wrap(err, "failed to generate the attention id")
 		}
 	}
+	var patchJSON []byte
+	if message.SuggestedPatch != nil {
+		encoded, marshalErr := protojson.Marshal(message.SuggestedPatch)
+		if marshalErr != nil {
+			return nil, false, errors.Wrap(marshalErr, "failed to marshal a suggested patch")
+		}
+		patchJSON = encoded
+	}
 	row := s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_attention
 			(resource_id, workspace_id, agent_id, kind, session_id, title,
-			 question, status, dedupe_key, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 question, status, dedupe_key, created_at, case_resource_id, suggested_patch)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (agent_id, dedupe_key) WHERE status = 1 DO NOTHING
 		RETURNING `+qualityAgentAttentionColumns,
 		resourceID, message.WorkspaceID, message.AgentID, int16(message.Kind),
 		message.SessionID, message.Title, message.Question,
-		int16(message.Status), message.DedupeKey, message.CreatedAt)
+		int16(message.Status), message.DedupeKey, message.CreatedAt,
+		message.CaseResourceID, patchJSON)
 	created, err := scanQualityAgentAttention(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		existing, readErr := s.GetOpenQualityAgentAttentionByDedupe(ctx, message.AgentID, message.DedupeKey)
@@ -253,14 +270,23 @@ func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*Q
 		sessionID  sql.NullInt64
 		resolvedBy sql.NullInt32
 		resolvedAt sql.NullTime
+		patch      []byte
 	)
 	scanErr := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&kind, &sessionID, &message.Title, &message.Question,
 		&status, &message.DedupeKey, &resolvedBy, &resolvedAt, &message.CreatedAt,
+		&message.CaseResourceID, &patch,
 	)
 	if scanErr != nil {
 		return nil, scanErr
+	}
+	if len(patch) > 0 {
+		decoded := &storepb.QualityAgentFieldPatch{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(patch, decoded); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal a suggested patch")
+		}
+		message.SuggestedPatch = decoded
 	}
 	message.Kind = QualityAgentAttentionKind(kind)
 	message.Status = QualityAgentAttentionStatus(status)

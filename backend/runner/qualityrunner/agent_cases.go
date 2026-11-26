@@ -2,6 +2,7 @@ package qualityrunner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -127,7 +128,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				Field:        diagnosis.Field,
 				State:        store.QualityAgentCaseStateDiagnosed,
 				ExecutionID:  &assessment.Execution.ID,
-				Summary:      diagnosis.Summary,
+				Summary:      caseSummary(assessment.Rule, diagnosis),
 				NextActionAt: &now,
 			})
 			if createErr != nil {
@@ -204,4 +205,19 @@ func caseTransition(verification dataquality.Verification, now time.Time) (store
 	default:
 		return store.QualityAgentCaseStateUnspecified, nil, false
 	}
+}
+
+// caseSummary names the check the case is about before it explains the failure. The wake prompt
+// renders this sentence and the model resolves the check by it; a summary without the name would
+// leave several open cases indistinguishable, and inspect_check would fall back to "the newest
+// failing check" — the wrong one as soon as a target has more than one.
+func caseSummary(rule *store.QualityRuleMessage, diagnosis *dataquality.Diagnosis) string {
+	if rule == nil || diagnosis == nil {
+		return ""
+	}
+	title := rule.Title
+	if title == "" {
+		title = "a check"
+	}
+	return fmt.Sprintf("check %q (qualityRules/%s): %s", title, rule.ResourceID, diagnosis.Summary)
 }

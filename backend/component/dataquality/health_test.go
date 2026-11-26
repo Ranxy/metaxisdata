@@ -141,3 +141,53 @@ func TestHealthCountsOnlyJudgedVerdicts(t *testing.T) {
 		require.True(t, isJudgedVerdict(status), status.String())
 	}
 }
+
+// The sweep and the batch path must answer the stall question the same way. The sweep reads only
+// two instants — when the check was saved and when it last completed — because it starts from the
+// schedule rather than from an execution; the batch path holds the executions. One rule, one
+// answer, or an agent would be told a check is stalled by one reader and healthy by the other.
+func TestDiagnoseStaleCheckAgreesWithTheBatchStallRule(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	cadence := 2 * time.Hour
+	cases := []struct {
+		name        string
+		createdAt   time.Time
+		completedAt time.Time
+		wantClass   HealthClass
+	}{
+		{"never ran and old enough to have", now.Add(-30 * 24 * time.Hour), time.Time{}, HealthStalled},
+		{"never ran but still young", now.Add(-time.Minute), time.Time{}, HealthPending},
+		{"completed inside the window", now.Add(-30 * 24 * time.Hour), now.Add(-time.Hour), ""},
+		{"completed outside the window", now.Add(-30 * 24 * time.Hour), now.Add(-5 * time.Hour), HealthStalled},
+		{"young rule that has not completed yet", now.Add(-time.Hour), time.Time{}, HealthPending},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			stale := DiagnoseStaleCheck(test.createdAt, test.completedAt, cadence, now)
+			require.Equal(t, test.wantClass, stale.Class)
+
+			// The batch reader sees the same instants through an execution list: one NOT_EVALUATED
+			// row at the completion instant, or none at all.
+			input := HealthInput{Rule: healthRule(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED, test.createdAt), Now: now, Cadence: cadence}
+			if !test.completedAt.IsZero() {
+				input.Executions = []*store.QualityExecutionMessage{
+					healthExecution(1, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, 5, test.completedAt),
+				}
+			}
+			batch := DiagnoseCheckHealth(input)
+			if test.wantClass == "" {
+				require.NotEqual(t, HealthStalled, batch.Class, "the sweep must not call a working check stalled")
+				return
+			}
+			require.Equal(t, test.wantClass, batch.Class)
+		})
+	}
+
+	// Without a cadence there is no stall window, so the sweep has nothing to say.
+	require.Empty(t, DiagnoseStaleCheck(now.Add(-30*24*time.Hour), time.Time{}, 0, now).Class)
+	require.Empty(t, DiagnoseStaleCheck(now.Add(-30*24*time.Hour), time.Time{}, cadence, time.Time{}).Class)
+}

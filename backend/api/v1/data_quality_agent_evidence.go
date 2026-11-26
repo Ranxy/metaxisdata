@@ -196,5 +196,13 @@ func (s *DataQualityService) checkEvidenceActions(ctx context.Context, agentID i
 		facts.State = openCase.State
 		facts.Attempts = openCase.Attempts
 	}
+	// A criterion change is only checkable by re-judging the check's recent runs, so the dossier asks
+	// the same question the verb asks. Without this the view would offer a verb the write path
+	// refuses, or withhold one it would allow.
+	executions, err := s.recentRuleExecutions(ctx, rule.ID, dataquality.ReplayWindow)
+	if err != nil {
+		return nil, err
+	}
+	facts.ReplayAvailable = dataquality.HasReplayableExecution(executions)
 	return policy.AllowedActions(facts), nil
 }

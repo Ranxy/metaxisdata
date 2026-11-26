@@ -14296,6 +14296,18 @@ components:
                         Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
                          attention. The owner sees what is waiting before replying, without needing
                          the suggestion queue's own permission.
+                case:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
+                         escalation that is not about one agent work item.
+                suggestedPatch:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityAgentFieldPatch'
+                    description: |-
+                        The concrete change the agent asks for, when the escalation is a proposal. The owner
+                         reviews a field, a value and a reason instead of a paragraph; empty when the escalation
+                         asks for a decision that has no single change behind it.
             description: QualityAgentAttention is one owner escalation inside an agent.
         QualityAgentAttentionDetail:
             type: object
@@ -14341,6 +14353,31 @@ components:
             description: |-
                 QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
                  default; the workspace hard caps still apply.
+        QualityAgentFieldPatch:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The dotted config path, e.g. range.min.
+                value:
+                    type: string
+                    description: The value the field would take.
+                baseRevision:
+                    type: integer
+                    description: The revision the proposal was computed from; zero when the check has no revision.
+                    format: int32
+                effect:
+                    type: string
+                    description: |-
+                        SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the
+                         failure the case diagnosed, never sent by the agent.
+                rationale:
+                    type: string
+                    description: Why the agent proposes it.
+            description: |-
+                QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
+                 value it would take, and why. The agent may not apply it, so the patch is what a person
+                 reads before editing: the value already passed the same validation a save runs.
         QualityAgentReport:
             type: object
             properties:

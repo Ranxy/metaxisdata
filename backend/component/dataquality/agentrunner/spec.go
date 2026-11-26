@@ -137,6 +137,65 @@ func targetToolSpecs() []toolSpec {
 			meta: repairMeta(),
 		},
 		{
+			name: "run_check",
+			description: "Run the check a diagnosed case is about, right now, to reproduce the failure or verify a repair. " +
+				"The verdict closes or advances the case.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+			}, "required": []string{"case"}},
+			meta: repairMeta(),
+		},
+		{
+			name: "repair_check",
+			description: "Apply the repair a diagnosed case names. Omit field and value and the server writes the fix it computes — aligning a check's " +
+				"saved column snapshot with the registry — so a check that reports the target's structure changed can run again. " +
+				"Name a field and a value only to change what the check accepts: that needs a tune-level delegation and is replayed against " +
+				"the recent runs, and it is refused when a failing run would turn into a pass. Either way the next run verifies the repair.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+				"field": map[string]any{
+					"type":        "string",
+					"description": "optional: the dotted config field the diagnosis named, only for a criterion change",
+				},
+				"value": map[string]any{
+					"type":        "string",
+					"description": "optional: the value that field should take; required with a field",
+				},
+			}, "required": []string{"case"}},
+			meta: repairMeta(),
+		},
+		{
+			name: "propose_revision",
+			description: "Ask the owner to change one field of a check you may not rewrite yourself: a bound that never binds, " +
+				"a threshold, a field a person pinned. The change is validated but not applied, and the case becomes escalated. " +
+				"Name the field the diagnosis pointed at.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"case": map[string]any{
+					"type":        "string",
+					"description": "the qualityAgentCases resource name or id the work item is about",
+				},
+				"field": map[string]any{
+					"type":        "string",
+					"description": "the dotted config field the diagnosis named, e.g. range.min",
+				},
+				"value": map[string]any{
+					"type":        "string",
+					"description": "the value the field should take",
+				},
+				"rationale": map[string]any{
+					"type":        "string",
+					"description": "why this change, in one or two sentences, for the owner",
+				},
+			}, "required": []string{"case", "field", "value"}},
+			meta: proposeMeta(),
+		},
+		{
 			name:        "get_memory",
 			description: "List the target's confirmed asset facts.",
 			parameters:  emptyParameters(),

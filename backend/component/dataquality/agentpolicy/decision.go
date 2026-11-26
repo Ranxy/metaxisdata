@@ -99,6 +99,41 @@ func (p Policy) DecideRevise(facts CaseFacts, change FieldChange) Verdict {
 	return Verdict{Allowed: true}
 }
 
+// DecidePropose answers whether a case may be handed to a person as one concrete change. It is
+// the proposal's own gate, not a weaker DecideRevise: the case has to be diagnosed and the
+// diagnosis has to permit a proposal, and the field must be the one the diagnosis named.
+//
+// Two gates that guard a write are deliberately absent. A pin or a manual lock is not a refusal
+// here - a proposal is exactly what they ask for, since the person keeps the pen and the agent
+// only drafts. The participation level and the replay are absent for the same reason: a proposal
+// writes no definition, so "may this change be made" is not the question.
+func (Policy) DecidePropose(facts CaseFacts, change FieldChange) Verdict {
+	field := strings.TrimSpace(change.Field)
+	switch facts.State {
+	case store.QualityAgentCaseStateDiagnosed:
+	case store.QualityAgentCaseStateOpen:
+		return Verdict{Reason: "the case has not been diagnosed yet; diagnose it before proposing a change"}
+	case store.QualityAgentCaseStateActed, store.QualityAgentCaseStateAwaiting:
+		return Verdict{Reason: "a repair is already waiting for its verification run"}
+	default:
+		return Verdict{Reason: "the case is " + facts.State.Name() + " and cannot be proposed on"}
+	}
+	if facts.Diagnosis == nil {
+		return Verdict{Reason: "the failure has no diagnosis, so no field can be named"}
+	}
+	if !hasAction(facts.Diagnosis.Actions, dataquality.ActionProposeRevision) {
+		return Verdict{Reason: "this failure is not repaired by changing one field; escalate it instead"}
+	}
+	named := facts.Diagnosis.Field
+	if named == "" {
+		return Verdict{Reason: "the diagnosis could not name a field to change; escalate the case instead of proposing a value"}
+	}
+	if field != named {
+		return Verdict{Reason: "a proposal may only touch the field the diagnosis named (" + named + ")"}
+	}
+	return Verdict{Allowed: true}
+}
+
 // hasAction reports whether an action is in a diagnosis's list.
 func hasAction(actions []dataquality.RepairAction, want dataquality.RepairAction) bool {
 	for _, action := range actions {

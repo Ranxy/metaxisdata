@@ -127,23 +127,9 @@ func DiagnoseCheckHealth(input HealthInput) CheckHealth {
 	// Stalled: nothing completed inside the stall window. A rule younger than that
 	// window has simply not had a chance yet, which is Pending, not Stalled.
 	if input.Cadence > 0 {
-		stallWindow := time.Duration(stallFactor) * input.Cadence
-		stalledSince := input.Now.Add(-stallWindow)
-		youngRule := input.Rule.CreatedAt.After(stalledSince)
-		if health.LastCompletedAt.IsZero() {
-			if youngRule {
-				health.Class = HealthPending
-				health.Reason = "the check has not run yet"
-				return health
-			}
-			health.Class = HealthStalled
-			health.Reason = "the check has never run"
-			return health
-		}
-		if health.LastCompletedAt.Before(stalledSince) && !youngRule {
-			health.Class = HealthStalled
-			health.Reason = fmt.Sprintf("no execution completed in the last %s", stallWindow.Round(time.Minute))
-			return health
+		stalled := stallCheck(input.Rule.CreatedAt, health.LastCompletedAt, input.Cadence, input.Now, stallFactor)
+		if stalled.Class != "" {
+			return stalled
 		}
 	}
 
@@ -169,6 +155,42 @@ func DiagnoseCheckHealth(input HealthInput) CheckHealth {
 	health.Class = HealthNeverJudged
 	health.Reason = "the check runs but has produced no verdict"
 	return health
+}
+
+// DiagnoseStaleCheck answers the stall question from the two instants a sweep can read: when the
+// check was saved and when it last completed. The batch path has the executions and reaches the
+// same answer through DiagnoseCheckHealth; a sweep that holds only the newest completion still needs
+// to notice a check that is not running at all, because such a check produces no execution and
+// therefore no event of its own.
+//
+// The returned class is STALLED for a check that has stopped running, PENDING for one that is still
+// inside its first window, and empty when there is nothing to say.
+func DiagnoseStaleCheck(ruleCreatedAt, lastCompletedAt time.Time, cadence time.Duration, now time.Time) CheckHealth {
+	if cadence <= 0 || now.IsZero() {
+		return CheckHealth{}
+	}
+	return stallCheck(ruleCreatedAt, lastCompletedAt, cadence, now, DefaultHealthStallFactor)
+}
+
+// stallCheck is the one stall rule both callers share: a check is stalled when it has not completed
+// an execution for its target's stall window, and pending while it is still younger than that.
+func stallCheck(ruleCreatedAt, lastCompletedAt time.Time, cadence time.Duration, now time.Time, stallFactor int) CheckHealth {
+	stallWindow := time.Duration(stallFactor) * cadence
+	stalledSince := now.Add(-stallWindow)
+	youngRule := ruleCreatedAt.After(stalledSince)
+	if lastCompletedAt.IsZero() {
+		if youngRule {
+			return CheckHealth{Class: HealthPending, Reason: "the check has not run yet"}
+		}
+		return CheckHealth{Class: HealthStalled, Reason: "the check has never run"}
+	}
+	if lastCompletedAt.Before(stalledSince) && !youngRule {
+		return CheckHealth{
+			Class:  HealthStalled,
+			Reason: fmt.Sprintf("no execution completed in the last %s", stallWindow.Round(time.Minute)),
+		}
+	}
+	return CheckHealth{}
 }
 
 // isJudgedVerdict reports whether a status is a conclusion about the data. ERROR,

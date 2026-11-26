@@ -162,6 +162,157 @@ type AgentDeps struct {
 	Evidence AgentEvidence
 	// Control applies a state change to one case; nil reports it as not configured.
 	Control ControlFunc
+	// Run asks the runner to execute one check now; nil reports it as not configured.
+	Run RunFunc
+	// Propose records one proposed change for the owner; nil reports it as not configured.
+	Propose ProposeFunc
+	// Revise applies a case's deterministic repair; nil reports it as not configured.
+	Revise ReviseFunc
+}
+
+// RunOutcome is what one diagnostic run did.
+type RunOutcome struct {
+	Check     string
+	Execution string
+	State     string
+}
+
+// RunFunc asks the runner to execute one check now.
+type RunFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID string) (RunOutcome, error)
+
+// RunCheck re-runs the check a case is about, so a diagnosis can be reproduced or a repair
+// verified without waiting for the next scheduled slot.
+func (t *AgentTools) RunCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case string `json:"case"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid run_check arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" {
+		return "", errors.New("run_check needs a case")
+	}
+	if t.deps.Run == nil {
+		return "", errors.New("the run verb is not configured in this process")
+	}
+	outcome, err := t.deps.Run(ctx, session.AgentPrincipalID, input.Case)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":      sessionCaseName(input.Case),
+		"check":     outcome.Check,
+		"execution": outcome.Execution,
+		"state":     outcome.State,
+		"note":      "the runner picks the execution up within its tick; the verdict closes or advances the case",
+	})
+}
+
+// RevisionOutcome is what one repair wrote.
+type RevisionOutcome struct {
+	Check     string
+	Field     string
+	From      string
+	To        string
+	Revision  int32
+	Execution string
+	State     string
+}
+
+// ReviseFunc applies one case's deterministic repair through the application layer. The field and
+// value are empty for a repair whose value the server computes.
+type ReviseFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value string) (RevisionOutcome, error)
+
+// RepairCheck applies the repair a case's diagnosis names. Without a field the value is the
+// server's — aligning a structure snapshot means writing the columns the registry holds now — and
+// the verb asks for the run that verifies it. With a field it is a criterion change, which the
+// application layer allows only at a tune-level delegation and only when re-judging the recent runs
+// leaves every red run red; at every other level it is a proposal.
+func (t *AgentTools) RepairCheck(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case  string `json:"case"`
+		Field string `json:"field"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid repair_check arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" {
+		return "", errors.New("repair_check needs a case")
+	}
+	if strings.TrimSpace(input.Field) != "" && input.Value == "" {
+		return "", errors.New("repair_check needs a value for the field it names")
+	}
+	if t.deps.Revise == nil {
+		return "", errors.New("the repair verb is not configured in this process")
+	}
+	outcome, err := t.deps.Revise(ctx, session.AgentPrincipalID, input.Case, input.Field, input.Value)
+	if err != nil {
+		return "", err
+	}
+	result := map[string]any{
+		"case":     sessionCaseName(input.Case),
+		"check":    outcome.Check,
+		"field":    outcome.Field,
+		"to":       outcome.To,
+		"revision": outcome.Revision,
+		"state":    outcome.State,
+		"note":     "the verdict of the next run closes or advances the case",
+	}
+	if outcome.From != "" {
+		result["from"] = outcome.From
+	}
+	if outcome.Execution != "" {
+		result["execution"] = outcome.Execution
+	}
+	return marshalJSON(result)
+}
+
+// ProposalOutcome is what one proposal asked for. It carries no service type, for the same
+// reason RunOutcome does not.
+type ProposalOutcome struct {
+	Check  string
+	Field  string
+	Value  string
+	Effect string
+	State  string
+}
+
+// ProposeFunc records one proposed change on one case through the application layer.
+type ProposeFunc func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value, rationale string) (ProposalOutcome, error)
+
+// ProposeRevision asks the owner to apply one change the agent may not make itself. The field
+// must be the one the failure's diagnosis named; the application layer re-derives the diagnosis
+// and refuses any other field, so the model cannot use this verb to redirect a check.
+func (t *AgentTools) ProposeRevision(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Case      string `json:"case"`
+		Field     string `json:"field"`
+		Value     string `json:"value"`
+		Rationale string `json:"rationale"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid propose_revision arguments")
+	}
+	if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Field) == "" || input.Value == "" {
+		return "", errors.New("propose_revision needs a case, a field and a value")
+	}
+	if t.deps.Propose == nil {
+		return "", errors.New("the propose verb is not configured in this process")
+	}
+	outcome, err := t.deps.Propose(ctx, session.AgentPrincipalID, input.Case, input.Field, input.Value, input.Rationale)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"case":   sessionCaseName(input.Case),
+		"check":  outcome.Check,
+		"field":  outcome.Field,
+		"value":  outcome.Value,
+		"effect": outcome.Effect,
+		"state":  outcome.State,
+		"note":   "the owner decides whether to apply the change; nothing has been written yet",
+	})
 }
 
 // AgentTools runs the built-in quality agent's tools.

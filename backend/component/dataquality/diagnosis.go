@@ -220,6 +220,25 @@ func baselineRuleType(ruleType storepb.QualityRuleType) bool {
 // and MySQL both quote the offending value, which is what makes the field findable.
 var quotedLiteral = regexp.MustCompile(`"([^"]+)"`)
 
+// The dotted config paths a bound-value failure can be about. They are constants rather than
+// literals because two callers must agree on them: locating the field a driver refused, and
+// patching it. A field that can be named but not patched would make a proposal impossible, so
+// the list lives here and both sides read it.
+const (
+	configFieldRangeMin       = "range.min"
+	configFieldRangeMax       = "range.max"
+	configFieldRegex          = "regex.pattern"
+	configFieldExpression     = "cel_expression.expression"
+	configFieldNullValues     = "null_percent.null_values"
+	configFieldAcceptedValues = "accepted_values.values"
+	configFieldFilterValues   = "filter.clauses"
+)
+
+// configFieldIndex names one element of a list-valued field, e.g. accepted_values.values[2].
+func configFieldIndex(path string, index int) string {
+	return fmt.Sprintf("%s[%d]", path, index)
+}
+
 // configFieldValue is one value-bearing config field with the dotted path a repair
 // would name.
 type configFieldValue struct {
@@ -240,19 +259,19 @@ func configFieldValues(config *storepb.QualityRuleConfig) []configFieldValue {
 			fields = append(fields, configFieldValue{path: path, value: value})
 		}
 	}
-	appendValue("range.min", config.GetRange().GetMin())
-	appendValue("range.max", config.GetRange().GetMax())
-	appendValue("regex.pattern", config.GetRegex().GetPattern())
-	appendValue("cel_expression.expression", config.GetCelExpression().GetExpression())
+	appendValue(configFieldRangeMin, config.GetRange().GetMin())
+	appendValue(configFieldRangeMax, config.GetRange().GetMax())
+	appendValue(configFieldRegex, config.GetRegex().GetPattern())
+	appendValue(configFieldExpression, config.GetCelExpression().GetExpression())
 	for index, value := range config.GetNullPercent().GetNullValues() {
-		appendValue(fmt.Sprintf("null_percent.null_values[%d]", index), value)
+		appendValue(configFieldIndex(configFieldNullValues, index), value)
 	}
 	for index, value := range config.GetAcceptedValues().GetValues() {
-		appendValue(fmt.Sprintf("accepted_values.values[%d]", index), value)
+		appendValue(configFieldIndex(configFieldAcceptedValues, index), value)
 	}
 	for clauseIndex, clause := range config.GetFilter().GetClauses() {
 		for valueIndex, value := range clause.GetValues() {
-			appendValue(fmt.Sprintf("filter.clauses[%d].values[%d]", clauseIndex, valueIndex), value)
+			appendValue(configFieldIndex(configFieldIndex(configFieldFilterValues, clauseIndex)+".values", valueIndex), value)
 		}
 	}
 	return fields
