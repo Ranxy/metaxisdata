@@ -12,8 +12,9 @@ import (
 )
 
 // triageMaxTurns bounds one triage wake's LLM calls. Triage reads context, drafts
-// checks and records a conclusion, so it needs a few more turns than a monitor wake.
-const triageMaxTurns = 12
+// checks and records a conclusion, so it needs a few more turns than a monitor wake; like
+// modelMaxTurns it is a runaway guard rather than a cost control while the product is brought up.
+const triageMaxTurns = 40
 
 // The triage capabilities and their data shapes live in the shared quality tool
 // package; these aliases keep the product's wiring and tests reading them.

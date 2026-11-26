@@ -34,9 +34,12 @@ import (
 )
 
 const (
-	// modelMaxTurns bounds one wake's LLM calls; the conversation it builds is
-	// bounded by the wake deadline as well.
-	modelMaxTurns = 8
+	// modelMaxTurns bounds one wake's LLM calls. It is deliberately generous while the product is
+	// being brought up: a wake that inspects three checks and acts on two needs more than a handful of
+	// turns, and a model that runs out mid-investigation leaves the work half done. The conversation
+	// is bounded by compaction and by the wake deadline, so this is the last line of defence against a
+	// runaway loop, not a cost control.
+	modelMaxTurns = 40
 	// blockedThreshold is how many consecutive wakes must report the same blocker
 	// before the session parks for a person.
 	blockedThreshold = 3

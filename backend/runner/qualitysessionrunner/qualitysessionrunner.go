@@ -41,6 +41,10 @@ const (
 	// caseWakeFloor is the soonest a due case may wake a session, so a past-due case cannot
 	// make the three-second tick spin.
 	caseWakeFloor = time.Minute
+	// unattendedCaseDelay is how far a wake pushes a case it looked at and did not advance. It is an
+	// hour because the case's own evidence only changes when the check runs again, which is the
+	// target's cadence at the fastest.
+	unattendedCaseDelay = time.Hour
 )
 
 // SessionStore is the slice of *store.Store the runner needs.
@@ -62,6 +66,7 @@ type SessionStore interface {
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
 	EarliestOpenQualityAgentCaseActionAt(ctx context.Context, agentID int64) (*time.Time, error)
+	DeferQualityAgentCases(ctx context.Context, agentID int64, before, until time.Time) (int64, error)
 	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
@@ -316,6 +321,16 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		review := r.triageReviewAt()
 		if next == nil || review.Before(*next) {
 			next = &review
+		}
+	}
+	// A case nobody advanced is not due work, however past its time: push its next look out before the
+	// merge reads it. Without this the release path merged the same stale instant into every wake and
+	// the clamp turned it into one wake a minute, each of which read the same evidence and concluded
+	// nothing had changed.
+	if session.Kind != 2 {
+		if _, deferErr := r.store.DeferQualityAgentCases(ctx, session.AgentID, r.now(), r.now().Add(unattendedCaseDelay)); deferErr != nil {
+			slog.Warn("failed to defer the agent's untended cases",
+				slog.String("session", session.ResourceID), log.WithError(deferErr))
 		}
 	}
 	// A case is due work. The engine merges what it saw before the wake; this read catches a

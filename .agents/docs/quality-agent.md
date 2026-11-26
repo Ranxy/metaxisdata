@@ -83,7 +83,13 @@ the delegation's safety rests on the escape hatch being easier to reach than the
 
 ## Wake rendering and scheduling
 
-The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.
+The target session's wake instruction renders up to three of its open cases with their class, state and attempt count, and the next wake is the soonest of the engine's answer and the agent's earliest open case action, clamped to a minute so a past-due case cannot make the three-second tick spin. A wake that read a case and decided there was nothing to do pushes that case's next look out by an hour (`DeferQualityAgentCases`)
+before the release path merges it. Without that, the merge saw the same past-due instant after every wake, the clamp turned it into one
+wake a minute, and — because the merge is agent-wide — every one of the agent's target sessions woke with it: eight sessions woke
+fifty-three times in twelve minutes, each read the same evidence and concluded nothing had changed. Only `OPEN` and `DIAGNOSED`
+cases are deferred; a case waiting for a verification run keeps its own timing, because that run really is due.
+
+The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.
 
 ## Perception: events and check health
 

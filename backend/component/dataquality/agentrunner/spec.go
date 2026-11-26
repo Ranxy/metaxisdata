@@ -136,7 +136,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"action": map[string]any{
 					"type":        "string",
@@ -153,7 +153,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 			}, "required": []string{"case"}},
 			meta: repairMeta(),
@@ -167,7 +167,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"field": map[string]any{
 					"type":        "string",
@@ -188,7 +188,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"field": map[string]any{
 					"type":        "string",
@@ -244,7 +244,7 @@ func targetToolSpecs() []toolSpec {
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
-					"description": "the qualityAgentCases resource name or id the work item is about",
+					"description": "the qualityAgentCases id from the work list above (a case id, never an execution id)",
 				},
 				"reason": map[string]any{
 					"type":        "string",
