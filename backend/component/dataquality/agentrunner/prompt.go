@@ -321,6 +321,11 @@ func openCaseBlock(cases []*store.QualityAgentCaseMessage) string {
 		if openCase == nil || shown >= maxWakeCases {
 			continue
 		}
+		// A fact is not an item to work: rendering it invites exactly one answer from a wake —
+		// escalate a question that has none — and it would take the slot of a real one.
+		if dataquality.IsFactNotWork(dataquality.FailureClass(openCase.FailureClass)) {
+			continue
+		}
 		shown++
 		title := ""
 		if openCase.Summary != "" {

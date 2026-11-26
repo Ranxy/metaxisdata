@@ -59,10 +59,16 @@ func (m *Metrics) ObserveAgentCaseOpened(class string) {
 // because the pair would double the series to say what the previous value of the same series
 // already said.
 func (m *Metrics) ObserveAgentCaseTransition(state string) {
-	if m == nil {
+	m.ObserveAgentCaseTransitions(state, 1)
+}
+
+// ObserveAgentCaseTransitions records several state changes at once, for a settlement that closes a
+// whole class of cases in one statement: the write is one, the transitions it means are many.
+func (m *Metrics) ObserveAgentCaseTransitions(state string, count int64) {
+	if m == nil || count <= 0 {
 		return
 	}
-	m.Agent.cases.transitions.WithLabelValues(agentCaseStateLabel(state)).Inc()
+	m.Agent.cases.transitions.WithLabelValues(agentCaseStateLabel(state)).Add(float64(count))
 }
 
 // ObserveAgentWriteRefused records a verb the delegation, the pins or the replay refused. It is the

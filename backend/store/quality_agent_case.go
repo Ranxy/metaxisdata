@@ -279,6 +279,26 @@ type FindQualityAgentCaseMessage struct {
 	Offset int
 }
 
+// ResolveQualityAgentCasesByClass closes every open case of one failure class. It is the set-based
+// settlement of a class that describes the target rather than a defect: an empty table is a fact,
+// so those work items must not wait for a model or a person. Intake settles them too, but only when
+// a batch runs, and an empty target may produce no execution for hours.
+func (s *Store) ResolveQualityAgentCasesByClass(ctx context.Context, class, resolution string, now time.Time) (int64, error) {
+	if strings.TrimSpace(class) == "" {
+		return 0, common.Errorf(common.Invalid, "a failure class is required")
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_case
+		SET state = $2, resolution = $3, next_action_at = NULL, updated_at = $4
+		WHERE failure_class = $1 AND state = ANY($5)`,
+		class, int16(QualityAgentCaseStateResolved), resolution, now.UTC(),
+		pq.Array([]int16{int16(QualityAgentCaseStateOpen), int16(QualityAgentCaseStateDiagnosed)}))
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to resolve the quality agent cases of one class")
+	}
+	return result.RowsAffected()
+}
+
 // ListQualityAgentCases lists one agent's work items for the board: the ones still open first,
 // soonest action first, then the closed ones newest first. A person reading it wants to know what
 // the agent is working on now before it wants history.
