@@ -512,12 +512,18 @@ func (t *AgentTools) adoptionView(ctx context.Context, session AgentSession) map
 		return nil
 	}
 	view := map[string]any{
-		"adoptedLast24h":    status.AdoptedLast24h,
-		"failedLast24h":     status.FailedLast24h,
-		"lastFailureReason": status.LastFailureReason,
+		"adoptedLast24h": status.AdoptedLast24h,
+		"failedLast24h":  status.FailedLast24h,
 	}
-	if status.LastFailureTime != nil {
-		view["lastFailureTime"] = status.LastFailureTime.UTC().Format(time.RFC3339)
+	// The reason is the latest failure ever, which can be weeks older than the
+	// window beside it; rendering it next to failedLast24h:0 made a stale cause read
+	// as the current one. The settings page still shows the whole history, with its
+	// timestamp, because a person can act on it.
+	if status.FailedLast24h > 0 {
+		view["lastFailureReason"] = status.LastFailureReason
+		if status.LastFailureTime != nil {
+			view["lastFailureTime"] = status.LastFailureTime.UTC().Format(time.RFC3339)
+		}
 	}
 	return view
 }
