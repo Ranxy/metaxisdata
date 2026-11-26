@@ -32,6 +32,7 @@ type fakeStore struct {
 	contextUsage  []*storepb.QualityAgentSessionContextUsage
 	agent         *store.QualityAgentMessage
 	openCases     []*store.QualityAgentCaseMessage
+	participation *store.QualityAgentParticipationLevels
 }
 
 func newFakeStore() *fakeStore {
@@ -73,6 +74,14 @@ func (*fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessag
 
 func (*fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
 	return nil, nil
+}
+
+// participation is the delegation cascade the prompt and the verbs read.
+func (f *fakeStore) GetQualityAgentParticipation(context.Context, int64, string, string) (*store.QualityAgentParticipationLevels, error) {
+	if f.participation == nil {
+		return &store.QualityAgentParticipationLevels{Agent: store.QualityAgentParticipationRepair}, nil
+	}
+	return f.participation, nil
 }
 
 // openCases is what the wake prompt and the next-wake merge read.
@@ -623,6 +632,38 @@ func TestWakeRendersOpenCasesAndWakesForThem(t *testing.T) {
 
 	require.NotNil(t, outcome.NextWakeAt)
 	require.WithinDuration(t, dueAt, *outcome.NextWakeAt, time.Minute)
+}
+
+// The wake states the authority the target runs under, in the level the cascade resolved.
+// The sentence is the prompt's view of the same table the verbs enforce; a model that reads
+// it should not have to discover the boundary by being refused.
+func TestWakeStatesTheParticipationBoundary(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		level store.QualityAgentParticipation
+		want  string
+	}{
+		{store.QualityAgentParticipationObserve, "OBSERVE"},
+		{store.QualityAgentParticipationRepair, "REPAIR"},
+		{store.QualityAgentParticipationTune, "TUNE"},
+	} {
+		stores := newFakeStore()
+		stores.participation = &store.QualityAgentParticipationLevels{Agent: test.level}
+		session := testSession()
+		session.AgentID = 1
+		_, err := NewEngine(stores).Wake(context.Background(), session, Options{})
+		require.NoError(t, err)
+
+		var wake string
+		for _, message := range stores.messages {
+			if message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE {
+				wake = message.Content
+				break
+			}
+		}
+		require.Contains(t, wake, "Participation for this target: "+test.want)
+	}
 }
 
 // The work list is bounded: a target may hold a hundred broken checks, and the prompt must
