@@ -169,6 +169,19 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 				return nil, err
 			}
 			parent = &lead.ID
+		} else {
+			var parentAgentID int64
+			if err := s.GetDB().QueryRowContext(ctx,
+				`SELECT agent_id FROM quality_agent_session WHERE id = $1 AND role = 1 AND archived_at IS NULL`,
+				*parent).Scan(&parentAgentID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return nil, common.Errorf(common.NotFound, "the subagent's lead session was not found")
+				}
+				return nil, errors.Wrap(err, "failed to read the subagent's lead")
+			}
+			if parentAgentID != input.AgentID {
+				return nil, common.Errorf(common.Invalid, "the subagent's lead belongs to another agent")
+			}
 		}
 		if name == "" {
 			allocated, err := s.AllocateSubagentName(ctx, input.AgentID, input.TargetGUID)
