@@ -10,6 +10,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 const (
@@ -21,6 +22,17 @@ const (
 	// the rest stay above the watermark and are picked up by the next wake.
 	maxDeterministicEvents = 10
 )
+
+// isLeadSession reports whether a session is the owner-facing coordinator. The
+// Kind fallback keeps older tests and rows readable while Role is rolled out.
+func isLeadSession(session *store.QualityAgentSessionMessage) bool {
+	return session != nil && (session.Role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD || session.Kind == 2)
+}
+
+// isSubagentSession reports whether a session owns exactly one target.
+func isSubagentSession(session *store.QualityAgentSessionMessage) bool {
+	return session != nil && !isLeadSession(session) && session.TargetGUID != ""
+}
 
 // doneSet reads the deterministic engine's completed work labels.
 func doneSet(state *storepb.QualityAgentSessionEngineState) map[string]bool {

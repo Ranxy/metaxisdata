@@ -152,8 +152,8 @@ func TestCapabilityMatrix(t *testing.T) {
 			ask := []*store.QualityAgentTranscriptMessage{{
 				Origin: storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			}}
-			target := &store.QualityAgentSessionMessage{TargetGUID: "1;shop;;orders", Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR}
-			instruction := wakePrompt(target, 1, ask, agent, nil, agentpolicy.ParticipationUnset)
+			lead := &store.QualityAgentSessionMessage{Kind: 2}
+			instruction := wakePrompt(lead, 1, ask, agent, nil, agentpolicy.ParticipationUnset)
 			require.Equal(t, has(agentcapability.Adopt), strings.Contains(instruction, "adopt_pending_drafts"),
 				"an owner-question wake mentions the adoption tool only when adopt is configured")
 		}

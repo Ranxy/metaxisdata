@@ -1,0 +1,67 @@
+package agentrunner
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
+)
+
+func orchestrationStore() (*fakeStore, *store.QualityAgentSessionMessage, *store.QualityAgentSessionMessage) {
+	lead := &store.QualityAgentSessionMessage{
+		ID: 1, ResourceID: "lead", AgentID: 7, WorkspaceID: "ws",
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD, Kind: 2,
+	}
+	subagent := &store.QualityAgentSessionMessage{
+		ID: 2, ResourceID: "sub", AgentID: 7, WorkspaceID: "ws",
+		TargetGUID: "1;shop;;orders", TargetType: storepb.MetaType_TABLE,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT, Kind: 1,
+		ParentSessionID: &lead.ID, SubagentName: "orders",
+	}
+	stores := newFakeStore()
+	stores.lead = lead
+	stores.subagents = map[string]*store.QualityAgentSessionMessage{"orders": subagent}
+	stores.sessionsByID = map[int64]*store.QualityAgentSessionMessage{1: lead, 2: subagent}
+	return stores, lead, subagent
+}
+
+func TestSendLeadMessageDeliversToTheLead(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, subagent := orchestrationStore()
+	engine := NewEngine(stores)
+	result, err := engine.sendLeadMessage(context.Background(), subagent, `{"message":"the check cannot run","intent":"QUESTION"}`)
+	require.NoError(t, err)
+	require.Contains(t, result, `"delivered":true`)
+	require.Len(t, stores.messages, 1)
+	require.Equal(t, lead.ID, stores.messages[0].SessionID)
+	require.Equal(t, storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT, stores.messages[0].Origin)
+	require.Equal(t, "orders", stores.messages[0].SenderName)
+	require.Equal(t, storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL, stores.messages[0].Audience)
+}
+
+func TestSendSubagentMessageDeliversToTheNamedChild(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, subagent := orchestrationStore()
+	engine := NewEngine(stores)
+	result, err := engine.sendSubagentMessage(context.Background(), lead, `{"agent":"orders","message":"please investigate","intent":"ASSIGN"}`)
+	require.NoError(t, err)
+	require.Contains(t, result, `"delivered":true`)
+	require.Len(t, stores.messages, 1)
+	require.Equal(t, subagent.ID, stores.messages[0].SessionID)
+	require.Equal(t, storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ASSIGN, stores.messages[0].Intent)
+}
+
+func TestSendSubagentMessageRefusesAnUnknownChild(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, _ := orchestrationStore()
+	engine := NewEngine(stores)
+	_, err := engine.sendSubagentMessage(context.Background(), lead, `{"agent":"missing","message":"hi"}`)
+	require.Error(t, err)
+	require.Empty(t, stores.messages)
+}
