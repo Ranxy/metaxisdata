@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Scenario tests for nightly-issue.sh. Each case pins one decision: a red run
-# opens or refreshes the single tracking issue, a green run closes it, a
-# cancelled, off-branch or debugging run leaves it alone, and a failed API call
-# aborts instead of guessing "no tracker" and opening a second issue.
+# opens or refreshes the single tracking issue, a green, cancelled, off-branch
+# or debugging run leaves it alone, and a failed API call aborts instead of
+# guessing "no tracker" and opening a second issue.
 #
 # The gh stub replays a scenario out of $STATE and logs every call, so the test
 # needs neither a token nor network.
@@ -105,21 +105,40 @@ printf '%s\n' "${marker}" >"${work}/state/body"
 echo "- [postgres 17](https://example.invalid/2)" >"${work}/state/jobs"
 run_case "red refreshes the existing issue" 0 "LABEL LIST BODY JOBS EDIT 7" RESULT=failure
 
-# A green run closes the tracker it finds.
+# A green run touches nothing: an open issue means the fix has not merged, and
+# closing it here would hide that. The fix's pull request closes it.
 reset
 echo 7 >"${work}/state/tracker"
 printf '%s\n' "${marker}" >"${work}/state/body"
-run_case "green closes the issue" 0 "LABEL LIST BODY COMMENT 7 CLOSE 7"
+run_case "green leaves the issue open" 0 ""
 
-# A green run with no tracker is silent.
+# A green run with nothing open is silent too.
 reset
-run_case "green with nothing open" 0 "LABEL LIST"
+run_case "green with nothing open" 0 ""
 
-# Someone else's open issue in the label is not ours to close.
+# The body tells the reader the nightly will not close it.
+reset
+echo "- [postgres 17](https://example.invalid/2)" >"${work}/state/jobs"
+env -i PATH="${work}:${PATH}" STATE="${work}/state" \
+  GH_TOKEN=test GITHUB_REPOSITORY=owner/repo RESULT=failure RUN_ID=42 \
+  SHA=0123456789abcdef0123456789abcdef01234567 \
+  EVENT_NAME=schedule INPUT_REF= REF_NAME=main DEFAULT_BRANCH=main \
+  GITHUB_STEP_SUMMARY="${work}/summary" \
+  bash "${script}"
+if grep -qF "Close it from the pull request" "${work}/state/created"; then
+  printf 'ok   issue body says who closes it\n'
+else
+  printf 'FAIL issue body does not say who closes it\n'
+  failed=1
+fi
+
+# Someone else's open issue in the label is not reused as our tracker, and is
+# not edited.
 reset
 echo 7 >"${work}/state/tracker"
 echo "a hand-written issue" >"${work}/state/body"
-run_case "an issue without the marker is left alone" 0 "LABEL LIST BODY"
+echo "- [baseline](https://example.invalid/1)" >"${work}/state/jobs"
+run_case "an issue without the marker is not reused" 0 "LABEL LIST BODY JOBS CREATE" RESULT=failure
 
 # Cancelled and skipped runs are not results.
 reset

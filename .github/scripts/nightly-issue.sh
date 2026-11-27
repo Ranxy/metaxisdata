@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Reconcile one nightly run with one tracking issue: a red run opens the issue
-# or refreshes its body, the next green run closes it. The marker below is the
-# dedup key, so an edited, rerun or manually dispatched nightly never opens a
-# second issue for the same suite.
+# or refreshes its body. The issue is closed by the pull request that fixes the
+# failure, not by a green run, so an open issue always means "somebody still has
+# to fix this". The marker below is the dedup key, so an edited, rerun or
+# manually dispatched nightly never opens a second issue for the same suite.
 #
 # Inputs come from the environment (see the "report" job in nightly.yml):
 #   GH_TOKEN, GITHUB_REPOSITORY, RESULT, RUN_ID, SHA, EVENT_NAME, INPUT_REF,
@@ -43,6 +44,13 @@ if [[ "${RESULT}" == "cancelled" || "${RESULT}" == "skipped" ]]; then
   exit 0
 fi
 
+# A green run has nothing to do: the issue it would have found belongs to a
+# failure whose fix is still unmerged, and closing it would hide that.
+if [[ "${RESULT}" == "success" ]]; then
+  summary "Green; nothing to reconcile."
+  exit 0
+fi
+
 # The label must exist before it can be attached; --force creates or updates it.
 gh label create "${label}" \
   --description "Automated nightly CI report" \
@@ -63,17 +71,6 @@ for number in ${numbers}; do
   fi
 done
 
-if [[ "${RESULT}" == "success" ]]; then
-  if [[ -n "${tracker}" ]]; then
-    gh issue comment "${tracker}" --body "Green again on \`${SHA}\`: ${run_url}"
-    gh issue close "${tracker}"
-    summary "Green; closed #${tracker}."
-  else
-    summary "Green; no tracking issue is open."
-  fi
-  exit 0
-fi
-
 # The job-level view is enough to say which leg is red; the failing test names
 # are one click away in the leg's log.
 failed=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --paginate \
@@ -91,8 +88,8 @@ The nightly integration matrix is red on \`main\`.
 - Failed legs:
 ${failed}
 
-This issue is refreshed by every nightly run and closed by the next green one.
-Closing it by hand while main is still red only means the next run reopens it.
+This issue is refreshed by every red nightly run. Close it from the pull request
+that fixes the failure; a green run leaves it open on purpose.
 EOF
 )
 

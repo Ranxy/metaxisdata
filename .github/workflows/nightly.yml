@@ -2,8 +2,8 @@ name: Nightly integration
 
 # The expensive tier: the full suite on the database versions a deployment may
 # run. Nothing here blocks a pull request. A red run opens or refreshes one
-# tracking issue; the next green run closes it, so the issue is the queue of
-# work rather than a notification to remember.
+# tracking issue and the pull request that fixes the failure closes it, so an
+# open issue is the queue of work rather than a notification to remember.
 on:
   schedule:
     # 02:00 Asia/Shanghai. GitHub evaluates cron in UTC only.
