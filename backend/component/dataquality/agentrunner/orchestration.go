@@ -116,7 +116,7 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		return "", err
 	}
 	intent := parseMessageIntent(input.Intent)
-	if intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED {
+	if strings.TrimSpace(input.Intent) == "" {
 		intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT
 	}
 	message, err := e.deliverAgentMessage(ctx, session, session.SubagentName, lead, input.Message, intent, "")

@@ -63,9 +63,9 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 
 // forwardRequestsDeterministically is the no-model lead's safety net: it puts every
 // open request in front of the owner instead of leaving it in the lead's inbox.
-func (e *Engine) forwardRequestsDeterministically(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, pending []*store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage) (Outcome, error) {
+func (e *Engine) forwardRequestsDeterministically(ctx context.Context, session *store.QualityAgentSessionMessage, _ int32, pending []*store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage) (Outcome, error) {
 	var builder strings.Builder
-	builder.WriteString("The quality agent cannot reason right now (no model is configured). These targets need a decision:\n")
+	_, _ = builder.WriteString("The quality agent cannot reason right now (no model is configured). These targets need a decision:\n")
 	for index, request := range requests {
 		if index >= 5 {
 			break
