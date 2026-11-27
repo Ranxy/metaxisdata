@@ -56,7 +56,7 @@
         :disabled="busy"
         @click="emit('approve', ask)"
       >
-        {{ t("qualityAgent.attentionApprovePending") }}
+        {{ t("qualityAgent.askApprovePending") }}
       </Button>
     </div>
 

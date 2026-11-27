@@ -23,7 +23,6 @@ import {
   DeleteQualityRuleRequestSchema,
   DeleteQualityRuleTemplateRequestSchema,
   DisableQualityAgentRequestSchema,
-  DismissQualityAgentAttentionRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
   ExportQualityExecutionsRequestSchema,
@@ -57,7 +56,6 @@ import {
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
   ListQualityAgentAsksRequestSchema,
-  ListQualityAgentAttentionsRequestSchema,
   ListQualityAgentCaseActionsRequestSchema,
   ListQualityAgentCasesRequestSchema,
   ListQualityAgentConversationMessagesRequestSchema,
@@ -84,8 +82,6 @@ import {
   QualityAgentAdoptionMode,
   type QualityAgentAsk,
   QualityAgentAskStatus,
-  type QualityAgentAttention,
-  QualityAgentAttentionStatus,
   type QualityAgentCase,
   type QualityAgentCaseAction,
   QualityAgentCaseState,
@@ -131,7 +127,6 @@ import {
   type QualityTargetSummary,
   RecommendQualityChecksRequestSchema,
   type RecommendQualityChecksResponse,
-  ReplyQualityAgentAttentionRequestSchema,
   ResumeQualityAgentSessionRequestSchema,
   RunQualityRulesRequestSchema,
   SendQualityAgentMessageRequestSchema,
@@ -1709,23 +1704,6 @@ export async function disableQualityAgent(
   return await dataQualityClient.disableQualityAgent(request, { signal });
 }
 
-/** One agent's escalations. Open is the pending to-do list. */
-export async function listQualityAgentAttentions(
-  agentName: string,
-  status?: QualityAgentAttentionStatus,
-  signal?: AbortSignal
-): Promise<QualityAgentAttention[]> {
-  const request = create(ListQualityAgentAttentionsRequestSchema, {
-    parent: agentName,
-    status: status ?? QualityAgentAttentionStatus.UNSPECIFIED,
-    pageSize: 100,
-  });
-  const response = await dataQualityClient.listQualityAgentAttentions(request, {
-    signal,
-  });
-  return response.qualityAgentAttentions;
-}
-
 /** One page of an agent's owner-facing questions. */
 export async function listQualityAgentAsksPage(
   agentName: string,
@@ -1826,35 +1804,6 @@ export async function listQualityAgentCaseActions(
     actions: response.qualityAgentCaseActions,
     nextPageToken: response.nextPageToken,
   };
-}
-
-/** Answer an escalation as the owner; resumes the target session and resolves it. */
-export async function replyQualityAgentAttention(
-  name: string,
-  messageBody: string,
-  options: { requestId?: string; signal?: AbortSignal } = {}
-): Promise<QualityAgentAttention> {
-  const request = create(ReplyQualityAgentAttentionRequestSchema, {
-    name,
-    messageBody,
-    requestId: options.requestId ?? "",
-  });
-  return await dataQualityClient.replyQualityAgentAttention(request, {
-    signal: options.signal,
-  });
-}
-
-/** Dismiss an escalation without resuming the target session. */
-export async function dismissQualityAgentAttention(
-  name: string,
-  signal?: AbortSignal
-): Promise<QualityAgentAttention> {
-  const request = create(DismissQualityAgentAttentionRequestSchema, {
-    name,
-  });
-  return await dataQualityClient.dismissQualityAgentAttention(request, {
-    signal,
-  });
 }
 
 /** One agent's patrol reports, newest period first. */

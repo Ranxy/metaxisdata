@@ -176,19 +176,20 @@ func TestEnqueueRespectsChannelSubscription(t *testing.T) {
 	require.Equal(t, int64(4), fake.deliveries[0].ChannelID)
 }
 
-// A quality-agent escalation is in-app only: it is the doorbell for a durable
-// attention row, and the outbox has no payload shape for it, so nothing is queued.
+// A quality-agent ask is in-app only: it is the doorbell for a durable ask row,
+// and the outbox has no payload shape for it, so nothing is queued.
 func TestAnInAppOnlyEventQueuesNoDelivery(t *testing.T) {
 	t.Parallel()
 
 	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()))
 	service := newServiceWithStore(fake)
 
-	require.NoError(t, service.SendQualityAgentAttention(context.Background(), 2, "attention:agent1",
-		&storepb.QualityAgentAttentionDetail{
-			Agent:     "workspaces/ws-1/qualityAgents/agent1",
-			Attention: "workspaces/ws-1/qualityAgentAttentions/attention1",
-			Title:     "needs a decision",
+	require.NoError(t, service.SendQualityAgentAsk(context.Background(), 2, "ask:agent1",
+		&storepb.QualityAgentAskDetail{
+			Agent:    "workspaces/ws-1/qualityAgents/agent1",
+			Ask:      "workspaces/ws-1/qualityAgentAsks/ask1",
+			Title:    "needs a decision",
+			Question: "Should this target stay covered?",
 		}))
 	require.Len(t, fake.created, 1)
 	require.Empty(t, fake.deliveries)

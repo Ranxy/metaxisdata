@@ -315,6 +315,25 @@ func migrationFSBefore0068(t *testing.T) fstest.MapFS {
 	// The cutoff keeps the FS at the version just before this migration, so a
 	// later incremental cannot change which version a fresh install records.
 	cutoff := semver.MustParse("0.1.67")
+	// LATEST no longer creates the retired attention table, but a real 0.1.67
+	// database still had it: 0076 alters it before 0083 rebuilds the agent tables.
+	// The snapshot needs that shape for the historical upgrade path.
+	latest = append(append([]byte(nil), latest...), []byte(`
+CREATE TABLE IF NOT EXISTS quality_agent_attention (
+    id BIGSERIAL PRIMARY KEY,
+    resource_id TEXT COLLATE "C" NOT NULL,
+    workspace_id TEXT COLLATE "C" NOT NULL,
+    agent_id INT4 NOT NULL,
+    kind INT2 NOT NULL DEFAULT 1,
+    session_id INT8,
+    title TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL DEFAULT '',
+    status INT2 NOT NULL DEFAULT 1,
+    dedupe_key TEXT NOT NULL DEFAULT '',
+    resolved_by INT4,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`)...)
 	out := fstest.MapFS{latestSchemaFileName: &fstest.MapFile{Data: latest}}
 	for _, file := range files {
 		if file.version.GT(cutoff) {

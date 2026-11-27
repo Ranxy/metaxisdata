@@ -221,7 +221,6 @@
     - [NotificationRouteMatch](#metaxisdata-store-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
     - [QualityAgentAskDetail](#metaxisdata-store-QualityAgentAskDetail)
-    - [QualityAgentAttentionDetail](#metaxisdata-store-QualityAgentAttentionDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
     - [WeComChannelConfig](#metaxisdata-store-WeComChannelConfig)
@@ -873,7 +872,7 @@ person sees. The session row remains the execution state.
 ### QualityAgentFieldPatch
 QualityAgentFieldPatch is the one change an agent asks a person to make: the config field,
 the value it would take, and why. It is the payload of
-quality_agent_attention.suggested_patch, so a proposal reaches the owner as a change to
+quality_agent_request.suggested_patch, so a proposal reaches the owner as a change to
 review rather than a paragraph to interpret.
 
 Every config field a diagnosis can name holds a string, so the patch carries a string and
@@ -4108,7 +4107,6 @@ columns cannot disagree. The payload holds only the message proper.
 | schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
-| quality_agent_attention | [QualityAgentAttentionDetail](#metaxisdata-store-QualityAgentAttentionDetail) |  |  |
 | quality_agent_ask | [QualityAgentAskDetail](#metaxisdata-store-QualityAgentAskDetail) |  |  |
 
 
@@ -4270,9 +4268,6 @@ fell through to an external dataset.
 <a name="metaxisdata-store-QualityAgentAskDetail"></a>
 
 ### QualityAgentAskDetail
-QualityAgentAttentionDetail reports one agent escalation in the inbox. The
-client renders the prose; the server stores only identities and the bounded
-question text.
 QualityAgentAskDetail reports one owner-facing question from the lead. The client
 renders the prose; the server stores only identities and the bounded text.
 
@@ -4286,25 +4281,6 @@ renders the prose; the server stores only identities and the bounded text.
 | question | [string](#string) |  |  |
 | request_count | [int32](#int32) |  | How many subagent requests this question covers. |
 | targets | [string](#string) | repeated | Display paths of the affected targets, bounded by the server. |
-
-
-
-
-
-
-<a name="metaxisdata-store-QualityAgentAttentionDetail"></a>
-
-### QualityAgentAttentionDetail
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| attention | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
-| kind | [int32](#int32) |  | 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY. |
-| title | [string](#string) |  |  |
-| question | [string](#string) |  |  |
 
 
 

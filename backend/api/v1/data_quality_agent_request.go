@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -394,4 +395,18 @@ func (s *DataQualityService) qualityAgentAskNames(ctx context.Context, requests 
 		names[id] = ask.ResourceID
 	}
 	return names
+}
+
+// convertQualityAgentFieldPatchToV1 renders the change a proposal asks for.
+func convertQualityAgentFieldPatchToV1(patch *storepb.QualityAgentFieldPatch) *v1pb.QualityAgentFieldPatch {
+	if patch == nil || patch.GetField() == "" {
+		return nil
+	}
+	return &v1pb.QualityAgentFieldPatch{
+		Field:        patch.GetField(),
+		Value:        patch.GetValue(),
+		BaseRevision: patch.GetBaseRevision(),
+		Effect:       patch.GetEffect(),
+		Rationale:    patch.GetRationale(),
+	}
 }

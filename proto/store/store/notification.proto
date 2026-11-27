@@ -107,7 +107,6 @@ message Notification {
     SchemaSyncDetail schema_sync = 9;
     OpenLineageDetail openlineage = 10;
     DataQualityDetail data_quality = 11;
-    QualityAgentAttentionDetail quality_agent_attention = 12;
     QualityAgentAskDetail quality_agent_ask = 13;
   }
 }
@@ -412,9 +411,6 @@ message NotificationDeliveryEvent {
   repeated int32 audience_user_ids = 6;
 }
 
-// QualityAgentAttentionDetail reports one agent escalation in the inbox. The
-// client renders the prose; the server stores only identities and the bounded
-// question text.
 // QualityAgentAskDetail reports one owner-facing question from the lead. The client
 // renders the prose; the server stores only identities and the bounded text.
 message QualityAgentAskDetail {
@@ -430,17 +426,6 @@ message QualityAgentAskDetail {
   int32 request_count = 6;
   // Display paths of the affected targets, bounded by the server.
   repeated string targets = 7;
-}
-
-message QualityAgentAttentionDetail {
-  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-  string agent = 1;
-  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-  string attention = 2;
-  // 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY.
-  int32 kind = 3;
-  string title = 4;
-  string question = 5;
 }
 
 // NotificationRoute is one owner/team routing rule, as notification_route.payload.

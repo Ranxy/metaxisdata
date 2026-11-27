@@ -19,7 +19,7 @@ inbox is always on, and outbound delivery never blocks or rolls back an inbox wr
 | Schema sync | A user-requested sync, the first sync after instance creation, or a failed periodic sync | Initiator; a background failure goes to the administrators | `SchemaSyncDetail` |
 | OpenLineage ingestion | A refused request, or a namespace matching no instance | Administrators: API-key auth, no initiating user | `OpenLineageDetail` |
 | Data quality | Issue opened or recovered, execution failure, storm summary, watched target's schema change | Rule owner (administrators when none); failures and storms to administrators only | `DataQualityDetail` |
-| Quality agent | A session parked on a code that needs a person, a patrol report with failures or new issues, or drafts awaiting review | Agent owner, or administrators when none is set | `QualityAgentAttentionDetail` (`NOTIFICATION_TYPE_DATA_QUALITY_AGENT`) |
+| Quality agent | A lead question, a patrol report with failures or new issues, or drafts awaiting review | Agent owner, or administrators when none is set | `QualityAgentAskDetail` (`NOTIFICATION_TYPE_DATA_QUALITY_AGENT`) |
 
 A row stores `type + severity + structured detail`, never prose: the frontend renders it
 through i18n, so one row reads in either language and an older client degrades an unknown

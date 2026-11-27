@@ -428,8 +428,9 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 					if proposingAgentID <= 0 {
 						continue
 					}
-					if _, resolveErr := s.store.ResolveDrainedProposalAttention(ctx, proposingAgentID, targetGUID, nil, now); resolveErr != nil {
-						slog.Warn("failed to resolve a drained proposal attention after a supersede",
+					if _, resolveErr := s.store.ResolveProposalAskIfDrained(ctx, proposingAgentID, targetGUID,
+						store.ProposalAskDedupeKey(targetGUID), now); resolveErr != nil {
+						slog.Warn("failed to resolve a drained proposal ask after a supersede",
 							slog.Int64("agent", proposingAgentID),
 							slog.String("target", targetGUID),
 							slog.Any("error", resolveErr))

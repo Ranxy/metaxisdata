@@ -553,7 +553,6 @@ type Notification struct {
 	//	*Notification_SchemaSync
 	//	*Notification_Openlineage
 	//	*Notification_DataQuality
-	//	*Notification_QualityAgentAttention
 	//	*Notification_QualityAgentAsk
 	Detail        isNotification_Detail `protobuf_oneof:"detail"`
 	unknownFields protoimpl.UnknownFields
@@ -680,15 +679,6 @@ func (x *Notification) GetDataQuality() *DataQualityDetail {
 	return nil
 }
 
-func (x *Notification) GetQualityAgentAttention() *QualityAgentAttentionDetail {
-	if x != nil {
-		if x, ok := x.Detail.(*Notification_QualityAgentAttention); ok {
-			return x.QualityAgentAttention
-		}
-	}
-	return nil
-}
-
 func (x *Notification) GetQualityAgentAsk() *QualityAgentAskDetail {
 	if x != nil {
 		if x, ok := x.Detail.(*Notification_QualityAgentAsk); ok {
@@ -714,10 +704,6 @@ type Notification_DataQuality struct {
 	DataQuality *DataQualityDetail `protobuf:"bytes,11,opt,name=data_quality,json=dataQuality,proto3,oneof"`
 }
 
-type Notification_QualityAgentAttention struct {
-	QualityAgentAttention *QualityAgentAttentionDetail `protobuf:"bytes,12,opt,name=quality_agent_attention,json=qualityAgentAttention,proto3,oneof"`
-}
-
 type Notification_QualityAgentAsk struct {
 	QualityAgentAsk *QualityAgentAskDetail `protobuf:"bytes,13,opt,name=quality_agent_ask,json=qualityAgentAsk,proto3,oneof"`
 }
@@ -727,8 +713,6 @@ func (*Notification_SchemaSync) isNotification_Detail() {}
 func (*Notification_Openlineage) isNotification_Detail() {}
 
 func (*Notification_DataQuality) isNotification_Detail() {}
-
-func (*Notification_QualityAgentAttention) isNotification_Detail() {}
 
 func (*Notification_QualityAgentAsk) isNotification_Detail() {}
 
@@ -2243,9 +2227,6 @@ func (*NotificationDeliveryEvent_DataQuality) isNotificationDeliveryEvent_Detail
 
 func (*NotificationDeliveryEvent_DataQualityDigest) isNotificationDeliveryEvent_Detail() {}
 
-// QualityAgentAttentionDetail reports one agent escalation in the inbox. The
-// client renders the prose; the server stores only identities and the bounded
-// question text.
 // QualityAgentAskDetail reports one owner-facing question from the lead. The client
 // renders the prose; the server stores only identities and the bounded text.
 type QualityAgentAskDetail struct {
@@ -2345,85 +2326,6 @@ func (x *QualityAgentAskDetail) GetTargets() []string {
 	return nil
 }
 
-type QualityAgentAttentionDetail struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-	Agent string `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
-	// Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-	Attention string `protobuf:"bytes,2,opt,name=attention,proto3" json:"attention,omitempty"`
-	// 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY.
-	Kind          int32  `protobuf:"varint,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Title         string `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	Question      string `protobuf:"bytes,5,opt,name=question,proto3" json:"question,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *QualityAgentAttentionDetail) Reset() {
-	*x = QualityAgentAttentionDetail{}
-	mi := &file_store_notification_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *QualityAgentAttentionDetail) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*QualityAgentAttentionDetail) ProtoMessage() {}
-
-func (x *QualityAgentAttentionDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use QualityAgentAttentionDetail.ProtoReflect.Descriptor instead.
-func (*QualityAgentAttentionDetail) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *QualityAgentAttentionDetail) GetAgent() string {
-	if x != nil {
-		return x.Agent
-	}
-	return ""
-}
-
-func (x *QualityAgentAttentionDetail) GetAttention() string {
-	if x != nil {
-		return x.Attention
-	}
-	return ""
-}
-
-func (x *QualityAgentAttentionDetail) GetKind() int32 {
-	if x != nil {
-		return x.Kind
-	}
-	return 0
-}
-
-func (x *QualityAgentAttentionDetail) GetTitle() string {
-	if x != nil {
-		return x.Title
-	}
-	return ""
-}
-
-func (x *QualityAgentAttentionDetail) GetQuestion() string {
-	if x != nil {
-		return x.Question
-	}
-	return ""
-}
-
 // NotificationRoute is one owner/team routing rule, as notification_route.payload.
 // It selects extra channels for the events whose in-app audience matches the
 // rule, so a team can watch its own rules without receiving the whole workspace.
@@ -2441,7 +2343,7 @@ type NotificationRoute struct {
 
 func (x *NotificationRoute) Reset() {
 	*x = NotificationRoute{}
-	mi := &file_store_notification_proto_msgTypes[19]
+	mi := &file_store_notification_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2453,7 +2355,7 @@ func (x *NotificationRoute) String() string {
 func (*NotificationRoute) ProtoMessage() {}
 
 func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[19]
+	mi := &file_store_notification_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2466,7 +2368,7 @@ func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationRoute.ProtoReflect.Descriptor instead.
 func (*NotificationRoute) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{19}
+	return file_store_notification_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NotificationRoute) GetDisplayName() string {
@@ -2518,7 +2420,7 @@ type NotificationRouteMatch struct {
 
 func (x *NotificationRouteMatch) Reset() {
 	*x = NotificationRouteMatch{}
-	mi := &file_store_notification_proto_msgTypes[20]
+	mi := &file_store_notification_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2530,7 +2432,7 @@ func (x *NotificationRouteMatch) String() string {
 func (*NotificationRouteMatch) ProtoMessage() {}
 
 func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[20]
+	mi := &file_store_notification_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2543,7 +2445,7 @@ func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationRouteMatch.ProtoReflect.Descriptor instead.
 func (*NotificationRouteMatch) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{20}
+	return file_store_notification_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *NotificationRouteMatch) GetEventTypes() []NotificationType {
@@ -2578,7 +2480,7 @@ var File_store_notification_proto protoreflect.FileDescriptor
 
 const file_store_notification_proto_rawDesc = "" +
 	"\n" +
-	"\x18store/notification.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18store/data_quality.proto\"\x95\x06\n" +
+	"\x18store/notification.proto\x12\x11metaxisdata.store\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18store/data_quality.proto\"\xab\x05\n" +
 	"\fNotification\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12;\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -2594,8 +2496,7 @@ const file_store_notification_proto_rawDesc = "" +
 	"schemaSync\x12H\n" +
 	"\vopenlineage\x18\n" +
 	" \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineage\x12I\n" +
-	"\fdata_quality\x18\v \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQuality\x12h\n" +
-	"\x17quality_agent_attention\x18\f \x01(\v2..metaxisdata.store.QualityAgentAttentionDetailH\x00R\x15qualityAgentAttention\x12V\n" +
+	"\fdata_quality\x18\v \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQuality\x12V\n" +
 	"\x11quality_agent_ask\x18\r \x01(\v2(.metaxisdata.store.QualityAgentAskDetailH\x00R\x0fqualityAgentAskB\b\n" +
 	"\x06detail\"\xf2\x02\n" +
 	"\x10SchemaSyncDetail\x12\x1a\n" +
@@ -2731,13 +2632,7 @@ const file_store_notification_proto_rawDesc = "" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1a\n" +
 	"\bquestion\x18\x05 \x01(\tR\bquestion\x12#\n" +
 	"\rrequest_count\x18\x06 \x01(\x05R\frequestCount\x12\x18\n" +
-	"\atargets\x18\a \x03(\tR\atargets\"\x97\x01\n" +
-	"\x1bQualityAgentAttentionDetail\x12\x14\n" +
-	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x1c\n" +
-	"\tattention\x18\x02 \x01(\tR\tattention\x12\x12\n" +
-	"\x04kind\x18\x03 \x01(\x05R\x04kind\x12\x14\n" +
-	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1a\n" +
-	"\bquestion\x18\x05 \x01(\tR\bquestion\"\xad\x01\n" +
+	"\atargets\x18\a \x03(\tR\atargets\"\xad\x01\n" +
 	"\x11NotificationRoute\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12?\n" +
@@ -2812,86 +2707,84 @@ func file_store_notification_proto_rawDescGZIP() []byte {
 }
 
 var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_store_notification_proto_goTypes = []any{
-	(NotificationType)(0),               // 0: metaxisdata.store.NotificationType
-	(NotificationSeverity)(0),           // 1: metaxisdata.store.NotificationSeverity
-	(SyncTrigger)(0),                    // 2: metaxisdata.store.SyncTrigger
-	(SyncDatabaseState)(0),              // 3: metaxisdata.store.SyncDatabaseState
-	(OpenLineageFailureKind)(0),         // 4: metaxisdata.store.OpenLineageFailureKind
-	(DataQualityNotificationKind)(0),    // 5: metaxisdata.store.DataQualityNotificationKind
-	(NotificationChannelKind)(0),        // 6: metaxisdata.store.NotificationChannelKind
-	(NotificationDeliveryState)(0),      // 7: metaxisdata.store.NotificationDeliveryState
-	(*Notification)(nil),                // 8: metaxisdata.store.Notification
-	(*SchemaSyncDetail)(nil),            // 9: metaxisdata.store.SchemaSyncDetail
-	(*SyncDatabaseResult)(nil),          // 10: metaxisdata.store.SyncDatabaseResult
-	(*OpenLineageDetail)(nil),           // 11: metaxisdata.store.OpenLineageDetail
-	(*DataQualityDetail)(nil),           // 12: metaxisdata.store.DataQualityDetail
-	(*DataQualityDigestDetail)(nil),     // 13: metaxisdata.store.DataQualityDigestDetail
-	(*DataQualityDigestOwner)(nil),      // 14: metaxisdata.store.DataQualityDigestOwner
-	(*DataQualityDigestTarget)(nil),     // 15: metaxisdata.store.DataQualityDigestTarget
-	(*NotificationChannel)(nil),         // 16: metaxisdata.store.NotificationChannel
-	(*NotificationChannelConfig)(nil),   // 17: metaxisdata.store.NotificationChannelConfig
-	(*WebhookChannelConfig)(nil),        // 18: metaxisdata.store.WebhookChannelConfig
-	(*DingTalkChannelConfig)(nil),       // 19: metaxisdata.store.DingTalkChannelConfig
-	(*WeComChannelConfig)(nil),          // 20: metaxisdata.store.WeComChannelConfig
-	(*FeishuChannelConfig)(nil),         // 21: metaxisdata.store.FeishuChannelConfig
-	(*EmailChannelConfig)(nil),          // 22: metaxisdata.store.EmailChannelConfig
-	(*NotificationChannelSecret)(nil),   // 23: metaxisdata.store.NotificationChannelSecret
-	(*NotificationDeliveryEvent)(nil),   // 24: metaxisdata.store.NotificationDeliveryEvent
-	(*QualityAgentAskDetail)(nil),       // 25: metaxisdata.store.QualityAgentAskDetail
-	(*QualityAgentAttentionDetail)(nil), // 26: metaxisdata.store.QualityAgentAttentionDetail
-	(*NotificationRoute)(nil),           // 27: metaxisdata.store.NotificationRoute
-	(*NotificationRouteMatch)(nil),      // 28: metaxisdata.store.NotificationRouteMatch
-	(*timestamppb.Timestamp)(nil),       // 29: google.protobuf.Timestamp
-	(QualityStatus)(0),                  // 30: metaxisdata.store.QualityStatus
-	(QualitySeverity)(0),                // 31: metaxisdata.store.QualitySeverity
+	(NotificationType)(0),             // 0: metaxisdata.store.NotificationType
+	(NotificationSeverity)(0),         // 1: metaxisdata.store.NotificationSeverity
+	(SyncTrigger)(0),                  // 2: metaxisdata.store.SyncTrigger
+	(SyncDatabaseState)(0),            // 3: metaxisdata.store.SyncDatabaseState
+	(OpenLineageFailureKind)(0),       // 4: metaxisdata.store.OpenLineageFailureKind
+	(DataQualityNotificationKind)(0),  // 5: metaxisdata.store.DataQualityNotificationKind
+	(NotificationChannelKind)(0),      // 6: metaxisdata.store.NotificationChannelKind
+	(NotificationDeliveryState)(0),    // 7: metaxisdata.store.NotificationDeliveryState
+	(*Notification)(nil),              // 8: metaxisdata.store.Notification
+	(*SchemaSyncDetail)(nil),          // 9: metaxisdata.store.SchemaSyncDetail
+	(*SyncDatabaseResult)(nil),        // 10: metaxisdata.store.SyncDatabaseResult
+	(*OpenLineageDetail)(nil),         // 11: metaxisdata.store.OpenLineageDetail
+	(*DataQualityDetail)(nil),         // 12: metaxisdata.store.DataQualityDetail
+	(*DataQualityDigestDetail)(nil),   // 13: metaxisdata.store.DataQualityDigestDetail
+	(*DataQualityDigestOwner)(nil),    // 14: metaxisdata.store.DataQualityDigestOwner
+	(*DataQualityDigestTarget)(nil),   // 15: metaxisdata.store.DataQualityDigestTarget
+	(*NotificationChannel)(nil),       // 16: metaxisdata.store.NotificationChannel
+	(*NotificationChannelConfig)(nil), // 17: metaxisdata.store.NotificationChannelConfig
+	(*WebhookChannelConfig)(nil),      // 18: metaxisdata.store.WebhookChannelConfig
+	(*DingTalkChannelConfig)(nil),     // 19: metaxisdata.store.DingTalkChannelConfig
+	(*WeComChannelConfig)(nil),        // 20: metaxisdata.store.WeComChannelConfig
+	(*FeishuChannelConfig)(nil),       // 21: metaxisdata.store.FeishuChannelConfig
+	(*EmailChannelConfig)(nil),        // 22: metaxisdata.store.EmailChannelConfig
+	(*NotificationChannelSecret)(nil), // 23: metaxisdata.store.NotificationChannelSecret
+	(*NotificationDeliveryEvent)(nil), // 24: metaxisdata.store.NotificationDeliveryEvent
+	(*QualityAgentAskDetail)(nil),     // 25: metaxisdata.store.QualityAgentAskDetail
+	(*NotificationRoute)(nil),         // 26: metaxisdata.store.NotificationRoute
+	(*NotificationRouteMatch)(nil),    // 27: metaxisdata.store.NotificationRouteMatch
+	(*timestamppb.Timestamp)(nil),     // 28: google.protobuf.Timestamp
+	(QualityStatus)(0),                // 29: metaxisdata.store.QualityStatus
+	(QualitySeverity)(0),              // 30: metaxisdata.store.QualitySeverity
 }
 var file_store_notification_proto_depIdxs = []int32{
-	29, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
+	28, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.store.Notification.type:type_name -> metaxisdata.store.NotificationType
 	1,  // 2: metaxisdata.store.Notification.severity:type_name -> metaxisdata.store.NotificationSeverity
-	29, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
+	28, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
 	9,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
 	11, // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
 	12, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
-	26, // 7: metaxisdata.store.Notification.quality_agent_attention:type_name -> metaxisdata.store.QualityAgentAttentionDetail
-	25, // 8: metaxisdata.store.Notification.quality_agent_ask:type_name -> metaxisdata.store.QualityAgentAskDetail
-	2,  // 9: metaxisdata.store.SchemaSyncDetail.trigger:type_name -> metaxisdata.store.SyncTrigger
-	10, // 10: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
-	3,  // 11: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
-	4,  // 12: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
-	5,  // 13: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
-	30, // 14: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
-	30, // 15: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
-	31, // 16: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
-	29, // 17: metaxisdata.store.DataQualityDigestDetail.period_start:type_name -> google.protobuf.Timestamp
-	29, // 18: metaxisdata.store.DataQualityDigestDetail.period_end:type_name -> google.protobuf.Timestamp
-	14, // 19: metaxisdata.store.DataQualityDigestDetail.owners:type_name -> metaxisdata.store.DataQualityDigestOwner
-	15, // 20: metaxisdata.store.DataQualityDigestDetail.targets:type_name -> metaxisdata.store.DataQualityDigestTarget
-	6,  // 21: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
-	0,  // 22: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
-	1,  // 23: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
-	17, // 24: metaxisdata.store.NotificationChannel.config:type_name -> metaxisdata.store.NotificationChannelConfig
-	18, // 25: metaxisdata.store.NotificationChannelConfig.webhook:type_name -> metaxisdata.store.WebhookChannelConfig
-	19, // 26: metaxisdata.store.NotificationChannelConfig.dingtalk:type_name -> metaxisdata.store.DingTalkChannelConfig
-	20, // 27: metaxisdata.store.NotificationChannelConfig.wecom:type_name -> metaxisdata.store.WeComChannelConfig
-	21, // 28: metaxisdata.store.NotificationChannelConfig.feishu:type_name -> metaxisdata.store.FeishuChannelConfig
-	22, // 29: metaxisdata.store.NotificationChannelConfig.email:type_name -> metaxisdata.store.EmailChannelConfig
-	0,  // 30: metaxisdata.store.NotificationDeliveryEvent.type:type_name -> metaxisdata.store.NotificationType
-	1,  // 31: metaxisdata.store.NotificationDeliveryEvent.severity:type_name -> metaxisdata.store.NotificationSeverity
-	9,  // 32: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
-	11, // 33: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
-	12, // 34: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
-	13, // 35: metaxisdata.store.NotificationDeliveryEvent.data_quality_digest:type_name -> metaxisdata.store.DataQualityDigestDetail
-	28, // 36: metaxisdata.store.NotificationRoute.match:type_name -> metaxisdata.store.NotificationRouteMatch
-	0,  // 37: metaxisdata.store.NotificationRouteMatch.event_types:type_name -> metaxisdata.store.NotificationType
-	1,  // 38: metaxisdata.store.NotificationRouteMatch.min_severity:type_name -> metaxisdata.store.NotificationSeverity
-	39, // [39:39] is the sub-list for method output_type
-	39, // [39:39] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	25, // 7: metaxisdata.store.Notification.quality_agent_ask:type_name -> metaxisdata.store.QualityAgentAskDetail
+	2,  // 8: metaxisdata.store.SchemaSyncDetail.trigger:type_name -> metaxisdata.store.SyncTrigger
+	10, // 9: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
+	3,  // 10: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
+	4,  // 11: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
+	5,  // 12: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
+	29, // 13: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
+	29, // 14: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
+	30, // 15: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
+	28, // 16: metaxisdata.store.DataQualityDigestDetail.period_start:type_name -> google.protobuf.Timestamp
+	28, // 17: metaxisdata.store.DataQualityDigestDetail.period_end:type_name -> google.protobuf.Timestamp
+	14, // 18: metaxisdata.store.DataQualityDigestDetail.owners:type_name -> metaxisdata.store.DataQualityDigestOwner
+	15, // 19: metaxisdata.store.DataQualityDigestDetail.targets:type_name -> metaxisdata.store.DataQualityDigestTarget
+	6,  // 20: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
+	0,  // 21: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 22: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	17, // 23: metaxisdata.store.NotificationChannel.config:type_name -> metaxisdata.store.NotificationChannelConfig
+	18, // 24: metaxisdata.store.NotificationChannelConfig.webhook:type_name -> metaxisdata.store.WebhookChannelConfig
+	19, // 25: metaxisdata.store.NotificationChannelConfig.dingtalk:type_name -> metaxisdata.store.DingTalkChannelConfig
+	20, // 26: metaxisdata.store.NotificationChannelConfig.wecom:type_name -> metaxisdata.store.WeComChannelConfig
+	21, // 27: metaxisdata.store.NotificationChannelConfig.feishu:type_name -> metaxisdata.store.FeishuChannelConfig
+	22, // 28: metaxisdata.store.NotificationChannelConfig.email:type_name -> metaxisdata.store.EmailChannelConfig
+	0,  // 29: metaxisdata.store.NotificationDeliveryEvent.type:type_name -> metaxisdata.store.NotificationType
+	1,  // 30: metaxisdata.store.NotificationDeliveryEvent.severity:type_name -> metaxisdata.store.NotificationSeverity
+	9,  // 31: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
+	11, // 32: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
+	12, // 33: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
+	13, // 34: metaxisdata.store.NotificationDeliveryEvent.data_quality_digest:type_name -> metaxisdata.store.DataQualityDigestDetail
+	27, // 35: metaxisdata.store.NotificationRoute.match:type_name -> metaxisdata.store.NotificationRouteMatch
+	0,  // 36: metaxisdata.store.NotificationRouteMatch.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 37: metaxisdata.store.NotificationRouteMatch.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	38, // [38:38] is the sub-list for method output_type
+	38, // [38:38] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_store_notification_proto_init() }
@@ -2904,7 +2797,6 @@ func file_store_notification_proto_init() {
 		(*Notification_SchemaSync)(nil),
 		(*Notification_Openlineage)(nil),
 		(*Notification_DataQuality)(nil),
-		(*Notification_QualityAgentAttention)(nil),
 		(*Notification_QualityAgentAsk)(nil),
 	}
 	file_store_notification_proto_msgTypes[9].OneofWrappers = []any{
@@ -2926,7 +2818,7 @@ func file_store_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_notification_proto_rawDesc), len(file_store_notification_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   21,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

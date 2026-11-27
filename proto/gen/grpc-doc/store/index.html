@@ -1045,10 +1045,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentAttentionDetail"><span class="badge">M</span>QualityAgentAttentionDetail</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.store.SchemaSyncDetail"><span class="badge">M</span>SchemaSyncDetail</a>
                 </li>
               
@@ -2820,7 +2816,7 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
         
       
         <h3 id="metaxisdata.store.QualityAgentFieldPatch">QualityAgentFieldPatch</h3>
-        <p>QualityAgentFieldPatch is the one change an agent asks a person to make: the config field,</p><p>the value it would take, and why. It is the payload of</p><p>quality_agent_attention.suggested_patch, so a proposal reaches the owner as a change to</p><p>review rather than a paragraph to interpret.</p><p>Every config field a diagnosis can name holds a string, so the patch carries a string and</p><p>the value the owner applies is the value validation already saw when the agent proposed it.</p><p>The effect is derived from the diagnosis by the server: an agent cannot declare its own</p><p>change executable.</p>
+        <p>QualityAgentFieldPatch is the one change an agent asks a person to make: the config field,</p><p>the value it would take, and why. It is the payload of</p><p>quality_agent_request.suggested_patch, so a proposal reaches the owner as a change to</p><p>review rather than a paragraph to interpret.</p><p>Every config field a diagnosis can name holds a string, so the patch carries a string and</p><p>the value the owner applies is the value validation already saw when the agent proposed it.</p><p>The effect is derived from the diagnosis by the server: an agent cannot declare its own</p><p>change executable.</p>
 
         
           <table class="field-table">
@@ -12019,13 +12015,6 @@ to the event&#39;s suppression window. </p></td>
                 </tr>
               
                 <tr>
-                  <td>quality_agent_attention</td>
-                  <td><a href="#metaxisdata.store.QualityAgentAttentionDetail">QualityAgentAttentionDetail</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
                   <td>quality_agent_ask</td>
                   <td><a href="#metaxisdata.store.QualityAgentAskDetail">QualityAgentAskDetail</a></td>
                   <td></td>
@@ -12454,7 +12443,7 @@ an in-app audience; the digest has none and is not routed. </p></td>
         
       
         <h3 id="metaxisdata.store.QualityAgentAskDetail">QualityAgentAskDetail</h3>
-        <p>QualityAgentAttentionDetail reports one agent escalation in the inbox. The</p><p>client renders the prose; the server stores only identities and the bounded</p><p>question text.</p><p>QualityAgentAskDetail reports one owner-facing question from the lead. The client</p><p>renders the prose; the server stores only identities and the bounded text.</p>
+        <p>QualityAgentAskDetail reports one owner-facing question from the lead. The client</p><p>renders the prose; the server stores only identities and the bounded text.</p>
 
         
           <table class="field-table">
@@ -12510,58 +12499,6 @@ an in-app audience; the digest has none and is not routed. </p></td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
                   <td><p>Display paths of the affected targets, bounded by the server. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.QualityAgentAttentionDetail">QualityAgentAttentionDetail</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>agent</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>attention</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>kind</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>title</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>question</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
                 </tr>
               
             </tbody>

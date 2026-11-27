@@ -71,8 +71,8 @@ work item. Report anomalies are agent-level asks with no request behind them: th
 wake the lead for coordination. Pending-draft approvals are per-target approval asks with a dedupe key; approving them closes the ask
 once the target has no pending draft left. Notifications are sent once at ask creation and link to the lead conversation.
 
-The old `quality_agent_attention` rows are legacy read-only data until the table and its RPCs are removed; no runtime writer creates a
-new row.
+The legacy `quality_agent_attention` table and its RPCs are removed. An owner's to-do is an ask; there is no per-target
+attention card and no reply path that writes directly to a target session.
 
 ## Work items (cases)
 

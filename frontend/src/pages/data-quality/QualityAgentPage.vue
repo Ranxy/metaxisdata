@@ -312,7 +312,7 @@
                   v-if="!canChat && asks.length > 0"
                   class="text-xs text-muted-foreground"
                 >
-                  {{ t("qualityAgent.attentionReadOnly") }}
+                  {{ t("qualityAgent.asksReadOnly") }}
                 </p>
               </div>
 

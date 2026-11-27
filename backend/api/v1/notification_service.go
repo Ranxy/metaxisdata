@@ -383,17 +383,6 @@ func convertToV1Notification(notification *storepb.Notification, workspaceID str
 		converted.Detail = &v1pb.Notification_DataQuality{
 			DataQuality: convertDataQualityDetail(notification.GetDataQuality()),
 		}
-	case notification.GetQualityAgentAttention() != nil:
-		detail := notification.GetQualityAgentAttention()
-		converted.Detail = &v1pb.Notification_QualityAgentAttention{
-			QualityAgentAttention: &v1pb.QualityAgentAttentionDetail{
-				Agent:     detail.GetAgent(),
-				Attention: detail.GetAttention(),
-				Kind:      detail.GetKind(),
-				Title:     detail.GetTitle(),
-				Question:  detail.GetQuestion(),
-			},
-		}
 	case notification.GetQualityAgentAsk() != nil:
 		detail := notification.GetQualityAgentAsk()
 		converted.Detail = &v1pb.Notification_QualityAgentAsk{

@@ -482,10 +482,10 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	}
 	require.True(t, ownerAnswer, "the owner sees their own reply in the front office")
 	require.GreaterOrEqual(t, len(f.provider.recordedCalls()), 5, "the scripted lead/target turns all ran")
-	var attentionCount int
+	var attentionTable int
 	require.NoError(t, f.env.Store.GetDB().QueryRowContext(f.ctx,
-		`SELECT COUNT(*) FROM quality_agent_attention WHERE agent_id = $1`, f.agent.ID).Scan(&attentionCount))
-	require.Zero(t, attentionCount, "the new coordination path writes no legacy attention rows")
+		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'quality_agent_attention'`).Scan(&attentionTable))
+	require.Zero(t, attentionTable, "the legacy attention table is gone")
 }
 
 // The A architecture materializes every in-scope target, not one session per agent

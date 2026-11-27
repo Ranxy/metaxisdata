@@ -8,7 +8,6 @@ import {
   type OpenLineageDetail,
   OpenLineageFailureKind,
   type QualityAgentAskDetail,
-  type QualityAgentAttentionDetail,
   type SchemaSyncDetail,
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
@@ -248,27 +247,6 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
   }
 }
 
-/** One agent escalation: the owner's title and question, linked to the agent home. */
-function qualityAgentAttentionText(
-  detail: QualityAgentAttentionDetail
-): NotificationText {
-  const question = detail.question.trim();
-  const agentID = qualityAgentRouteParams(detail.agent)?.agentId ?? "";
-  return {
-    titleKey:
-      question === ""
-        ? "notifications.qualityAgentTitle"
-        : "notifications.qualityAgentTitleWithQuestion",
-    titleParams: {
-      title: detail.title || "Quality agent",
-      question,
-    },
-    messageKey: "notifications.qualityAgentMessage",
-    messageParams: { agent: agentID },
-    href: detail.agent === "" ? undefined : qualityAgentPath(detail.agent),
-  };
-}
-
 /** One ask: the lead's question, linked to the conversation where it waits. */
 function qualityAgentAskText(detail: QualityAgentAskDetail): NotificationText {
   const question = detail.question.trim();
@@ -313,9 +291,6 @@ export function describeNotification(
       }
       break;
     case NotificationType.DATA_QUALITY_AGENT:
-      if (notification.detail.case === "qualityAgentAttention") {
-        return qualityAgentAttentionText(notification.detail.value);
-      }
       if (notification.detail.case === "qualityAgentAsk") {
         return qualityAgentAskText(notification.detail.value);
       }

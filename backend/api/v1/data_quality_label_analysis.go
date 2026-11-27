@@ -276,8 +276,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 					if proposingAgentID <= 0 {
 						continue
 					}
-					s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid},
-						principalIDPointer(currentUserID(ctx)))
+					s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid})
 				}
 			} else {
 				summary.SkippedExistingFact++

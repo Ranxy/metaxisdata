@@ -81,11 +81,8 @@ const (
 	DataQualityService_SendQualityAgentMessage_FullMethodName              = "/metaxisdata.v1.DataQualityService/SendQualityAgentMessage"
 	DataQualityService_ListQualityAgentConversationMessages_FullMethodName = "/metaxisdata.v1.DataQualityService/ListQualityAgentConversationMessages"
 	DataQualityService_ListQualityAgentReports_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityAgentReports"
-	DataQualityService_ListQualityAgentAttentions_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityAgentAttentions"
 	DataQualityService_ListQualityAgentCases_FullMethodName                = "/metaxisdata.v1.DataQualityService/ListQualityAgentCases"
 	DataQualityService_ListQualityAgentCaseActions_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityAgentCaseActions"
-	DataQualityService_ReplyQualityAgentAttention_FullMethodName           = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
-	DataQualityService_DismissQualityAgentAttention_FullMethodName         = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
 	DataQualityService_ListQualityAgentRequests_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityAgentRequests"
 	DataQualityService_GetQualityAgentDecisionRequest_FullMethodName       = "/metaxisdata.v1.DataQualityService/GetQualityAgentDecisionRequest"
 	DataQualityService_ListQualityAgentAsks_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityAgentAsks"
@@ -370,8 +367,6 @@ type DataQualityServiceClient interface {
 	ListQualityAgentConversationMessages(ctx context.Context, in *ListQualityAgentConversationMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentConversationMessagesResponse, error)
 	// List one agent's patrol reports, newest period first.
 	ListQualityAgentReports(ctx context.Context, in *ListQualityAgentReportsRequest, opts ...grpc.CallOption) (*ListQualityAgentReportsResponse, error)
-	// List one agent's escalations. The owner and administrators may read.
-	ListQualityAgentAttentions(ctx context.Context, in *ListQualityAgentAttentionsRequest, opts ...grpc.CallOption) (*ListQualityAgentAttentionsResponse, error)
 	// List one agent's work items, the ones still open first. A case is the agent's durable
 	// record of a check it could not settle by itself; the owner and administrators may read
 	// it to see what the agent is working on and what it has given up on.
@@ -379,12 +374,6 @@ type DataQualityServiceClient interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(ctx context.Context, in *ListQualityAgentCaseActionsRequest, opts ...grpc.CallOption) (*ListQualityAgentCaseActionsResponse, error)
-	// Answer a legacy escalation as the owner. The reply is appended to the lead
-	// conversation and the attention is resolved; the lead routes the answer. A retry
-	// on a closed attention is a no-op.
-	ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
-	// Dismiss an escalation without resuming the session. Owner only.
-	DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
 	// List one agent's decision requests. The owner and administrators may read; the
 	// requests are written by the agent's own tools.
 	ListQualityAgentRequests(ctx context.Context, in *ListQualityAgentRequestsRequest, opts ...grpc.CallOption) (*ListQualityAgentRequestsResponse, error)
@@ -1098,16 +1087,6 @@ func (c *dataQualityServiceClient) ListQualityAgentReports(ctx context.Context, 
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) ListQualityAgentAttentions(ctx context.Context, in *ListQualityAgentAttentionsRequest, opts ...grpc.CallOption) (*ListQualityAgentAttentionsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListQualityAgentAttentionsResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentAttentions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *dataQualityServiceClient) ListQualityAgentCases(ctx context.Context, in *ListQualityAgentCasesRequest, opts ...grpc.CallOption) (*ListQualityAgentCasesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityAgentCasesResponse)
@@ -1122,26 +1101,6 @@ func (c *dataQualityServiceClient) ListQualityAgentCaseActions(ctx context.Conte
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityAgentCaseActionsResponse)
 	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentCaseActions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentAttention)
-	err := c.cc.Invoke(ctx, DataQualityService_ReplyQualityAgentAttention_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentAttention)
-	err := c.cc.Invoke(ctx, DataQualityService_DismissQualityAgentAttention_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1592,8 +1551,6 @@ type DataQualityServiceServer interface {
 	ListQualityAgentConversationMessages(context.Context, *ListQualityAgentConversationMessagesRequest) (*ListQualityAgentConversationMessagesResponse, error)
 	// List one agent's patrol reports, newest period first.
 	ListQualityAgentReports(context.Context, *ListQualityAgentReportsRequest) (*ListQualityAgentReportsResponse, error)
-	// List one agent's escalations. The owner and administrators may read.
-	ListQualityAgentAttentions(context.Context, *ListQualityAgentAttentionsRequest) (*ListQualityAgentAttentionsResponse, error)
 	// List one agent's work items, the ones still open first. A case is the agent's durable
 	// record of a check it could not settle by itself; the owner and administrators may read
 	// it to see what the agent is working on and what it has given up on.
@@ -1601,12 +1558,6 @@ type DataQualityServiceServer interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(context.Context, *ListQualityAgentCaseActionsRequest) (*ListQualityAgentCaseActionsResponse, error)
-	// Answer a legacy escalation as the owner. The reply is appended to the lead
-	// conversation and the attention is resolved; the lead routes the answer. A retry
-	// on a closed attention is a no-op.
-	ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error)
-	// Dismiss an escalation without resuming the session. Owner only.
-	DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error)
 	// List one agent's decision requests. The owner and administrators may read; the
 	// requests are written by the agent's own tools.
 	ListQualityAgentRequests(context.Context, *ListQualityAgentRequestsRequest) (*ListQualityAgentRequestsResponse, error)
@@ -1857,20 +1808,11 @@ func (UnimplementedDataQualityServiceServer) ListQualityAgentConversationMessage
 func (UnimplementedDataQualityServiceServer) ListQualityAgentReports(context.Context, *ListQualityAgentReportsRequest) (*ListQualityAgentReportsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentReports not implemented")
 }
-func (UnimplementedDataQualityServiceServer) ListQualityAgentAttentions(context.Context, *ListQualityAgentAttentionsRequest) (*ListQualityAgentAttentionsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentAttentions not implemented")
-}
 func (UnimplementedDataQualityServiceServer) ListQualityAgentCases(context.Context, *ListQualityAgentCasesRequest) (*ListQualityAgentCasesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentCases not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityAgentCaseActions(context.Context, *ListQualityAgentCaseActionsRequest) (*ListQualityAgentCaseActionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentCaseActions not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReplyQualityAgentAttention not implemented")
-}
-func (UnimplementedDataQualityServiceServer) DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
-	return nil, status.Error(codes.Unimplemented, "method DismissQualityAgentAttention not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityAgentRequests(context.Context, *ListQualityAgentRequestsRequest) (*ListQualityAgentRequestsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentRequests not implemented")
@@ -3017,24 +2959,6 @@ func _DataQualityService_ListQualityAgentReports_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_ListQualityAgentAttentions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListQualityAgentAttentionsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ListQualityAgentAttentions(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ListQualityAgentAttentions_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ListQualityAgentAttentions(ctx, req.(*ListQualityAgentAttentionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DataQualityService_ListQualityAgentCases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityAgentCasesRequest)
 	if err := dec(in); err != nil {
@@ -3067,42 +2991,6 @@ func _DataQualityService_ListQualityAgentCaseActions_Handler(srv interface{}, ct
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).ListQualityAgentCaseActions(ctx, req.(*ListQualityAgentCaseActionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ReplyQualityAgentAttention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReplyQualityAgentAttentionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ReplyQualityAgentAttention(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ReplyQualityAgentAttention_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ReplyQualityAgentAttention(ctx, req.(*ReplyQualityAgentAttentionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_DismissQualityAgentAttention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DismissQualityAgentAttentionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).DismissQualityAgentAttention(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_DismissQualityAgentAttention_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).DismissQualityAgentAttention(ctx, req.(*DismissQualityAgentAttentionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3667,24 +3555,12 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_ListQualityAgentReports_Handler,
 		},
 		{
-			MethodName: "ListQualityAgentAttentions",
-			Handler:    _DataQualityService_ListQualityAgentAttentions_Handler,
-		},
-		{
 			MethodName: "ListQualityAgentCases",
 			Handler:    _DataQualityService_ListQualityAgentCases_Handler,
 		},
 		{
 			MethodName: "ListQualityAgentCaseActions",
 			Handler:    _DataQualityService_ListQualityAgentCaseActions_Handler,
-		},
-		{
-			MethodName: "ReplyQualityAgentAttention",
-			Handler:    _DataQualityService_ReplyQualityAgentAttention_Handler,
-		},
-		{
-			MethodName: "DismissQualityAgentAttention",
-			Handler:    _DataQualityService_DismissQualityAgentAttention_Handler,
 		},
 		{
 			MethodName: "ListQualityAgentRequests",

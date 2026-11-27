@@ -8,7 +8,6 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -208,7 +207,7 @@ func (r *Runner) raiseCaseRequest(ctx context.Context, openCase *store.QualityAg
 	if err != nil || agent == nil {
 		return
 	}
-	language, _ := agentattention.OwnerLanguage(ctx, r.stores, agent)
+	language, _ := agentlang.OwnerLanguage(ctx, r.stores, agent)
 	title := ""
 	if rule != nil {
 		title = rule.Title

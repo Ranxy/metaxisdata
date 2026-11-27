@@ -1327,10 +1327,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.DismissQualityAgentAttentionRequest"><span class="badge">M</span>DismissQualityAgentAttentionRequest</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.ExplainQualityExecutionRequest"><span class="badge">M</span>ExplainQualityExecutionRequest</a>
                 </li>
               
@@ -1492,14 +1488,6 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListQualityAgentAsksResponse"><span class="badge">M</span>ListQualityAgentAsksResponse</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.ListQualityAgentAttentionsRequest"><span class="badge">M</span>ListQualityAgentAttentionsRequest</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.ListQualityAgentAttentionsResponse"><span class="badge">M</span>ListQualityAgentAttentionsResponse</a>
                 </li>
               
                 <li>
@@ -1704,10 +1692,6 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentAsk"><span class="badge">M</span>QualityAgentAsk</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.QualityAgentAttention"><span class="badge">M</span>QualityAgentAttention</a>
                 </li>
               
                 <li>
@@ -1983,10 +1967,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.ReplyQualityAgentAttentionRequest"><span class="badge">M</span>ReplyQualityAgentAttentionRequest</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.ResumeQualityAgentSessionRequest"><span class="badge">M</span>ResumeQualityAgentSessionRequest</a>
                 </li>
               
@@ -2133,14 +2113,6 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentAskStatus"><span class="badge">E</span>QualityAgentAskStatus</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.QualityAgentAttentionKind"><span class="badge">E</span>QualityAgentAttentionKind</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.QualityAgentAttentionStatus"><span class="badge">E</span>QualityAgentAttentionStatus</a>
                 </li>
               
                 <li>
@@ -2846,10 +2818,6 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentAskDetail"><span class="badge">M</span>QualityAgentAskDetail</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.v1.QualityAgentAttentionDetail"><span class="badge">M</span>QualityAgentAttentionDetail</a>
                 </li>
               
                 <li>
@@ -16363,30 +16331,6 @@ identity. The GUID and its meta type are the identity. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.DismissQualityAgentAttentionRequest">DismissQualityAgentAttentionRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.ExplainQualityExecutionRequest">ExplainQualityExecutionRequest</h3>
         <p></p>
 
@@ -18078,82 +18022,6 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>quality_agent_asks</td>
                   <td><a href="#metaxisdata.v1.QualityAgentAsk">QualityAgentAsk</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>next_page_token</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.ListQualityAgentAttentionsRequest">ListQualityAgentAttentionsRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>parent</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>status</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentAttentionStatus">QualityAgentAttentionStatus</a></td>
-                  <td></td>
-                  <td><p>UNSPECIFIED lists every status. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>page_size</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>page_token</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.ListQualityAgentAttentionsResponse">ListQualityAgentAttentionsResponse</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>quality_agent_attentions</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentAttention">QualityAgentAttention</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -20858,127 +20726,6 @@ the question was written into. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p>How many requests the answer covers. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.QualityAgentAttention">QualityAgentAttention</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>agent</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>kind</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentAttentionKind">QualityAgentAttentionKind</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>status</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentAttentionStatus">QualityAgentAttentionStatus</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>session</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The target session to resume when the owner answers; empty for an agent event. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>title</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>question</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>create_time</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>resolve_time</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>resolved_by</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: users/{user}; empty while open. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>target</td>
-                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
-                  <td></td>
-                  <td><p>The target this escalation is about. Empty for an agent-level event such as
-a report anomaly. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>pending_draft_titles</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p>Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
-attention. The owner sees what is waiting before replying, without needing
-the suggestion queue&#39;s own permission. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>case</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
-escalation that is not about one agent work item. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>suggested_patch</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentFieldPatch">QualityAgentFieldPatch</a></td>
-                  <td></td>
-                  <td><p>The concrete change the agent asks for, when the escalation is a proposal. The owner
-reviews a field, a value and a reason instead of a paragraph; empty when the escalation
-asks for a decision that has no single change behind it. </p></td>
                 </tr>
               
             </tbody>
@@ -26229,44 +25976,6 @@ for. </p></td>
 
         
       
-        <h3 id="metaxisdata.v1.ReplyQualityAgentAttentionRequest">ReplyQualityAgentAttentionRequest</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>name</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>message_body</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The owner&#39;s answer. Named message_body so the audit ledger redacts it. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>request_id</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
         <h3 id="metaxisdata.v1.ResumeQualityAgentSessionRequest">ResumeQualityAgentSessionRequest</h3>
         <p></p>
 
@@ -27939,76 +27648,6 @@ resolved zone is what the target stores and what reads return. </p></td>
           </tbody>
         </table>
       
-        <h3 id="metaxisdata.v1.QualityAgentAttentionKind">QualityAgentAttentionKind</h3>
-        <p>QualityAgentAttentionKind is why the owner is needed.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_KIND_BLOCKED</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.v1.QualityAgentAttentionStatus">QualityAgentAttentionStatus</h3>
-        <p>QualityAgentAttentionStatus is the to-do's lifecycle.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_STATUS_OPEN</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_STATUS_RESOLVED</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_ATTENTION_STATUS_DISMISSED</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
         <h3 id="metaxisdata.v1.QualityAgentCaseActionKind">QualityAgentCaseActionKind</h3>
         <p>QualityAgentCaseActionKind is the write one ledger row records. A proposal writes no check, so it</p><p>spends no repair budget; it is listed because "what did the agent decide" is part of the record.</p>
         <table class="enum-table">
@@ -28368,7 +28007,7 @@ resolved zone is what the target stores and what reads return. </p></td>
         </table>
       
         <h3 id="metaxisdata.v1.QualityAgentRequestKind">QualityAgentRequestKind</h3>
-        <p>QualityAgentAttention is one owner escalation inside an agent.</p><p>QualityAgentRequestKind is why a subagent needs the lead.</p>
+        <p>QualityAgentRequestKind is why a subagent needs the lead.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -30832,13 +30471,6 @@ read; only the owner may send.</p></td>
               </tr>
             
               <tr>
-                <td>ListQualityAgentAttentions</td>
-                <td><a href="#metaxisdata.v1.ListQualityAgentAttentionsRequest">ListQualityAgentAttentionsRequest</a></td>
-                <td><a href="#metaxisdata.v1.ListQualityAgentAttentionsResponse">ListQualityAgentAttentionsResponse</a></td>
-                <td><p>List one agent&#39;s escalations. The owner and administrators may read.</p></td>
-              </tr>
-            
-              <tr>
                 <td>ListQualityAgentCases</td>
                 <td><a href="#metaxisdata.v1.ListQualityAgentCasesRequest">ListQualityAgentCasesRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListQualityAgentCasesResponse">ListQualityAgentCasesResponse</a></td>
@@ -30853,22 +30485,6 @@ it to see what the agent is working on and what it has given up on.</p></td>
                 <td><a href="#metaxisdata.v1.ListQualityAgentCaseActionsResponse">ListQualityAgentCaseActionsResponse</a></td>
                 <td><p>List the writes one agent made to checks, newest first: the ledger behind the write budget
 and the answer to &#34;what has it changed&#34;. A case narrows it to one work item&#39;s history.</p></td>
-              </tr>
-            
-              <tr>
-                <td>ReplyQualityAgentAttention</td>
-                <td><a href="#metaxisdata.v1.ReplyQualityAgentAttentionRequest">ReplyQualityAgentAttentionRequest</a></td>
-                <td><a href="#metaxisdata.v1.QualityAgentAttention">QualityAgentAttention</a></td>
-                <td><p>Answer a legacy escalation as the owner. The reply is appended to the lead
-conversation and the attention is resolved; the lead routes the answer. A retry
-on a closed attention is a no-op.</p></td>
-              </tr>
-            
-              <tr>
-                <td>DismissQualityAgentAttention</td>
-                <td><a href="#metaxisdata.v1.DismissQualityAgentAttentionRequest">DismissQualityAgentAttentionRequest</a></td>
-                <td><a href="#metaxisdata.v1.QualityAgentAttention">QualityAgentAttention</a></td>
-                <td><p>Dismiss an escalation without resuming the session. Owner only.</p></td>
               </tr>
             
               <tr>
@@ -31599,16 +31215,6 @@ action.</p></td>
               
               
               <tr>
-                <td>ListQualityAgentAttentions</td>
-                <td>GET</td>
-                <td>/v1/{parent=workspaces/*/qualityAgents/*}/attentions</td>
-                <td></td>
-              </tr>
-              
-            
-              
-              
-              <tr>
                 <td>ListQualityAgentCases</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*/qualityAgents/*}/cases</td>
@@ -31623,26 +31229,6 @@ action.</p></td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*/qualityAgents/*}/caseActions</td>
                 <td></td>
-              </tr>
-              
-            
-              
-              
-              <tr>
-                <td>ReplyQualityAgentAttention</td>
-                <td>POST</td>
-                <td>/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply</td>
-                <td>*</td>
-              </tr>
-              
-            
-              
-              
-              <tr>
-                <td>DismissQualityAgentAttention</td>
-                <td>POST</td>
-                <td>/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss</td>
-                <td>*</td>
               </tr>
               
             
@@ -36289,13 +35875,6 @@ to retrieve the subsequent page. </p></td>
                 </tr>
               
                 <tr>
-                  <td>quality_agent_attention</td>
-                  <td><a href="#metaxisdata.v1.QualityAgentAttentionDetail">QualityAgentAttentionDetail</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
                   <td>quality_agent_ask</td>
                   <td><a href="#metaxisdata.v1.QualityAgentAskDetail">QualityAgentAskDetail</a></td>
                   <td></td>
@@ -36845,7 +36424,7 @@ never the key itself. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityAgentAskDetail">QualityAgentAskDetail</h3>
-        <p>QualityAgentAttentionDetail reports one agent escalation. The client renders the</p><p>message from the structured detail and its own i18n catalog.</p><p>QualityAgentAskDetail reports one owner-facing question from the lead. The client</p><p>renders the prose; the server stores only identities and the bounded text.</p>
+        <p>QualityAgentAskDetail reports one owner-facing question from the lead. The client</p><p>renders the prose; the server stores only identities and the bounded text.</p>
 
         
           <table class="field-table">
@@ -36901,58 +36480,6 @@ never the key itself. </p></td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
                   <td><p>Display paths of the affected targets, bounded by the server. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.v1.QualityAgentAttentionDetail">QualityAgentAttentionDetail</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>agent</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>attention</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
-                </tr>
-              
-                <tr>
-                  <td>kind</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind). </p></td>
-                </tr>
-              
-                <tr>
-                  <td>title</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>question</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
                 </tr>
               
             </tbody>

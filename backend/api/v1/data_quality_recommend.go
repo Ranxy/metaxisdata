@@ -140,8 +140,7 @@ func (s *DataQualityService) RecommendQualityChecks(ctx context.Context, req *co
 			if proposingAgentID <= 0 {
 				continue
 			}
-			s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid},
-				principalIDPointer(currentUserID(ctx)))
+			s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: guid})
 		}
 	}
 

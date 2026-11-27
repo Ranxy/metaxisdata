@@ -216,14 +216,6 @@ func redactAuditResponse(message proto.Message) proto.Message {
 			item.ToolCalls = nil
 		}
 		return cloned
-	case *v1pb.QualityAgentAttention:
-		cloned, ok := proto.Clone(response).(*v1pb.QualityAgentAttention)
-		if !ok {
-			return message
-		}
-		cloned.Title = ""
-		cloned.Question = ""
-		return cloned
 	default:
 		return message
 	}
