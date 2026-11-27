@@ -717,7 +717,7 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 			 sender_session_id, sender_name, intent, audience, reply_to)
 		VALUES ($1, $2,
 			(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		RETURNING `+qualityAgentTranscriptColumns,
 		input.SessionID, input.WorkspaceID, input.Wake, input.Turn, int16(input.Role),
 		int16(input.Origin), input.Content, input.Reasoning, toolCalls, input.ToolCallID,
