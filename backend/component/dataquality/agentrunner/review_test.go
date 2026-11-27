@@ -74,3 +74,15 @@ func TestReviewIsDeterministicAndWritesNothing(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(maintainWake), *outcome.NextWakeAt, time.Minute)
 	require.Empty(t, stores.messages, "a no-op review must not append a transcript row")
 }
+
+func TestNeedsModelIgnoresACaseThatIsNotDue(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	future := time.Now().UTC().Add(time.Hour)
+	stores.openCases = []*store.QualityAgentCaseMessage{{NextActionAt: &future}}
+	engine := NewEngine(stores)
+	needs, err := engine.NeedsModel(context.Background(), reviewSession())
+	require.NoError(t, err)
+	require.False(t, needs)
+}

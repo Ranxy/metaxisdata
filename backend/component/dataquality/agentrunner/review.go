@@ -36,8 +36,11 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
 		return true, nil
 	}
-	if len(e.openCases(ctx, session)) > 0 {
-		return true, nil
+	now := e.now()
+	for _, openCase := range e.openCases(ctx, session) {
+		if openCase.NextActionAt == nil || !openCase.NextActionAt.After(now) {
+			return true, nil
+		}
 	}
 	since := session.CreatedAt
 	if session.LastReviewedAt != nil {
