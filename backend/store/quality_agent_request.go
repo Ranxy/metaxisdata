@@ -188,7 +188,8 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 			 question_key, question_fingerprint, ask_id, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		-- The insert has two active unique identities (dedupe key and fingerprint), so the
-		-- conflict target is deliberately omitted; the fallback below proves which one won.
+		-- conflict target is deliberately omitted. The fallback below resolves a conflict on
+		-- either; a conflict on another unique index leaves no matching row and is reported.
 		ON CONFLICT DO NOTHING
 		RETURNING `+qualityAgentRequestColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.OriginSessionID,
@@ -209,10 +210,7 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 			}
 		}
 		if existing == nil {
-			return nil, false, errors.New("the request conflicted but no active row was found")
-		}
-		if existing.DedupeKey != message.DedupeKey && existing.QuestionFingerprint != message.QuestionFingerprint {
-			return nil, false, errors.New("the request conflicted with a row that matches neither its dedupe key nor its question")
+			return nil, false, errors.New("the request conflicted but no active request matches its dedupe key or question")
 		}
 		if qualityAgentQuestionConflict(existing, message) {
 			return nil, false, common.Errorf(common.Conflict,

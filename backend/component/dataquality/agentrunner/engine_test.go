@@ -296,13 +296,17 @@ func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.Q
 	existing := f.activeRequests[message.DedupeKey]
 	if existing == nil {
 		for _, candidate := range f.requests {
-			if candidate.DedupeKey == message.DedupeKey {
+			if candidate.DedupeKey == message.DedupeKey &&
+				(candidate.Status == store.QualityAgentRequestStatusOpen ||
+					candidate.Status == store.QualityAgentRequestStatusForwarded) {
 				existing = candidate
 				break
 			}
 		}
 	}
 	if existing != nil {
+		// Mirrors store.normalizeQuestionText; the store pure-function test is the source
+		// of truth for the normalization itself.
 		if message.ConflictOnDifferentQuestion &&
 			strings.Join(strings.Fields(existing.Question), " ") != strings.Join(strings.Fields(message.Question), " ") {
 			return nil, false, common.Errorf(common.Conflict,

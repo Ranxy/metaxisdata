@@ -108,3 +108,26 @@ func TestOpenRequestBlockNamesTheStoredQuestionKey(t *testing.T) {
 	require.Contains(t, block, "[FORWARDED]")
 	require.NotContains(t, block, "r3", "a proposal does not accept a question_key")
 }
+
+// A no-case question must not be retried with a case: case is part of both the dedupe
+// key and the fingerprint, so adding one would create a second request.
+func TestOpenRequestBlockMarksQuestionsWithoutACase(t *testing.T) {
+	t.Parallel()
+
+	requests := []*store.QualityAgentRequestMessage{
+		{
+			ResourceID: "r1", Kind: store.QualityAgentRequestKindQuestion,
+			Status: store.QualityAgentRequestStatusOpen, QuestionKey: "timeout",
+			Question: "Raise the timeout?",
+		},
+		{
+			ResourceID: "r2", Kind: store.QualityAgentRequestKindQuestion,
+			Status:   store.QualityAgentRequestStatusOpen,
+			Question: "Is the target healthy?",
+		},
+	}
+
+	block := openRequestBlock(requests)
+	require.Contains(t, block, "question_key=timeout (no case)")
+	require.Contains(t, block, "no question_key (no case; omit question_key and the case, keep the wording)")
+}

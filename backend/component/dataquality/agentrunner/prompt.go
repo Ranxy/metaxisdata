@@ -358,11 +358,11 @@ func openRequestBlock(requests []*store.QualityAgentRequestMessage) string {
 		case request.QuestionKey != "" && request.CaseResourceID != "":
 			key = "question_key=" + request.QuestionKey + " (case " + request.CaseResourceID + ")"
 		case request.QuestionKey != "":
-			key = "question_key=" + request.QuestionKey
+			key = "question_key=" + request.QuestionKey + " (no case)"
 		case request.CaseResourceID != "":
 			key += " (case " + request.CaseResourceID + "; omit question_key to retry)"
 		default:
-			key += " (omit question_key and keep the wording)"
+			key += " (no case; omit question_key and the case, keep the wording)"
 		}
 		status := "OPEN"
 		if request.Status == store.QualityAgentRequestStatusForwarded {
