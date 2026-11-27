@@ -122,9 +122,10 @@ func (s *DataQualityService) ListQualityAgentAsks(ctx context.Context, req *conn
 		response.NextPageToken = token
 	}
 	conversations := s.qualityAgentSessionNames(ctx, workspaceID, qualityAgentAskConversationIDs(asks))
+	coverage := s.qualityAgentAskCoverage(ctx, asks)
 	for _, ask := range asks {
 		response.QualityAgentAsks = append(response.QualityAgentAsks,
-			convertQualityAgentAskToV1(workspaceID, agent.ResourceID, ask, conversations))
+			convertQualityAgentAskToV1(workspaceID, agent.ResourceID, ask, conversations, coverage[ask.ID]))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -147,7 +148,8 @@ func (s *DataQualityService) GetQualityAgentAsk(ctx context.Context, req *connec
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("quality agent ask %q not found", resourceID))
 	}
 	conversations := s.qualityAgentSessionNames(ctx, workspaceID, qualityAgentAskConversationIDs([]*store.QualityAgentAskMessage{ask}))
-	return connect.NewResponse(convertQualityAgentAskToV1(workspaceID, agent.ResourceID, ask, conversations)), nil
+	coverage := s.qualityAgentAskCoverage(ctx, []*store.QualityAgentAskMessage{ask})
+	return connect.NewResponse(convertQualityAgentAskToV1(workspaceID, agent.ResourceID, ask, conversations, coverage[ask.ID])), nil
 }
 
 // qualityAgentRequestParent resolves the list parent to its agent and proves the
@@ -230,6 +232,23 @@ func (s *DataQualityService) qualityAgentSessionNames(ctx context.Context, works
 	return names
 }
 
+// qualityAgentAskCoverage maps each ask to the requests it carries in one read.
+func (s *DataQualityService) qualityAgentAskCoverage(ctx context.Context, asks []*store.QualityAgentAskMessage) map[int64][]*store.QualityAgentRequestMessage {
+	ids := make([]int64, 0, len(asks))
+	for _, ask := range asks {
+		ids = append(ids, ask.ID)
+	}
+	coverage := map[int64][]*store.QualityAgentRequestMessage{}
+	if len(ids) == 0 {
+		return coverage
+	}
+	stored, err := s.store.ListQualityAgentRequestsByAskIDs(ctx, ids)
+	if err != nil {
+		return coverage
+	}
+	return stored
+}
+
 func qualityAgentRequestStatuses(status v1pb.QualityAgentRequestStatus) ([]store.QualityAgentRequestStatus, error) {
 	switch status {
 	case v1pb.QualityAgentRequestStatus_QUALITY_AGENT_REQUEST_STATUS_UNSPECIFIED:
@@ -301,7 +320,7 @@ func convertQualityAgentRequestToV1(workspaceID, agentResourceID string, request
 	return converted
 }
 
-func convertQualityAgentAskToV1(workspaceID, agentResourceID string, ask *store.QualityAgentAskMessage, conversations map[int64]string) *v1pb.QualityAgentAsk {
+func convertQualityAgentAskToV1(workspaceID, agentResourceID string, ask *store.QualityAgentAskMessage, conversations map[int64]string, requests []*store.QualityAgentRequestMessage) *v1pb.QualityAgentAsk {
 	if ask == nil {
 		return nil
 	}
@@ -317,6 +336,16 @@ func convertQualityAgentAskToV1(workspaceID, agentResourceID string, ask *store.
 		ResolveTime:      timestampOrNil(ask.ResolvedAt),
 		CreateTime:       timestamppb.New(ask.CreatedAt),
 		UpdateTime:       timestamppb.New(ask.UpdatedAt),
+		RequestCount:     int32(len(requests)),
+	}
+	seenTargets := map[string]bool{}
+	for _, request := range requests {
+		if request.TargetGUID == "" || seenTargets[request.TargetGUID] {
+			continue
+		}
+		seenTargets[request.TargetGUID] = true
+		converted.Targets = append(converted.Targets,
+			convertQualityTargetIdentityToV1(request.TargetGUID, request.TargetType))
 	}
 	if ask.ConversationSessionID != nil {
 		if name, ok := conversations[*ask.ConversationSessionID]; ok {

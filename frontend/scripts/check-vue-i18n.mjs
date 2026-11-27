@@ -60,6 +60,12 @@ export const DYNAMIC_PREFIXES = [
   // actionKindKey() in src/components/data-quality/QualityAgentCaseActivity.vue maps a
   // ledger action kind to its label key; the checker cannot follow the returned key.
   "qualityAgent.activity.kind",
+  // qualityAgentAskKindKey()/qualityAgentAskStatusKey() in src/utils/qualityAgent.ts
+  // map an ask enum to its label key; agentSessionRoleKey() does the same for a
+  // session role. The checker cannot follow a key a helper returns.
+  "qualityAgent.askKind",
+  "qualityAgent.askStatus",
+  "qualityAgent.role",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.

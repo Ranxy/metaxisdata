@@ -14651,6 +14651,15 @@ components:
                 updateTime:
                     type: string
                     format: date-time
+                targets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTarget'
+                    description: The targets whose requests this question covers.
+                requestCount:
+                    type: integer
+                    description: How many requests the answer covers.
+                    format: int32
             description: |-
                 QualityAgentAsk is one owner-facing question from the lead. It can cover several
                  requests through their ask link.

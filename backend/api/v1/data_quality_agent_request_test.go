@@ -55,7 +55,11 @@ func TestConvertCoordinationRowsNamesTheirRelations(t *testing.T) {
 		AnsweredAt:            &now,
 		CreatedAt:             now,
 		UpdatedAt:             now,
-	}, map[int64]string{conversation: "lead4"})
+	}, map[int64]string{conversation: "lead4"}, []*store.QualityAgentRequestMessage{
+		{TargetGUID: "inst;db;;orders", TargetType: storepb.MetaType_TABLE},
+		{TargetGUID: "inst;db;;orders", TargetType: storepb.MetaType_TABLE},
+		{TargetGUID: "inst;db;;users", TargetType: storepb.MetaType_TABLE},
+	})
 	require.Equal(t, "workspaces/ws/qualityAgentAsks/a1", ask.GetName())
 	require.Equal(t, "workspaces/ws/qualityAgents/agent1", ask.GetAgent())
 	require.Equal(t, "workspaces/ws/qualityAgentSessions/lead4", ask.GetConversation())
@@ -63,6 +67,9 @@ func TestConvertCoordinationRowsNamesTheirRelations(t *testing.T) {
 	require.Equal(t, now.Unix(), ask.GetAnswerTime().AsTime().Unix())
 	require.Equal(t, int64(11), ask.GetMessageSeq())
 	require.Equal(t, int64(12), ask.GetAnswerMessageSeq())
+	require.EqualValues(t, 3, ask.GetRequestCount())
+	require.Len(t, ask.GetTargets(), 2, "targets are deduplicated, requests are not")
+	require.Equal(t, "orders", ask.GetTargets()[0].GetPath().GetObject())
 
 	request := convertQualityAgentRequestToV1("ws", "agent1", &store.QualityAgentRequestMessage{
 		ResourceID:      "r1",

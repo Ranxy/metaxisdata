@@ -7293,6 +7293,8 @@ requests through their ask link.
 | resolve_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The targets whose requests this question covers. |
+| request_count | [int32](#int32) |  | How many requests the answer covers. |
 
 
 

@@ -7,6 +7,7 @@ import {
   NotificationType,
   type OpenLineageDetail,
   OpenLineageFailureKind,
+  type QualityAgentAskDetail,
   type QualityAgentAttentionDetail,
   type SchemaSyncDetail,
   SyncTrigger,
@@ -268,6 +269,25 @@ function qualityAgentAttentionText(
   };
 }
 
+/** One ask: the lead's question, linked to the conversation where it waits. */
+function qualityAgentAskText(detail: QualityAgentAskDetail): NotificationText {
+  const question = detail.question.trim();
+  const agentID = qualityAgentRouteParams(detail.agent)?.agentId ?? "";
+  return {
+    titleKey:
+      question === ""
+        ? "notifications.qualityAgentTitle"
+        : "notifications.qualityAgentTitleWithQuestion",
+    titleParams: {
+      title: detail.title || "Quality agent",
+      question,
+    },
+    messageKey: "notifications.qualityAgentMessage",
+    messageParams: { agent: agentID },
+    href: detail.agent === "" ? undefined : qualityAgentPath(detail.agent),
+  };
+}
+
 /**
  * Describes one notification in the reader's language. A type or a detail this
  * build does not know degrades to a generic line instead of an empty row, so a
@@ -295,6 +315,9 @@ export function describeNotification(
     case NotificationType.DATA_QUALITY_AGENT:
       if (notification.detail.case === "qualityAgentAttention") {
         return qualityAgentAttentionText(notification.detail.value);
+      }
+      if (notification.detail.case === "qualityAgentAsk") {
+        return qualityAgentAskText(notification.detail.value);
       }
       break;
     default:

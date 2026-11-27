@@ -1,3 +1,9 @@
+import {
+  type QualityAgentAsk,
+  QualityAgentAskKind,
+  QualityAgentAskStatus,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+
 /**
  * Resource-name and route helpers for quality agents. A single-resource RPC needs
  * the real workspace segment, so a page opened from an agent name carries both the
@@ -93,4 +99,55 @@ export function qualityAgentSessionRoute(
     name: "QualityAgentSession",
     params: { ...params, sessionId },
   };
+}
+
+/** The label key for what one ask is: a question, an anomaly or an approval. */
+export function qualityAgentAskKindKey(kind: QualityAgentAskKind): string {
+  switch (kind) {
+    case QualityAgentAskKind.QUESTION:
+      return "qualityAgent.askKindQuestion";
+    case QualityAgentAskKind.ANOMALY:
+      return "qualityAgent.askKindAnomaly";
+    case QualityAgentAskKind.APPROVAL:
+      return "qualityAgent.askKindApproval";
+    default:
+      return "qualityAgent.askKindUnspecified";
+  }
+}
+
+/** The label key for an ask's lifecycle. */
+export function qualityAgentAskStatusKey(
+  status: QualityAgentAskStatus
+): string {
+  switch (status) {
+    case QualityAgentAskStatus.OPEN:
+      return "qualityAgent.askStatusOpen";
+    case QualityAgentAskStatus.ANSWERED:
+      return "qualityAgent.askStatusAnswered";
+    case QualityAgentAskStatus.RESOLVED:
+      return "qualityAgent.askStatusResolved";
+    case QualityAgentAskStatus.DISMISSED:
+      return "qualityAgent.askStatusDismissed";
+    default:
+      return "qualityAgent.askStatusUnspecified";
+  }
+}
+
+/**
+ * Whether the ask is still the owner's to answer or see. An ANSWERED ask is
+ * waiting for the lead to route the answer and still belongs in "Needs you".
+ */
+export function qualityAgentAskIsActive(ask: QualityAgentAsk): boolean {
+  return (
+    ask.status === QualityAgentAskStatus.OPEN ||
+    ask.status === QualityAgentAskStatus.ANSWERED
+  );
+}
+
+/** Whether the ask is the pending-draft approval that can reuse the adoption path. */
+export function qualityAgentAskIsApproval(ask: QualityAgentAsk): boolean {
+  return (
+    ask.kind === QualityAgentAskKind.APPROVAL &&
+    ask.status === QualityAgentAskStatus.OPEN
+  );
 }

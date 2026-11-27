@@ -31,6 +31,7 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
+  GetQualityAgentAskRequestSchema,
   GetQualityAgentRequestSchema,
   GetQualityAgentSessionRequestSchema,
   GetQualityCodeTableRequestSchema,
@@ -55,6 +56,7 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityAgentAsksRequestSchema,
   ListQualityAgentAttentionsRequestSchema,
   ListQualityAgentCaseActionsRequestSchema,
   ListQualityAgentCasesRequestSchema,
@@ -80,6 +82,8 @@ import {
   type PublishQualityContractResponse,
   type QualityAgent,
   QualityAgentAdoptionMode,
+  type QualityAgentAsk,
+  QualityAgentAskStatus,
   type QualityAgentAttention,
   QualityAgentAttentionStatus,
   type QualityAgentCase,
@@ -90,6 +94,7 @@ import {
   type QualityAgentSession,
   type QualityAgentSessionMessage,
   QualityAgentSessionMode,
+  QualityAgentSessionRole,
   QualityAgentSessionState,
   type QualityCodeTable,
   type QualityContract,
@@ -1575,6 +1580,10 @@ export interface QualityAgentConfigInput {
     repairMaxPerDay?: number;
     /** Immediate runs per check per rolling day; zero means the server default. */
     runMaxPerRulePerDay?: number;
+    /** Uncovered targets that may be triaged at once; zero uses the server default. */
+    maxTriageSessions?: number;
+    /** Uncovered targets that may enter triage per hour; zero uses the server default. */
+    maxNewTriageSessionsPerHour?: number;
   };
 }
 
@@ -1716,6 +1725,32 @@ export async function listQualityAgentAttentions(
   return response.qualityAgentAttentions;
 }
 
+/** One agent's owner-facing questions. The open ones are the "needs you" list. */
+export async function listQualityAgentAsks(
+  agentName: string,
+  status?: QualityAgentAskStatus,
+  signal?: AbortSignal
+): Promise<QualityAgentAsk[]> {
+  const request = create(ListQualityAgentAsksRequestSchema, {
+    parent: agentName,
+    status: status ?? QualityAgentAskStatus.UNSPECIFIED,
+    pageSize: 100,
+  });
+  const response = await dataQualityClient.listQualityAgentAsks(request, {
+    signal,
+  });
+  return response.qualityAgentAsks;
+}
+
+/** Read one ask, for a deep link or after an answer. */
+export async function getQualityAgentAsk(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityAgentAsk> {
+  const request = create(GetQualityAgentAskRequestSchema, { name });
+  return await dataQualityClient.getQualityAgentAsk(request, { signal });
+}
+
 /**
  * One agent's work items: the checks it could not settle by itself. Empty states lists every
  * state; the board asks for the open ones and lets the server order them.
@@ -1821,12 +1856,13 @@ export async function listQualityAgentReports(
 export async function sendQualityAgentMessage(
   name: string,
   messageBody: string,
-  options: { requestId?: string; signal?: AbortSignal } = {}
+  options: { requestId?: string; replyTo?: string; signal?: AbortSignal } = {}
 ): Promise<QualityAgentSessionMessage> {
   const request = create(SendQualityAgentMessageRequestSchema, {
     name,
     messageBody,
     requestId: options.requestId ?? "",
+    replyTo: options.replyTo ?? "",
   });
   return await dataQualityClient.sendQualityAgentMessage(request, {
     signal: options.signal,
@@ -1864,6 +1900,12 @@ export interface QualityAgentSessionListOptions {
   targetGuid?: string;
   /** UNSPECIFIED keeps both monitor and triage sessions. */
   mode?: QualityAgentSessionMode;
+  /** UNSPECIFIED lists the target work threads; SUBAGENT lists the roster. */
+  role?: QualityAgentSessionRole;
+  /** Keep only one lead's subagents. */
+  parentSession?: string;
+  /** Keep only the subagent with this model-facing name. */
+  subagentName?: string;
   pageSize?: number;
   pageToken?: string;
   signal?: AbortSignal;
@@ -1883,6 +1925,9 @@ export async function listQualityAgentSessionsPage(
     database: options.database ?? "",
     targetGuid: options.targetGuid ?? "",
     mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
+    role: options.role ?? QualityAgentSessionRole.UNSPECIFIED,
+    parentSession: options.parentSession ?? "",
+    subagentName: options.subagentName ?? "",
     agent: options.agent ?? "",
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",

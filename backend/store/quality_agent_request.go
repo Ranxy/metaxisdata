@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -308,6 +309,35 @@ func (s *Store) UpdateQualityAgentRequestStatus(ctx context.Context, resourceID 
 		return nil, false, errors.Wrap(err, "failed to update the quality agent request")
 	}
 	return message, true, nil
+}
+
+// ListQualityAgentRequestsByAskIDs maps each ask to the requests it carries. The ask
+// list uses it to render the affected targets and the request count without an N+1.
+func (s *Store) ListQualityAgentRequestsByAskIDs(ctx context.Context, askIDs []int64) (map[int64][]*QualityAgentRequestMessage, error) {
+	requests := map[int64][]*QualityAgentRequestMessage{}
+	if len(askIDs) == 0 {
+		return requests, nil
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
+		WHERE ask_id = ANY($1) ORDER BY id`, pq.Array(askIDs))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the requests for asks")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		request, err := scanQualityAgentRequest(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan an ask's request")
+		}
+		if request.AskID != nil {
+			requests[*request.AskID] = append(requests[*request.AskID], request)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate an ask's requests")
+	}
+	return requests, nil
 }
 
 // ResolveQualityAgentRequestsForCase closes active requests attached to one case.

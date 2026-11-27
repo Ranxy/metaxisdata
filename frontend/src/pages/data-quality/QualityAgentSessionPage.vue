@@ -24,6 +24,13 @@
       <AlertDescription>{{ error }}</AlertDescription>
     </Alert>
 
+    <Alert class="shrink-0">
+      <Info class="h-4 w-4" />
+      <AlertDescription>
+        {{ t("qualityAgent.subagentBanner", { agent: agentLabel }) }}
+      </AlertDescription>
+    </Alert>
+
     <PageState
       :loading="isLoading && !session"
       :error="loadError"
@@ -58,6 +65,9 @@
               </Badge>
               <Badge :variant="agentSessionModeVariant(session.mode)">
                 {{ t(agentSessionModeKey(session.mode)) }}
+              </Badge>
+              <Badge variant="secondary">
+                {{ t("qualityAgent.subagentReadOnly") }}
               </Badge>
               <Badge
                 v-if="heartbeat.running"
@@ -288,6 +298,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ChevronDown,
+  Info,
   Loader2,
   RefreshCcw,
   Target,
@@ -344,6 +355,7 @@ import {
   qualityAgentSessionName,
 } from "@/utils/qualityAgent";
 import {
+  agentSessionDisplayName,
   agentSessionHeartbeat,
   agentSessionModeKey,
   agentSessionModeVariant,
@@ -423,7 +435,7 @@ const canManage = computed(() =>
 
 const pageTitle = computed(() =>
   session.value
-    ? agentSessionTargetName(session.value)
+    ? agentSessionDisplayName(session.value, t("qualityAgent.roleLead"))
     : t("qualityAgent.sessionDetailTitle")
 );
 

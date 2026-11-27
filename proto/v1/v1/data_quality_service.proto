@@ -4221,6 +4221,10 @@ message QualityAgentAsk {
   google.protobuf.Timestamp resolve_time = 12;
   google.protobuf.Timestamp create_time = 13;
   google.protobuf.Timestamp update_time = 14;
+  // The targets whose requests this question covers.
+  repeated QualityTarget targets = 15;
+  // How many requests the answer covers.
+  int32 request_count = 16;
 }
 
 message ListQualityAgentRequestsRequest {

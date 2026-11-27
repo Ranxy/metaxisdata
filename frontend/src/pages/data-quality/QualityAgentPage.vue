@@ -251,36 +251,36 @@
     <Card v-if="agent">
       <CardHeader class="border-b">
         <div class="flex flex-wrap items-center gap-2">
-          <CardTitle class="text-base">{{ t("qualityAgent.attentionTitle") }}</CardTitle>
+          <CardTitle class="text-base">{{ t("qualityAgent.asksTitle") }}</CardTitle>
           <Badge
-            v-if="attentions.length > 0"
+            v-if="asks.length > 0"
             variant="warning"
           >
-            {{ attentions.length }}
+            {{ asks.length }}
           </Badge>
         </div>
-        <CardDescription>{{ t("qualityAgent.attentionHint") }}</CardDescription>
+        <CardDescription>{{ t("qualityAgent.asksHint") }}</CardDescription>
       </CardHeader>
       <CardContent class="space-y-2 pt-4">
         <p
-          v-if="attentions.length === 0"
+          v-if="asks.length === 0"
           class="text-sm text-muted-foreground"
         >
-          {{ t("qualityAgent.attentionEmpty") }}
+          {{ t("qualityAgent.asksEmpty") }}
         </p>
-        <QualityAgentAttentionItem
-          v-for="attention in attentions"
-          :key="attention.name"
-          :attention="attention"
-          :agent-name="agentName"
+        <QualityAgentAskCard
+          v-for="ask in asks"
+          :key="ask.name"
+          :ask="ask"
           :can-reply="canChat"
           :can-approve="canApprove"
-          :approve-busy="busy"
-          @approve="adoptPending"
-          @resolved="onAttentionResolved"
+          :busy="busy"
+          @reply="replyToAsk"
+          @dismiss="dismissAsk"
+          @approve="approveAsk"
         />
         <p
-          v-if="!canChat && attentions.length > 0"
+          v-if="!canChat && asks.length > 0"
           class="text-xs text-muted-foreground"
         >
           {{ t("qualityAgent.attentionReadOnly") }}
@@ -362,8 +362,8 @@
       <CardHeader class="border-b">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
-            <CardTitle class="text-base">{{ t("qualityAgent.workSessionsTitle") }}</CardTitle>
-            <CardDescription>{{ t("qualityAgent.workSessionsHint") }}</CardDescription>
+            <CardTitle class="text-base">{{ t("qualityAgent.teamTitle") }}</CardTitle>
+            <CardDescription>{{ t("qualityAgent.teamHint") }}</CardDescription>
           </div>
           <Button
             variant="outline"
@@ -377,62 +377,12 @@
         </div>
       </CardHeader>
       <CardContent class="space-y-2 pt-4">
-        <p
-          v-if="sessionsLoading && sessions.length === 0"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("common.loading") }}
-        </p>
-        <p
-          v-else-if="sessionsError"
-          class="text-sm text-destructive"
-        >
-          {{ sessionsError }}
-        </p>
-        <p
-          v-else-if="sessions.length === 0"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("qualityAgent.workSessionsEmpty") }}
-        </p>
-        <div
-          v-for="session in sessions"
-          :key="session.name"
-          class="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-        >
-          <div class="min-w-0">
-            <RouterLink
-              :to="sessionRoute(session)"
-              class="font-medium hover:underline"
-            >
-              {{ agentSessionTargetName(session) }}
-            </RouterLink>
-            <p class="truncate text-xs text-muted-foreground">
-              {{ agentSessionTargetPath(session) }}
-            </p>
-          </div>
-          <div class="flex flex-wrap items-center gap-1">
-            <Badge :variant="agentSessionStateVariant(session.state)">
-              {{ t(agentSessionStateKey(session.state)) }}
-            </Badge>
-            <Badge :variant="agentSessionModeVariant(session.mode)">
-              {{ t(agentSessionModeKey(session.mode)) }}
-            </Badge>
-            <Badge
-              v-if="agentSessionHeartbeat(session).running"
-              variant="info"
-            >
-              {{ t("qualityAgent.sessionRunning") }}
-            </Badge>
-            <span
-              v-if="session.lastActivityTime"
-              class="text-xs text-muted-foreground"
-              :title="formatDateTime(session.lastActivityTime, locale)"
-            >
-              {{ formatRelativeTime(session.lastActivityTime, locale) }}
-            </span>
-          </div>
-        </div>
+        <QualityAgentSubagentList
+          :sessions="sessions"
+          :loading="sessionsLoading"
+          :error="sessionsError"
+          :session-route="sessionRoute"
+        />
       </CardContent>
     </Card>
 
@@ -530,7 +480,7 @@ import { useRoute } from "vue-router";
 import {
   adoptQualityAgentPendingSuggestions,
   getQualityAgent,
-  listQualityAgentAttentions,
+  listQualityAgentAsks,
   listQualityAgentCases,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
@@ -542,9 +492,10 @@ import {
 } from "@/api/data-quality";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
-import QualityAgentAttentionItem from "@/components/data-quality/QualityAgentAttentionItem.vue";
+import QualityAgentAskCard from "@/components/data-quality/QualityAgentAskCard.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
 import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
+import QualityAgentSubagentList from "@/components/data-quality/QualityAgentSubagentList.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -570,30 +521,24 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityAgent,
   QualityAgentAdoptionMode,
-  type QualityAgentAttention,
-  QualityAgentAttentionStatus,
+  type QualityAgentAsk,
   type QualityAgentCase,
   QualityAgentCaseState,
   QualityAgentMessageRole,
   type QualityAgentReport,
   type QualityAgentSession,
   type QualityAgentSessionMessage,
+  QualityAgentSessionRole,
   QualityAgentState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { formatDateTime } from "@/utils/datetime";
 import {
+  qualityAgentAskIsActive,
   qualityAgentName,
   qualityAgentSessionRoute,
   qualityAgentSessionsRoute,
 } from "@/utils/qualityAgent";
 import {
-  agentSessionHeartbeat,
-  agentSessionModeKey,
-  agentSessionModeVariant,
-  agentSessionStateKey,
-  agentSessionStateVariant,
-  agentSessionTargetName,
-  agentSessionTargetPath,
   countMessagesAfterSeq,
   lastTranscriptSeq,
 } from "@/utils/qualityAgentSession";
@@ -607,7 +552,7 @@ const loading = ref(true);
 const error = ref("");
 const busy = ref(false);
 
-const attentions = ref<QualityAgentAttention[]>([]);
+const asks = ref<QualityAgentAsk[]>([]);
 const cases = ref<QualityAgentCase[]>([]);
 const caseHistoryOpen = ref(false);
 const caseHistoryCase = ref<QualityAgentCase>();
@@ -762,7 +707,8 @@ async function loadSessions() {
   try {
     const page = await listQualityAgentSessionsPage({
       agent: agentName.value,
-      pageSize: 5,
+      role: QualityAgentSessionRole.SUBAGENT,
+      pageSize: 8,
     });
     sessions.value = page.sessions;
   } catch (err) {
@@ -772,14 +718,12 @@ async function loadSessions() {
   }
 }
 
-async function loadAttentions() {
+async function loadAsks() {
   try {
-    attentions.value = await listQualityAgentAttentions(
-      agentName.value,
-      QualityAgentAttentionStatus.OPEN
-    );
+    const page = await listQualityAgentAsks(agentName.value);
+    asks.value = page.filter(qualityAgentAskIsActive);
   } catch {
-    attentions.value = [];
+    asks.value = [];
   }
 }
 
@@ -829,11 +773,35 @@ function qualityAgentCaseStateLabel(state: QualityAgentCaseState): string {
   }
 }
 
-async function onAttentionResolved(name: string) {
-  attentions.value = attentions.value.filter(
-    (attention) => attention.name !== name
-  );
-  await loadConversation();
+/** Answer one ask through the one owner channel; the ask link is what marks it. */
+async function replyToAsk(ask: QualityAgentAsk, text: string) {
+  if (busy.value || text.trim() === "") {
+    return;
+  }
+  busy.value = true;
+  chatError.value = "";
+  try {
+    await sendQualityAgentMessage(agentName.value, text.trim(), {
+      replyTo: ask.name,
+      requestId: `ask-${ask.name.split("/").pop()}-${Date.now().toString(36)}`,
+    });
+    await Promise.all([loadAsks(), loadConversation()]);
+    notify.success(t("qualityAgent.askSent"));
+  } catch (err) {
+    notify.error(formatError(err));
+  } finally {
+    busy.value = false;
+  }
+}
+
+/** Dismissal is an owner message, not a separate RPC: the lead closes the ask. */
+async function dismissAsk(ask: QualityAgentAsk) {
+  await replyToAsk(ask, t("qualityAgent.askDismissMessage"));
+}
+
+/** The approval ask reuses the adoption path; it always covers the whole agent. */
+async function approveAsk() {
+  await adoptPending("");
 }
 
 async function loadReports() {
@@ -981,7 +949,7 @@ async function adoptPending(targetGuid = "") {
       targetGuid
     );
     agent.value = await getQualityAgent(agentName.value);
-    await loadAttentions();
+    await loadAsks();
     await loadSessions();
     const message = t("qualityAgent.adoptPendingSuccess", {
       adopted: result.adopted,
@@ -1031,7 +999,7 @@ onMounted(async () => {
     await Promise.all([
       loadConversation(),
       loadReports(),
-      loadAttentions(),
+      loadAsks(),
       loadCases(),
       loadSessions(),
     ]);

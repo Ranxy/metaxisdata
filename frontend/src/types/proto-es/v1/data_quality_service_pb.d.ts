@@ -7988,6 +7988,20 @@ export declare type QualityAgentAsk = Message<"metaxisdata.v1.QualityAgentAsk"> 
    * @generated from field: google.protobuf.Timestamp update_time = 14;
    */
   updateTime?: Timestamp;
+
+  /**
+   * The targets whose requests this question covers.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 15;
+   */
+  targets: QualityTarget[];
+
+  /**
+   * How many requests the answer covers.
+   *
+   * @generated from field: int32 request_count = 16;
+   */
+  requestCount: number;
 };
 
 /**

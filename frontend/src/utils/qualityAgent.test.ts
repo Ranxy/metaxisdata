@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  type QualityAgentAsk,
+  QualityAgentAskKind,
+  QualityAgentAskStatus,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  qualityAgentAskIsActive,
+  qualityAgentAskIsApproval,
+  qualityAgentAskKindKey,
+  qualityAgentAskStatusKey,
   qualityAgentName,
   qualityAgentPath,
   qualityAgentRoute,
@@ -85,5 +94,83 @@ describe("quality agent route helpers", () => {
     expect(
       qualityAgentRouteParams("workspaces/ws/qualityAgents")
     ).toBeUndefined();
+  });
+});
+
+describe("quality agent ask helpers", () => {
+  function ask(
+    kind: QualityAgentAskKind,
+    status: QualityAgentAskStatus
+  ): QualityAgentAsk {
+    return {
+      kind,
+      status,
+    } as QualityAgentAsk;
+  }
+
+  it("maps every kind and status to a catalog key", () => {
+    expect(qualityAgentAskKindKey(QualityAgentAskKind.QUESTION)).toBe(
+      "qualityAgent.askKindQuestion"
+    );
+    expect(qualityAgentAskKindKey(QualityAgentAskKind.ANOMALY)).toBe(
+      "qualityAgent.askKindAnomaly"
+    );
+    expect(qualityAgentAskKindKey(QualityAgentAskKind.APPROVAL)).toBe(
+      "qualityAgent.askKindApproval"
+    );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.OPEN)).toBe(
+      "qualityAgent.askStatusOpen"
+    );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.DISMISSED)).toBe(
+      "qualityAgent.askStatusDismissed"
+    );
+    expect(qualityAgentAskKindKey(QualityAgentAskKind.UNSPECIFIED)).toBe(
+      "qualityAgent.askKindUnspecified"
+    );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.ANSWERED)).toBe(
+      "qualityAgent.askStatusAnswered"
+    );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.RESOLVED)).toBe(
+      "qualityAgent.askStatusResolved"
+    );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.UNSPECIFIED)).toBe(
+      "qualityAgent.askStatusUnspecified"
+    );
+  });
+
+  it("keeps open and answered asks in Needs you", () => {
+    expect(
+      qualityAgentAskIsActive(
+        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.OPEN)
+      )
+    ).toBe(true);
+    expect(
+      qualityAgentAskIsActive(
+        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.ANSWERED)
+      )
+    ).toBe(true);
+    expect(
+      qualityAgentAskIsActive(
+        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.RESOLVED)
+      )
+    ).toBe(false);
+  });
+
+  it("only an open approval ask reuses the adoption path", () => {
+    expect(
+      qualityAgentAskIsApproval(
+        ask(QualityAgentAskKind.APPROVAL, QualityAgentAskStatus.OPEN)
+      )
+    ).toBe(true);
+    expect(
+      qualityAgentAskIsApproval(
+        ask(QualityAgentAskKind.APPROVAL, QualityAgentAskStatus.ANSWERED)
+      )
+    ).toBe(false);
+    expect(
+      qualityAgentAskIsApproval(
+        ask(QualityAgentAskKind.ANOMALY, QualityAgentAskStatus.OPEN)
+      )
+    ).toBe(false);
   });
 });

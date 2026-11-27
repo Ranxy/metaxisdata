@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-4">
     <PageHeader
-      :title="t('qualityAgent.sessionsTitle')"
-      :description="t('qualityAgent.sessionsHint')"
+      :title="t('qualityAgent.teamTitle')"
+      :description="t('qualityAgent.teamPageHint')"
     >
       <template #breadcrumb>
         <QualityAgentBreadcrumb
@@ -149,7 +149,7 @@
         <Table v-else>
           <TableHeader>
             <TableRow>
-              <TableHead>{{ t("qualityAgent.sessionTarget") }}</TableHead>
+              <TableHead>{{ t("qualityAgent.subagentName") }}</TableHead>
               <TableHead class="hidden md:table-cell">{{ t("qualityAgent.sessionMode") }}</TableHead>
               <TableHead>{{ t("qualityAgent.sessionState") }}</TableHead>
               <TableHead class="hidden lg:table-cell">{{ t("qualityAgent.sessionLastActivity") }}</TableHead>
@@ -168,10 +168,11 @@
                   :to="sessionRoute(session)"
                   class="font-medium hover:underline"
                 >
-                  {{ agentSessionTargetName(session) }}
+                  {{ agentSessionDisplayName(session, t("qualityAgent.roleLead")) }}
                 </RouterLink>
                 <p class="truncate text-xs text-muted-foreground">
-                  {{ databaseLabel(session) }} · {{ agentSessionTargetPath(session) }}
+                  {{ agentSessionTargetName(session) }} · {{ databaseLabel(session) }} ·
+                  {{ agentSessionTargetPath(session) }}
                 </p>
               </TableCell>
               <TableCell class="hidden md:table-cell">
@@ -300,6 +301,7 @@ import {
   type QualityAgent,
   type QualityAgentSession,
   QualityAgentSessionMode,
+  QualityAgentSessionRole,
   QualityAgentSessionState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -308,6 +310,7 @@ import {
   qualityAgentSessionRoute,
 } from "@/utils/qualityAgent";
 import {
+  agentSessionDisplayName,
   agentSessionHeartbeat,
   agentSessionModeKey,
   agentSessionModeVariant,
@@ -399,6 +402,7 @@ const {
   fetchPage: async (pageToken, signal) => {
     const page = await listQualityAgentSessionsPage({
       agent: agentName.value,
+      role: QualityAgentSessionRole.SUBAGENT,
       state: Number(stateFilter.value) as QualityAgentSessionState,
       mode: Number(modeFilter.value) as QualityAgentSessionMode,
       database: databaseFilter.value === "-" ? "" : databaseFilter.value,
