@@ -43,6 +43,8 @@ type fakeStore struct {
 	requests             []*store.QualityAgentRequestMessage
 	requestStatusUpdates []store.QualityAgentRequestStatus
 	enrollment           *store.QualityAgentEnrollmentMessage
+	lastSessionFind      *store.FindQualityAgentSessionMessage
+	sessions             []*store.QualityAgentSessionMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -223,8 +225,9 @@ func (f *fakeStore) GetQualityAgentSubagentByAddress(_ context.Context, _ int64,
 	return f.subagents[address], nil
 }
 
-func (*fakeStore) ListQualityAgentSessions(context.Context, *store.FindQualityAgentSessionMessage) ([]*store.QualityAgentSessionMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityAgentSessions(_ context.Context, find *store.FindQualityAgentSessionMessage) ([]*store.QualityAgentSessionMessage, error) {
+	f.lastSessionFind = find
+	return f.sessions, nil
 }
 
 func (f *fakeStore) DeliverQualityAgentMessage(_ context.Context, _ *store.QualityAgentSessionMessage, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error) {
@@ -1190,6 +1193,63 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 }
 
 // fakeToolAudit collects the tool audit entries a wake reports.
+// The roster filters and pages in SQL: the engine must hand the store the search, state
+// and offset instead of filtering one unfiltered page in Go.
+func TestListSubagentsFiltersAndPagesInTheStore(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	lead := &store.QualityAgentSessionMessage{
+		ID: 2, ResourceID: "lead", WorkspaceID: "ws", AgentID: 1,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+	}
+	stores.sessions = []*store.QualityAgentSessionMessage{{
+		ID: 3, ResourceID: "sub-3", WorkspaceID: "ws", AgentID: 1,
+		Role:         storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT,
+		SubagentName: "orders", TargetGUID: "t", BlockedCode: "needs-human",
+		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
+	}}
+	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+
+	output, err := engine.listSubagents(context.Background(), lead,
+		`{"query":"ord","state":"BLOCKED","mode":"MONITOR","limit":10,"offset":20}`)
+	require.NoError(t, err)
+	require.Equal(t, "ord", stores.lastSessionFind.Search)
+	require.Equal(t, []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED},
+		stores.lastSessionFind.States)
+	require.Equal(t, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, stores.lastSessionFind.Mode)
+	require.Equal(t, 20, *stores.lastSessionFind.Offset)
+	require.Equal(t, 10, *stores.lastSessionFind.Limit)
+	require.Contains(t, output, `"next_offset":21`)
+	require.Contains(t, output, `"has_more":false`)
+}
+
+// A message to a needs-human subagent is queued but reported as not wakeable, so the
+// lead knows to involve the owner instead of waiting for a report.
+func TestSendSubagentMessageReportsWhetherTheTargetIsWakeable(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	lead := &store.QualityAgentSessionMessage{
+		ID: 2, ResourceID: "lead", WorkspaceID: "ws", AgentID: 1,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+	}
+	subagent := &store.QualityAgentSessionMessage{
+		ID: 3, ResourceID: "sub", WorkspaceID: "ws", AgentID: 1,
+		Role:            storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT,
+		ParentSessionID: &lead.ID, SubagentName: "orders", TargetGUID: "t",
+		State:       storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
+		BlockedCode: "needs-human",
+	}
+	stores.subagents = map[string]*store.QualityAgentSessionMessage{"orders": subagent}
+	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+
+	output, err := engine.sendSubagentMessage(context.Background(), lead, `{"agent":"orders","message":"check the batch"}`)
+	require.NoError(t, err)
+	require.Contains(t, output, `"wakeable":false`)
+	require.Contains(t, output, `"blocked":"needs-human"`)
+}
+
 // A case verb raises its request before the write so a refused write can never leave
 // an escalated case the lead cannot see; the request it created is then dismissed.
 func TestEscalateCaseDismissesTheRequestWhenTheCaseRefuses(t *testing.T) {
