@@ -45,7 +45,17 @@ The harness treats external services as disposable, but only drops databases it 
 
 ## GitHub Actions
 
-GitHub CI is configured in [/.github/workflows/mysql-integration.yml](../../../.github/workflows/mysql-integration.yml). That workflow uses GitHub Actions `services` for `postgres:16-alpine` and `mysql:8.4` and passes the service endpoints into the tests through the `INTEGRATION_*` variables listed above. Local development therefore uses `testcontainers`, while GitHub Actions uses workflow-managed service containers.
+CI is split into three tiers, so the slow suite never sits between a change and its merge:
+
+- **Pull request** — [integration.yml](../../../.github/workflows/integration.yml) runs `make test-integration-migrator`, and only when a change touches `backend/migrator/**`, the container probe the migrator shares with the harness, `go.mod`/`go.sum`, the Makefile or either integration workflow. That package is six scenarios — fresh install, upgrade, legacy adoption, LATEST versus the increment chain, concurrent replicas and the profile-budget data migration — and the check costs about a minute. LATEST.sql drifting from the incrementals is the failure that breaks every upgrade.
+- **Merge to main** — the same workflow calls [integration-suite.yml](../../../.github/workflows/integration-suite.yml) for the full `make test-integration`. Nobody waits on it, and main is verified minutes after the merge instead of at the next nightly; a red run shows as a failed check on the merge commit, while the tracking issue below is the nightly's.
+- **Nightly** — [nightly.yml](../../../.github/workflows/nightly.yml) runs that same reusable suite on three legs at 02:00 Asia/Shanghai: the baseline (PostgreSQL 16 + MySQL 8.4), PostgreSQL 17, and MySQL 8.0. A red leg opens or refreshes one tracking issue, the pull request that fixes the failure closes it, and a green run leaves it open; [nightly-issue.test.sh](../../../.github/scripts/nightly-issue.test.sh) pins those decisions in the `Scripts` workflow. `workflow_dispatch` takes a `ref`, so a risky branch can be put through the full matrix before it merges.
+
+The merge and nightly tiers use GitHub Actions `services` for PostgreSQL and MySQL and pass the endpoints in through the `INTEGRATION_*` variables above; the pull-request gate starts its own containers with `testcontainers`, like a local run.
+
+None of these is a required status check on `main`: a red gate is a convention, not a merge barrier. Making one required needs care, because a path-filtered workflow leaves its check pending on every pull request it skips, which blocks that merge.
+
+Publishing a release is manual and does not consult this suite. Check the latest integration run on the commit before publishing one: a red merge-to-main run is a failed check on that commit, and the nightly issue tracks the same state.
 
 ## Important harness entry points
 
@@ -57,8 +67,9 @@ GitHub CI is configured in [/.github/workflows/mysql-integration.yml](../../../.
 ## How to run
 
 ```bash
+make test-integration-migrator       # LATEST.sql versus the increment chain only; this is the pull-request gate
 make test-integration-smoke          # every integration test plus migrator fresh-install, upgrade and legacy-adoption paths; skips (exit 0) without Docker or external services
-make test-integration                # every real-server scenario (-race), plus the migrator paths
+make test-integration                # every real-server scenario (-race), plus the migrator paths; the merge-to-main and nightly gate
 make test-integration-mysql          # the MySQL real-server scenarios only
 make test-integration-data-quality   # the data-quality journey plus the scheduling scenarios
 ```

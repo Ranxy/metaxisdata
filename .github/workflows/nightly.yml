@@ -1,0 +1,79 @@
+name: Nightly integration
+
+# The expensive tier: the full suite on the database versions a deployment may
+# run. Nothing here blocks a pull request. A red run opens or refreshes one
+# tracking issue and the pull request that fixes the failure closes it, so an
+# open issue is the queue of work rather than a notification to remember.
+on:
+  schedule:
+    # 02:00 Asia/Shanghai. GitHub evaluates cron in UTC only.
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit or branch to test (empty tests main)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # A manual dispatch must not cancel a nightly in flight, and vice versa.
+  group: nightly-integration
+  cancel-in-progress: false
+
+jobs:
+  suite:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: baseline
+            postgres: 16-alpine
+            mysql: "8.4"
+          - label: postgres 17
+            postgres: 17-alpine
+            mysql: "8.4"
+          - label: mysql 8.0
+            postgres: 16-alpine
+            mysql: "8.0"
+    uses: ./.github/workflows/integration-suite.yml
+    with:
+      postgres: ${{ matrix.postgres }}
+      mysql: ${{ matrix.mysql }}
+      ref: ${{ inputs.ref || github.sha }}
+
+  report:
+    name: Report nightly status
+    needs: [suite]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      # The script always comes from the default branch, never from the branch a
+      # dispatch was started on: a feature branch must not execute its own code
+      # with an issues-write token.
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reconcile the nightly tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.suite.result }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash .github/scripts/nightly-issue.sh

@@ -53,7 +53,7 @@ After any Go change:
 1. **Format** — `gofmt -w` on modified files.
 2. **Lint** — `golangci-lint run --allow-parallel-runners`. Run it **repeatedly until clean**: the linter has a max-issues limit and may not show every issue on the first pass.
 3. **Auto-fix** — `golangci-lint run --fix --allow-parallel-runners`.
-4. **Test** — the relevant `go test` targets; add the integration suites when the change touches schema sync, lineage analysis, or server wiring.
+4. **Test** — the relevant `go test` targets. A change that touches schema sync, lineage analysis or server wiring needs `make test-integration` locally: CI runs only the migration chain (`make test-integration-migrator`) on a pull request, and the full suite when the change lands on main.
 5. **Build** — `go build -ldflags "-w -s" -p=16 -o ./build/metaxisdata ./backend/bin/server/main.go`.
 6. **Tidy** — `go mod tidy` after changing dependencies.
 
@@ -90,7 +90,7 @@ The default build does **not** embed the frontend: `backend/server/server_fronte
 ## Testing
 
 - `go test ./...` is hermetic — no PostgreSQL, MySQL, or Docker.
-- Integration suites carry the `integration` build tag and run the real server against real PostgreSQL + MySQL: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql`. Locally they start `testcontainers-go` and skip (exit 0) when Docker is unavailable; in CI, external-service `INTEGRATION_*` env vars switch them to already-running services. The harness runs the schema migrator and seeds the MySQL fixture schema either way, and partial env config fails fast. Full details: [test/integration/README.md](test/integration/README.md).
+- Integration suites carry the `integration` build tag and run the real server against real PostgreSQL + MySQL: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql`. Locally they start `testcontainers-go` and skip (exit 0) when Docker is unavailable; in CI, external-service `INTEGRATION_*` env vars switch them to already-running services. The harness runs the schema migrator and seeds the MySQL fixture schema either way, and partial env config fails fast. CI runs `make test-integration-migrator` on a pull request, the full suite when a change lands on main, and the nightly database matrix. Full details: [test/integration/README.md](test/integration/README.md).
 
 ## Go Style
 

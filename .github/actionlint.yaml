@@ -1,0 +1,7 @@
+# actionlint's bundled workflow schema predates `jobs.<job_id>.services.<id>.command`
+# (the official schema and GitHub's docs both define it), so only that message is
+# ignored for the one workflow that raises PostgreSQL's connection limit.
+paths:
+  .github/workflows/integration-suite.yml:
+    ignore:
+      - 'unexpected key "command" for "services" section'
