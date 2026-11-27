@@ -1,4 +1,4 @@
-.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-migrator test-integration-mysql test-integration-data-quality test-integration
+.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-migrator test-integration-mysql test-integration-data-quality test-integration-quality-agent test-integration-quality-agent-scale test-integration
 
 # Build metadata baked into the binary: `metaxisdata --version` and the SPA's
 # user menu read it, so a binary built here can be matched to a commit. The
@@ -99,6 +99,15 @@ test-integration-mysql:
 test-integration-data-quality:
 	go test -v -count=1 -tags=integration -run '^(TestDataQualityEnumValidationRealServerIntegration|TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration|TestDataQualityPersonalDataRedactionRealServerIntegration|TestDataQualityRuleTemplateRealServerIntegration|TestDataQualityCodeTableRealServerIntegration)$$' ./backend/test/integration/runner
 
+# The quality-agent suite owns a PostgreSQL service environment: real store contracts,
+# the engine loop, and one real-server owner path. It never needs MySQL.
+test-integration-quality-agent:
+	go test -v -count=1 -race -timeout=15m -tags=integration ./backend/test/integration/qualityagent
+
+# The opt-in enrollment queue scale smoke; not part of the normal gate.
+test-integration-quality-agent-scale:
+	QUALITYAGENT_SCALE=1 go test -v -count=1 -tags=integration -run '^TestQualityAgentEnrollmentQueueHandlesTenThousandTargets$$' ./backend/test/integration/qualityagent
+
 # The migrator gate: six scenarios, each starting its own PostgreSQL, ~30s in
 # all. LATEST.sql and the increment chain describing different schemas is the
 # failure that breaks every user's upgrade, so this is the one part of the
@@ -120,6 +129,7 @@ test-integration-migrator:
 # panic rather than as a test.
 test-integration:
 	go test -v -count=1 -race -timeout=20m -tags=integration ./backend/test/integration/runner
+	go test -v -count=1 -race -timeout=15m -tags=integration ./backend/test/integration/qualityagent
 	go test -count=1 -tags=integration ./backend/migrator/...
 
 # The documentation gate: links, index coverage, size budgets, the English rule,

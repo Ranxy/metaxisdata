@@ -238,3 +238,4 @@ inviting the model somewhere the policy will not follow.
 | `backend/runner/qualityrunner/` | The batch-side intake: events, health events, case opening and closing |
 | `backend/component/tools/quality/agent.go` | The product-only tool bodies the model calls |
 | `backend/store/quality_agent*.go` | Agents, sessions, cases, participation, requests, asks, memory |
+| `backend/test/integration/qualityagent/` | Real-store contract, engine loop and HTTP owner-path scenarios; the fake provider is test-only |
