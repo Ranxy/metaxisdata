@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -53,19 +56,25 @@ type QualityAgentRequestMessage struct {
 	CaseResourceID  string
 	SuggestedPatch  *storepb.QualityAgentFieldPatch
 	DedupeKey       string
-	AskID           *int64
-	Resolution      string
-	ResolvedBy      *int32
-	ForwardedAt     *time.Time
-	ResolvedAt      *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// QuestionFingerprint is derived, not caller-supplied. It catches a retry that
+	// rephrased the dedupe key but repeated the question.
+	QuestionFingerprint string
+	// ConflictOnDifferentQuestion makes a dedupe hit an error instead of a wording
+	// refresh when the text is not the same question.
+	ConflictOnDifferentQuestion bool
+	AskID                       *int64
+	Resolution                  string
+	ResolvedBy                  *int32
+	ForwardedAt                 *time.Time
+	ResolvedAt                  *time.Time
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
 }
 
 const qualityAgentRequestColumns = `id, resource_id, workspace_id, agent_id,
 	origin_session_id, target_guid, target_type, kind, status, title, question,
-	case_resource_id, suggested_patch, dedupe_key, ask_id, resolution, resolved_by,
-	forwarded_at, resolved_at, created_at, updated_at`
+	case_resource_id, suggested_patch, dedupe_key, question_fingerprint, ask_id,
+	resolution, resolved_by, forwarded_at, resolved_at, created_at, updated_at`
 
 // CreateQualityAgentRequest inserts one active request. A retried escalation of the
 // same (agent, dedupe_key) returns the existing OPEN/FORWARDED row.
@@ -148,6 +157,7 @@ func prepareQualityAgentRequest(message *QualityAgentRequestMessage) (string, []
 	if message.UpdatedAt.IsZero() {
 		message.UpdatedAt = now
 	}
+	message.QuestionFingerprint = qualityAgentQuestionFingerprint(message)
 	resourceID := message.ResourceID
 	var err error
 	if resourceID == "" {
@@ -172,22 +182,33 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		INSERT INTO quality_agent_request
 			(resource_id, workspace_id, agent_id, origin_session_id, target_guid, target_type,
 			 kind, status, title, question, case_resource_id, suggested_patch, dedupe_key,
-			 ask_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-		ON CONFLICT (agent_id, dedupe_key) WHERE status IN (1, 2) DO NOTHING
+			 question_fingerprint, ask_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		ON CONFLICT DO NOTHING
 		RETURNING `+qualityAgentRequestColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.OriginSessionID,
 		message.TargetGUID, int16(message.TargetType), int16(message.Kind), int16(message.Status),
 		message.Title, message.Question, message.CaseResourceID, patchJSON, message.DedupeKey,
-		message.AskID, message.CreatedAt, message.UpdatedAt)
+		message.QuestionFingerprint, message.AskID, message.CreatedAt, message.UpdatedAt)
 	created, err := scanQualityAgentRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		existing, readErr := getActiveQualityAgentRequestTx(ctx, tx, message.AgentID, message.DedupeKey)
 		if readErr != nil {
 			return nil, false, readErr
 		}
+		if existing == nil && message.QuestionFingerprint != "" {
+			existing, readErr = getActiveQualityAgentRequestByFingerprintTx(ctx, tx, message.AgentID, message.QuestionFingerprint)
+			if readErr != nil {
+				return nil, false, readErr
+			}
+		}
 		if existing == nil {
 			return nil, false, errors.New("the request conflicted but no active row was found")
+		}
+		if message.ConflictOnDifferentQuestion && existing.Question != message.Question {
+			return nil, false, common.Errorf(common.Conflict,
+				"the question key is already used by request %s for a different question: %s; choose another question_key or follow up on that request",
+				existing.ResourceID, existing.Question)
 		}
 		// A repeated escalation refreshes what the lead reads, without a second
 		// notification. A forwarded request is left alone: the owner may already be
@@ -212,6 +233,31 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		return nil, false, errors.Wrap(err, "failed to create the quality agent request")
 	}
 	return created, true, nil
+}
+
+// qualityAgentQuestionFingerprint identifies the same question across a drifted
+// dedupe key. The case id is normalized by the caller, so qualityAgentCases/x and x
+// produce one fingerprint.
+func qualityAgentQuestionFingerprint(message *QualityAgentRequestMessage) string {
+	if message == nil || message.Question == "" {
+		return ""
+	}
+	normalized := strings.Join(strings.Fields(message.Question), " ")
+	sum := sha256.Sum256([]byte(message.TargetGUID + "\x00" + message.CaseResourceID + "\x00" + normalized))
+	return hex.EncodeToString(sum[:])
+}
+
+func getActiveQualityAgentRequestByFingerprintTx(ctx context.Context, tx *sql.Tx, agentID int64, fingerprint string) (*QualityAgentRequestMessage, error) {
+	message, err := scanQualityAgentRequest(tx.QueryRowContext(ctx,
+		`SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
+		 WHERE agent_id = $1 AND question_fingerprint = $2 AND status IN (1, 2)`, agentID, fingerprint))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the fingerprint's quality agent request")
+	}
+	return message, nil
 }
 
 func getActiveQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, agentID int64, dedupeKey string) (*QualityAgentRequestMessage, error) {
@@ -378,8 +424,9 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 	err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&originID, &message.TargetGUID, &targetType, &kind, &status, &message.Title,
-		&message.Question, &message.CaseResourceID, &patch, &message.DedupeKey, &askID,
-		&message.Resolution, &resolvedBy, &forwarded, &resolved, &message.CreatedAt, &message.UpdatedAt,
+		&message.Question, &message.CaseResourceID, &patch, &message.DedupeKey,
+		&message.QuestionFingerprint, &askID, &message.Resolution, &resolvedBy,
+		&forwarded, &resolved, &message.CreatedAt, &message.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

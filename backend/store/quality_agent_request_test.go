@@ -20,7 +20,8 @@ func TestScanQualityAgentRequest(t *testing.T) {
 		int64(1), "req", "ws", int64(3), sql.NullInt64{Int64: origin, Valid: true},
 		"1;shop;;orders", int16(storepb.MetaType_TABLE), int16(QualityAgentRequestKindDecision),
 		int16(QualityAgentRequestStatusForwarded), "title", "question", "case-1", nil,
-		"target:1;shop;;orders:case:case-1:decision", sql.NullInt64{Int64: ask, Valid: true},
+		"target:1;shop;;orders:case:case-1:decision", "fingerprint",
+		sql.NullInt64{Int64: ask, Valid: true},
 		"", sql.NullInt32{}, sql.NullTime{Time: now, Valid: true}, sql.NullTime{}, now, now,
 	}
 	message, err := scanQualityAgentRequest(&fakeScanner{values: values})
@@ -29,6 +30,7 @@ func TestScanQualityAgentRequest(t *testing.T) {
 	require.Equal(t, QualityAgentRequestStatusForwarded, message.Status)
 	require.Equal(t, origin, *message.OriginSessionID)
 	require.Equal(t, ask, *message.AskID)
+	require.Equal(t, "fingerprint", message.QuestionFingerprint)
 	require.NotNil(t, message.ForwardedAt)
 }
 
@@ -53,4 +55,23 @@ func TestScanQualityAgentAsk(t *testing.T) {
 	require.Equal(t, "proposal:t", message.DedupeKey)
 	require.Equal(t, "inst;db;;t", message.TargetGUID)
 	require.Equal(t, storepb.MetaType_TABLE, message.TargetType)
+}
+
+func TestQuestionFingerprintNormalizesWhitespaceAndScope(t *testing.T) {
+	t.Parallel()
+
+	base := &QualityAgentRequestMessage{
+		TargetGUID: "inst;db;;orders", CaseResourceID: "case-1", Question: "Raise  the timeout?",
+	}
+	first := qualityAgentQuestionFingerprint(base)
+	require.NotEmpty(t, first)
+	spaced := *base
+	spaced.Question = " Raise the timeout? "
+	require.Equal(t, first, qualityAgentQuestionFingerprint(&spaced), "whitespace is not a different question")
+	otherCase := *base
+	otherCase.CaseResourceID = "case-2"
+	require.NotEqual(t, first, qualityAgentQuestionFingerprint(&otherCase))
+	otherTarget := *base
+	otherTarget.TargetGUID = "inst;db;;users"
+	require.NotEqual(t, first, qualityAgentQuestionFingerprint(&otherTarget))
 }

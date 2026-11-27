@@ -51,6 +51,7 @@ type fakeStore struct {
 	answerFrom           store.QualityAgentRequestStatus
 	asks                 []*store.QualityAgentAskMessage
 	requestsByAsk        map[int64][]*store.QualityAgentRequestMessage
+	activeRequests       map[string]*store.QualityAgentRequestMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -274,6 +275,9 @@ func (*fakeStore) CreateQualityAgentAsk(_ context.Context, message *store.Qualit
 }
 
 func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error) {
+	if existing := f.activeRequests[message.DedupeKey]; existing != nil {
+		return existing, false, nil
+	}
 	if message.ResourceID == "" {
 		message.ResourceID = fmt.Sprintf("request-%d", len(f.requests)+1)
 	}
@@ -1332,6 +1336,64 @@ func TestSendSubagentMessageReportsWhetherTheTargetIsWakeable(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, output, `"wakeable":false`)
 	require.Contains(t, output, `"blocked":"needs-human"`)
+}
+
+// A question key is the stable identity of one question; two different decisions on the
+// same target must produce two requests, while a case-scoped question derives its key
+// from the case before any explicit suffix is needed.
+func TestSendLeadMessageDerivesQuestionDedupeKeys(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Raise the timeout?","question_key":"timeout"}`)
+	require.NoError(t, err)
+	_, err = engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Pause the check?","question_key":"pause-check"}`)
+	require.NoError(t, err)
+	require.Len(t, stores.requests, 2)
+	require.Equal(t, "target:t:question:timeout", stores.requests[0].DedupeKey)
+	require.Equal(t, "target:t:question:pause-check", stores.requests[1].DedupeKey)
+
+	_, err = engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Is this case settled?","case":"qualityAgentCases/c1"}`)
+	require.NoError(t, err)
+	require.Equal(t, "case:c1", stores.requests[2].DedupeKey)
+	require.Equal(t, "c1", stores.requests[2].CaseResourceID)
+
+	_, err = engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Should the timeout change?","case":"c1","question_key":"timeout"}`)
+	require.NoError(t, err)
+	require.Equal(t, "case:c1:timeout", stores.requests[3].DedupeKey)
+}
+
+// A retry with the same question and key reports the existing request instead of
+// appending a second question or a second notice.
+func TestSendLeadMessageReportsADuplicateQuestion(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	stores.activeRequests = map[string]*store.QualityAgentRequestMessage{
+		"target:t:question:timeout": {ResourceID: "r1", Question: "Raise the timeout?"},
+	}
+
+	output, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Raise the timeout?","question_key":"timeout"}`)
+	require.NoError(t, err)
+	require.Contains(t, output, `"duplicate":true`)
+	require.Contains(t, output, "qualityAgentRequests/r1")
+	require.Empty(t, stores.requests)
+}
+
+func TestSendLeadMessageRejectsAnInvalidQuestionKey(t *testing.T) {
+	t.Parallel()
+
+	_, engine, session := newOrchestrationHarness(t)
+	for _, key := range []string{"Timeout", "has space", "q_123", "-leading"} {
+		_, err := engine.sendLeadMessage(context.Background(), session,
+			`{"intent":"QUESTION","message":"A question?","question_key":"`+key+`"}`)
+		require.Error(t, err)
+	}
 }
 
 // A case verb raises its request before the write so a refused write can never leave

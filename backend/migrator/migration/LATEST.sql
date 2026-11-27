@@ -2014,6 +2014,9 @@ CREATE TABLE IF NOT EXISTS quality_agent_request (
     -- Stored as QualityAgentFieldPatch (proto/store/store/data_quality.proto)
     suggested_patch JSONB,
     dedupe_key TEXT NOT NULL DEFAULT '',
+    -- Hash of target, case and normalized question: the same question retried under a
+    -- drifted key still resolves to the existing active request.
+    question_fingerprint TEXT NOT NULL DEFAULT '',
     ask_id INT8 REFERENCES quality_agent_ask(id) ON DELETE SET NULL,
     resolution TEXT NOT NULL DEFAULT '',
     resolved_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
@@ -2026,6 +2029,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_request_resource
     ON quality_agent_request(resource_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_request_active_dedupe
     ON quality_agent_request(agent_id, dedupe_key) WHERE status IN (1, 2);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_request_fingerprint
+    ON quality_agent_request(agent_id, question_fingerprint)
+    WHERE question_fingerprint <> '' AND status IN (1, 2);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_request_agent_status
     ON quality_agent_request(agent_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_request_target

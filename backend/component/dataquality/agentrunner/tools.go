@@ -154,7 +154,7 @@ func (e *Engine) executeTool(
 			CaseResourceID: input.Case,
 			Title:          "A paused check needs a decision",
 			Question:       "The check was paused because it could not produce a verdict; decide whether to resume, archive or replace it.",
-			DedupeKey:      fmt.Sprintf("target:%s:case:%s:control", session.TargetGUID, input.Case),
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:control", session.TargetGUID, normalizeCaseResourceID(input.Case)),
 		})
 		if reqErr != nil {
 			return "", reqErr
@@ -188,7 +188,7 @@ func (e *Engine) executeTool(
 			CaseResourceID: input.Case,
 			Title:          "A check change needs approval",
 			Question:       question,
-			DedupeKey:      fmt.Sprintf("target:%s:case:%s:proposal", session.TargetGUID, input.Case),
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:proposal", session.TargetGUID, normalizeCaseResourceID(input.Case)),
 		})
 		if reqErr != nil {
 			return "", reqErr
@@ -217,7 +217,7 @@ func (e *Engine) executeTool(
 			CaseResourceID: input.Case,
 			Title:          "A work item needs a decision",
 			Question:       input.Reason,
-			DedupeKey:      fmt.Sprintf("target:%s:case:%s:decision", session.TargetGUID, input.Case),
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:decision", session.TargetGUID, normalizeCaseResourceID(input.Case)),
 		})
 		if reqErr != nil {
 			return "", reqErr

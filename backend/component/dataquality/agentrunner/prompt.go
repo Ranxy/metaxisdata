@@ -48,6 +48,10 @@ func qualityPrompt() *agent.Prompt {
 		"  belong in cases and reports, not in the lead's inbox.",
 		"- A report is self-contained: target, what you found, what you did, what you need and",
 		"  evidence references. The lead does not see your transcript.",
+		"- A QUESTION needs a stable question_key: reuse the same key only when retrying the",
+		"  same question, give a different decision a different key (for example timeout or",
+		"  pause-check), and never invent a random id. A question about one case may omit it",
+		"  when the case id alone identifies the decision.",
 	}
 	return agent.NewPrompt(
 		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
@@ -227,6 +231,7 @@ func wakePrompt(
 	pending []*store.QualityAgentTranscriptMessage,
 	agent *store.QualityAgentMessage,
 	cases []*store.QualityAgentCaseMessage,
+	requests []*store.QualityAgentRequestMessage,
 	participation agentpolicy.Participation,
 ) string {
 	events, asks, agents := 0, 0, 0
@@ -283,7 +288,7 @@ func wakePrompt(
 			"[triage wake %d] This target has no quality coverage yet.%s %s You cannot publish a contract or edit a check. If nothing is worth monitoring, say so briefly and record why. Do not repeat work you already recorded in an earlier triage. Target: %s. Objective: %s.",
 			wake, pendingNote, coverage, target, objective)
 	}
-	work := participationBlock(participation) + openCaseBlock(cases)
+	work := participationBlock(participation) + openCaseBlock(cases) + openRequestBlock(requests)
 	switch {
 	case asks > 0:
 		return fmt.Sprintf(
@@ -333,6 +338,25 @@ func pendingAgentMessagesBlock(pending []*store.QualityAgentTranscriptMessage, l
 // per-wake user message because the level is per target, and it repeats the boundary in the
 // model's words so the prompt and the runtime gate cannot disagree: the gate re-reads the
 // level when a verb is requested, and this sentence is only its view.
+// openRequestBlock shows the questions this subagent already has with the lead. The
+// model can reuse a question_key instead of inventing one, and a duplicate question is
+// visible before it is sent.
+func openRequestBlock(requests []*store.QualityAgentRequestMessage) string {
+	if len(requests) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	_, _ = builder.WriteString("\nYour open requests with the lead (reuse a question_key only for the same question):")
+	for index, request := range requests {
+		if index >= 3 {
+			break
+		}
+		fmt.Fprintf(&builder, "\n- %s [%s] %s", requestName(request.ResourceID),
+			request.DedupeKey, truncateRunes(request.Question, 200))
+	}
+	return builder.String()
+}
+
 func participationBlock(participation agentpolicy.Participation) string {
 	level := participation
 	if level == agentpolicy.ParticipationUnset {

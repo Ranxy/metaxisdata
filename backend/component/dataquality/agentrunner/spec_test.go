@@ -102,8 +102,8 @@ func TestPromptsMentionOnlyTheirSpecTools(t *testing.T) {
 			agent := capabilityTestAgent(capabilities...)
 			conversation := &store.QualityAgentSessionMessage{Mode: mode, Kind: 2}
 			text := renderSystemPrompt(spec, agent, "en-US") + "\n" +
-				wakePrompt(session, 1, nil, agent, nil, agentpolicy.ParticipationUnset) + "\n" +
-				wakePrompt(conversation, 1, nil, agent, nil, agentpolicy.ParticipationUnset)
+				wakePrompt(session, 1, nil, agent, nil, nil, agentpolicy.ParticipationUnset) + "\n" +
+				wakePrompt(conversation, 1, nil, agent, nil, nil, agentpolicy.ParticipationUnset)
 			allowed := toolSpecNames(toolsFor(spec, agent))
 			for _, candidate := range namePattern.FindAllString(text, -1) {
 				if !known[candidate] {
@@ -153,7 +153,7 @@ func TestCapabilityMatrix(t *testing.T) {
 				Origin: storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			}}
 			lead := &store.QualityAgentSessionMessage{Kind: 2}
-			instruction := wakePrompt(lead, 1, ask, agent, nil, agentpolicy.ParticipationUnset)
+			instruction := wakePrompt(lead, 1, ask, agent, nil, nil, agentpolicy.ParticipationUnset)
 			require.Equal(t, has(agentcapability.Adopt), strings.Contains(instruction, "adopt_pending_drafts"),
 				"an owner-question wake mentions the adoption tool only when adopt is configured")
 		}

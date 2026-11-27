@@ -311,7 +311,8 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	wake := session.WakeCount + 1
 	wakeStartedAt := e.now()
 	cases := e.openCases(ctx, session)
-	instruction := wakePrompt(session, wake, pending, agent, cases, e.participation(ctx, session))
+	requests := e.openRequests(ctx, session)
+	instruction := wakePrompt(session, wake, pending, agent, cases, requests, e.participation(ctx, session))
 	if systemChanged {
 		// The stored system prompt was rewritten on this wake. The notice is part of
 		// the wake message, so the transcript stays append-only and the model is told
@@ -369,6 +370,31 @@ func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessi
 		return nil
 	}
 	return cases
+}
+
+// openRequests reads the questions this subagent already has with the lead. A read
+// failure degrades to no block, not a failed wake.
+func (e *Engine) openRequests(ctx context.Context, session *store.QualityAgentSessionMessage) []*store.QualityAgentRequestMessage {
+	if session == nil || isLeadSession(session) || session.AgentID == 0 || session.TargetGUID == "" {
+		return nil
+	}
+	requests, err := e.store.ListQualityAgentRequests(ctx, session.AgentID,
+		[]store.QualityAgentRequestStatus{
+			store.QualityAgentRequestStatusOpen,
+			store.QualityAgentRequestStatusForwarded,
+		}, session.TargetGUID, 5)
+	if err != nil {
+		slog.Warn("failed to read the target's open requests",
+			slog.String("session", session.ResourceID), log.WithError(err))
+		return nil
+	}
+	out := make([]*store.QualityAgentRequestMessage, 0, len(requests))
+	for _, request := range requests {
+		if request.OriginSessionID != nil && *request.OriginSessionID == session.ID {
+			out = append(out, request)
+		}
+	}
+	return out
 }
 
 // participation resolves how far this agent may go on this target. A read failure degrades to

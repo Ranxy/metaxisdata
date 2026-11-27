@@ -106,6 +106,10 @@ func targetToolSpecs() []toolSpec {
 				"message": map[string]any{"type": "string", "description": "the report or question; the lead does not see your transcript"},
 				"intent":  map[string]any{"type": "string", "enum": []string{"REPORT", "QUESTION", "ANSWER"}, "description": "what the message is"},
 				"case":    map[string]any{"type": "string", "description": "optional qualityAgentCases id the message is about"},
+				"question_key": map[string]any{
+					"type":        "string",
+					"description": "stable short slug for one QUESTION, e.g. timeout or pause-check. Reuse it only when retrying the same question; a different decision needs a different key. Omit when the question is about one case and the case id is enough.",
+				},
 			}, "required": []string{"message"}},
 			meta: internalMeta(),
 		},
