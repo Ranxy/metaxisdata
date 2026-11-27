@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
@@ -261,6 +262,23 @@ func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.Qua
 	return f.requests, nil
 }
 
+func (f *fakeStore) ListQualityAgentOpenQuestions(_ context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	out := make([]*store.QualityAgentRequestMessage, 0, len(f.requests))
+	for index := len(f.requests) - 1; index >= 0 && len(out) < limit; index-- {
+		request := f.requests[index]
+		if request.AgentID == agentID && request.TargetGUID == targetGUID &&
+			request.Kind == store.QualityAgentRequestKindQuestion &&
+			(request.Status == store.QualityAgentRequestStatusOpen ||
+				request.Status == store.QualityAgentRequestStatusForwarded) {
+			out = append(out, request)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
 	f.requestStatusUpdates = append(f.requestStatusUpdates, to)
 	return &store.QualityAgentRequestMessage{Status: to}, true, nil
@@ -275,11 +293,28 @@ func (*fakeStore) CreateQualityAgentAsk(_ context.Context, message *store.Qualit
 }
 
 func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error) {
-	if existing := f.activeRequests[message.DedupeKey]; existing != nil {
+	existing := f.activeRequests[message.DedupeKey]
+	if existing == nil {
+		for _, candidate := range f.requests {
+			if candidate.DedupeKey == message.DedupeKey {
+				existing = candidate
+				break
+			}
+		}
+	}
+	if existing != nil {
+		if message.ConflictOnDifferentQuestion &&
+			strings.Join(strings.Fields(existing.Question), " ") != strings.Join(strings.Fields(message.Question), " ") {
+			return nil, false, common.Errorf(common.Conflict,
+				"the question key is already used by request %s for a different question", existing.ResourceID)
+		}
 		return existing, false, nil
 	}
 	if message.ResourceID == "" {
 		message.ResourceID = fmt.Sprintf("request-%d", len(f.requests)+1)
+	}
+	if message.Status == 0 {
+		message.Status = store.QualityAgentRequestStatusOpen
 	}
 	f.requests = append(f.requests, message)
 	notice.SessionID = lead.ID
@@ -1353,7 +1388,9 @@ func TestSendLeadMessageDerivesQuestionDedupeKeys(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, stores.requests, 2)
 	require.Equal(t, "target:t:question:timeout", stores.requests[0].DedupeKey)
+	require.Equal(t, "timeout", stores.requests[0].QuestionKey)
 	require.Equal(t, "target:t:question:pause-check", stores.requests[1].DedupeKey)
+	require.Equal(t, "pause-check", stores.requests[1].QuestionKey)
 
 	_, err = engine.sendLeadMessage(context.Background(), session,
 		`{"intent":"QUESTION","message":"Is this case settled?","case":"qualityAgentCases/c1"}`)
@@ -1374,7 +1411,7 @@ func TestSendLeadMessageReportsADuplicateQuestion(t *testing.T) {
 
 	stores, engine, session := newOrchestrationHarness(t)
 	stores.activeRequests = map[string]*store.QualityAgentRequestMessage{
-		"target:t:question:timeout": {ResourceID: "r1", Question: "Raise the timeout?"},
+		"target:t:question:timeout": {ResourceID: "r1", Question: "Raise the timeout?", QuestionKey: "timeout"},
 	}
 
 	output, err := engine.sendLeadMessage(context.Background(), session,
@@ -1382,6 +1419,7 @@ func TestSendLeadMessageReportsADuplicateQuestion(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, output, `"duplicate":true`)
 	require.Contains(t, output, "qualityAgentRequests/r1")
+	require.Contains(t, output, `"question_key":"timeout"`)
 	require.Empty(t, stores.requests)
 }
 
@@ -1394,6 +1432,64 @@ func TestSendLeadMessageRejectsAnInvalidQuestionKey(t *testing.T) {
 			`{"intent":"QUESTION","message":"A question?","question_key":"`+key+`"}`)
 		require.Error(t, err)
 	}
+}
+
+func TestSendLeadMessageRejectsAnEmptyQuestion(t *testing.T) {
+	t.Parallel()
+
+	_, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"  ","question_key":"timeout"}`)
+	require.Error(t, err)
+}
+
+// A retry that regenerates the same question with different whitespace is the same
+// question, not a key conflict.
+func TestSendLeadMessageTreatsAWhitespaceRetryAsTheSameQuestion(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Raise the timeout?","question_key":"timeout"}`)
+	require.NoError(t, err)
+
+	output, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":" Raise\nthe timeout? ","question_key":"timeout"}`)
+	require.NoError(t, err)
+	require.Contains(t, output, `"duplicate":true`)
+	require.Len(t, stores.requests, 1)
+}
+
+// Reusing a key for a different decision is a conflict, not an overwrite.
+func TestSendLeadMessageRejectsReusingAKeyForAnotherQuestion(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Raise the timeout?","question_key":"timeout"}`)
+	require.NoError(t, err)
+
+	_, err = engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Pause the check?","question_key":"timeout"}`)
+	require.Error(t, err)
+	require.Len(t, stores.requests, 1)
+}
+
+// The prompt only needs the target's active questions; non-question requests must not
+// crowd them out of the bounded read.
+func TestOpenRequestsListsOnlyTheTargetOpenQuestions(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	stores.requests = []*store.QualityAgentRequestMessage{
+		{ResourceID: "q1", AgentID: session.AgentID, TargetGUID: session.TargetGUID, Kind: store.QualityAgentRequestKindQuestion, Status: store.QualityAgentRequestStatusOpen},
+		{ResourceID: "d1", AgentID: session.AgentID, TargetGUID: session.TargetGUID, Kind: store.QualityAgentRequestKindDecision, Status: store.QualityAgentRequestStatusOpen},
+		{ResourceID: "q2", AgentID: session.AgentID, TargetGUID: "other", Kind: store.QualityAgentRequestKindQuestion, Status: store.QualityAgentRequestStatusOpen},
+	}
+
+	requests := engine.openRequests(context.Background(), session)
+	require.Len(t, requests, 1)
+	require.Equal(t, "q1", requests[0].ResourceID)
 }
 
 // A case verb raises its request before the write so a refused write can never leave

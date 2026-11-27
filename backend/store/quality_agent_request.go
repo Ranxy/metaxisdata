@@ -56,6 +56,9 @@ type QualityAgentRequestMessage struct {
 	CaseResourceID  string
 	SuggestedPatch  *storepb.QualityAgentFieldPatch
 	DedupeKey       string
+	// QuestionKey is the subagent-chosen slug for a QUESTION. It is empty when the
+	// case or the wording alone identifies the question.
+	QuestionKey string
 	// QuestionFingerprint is derived, not caller-supplied. It catches a retry that
 	// rephrased the dedupe key but repeated the question.
 	QuestionFingerprint string
@@ -73,8 +76,8 @@ type QualityAgentRequestMessage struct {
 
 const qualityAgentRequestColumns = `id, resource_id, workspace_id, agent_id,
 	origin_session_id, target_guid, target_type, kind, status, title, question,
-	case_resource_id, suggested_patch, dedupe_key, question_fingerprint, ask_id,
-	resolution, resolved_by, forwarded_at, resolved_at, created_at, updated_at`
+	case_resource_id, suggested_patch, dedupe_key, question_key, question_fingerprint,
+	ask_id, resolution, resolved_by, forwarded_at, resolved_at, created_at, updated_at`
 
 // CreateQualityAgentRequest inserts one active request. A retried escalation of the
 // same (agent, dedupe_key) returns the existing OPEN/FORWARDED row.
@@ -182,14 +185,17 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		INSERT INTO quality_agent_request
 			(resource_id, workspace_id, agent_id, origin_session_id, target_guid, target_type,
 			 kind, status, title, question, case_resource_id, suggested_patch, dedupe_key,
-			 question_fingerprint, ask_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			 question_key, question_fingerprint, ask_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		-- The insert has two active unique identities (dedupe key and fingerprint), so the
+		-- conflict target is deliberately omitted; the fallback below proves which one won.
 		ON CONFLICT DO NOTHING
 		RETURNING `+qualityAgentRequestColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.OriginSessionID,
 		message.TargetGUID, int16(message.TargetType), int16(message.Kind), int16(message.Status),
 		message.Title, message.Question, message.CaseResourceID, patchJSON, message.DedupeKey,
-		message.QuestionFingerprint, message.AskID, message.CreatedAt, message.UpdatedAt)
+		message.QuestionKey, message.QuestionFingerprint, message.AskID, message.CreatedAt,
+		message.UpdatedAt)
 	created, err := scanQualityAgentRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		existing, readErr := getActiveQualityAgentRequestTx(ctx, tx, message.AgentID, message.DedupeKey)
@@ -205,24 +211,44 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		if existing == nil {
 			return nil, false, errors.New("the request conflicted but no active row was found")
 		}
-		if message.ConflictOnDifferentQuestion && existing.Question != message.Question {
+		if existing.DedupeKey != message.DedupeKey && existing.QuestionFingerprint != message.QuestionFingerprint {
+			return nil, false, errors.New("the request conflicted with a row that matches neither its dedupe key nor its question")
+		}
+		if qualityAgentQuestionConflict(existing, message) {
 			return nil, false, common.Errorf(common.Conflict,
-				"the question key is already used by request %s for a different question: %s; choose another question_key or follow up on that request",
+				"the question key is already used by request %s for a different question: %s; choose another question_key or send a report about that request",
 				existing.ResourceID, existing.Question)
 		}
 		// A repeated escalation refreshes what the lead reads, without a second
 		// notification. A forwarded request is left alone: the owner may already be
 		// looking at the question it was asked.
 		if existing.Status == QualityAgentRequestStatusOpen {
+			// Keep the fingerprint describing the row: a wording refresh moves the text,
+			// and a stale fingerprint would route a later retry to the wrong request.
+			if message.QuestionFingerprint != "" && message.QuestionFingerprint != existing.QuestionFingerprint {
+				other, readErr := getActiveQualityAgentRequestByFingerprintTx(ctx, tx, message.AgentID, message.QuestionFingerprint)
+				if readErr != nil {
+					return nil, false, readErr
+				}
+				if other != nil && other.ID != existing.ID {
+					return other, false, nil
+				}
+			}
 			refreshed, refreshErr := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
 				UPDATE quality_agent_request
 				SET title = $2, question = $3, suggested_patch = COALESCE($4, suggested_patch),
-					updated_at = $5
-				WHERE id = $1 AND status = $6
+					question_fingerprint = $5, updated_at = $6
+				WHERE id = $1 AND status = $7
 				RETURNING `+qualityAgentRequestColumns,
-				existing.ID, message.Title, message.Question, patchJSON, message.UpdatedAt,
-				int16(QualityAgentRequestStatusOpen)))
+				existing.ID, message.Title, message.Question, patchJSON,
+				message.QuestionFingerprint, message.UpdatedAt, int16(QualityAgentRequestStatusOpen)))
 			if refreshErr != nil {
+				// A concurrent request may have taken the new fingerprint between the
+				// read above and this update. The retry will find that row as a duplicate.
+				if isUniqueViolation(refreshErr) && uniqueViolationConstraint(refreshErr) == "idx_quality_agent_request_fingerprint" {
+					return nil, false, common.Errorf(common.Conflict,
+						"another active request already carries this question; retry the same message")
+				}
 				return nil, false, errors.Wrap(refreshErr, "failed to refresh the active request")
 			}
 			return refreshed, false, nil
@@ -235,15 +261,30 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 	return created, true, nil
 }
 
+// normalizeQuestionText is the one definition of "the same question" used by the
+// fingerprint and the conflict check. A retry that only changes whitespace is the same
+// question; a different decision must use a different key.
+func normalizeQuestionText(question string) string {
+	return strings.Join(strings.Fields(question), " ")
+}
+
+// qualityAgentQuestionConflict reports whether an active request is about a different
+// question. The comparison uses normalized text for the same reason the fingerprint does.
+func qualityAgentQuestionConflict(existing, message *QualityAgentRequestMessage) bool {
+	return message.ConflictOnDifferentQuestion &&
+		normalizeQuestionText(existing.Question) != normalizeQuestionText(message.Question)
+}
+
 // qualityAgentQuestionFingerprint identifies the same question across a drifted
-// dedupe key. The case id is normalized by the caller, so qualityAgentCases/x and x
-// produce one fingerprint.
+// dedupe key. Kind is part of the identity: a question must not resolve to a decision or
+// proposal that happens to carry the same text. The case id is normalized by the caller,
+// so qualityAgentCases/x and x produce one fingerprint.
 func qualityAgentQuestionFingerprint(message *QualityAgentRequestMessage) string {
 	if message == nil || message.Question == "" {
 		return ""
 	}
-	normalized := strings.Join(strings.Fields(message.Question), " ")
-	sum := sha256.Sum256([]byte(message.TargetGUID + "\x00" + message.CaseResourceID + "\x00" + normalized))
+	sum := sha256.Sum256([]byte(message.TargetGUID + "\x00" + message.CaseResourceID + "\x00" +
+		strconv.Itoa(int(message.Kind)) + "\x00" + normalizeQuestionText(message.Question)))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -289,6 +330,39 @@ func (s *Store) GetQualityAgentRequestByResourceID(ctx context.Context, resource
 // ListQualityAgentRequests lists an agent's requests, newest first.
 func (s *Store) ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []QualityAgentRequestStatus, targetGUID string, limit int) ([]*QualityAgentRequestMessage, error) {
 	return s.ListQualityAgentRequestsPage(ctx, agentID, statuses, targetGUID, limit, 0)
+}
+
+// ListQualityAgentOpenQuestions lists one target's active questions, newest first.
+// Questions are the only requests whose dedupe key the wake prompt asks the model to
+// reuse; filtering in SQL keeps non-question requests from crowding them out.
+func (s *Store) ListQualityAgentOpenQuestions(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*QualityAgentRequestMessage, error) {
+	if limit <= 0 || limit > 1001 {
+		limit = 50
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
+		WHERE agent_id = $1 AND target_guid = $2 AND kind = $3
+			AND status = ANY($4::int2[])
+		ORDER BY created_at DESC, id DESC LIMIT $5`,
+		agentID, targetGUID, int16(QualityAgentRequestKindQuestion),
+		pq.Array([]int16{int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded)}),
+		limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the target's open questions")
+	}
+	defer rows.Close()
+	var messages []*QualityAgentRequestMessage
+	for rows.Next() {
+		message, err := scanQualityAgentRequest(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan an open question")
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the target's open questions")
+	}
+	return messages, nil
 }
 
 // ListQualityAgentRequestsPage lists one page of an agent's requests, newest first.
@@ -425,8 +499,8 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&originID, &message.TargetGUID, &targetType, &kind, &status, &message.Title,
 		&message.Question, &message.CaseResourceID, &patch, &message.DedupeKey,
-		&message.QuestionFingerprint, &askID, &message.Resolution, &resolvedBy,
-		&forwarded, &resolved, &message.CreatedAt, &message.UpdatedAt,
+		&message.QuestionKey, &message.QuestionFingerprint, &askID, &message.Resolution,
+		&resolvedBy, &forwarded, &resolved, &message.CreatedAt, &message.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

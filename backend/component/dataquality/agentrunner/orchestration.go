@@ -128,6 +128,9 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT
 	}
 	if intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION {
+		if strings.TrimSpace(input.Message) == "" {
+			return "", errors.New("a QUESTION needs a message")
+		}
 		caseID := normalizeCaseResourceID(input.Case)
 		questionKey := strings.TrimSpace(input.QuestionKey)
 		if questionKey != "" && !questionKeyPattern.MatchString(questionKey) {
@@ -140,6 +143,7 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 			Title:                       "Subagent question",
 			Question:                    input.Message,
 			DedupeKey:                   dedupe,
+			QuestionKey:                 questionKey,
 			ConflictOnDifferentQuestion: true,
 		})
 		if err != nil {
@@ -150,7 +154,7 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 			"to":           "lead",
 			"request":      requestName(request.ResourceID),
 			"duplicate":    !created,
-			"question_key": questionKey,
+			"question_key": request.QuestionKey,
 		})
 	}
 	lead, err := e.leadFor(ctx, session)

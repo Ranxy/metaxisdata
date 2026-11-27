@@ -334,29 +334,53 @@ func pendingAgentMessagesBlock(pending []*store.QualityAgentTranscriptMessage, l
 	return "\n\nPending agent messages:" + builder.String()
 }
 
-// participationBlock states the authority the target session runs under. It is part of the
-// per-wake user message because the level is per target, and it repeats the boundary in the
-// model's words so the prompt and the runtime gate cannot disagree: the gate re-reads the
-// level when a verb is requested, and this sentence is only its view.
-// openRequestBlock shows the questions this subagent already has with the lead. The
-// model can reuse a question_key instead of inventing one, and a duplicate question is
-// visible before it is sent.
+// openRequestBlock shows the questions this target's subagent already has with the lead.
+// The model can reuse the stored question_key instead of inventing one, and a duplicate
+// question is visible before it is sent. Only questions are listed: other request kinds
+// do not accept a question_key.
 func openRequestBlock(requests []*store.QualityAgentRequestMessage) string {
 	if len(requests) == 0 {
 		return ""
 	}
 	var builder strings.Builder
-	_, _ = builder.WriteString("\nYour open requests with the lead (reuse a question_key only for the same question):")
-	for index, request := range requests {
-		if index >= 3 {
+	_, _ = builder.WriteString("\nYour open questions with the lead (reuse question_key only for the same question):")
+	shown := 0
+	for _, request := range requests {
+		if request.Kind != store.QualityAgentRequestKindQuestion {
+			continue
+		}
+		if shown >= 3 {
 			break
 		}
-		fmt.Fprintf(&builder, "\n- %s [%s] %s", requestName(request.ResourceID),
-			request.DedupeKey, truncateRunes(request.Question, 200))
+		shown++
+		key := "no question_key"
+		switch {
+		case request.QuestionKey != "" && request.CaseResourceID != "":
+			key = "question_key=" + request.QuestionKey + " (case " + request.CaseResourceID + ")"
+		case request.QuestionKey != "":
+			key = "question_key=" + request.QuestionKey
+		case request.CaseResourceID != "":
+			key += " (case " + request.CaseResourceID + "; omit question_key to retry)"
+		default:
+			key += " (omit question_key and keep the wording)"
+		}
+		status := "OPEN"
+		if request.Status == store.QualityAgentRequestStatusForwarded {
+			status = "FORWARDED"
+		}
+		fmt.Fprintf(&builder, "\n- %s [%s] %s: %s", requestName(request.ResourceID), status, key,
+			truncateRunes(request.Question, 200))
+	}
+	if shown == 0 {
+		return ""
 	}
 	return builder.String()
 }
 
+// participationBlock states the authority the target session runs under. It is part of the
+// per-wake user message because the level is per target, and it repeats the boundary in the
+// model's words so the prompt and the runtime gate cannot disagree: the gate re-reads the
+// level when a verb is requested, and this sentence is only its view.
 func participationBlock(participation agentpolicy.Participation) string {
 	level := participation
 	if level == agentpolicy.ParticipationUnset {

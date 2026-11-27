@@ -53,8 +53,9 @@ A request is `OPEN` until the lead either answers it or forwards it to the owner
 A subagent's QUESTION carries a stable `question_key`. The key is a short lowercase slug, not an opaque id: a case-scoped
 question can omit it and is scoped by the case, while a second decision on the same case names a suffix such as `timeout`.
 Reusing a key for a different question is a conflict, not an overwrite; the lead is never shown a silently replaced question.
-A fingerprint over target, case and the whitespace-normalized text catches a retry whose key drifted. The wake instruction lists
-the subagent's open requests with their keys so it can reuse one instead of inventing another.
+A fingerprint over target, case, kind and the whitespace-normalized text catches a retry whose key drifted; the comparison is
+whitespace-insensitive for the same reason. The key is stored on the request, so the wake instruction lists the target's open
+questions as `question_key=...` and marks a case-only or wording-only question as having no key to reuse.
 
 The owner never talks to a subagent. When the lead needs the owner, it raises an **ask** and writes the question into the lead
 conversation; an ask can cover several requests through their `ask_id`. The owner answers with `SendQualityAgentMessage(reply_to =

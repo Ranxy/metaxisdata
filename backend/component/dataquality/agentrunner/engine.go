@@ -88,6 +88,7 @@ type Store interface {
 	AnswerQualityAgentRequestAtomic(ctx context.Context, resourceID string, fromStatus store.QualityAgentRequestStatus, answer string, subagent *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, at time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error)
 	GetQualityAgentRequestByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentRequestMessage, error)
 	ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []store.QualityAgentRequestStatus, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
+	ListQualityAgentOpenQuestions(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
 	ListQualityAgentRequestsByAskIDs(ctx context.Context, askIDs []int64) (map[int64][]*store.QualityAgentRequestMessage, error)
 	UpdateQualityAgentRequestStatus(ctx context.Context, resourceID string, from, to store.QualityAgentRequestStatus, askID *int64, resolution string, resolvedBy *int32, at time.Time) (*store.QualityAgentRequestMessage, bool, error)
 	ResolveQualityAgentRequestsForCase(ctx context.Context, agentID int64, caseResourceID string, at time.Time) (int64, error)
@@ -372,29 +373,20 @@ func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessi
 	return cases
 }
 
-// openRequests reads the questions this subagent already has with the lead. A read
-// failure degrades to no block, not a failed wake.
+// openRequests reads the questions this target's subagent already has with the lead. A
+// read failure degrades to no block, not a failed wake. The query is target-scoped so a
+// re-created session still sees the questions its predecessor raised.
 func (e *Engine) openRequests(ctx context.Context, session *store.QualityAgentSessionMessage) []*store.QualityAgentRequestMessage {
 	if session == nil || isLeadSession(session) || session.AgentID == 0 || session.TargetGUID == "" {
 		return nil
 	}
-	requests, err := e.store.ListQualityAgentRequests(ctx, session.AgentID,
-		[]store.QualityAgentRequestStatus{
-			store.QualityAgentRequestStatusOpen,
-			store.QualityAgentRequestStatusForwarded,
-		}, session.TargetGUID, 5)
+	requests, err := e.store.ListQualityAgentOpenQuestions(ctx, session.AgentID, session.TargetGUID, 5)
 	if err != nil {
-		slog.Warn("failed to read the target's open requests",
+		slog.Warn("failed to read the target's open questions",
 			slog.String("session", session.ResourceID), log.WithError(err))
 		return nil
 	}
-	out := make([]*store.QualityAgentRequestMessage, 0, len(requests))
-	for _, request := range requests {
-		if request.OriginSessionID != nil && *request.OriginSessionID == session.ID {
-			out = append(out, request)
-		}
-	}
-	return out
+	return requests
 }
 
 // participation resolves how far this agent may go on this target. A read failure degrades to

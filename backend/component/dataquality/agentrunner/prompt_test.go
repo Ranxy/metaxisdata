@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // The adoption gate reaches the model as configuration, not as folklore: the
@@ -77,4 +78,33 @@ func TestFactRecordingIsGuidedNotConstrained(t *testing.T) {
 	require.True(t, ok)
 	sections := profile.Prompt(monitorSpec())
 	require.Contains(t, sections[0].Text, "one durable sentence per fact")
+}
+
+// The wake prompt must show the key the tool accepts, not the internal dedupe key, and
+// must not invite the model to reuse a question_key for a proposal or decision.
+func TestOpenRequestBlockNamesTheStoredQuestionKey(t *testing.T) {
+	t.Parallel()
+
+	requests := []*store.QualityAgentRequestMessage{
+		{
+			ResourceID: "r1", Kind: store.QualityAgentRequestKindQuestion,
+			Status: store.QualityAgentRequestStatusOpen, QuestionKey: "timeout",
+			CaseResourceID: "c1", Question: "Raise the timeout?",
+		},
+		{
+			ResourceID: "r2", Kind: store.QualityAgentRequestKindQuestion,
+			Status: store.QualityAgentRequestStatusForwarded, CaseResourceID: "c1",
+			Question: "Is the case settled?",
+		},
+		{
+			ResourceID: "r3", Kind: store.QualityAgentRequestKindProposal,
+			Status: store.QualityAgentRequestStatusOpen, Question: "Approve the change?",
+		},
+	}
+
+	block := openRequestBlock(requests)
+	require.Contains(t, block, "question_key=timeout (case c1)")
+	require.Contains(t, block, "no question_key (case c1; omit question_key to retry)")
+	require.Contains(t, block, "[FORWARDED]")
+	require.NotContains(t, block, "r3", "a proposal does not accept a question_key")
 }

@@ -2014,8 +2014,10 @@ CREATE TABLE IF NOT EXISTS quality_agent_request (
     -- Stored as QualityAgentFieldPatch (proto/store/store/data_quality.proto)
     suggested_patch JSONB,
     dedupe_key TEXT NOT NULL DEFAULT '',
-    -- Hash of target, case and normalized question: the same question retried under a
-    -- drifted key still resolves to the existing active request.
+    -- The subagent-chosen slug for a QUESTION; empty when the case or wording identifies it.
+    question_key TEXT NOT NULL DEFAULT '',
+    -- Hash of target, case, kind and normalized question: the same question retried
+    -- under a drifted key still resolves to the existing active request.
     question_fingerprint TEXT NOT NULL DEFAULT '',
     ask_id INT8 REFERENCES quality_agent_ask(id) ON DELETE SET NULL,
     resolution TEXT NOT NULL DEFAULT '',
@@ -2039,6 +2041,8 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_request_target
 COMMENT ON TABLE quality_agent_request IS 'One subagent decision request to the lead; OPEN/FORWARDED are active, ANSWERED/RESOLVED/DISMISSED are closed';
 COMMENT ON COLUMN quality_agent_request.status IS '1 OPEN, 2 FORWARDED, 3 ANSWERED, 4 RESOLVED, 5 DISMISSED';
 COMMENT ON COLUMN quality_agent_request.suggested_patch IS 'protojson of store.QualityAgentFieldPatch; NULL when the request carries no single change';
+COMMENT ON COLUMN quality_agent_request.question_key IS 'The subagent-chosen question_key slug; empty when the case or wording identifies the question';
+COMMENT ON COLUMN quality_agent_request.question_fingerprint IS 'Hash of target, case, kind and normalized question; catches a retry with a drifted dedupe key';
 
 -- The manual AI drafting job is retired: drafting is now the agent's triage work and
 -- its suggestions go through the same review queue. Drop the job table; suggestions
