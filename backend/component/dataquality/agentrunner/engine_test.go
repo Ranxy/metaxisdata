@@ -39,6 +39,7 @@ type fakeStore struct {
 	lead          *store.QualityAgentSessionMessage
 	subagents     map[string]*store.QualityAgentSessionMessage
 	sessionsByID  map[int64]*store.QualityAgentSessionMessage
+	requests      []*store.QualityAgentRequestMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -243,8 +244,8 @@ func (*fakeStore) GetQualityAgentRequestByResourceID(context.Context, string) (*
 	return nil, nil
 }
 
-func (*fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
+	return f.requests, nil
 }
 
 func (*fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
