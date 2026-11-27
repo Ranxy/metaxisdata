@@ -69,8 +69,70 @@ const qualityAgentRequestColumns = `id, resource_id, workspace_id, agent_id,
 // CreateQualityAgentRequest inserts one active request. A retried escalation of the
 // same (agent, dedupe_key) returns the existing OPEN/FORWARDED row.
 func (s *Store) CreateQualityAgentRequest(ctx context.Context, message *QualityAgentRequestMessage) (*QualityAgentRequestMessage, bool, error) {
+	resourceID, patchJSON, err := prepareQualityAgentRequest(message)
+	if err != nil {
+		return nil, false, err
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to begin the request transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	created, isNew, err := insertQualityAgentRequestTx(ctx, tx, message, resourceID, patchJSON)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, errors.Wrap(err, "failed to commit the request")
+	}
+	return created, isNew, nil
+}
+
+// RaiseQualityAgentRequest records a request and tells the lead in one transaction.
+// A duplicate request returns the existing row without a second message.
+func (s *Store) RaiseQualityAgentRequest(ctx context.Context, message *QualityAgentRequestMessage, lead *QualityAgentSessionMessage, notice *QualityAgentTranscriptMessage) (*QualityAgentRequestMessage, bool, error) {
+	resourceID, patchJSON, err := prepareQualityAgentRequest(message)
+	if err != nil {
+		return nil, false, err
+	}
+	if lead == nil || notice == nil {
+		return nil, false, errors.New("a request delivery needs a lead and a message")
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to begin the request transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	created, isNew, err := insertQualityAgentRequestTx(ctx, tx, message, resourceID, patchJSON)
+	if err != nil {
+		return nil, false, err
+	}
+	if !isNew {
+		if err := tx.Commit(); err != nil {
+			return nil, false, errors.Wrap(err, "failed to commit the duplicate request")
+		}
+		return created, false, nil
+	}
+	notice.SessionID = lead.ID
+	notice.WorkspaceID = lead.WorkspaceID
+	if _, err := s.appendQualityAgentTranscriptTx(ctx, tx, notice); err != nil {
+		return nil, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+		WHERE id = $1 AND archived_at IS NULL`, lead.ID, time.Now().UTC()); err != nil {
+		return nil, false, errors.Wrap(err, "failed to wake the lead")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, errors.Wrap(err, "failed to commit the request delivery")
+	}
+	return created, true, nil
+}
+
+func prepareQualityAgentRequest(message *QualityAgentRequestMessage) (string, []byte, error) {
 	if message == nil || message.AgentID <= 0 || message.WorkspaceID == "" || message.DedupeKey == "" {
-		return nil, false, common.Errorf(common.Invalid, "a request needs an agent, workspace and dedupe key")
+		return "", nil, common.Errorf(common.Invalid, "a request needs an agent, workspace and dedupe key")
 	}
 	if message.Kind == 0 {
 		message.Kind = QualityAgentRequestKindDecision
@@ -90,18 +152,22 @@ func (s *Store) CreateQualityAgentRequest(ctx context.Context, message *QualityA
 	if resourceID == "" {
 		resourceID, err = common.RandomString(12)
 		if err != nil {
-			return nil, false, errors.Wrap(err, "failed to generate the request id")
+			return "", nil, errors.Wrap(err, "failed to generate the request id")
 		}
 	}
 	var patchJSON []byte
 	if message.SuggestedPatch != nil {
 		encoded, marshalErr := protojson.Marshal(message.SuggestedPatch)
 		if marshalErr != nil {
-			return nil, false, errors.Wrap(marshalErr, "failed to marshal a suggested patch")
+			return "", nil, errors.Wrap(marshalErr, "failed to marshal a suggested patch")
 		}
 		patchJSON = encoded
 	}
-	row := s.GetDB().QueryRowContext(ctx, `
+	return resourceID, patchJSON, nil
+}
+
+func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *QualityAgentRequestMessage, resourceID string, patchJSON []byte) (*QualityAgentRequestMessage, bool, error) {
+	row := tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_request
 			(resource_id, workspace_id, agent_id, origin_session_id, target_guid, target_type,
 			 kind, status, title, question, case_resource_id, suggested_patch, dedupe_key,
@@ -115,7 +181,7 @@ func (s *Store) CreateQualityAgentRequest(ctx context.Context, message *QualityA
 		message.AskID, message.CreatedAt, message.UpdatedAt)
 	created, err := scanQualityAgentRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		existing, readErr := s.getActiveQualityAgentRequestByDedupe(ctx, message.AgentID, message.DedupeKey)
+		existing, readErr := getActiveQualityAgentRequestTx(ctx, tx, message.AgentID, message.DedupeKey)
 		if readErr != nil {
 			return nil, false, readErr
 		}
@@ -128,6 +194,19 @@ func (s *Store) CreateQualityAgentRequest(ctx context.Context, message *QualityA
 		return nil, false, errors.Wrap(err, "failed to create the quality agent request")
 	}
 	return created, true, nil
+}
+
+func getActiveQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, agentID int64, dedupeKey string) (*QualityAgentRequestMessage, error) {
+	message, err := scanQualityAgentRequest(tx.QueryRowContext(ctx,
+		`SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
+		 WHERE agent_id = $1 AND dedupe_key = $2 AND status IN (1, 2)`, agentID, dedupeKey))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the active quality agent request")
+	}
+	return message, nil
 }
 
 // GetQualityAgentRequestByResourceID reads one request; nil means absent.
@@ -226,19 +305,6 @@ func (s *Store) ResolveQualityAgentRequestsForCase(ctx context.Context, agentID 
 	return affected, nil
 }
 
-func (s *Store) getActiveQualityAgentRequestByDedupe(ctx context.Context, agentID int64, dedupeKey string) (*QualityAgentRequestMessage, error) {
-	message, err := scanQualityAgentRequest(s.GetDB().QueryRowContext(ctx,
-		`SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
-		 WHERE agent_id = $1 AND dedupe_key = $2 AND status IN (1, 2)`, agentID, dedupeKey))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "failed to read the active quality agent request")
-	}
-	return message, nil
-}
-
 func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*QualityAgentRequestMessage, error) {
 	var (
 		message    QualityAgentRequestMessage
@@ -292,4 +358,50 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 		message.SuggestedPatch = decoded
 	}
 	return &message, nil
+}
+
+// AnswerQualityAgentRequestAtomic changes the request to ANSWERED and delivers the
+// answer in one transaction. A failed delivery rolls the status back.
+func (s *Store) AnswerQualityAgentRequestAtomic(ctx context.Context, resourceID string, fromStatus QualityAgentRequestStatus, answer string, subagent *QualityAgentSessionMessage, message *QualityAgentTranscriptMessage, at time.Time) (*QualityAgentRequestMessage, *QualityAgentTranscriptMessage, bool, error) {
+	if subagent == nil || message == nil {
+		return nil, nil, false, common.Errorf(common.Invalid, "an answer needs a subagent and a message")
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to begin the answer transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	updated, err := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
+		UPDATE quality_agent_request
+		SET status = $3, resolution = $4, updated_at = $5
+		WHERE resource_id = $1 AND status = $2
+		RETURNING `+qualityAgentRequestColumns,
+		resourceID, int16(fromStatus), int16(QualityAgentRequestStatusAnswered), answer, at.UTC()))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, false, nil
+		}
+		return nil, nil, false, errors.Wrap(err, "failed to answer the quality agent request")
+	}
+	message.SessionID = subagent.ID
+	message.WorkspaceID = subagent.WorkspaceID
+	delivered, err := s.appendQualityAgentTranscriptTx(ctx, tx, message)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+		WHERE id = $1 AND archived_at IS NULL`, subagent.ID, at.UTC()); err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to wake the answered subagent")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to commit the answer")
+	}
+	if updated.AskID != nil {
+		if _, err := s.ResolveQualityAgentAskIfDrained(ctx, *updated.AskID, at); err != nil {
+			return updated, delivered, true, err
+		}
+	}
+	return updated, delivered, true, nil
 }

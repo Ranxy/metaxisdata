@@ -3,11 +3,13 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -152,7 +154,7 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 		}
 	}
 	parent := input.ParentSessionID
-	name := input.SubagentName
+	name := strings.TrimSpace(input.SubagentName)
 	if role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD {
 		if input.TargetGUID != "" {
 			return nil, common.Errorf(common.Invalid, "the lead session has no target")
@@ -183,12 +185,10 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 				return nil, common.Errorf(common.Invalid, "the subagent's lead belongs to another agent")
 			}
 		}
-		if name == "" {
-			allocated, err := s.AllocateSubagentName(ctx, input.AgentID, input.TargetGUID)
-			if err != nil {
+		if name != "" {
+			if err := validateSubagentName(name); err != nil {
 				return nil, err
 			}
-			name = allocated
 		}
 	}
 	resourceID, err := common.RandomString(12)
@@ -199,7 +199,24 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
 	}
-	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx, `
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the session creation transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	if role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+			fmt.Sprintf("quality-agent-session-name:%d", input.AgentID)); err != nil {
+			return nil, errors.Wrap(err, "failed to serialize the subagent name allocation")
+		}
+		if name == "" {
+			name, err = allocateSubagentNameTx(ctx, tx, input.AgentID, input.TargetGUID)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	message, err := scanQualityAgentSession(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_session
 			(resource_id, workspace_id, target_guid, target_type, database_ref, agent_id,
 			 role, parent_session_id, subagent_name, state, next_wake_at, mode)
@@ -212,11 +229,105 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 		input.NextWakeAt, int16(mode)))
 	if err != nil {
 		if isUniqueViolation(err) {
-			return nil, common.Errorf(common.Conflict, "an active session already covers this target")
+			switch constraint := uniqueViolationConstraint(err); {
+			case strings.Contains(constraint, "subagent_name"):
+				return nil, common.Errorf(common.Conflict, "the subagent name %q is already used", name)
+			case strings.Contains(constraint, "target"):
+				return nil, common.Errorf(common.Conflict, "an active session already covers this target")
+			default:
+				return nil, common.Errorf(common.Conflict, "a session already exists")
+			}
 		}
 		return nil, errors.Wrap(err, "failed to create the quality agent session")
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the session creation")
+	}
 	return message, nil
+}
+
+// uniqueViolationConstraint names the violated unique constraint, so a name clash is
+// not reported as a duplicate target.
+func uniqueViolationConstraint(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Constraint
+	}
+	return ""
+}
+
+// validateSubagentName enforces the model-facing format and the reserved root name.
+func validateSubagentName(name string) error {
+	if name == "" {
+		return common.Errorf(common.Invalid, "a subagent name is required")
+	}
+	if name == "lead" {
+		return common.Errorf(common.Invalid, "%q is reserved for the lead", name)
+	}
+	if len(name) > 32 {
+		return common.Errorf(common.Invalid, "a subagent name is at most 32 characters")
+	}
+	for index, char := range name {
+		if index == 0 {
+			if char < 'a' || char > 'z' {
+				return common.Errorf(common.Invalid, "a subagent name starts with a lower-case letter")
+			}
+			continue
+		}
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+			return common.Errorf(common.Invalid, "a subagent name uses lower-case letters, digits or hyphens")
+		}
+	}
+	return nil
+}
+
+// allocateSubagentNameTx reuses the target's historical name, then picks the next free
+// live name. The caller holds the per-agent advisory lock.
+func allocateSubagentNameTx(ctx context.Context, tx *sql.Tx, agentID int64, targetGUID string) (string, error) {
+	var historical string
+	err := tx.QueryRowContext(ctx, `
+		SELECT subagent_name FROM quality_agent_session
+		WHERE agent_id = $1 AND target_guid = $2 AND role = 2 AND subagent_name <> ''
+		ORDER BY id DESC LIMIT 1`, agentID, targetGUID).Scan(&historical)
+	if err == nil && historical != "" && historical != "lead" {
+		return historical, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", errors.Wrap(err, "failed to read the target's historical subagent name")
+	}
+	base := subagentNameBase(targetGUID)
+	rows, err := tx.QueryContext(ctx, `
+		SELECT subagent_name FROM quality_agent_session
+		WHERE agent_id = $1 AND role = 2 AND archived_at IS NULL AND subagent_name <> ''`,
+		agentID)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read the existing subagent names")
+	}
+	defer rows.Close()
+	taken := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return "", errors.Wrap(err, "failed to scan a subagent name")
+		}
+		taken[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return "", errors.Wrap(err, "failed to iterate the subagent names")
+	}
+	for i := 1; ; i++ {
+		candidate := base
+		if i > 1 {
+			candidate = base + "-" + strconv.Itoa(i)
+		}
+		if candidate != "lead" && !taken[candidate] {
+			return candidate, nil
+		}
+	}
 }
 
 // GetQualityAgentSession reads one session by resource id; nil means absent.
@@ -673,6 +784,28 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	if input == nil || input.SessionID == 0 {
 		return nil, common.Errorf(common.Invalid, "a session id is required")
 	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the session message transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	message, err := s.appendQualityAgentTranscriptTx(ctx, tx, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the session message")
+	}
+	return message, nil
+}
+
+// appendQualityAgentTranscriptTx appends one row inside an existing transaction. The
+// caller owns commit/rollback; the session row lock serializes seq allocation with
+// every other writer of the same session.
+func (*Store) appendQualityAgentTranscriptTx(ctx context.Context, tx *sql.Tx, input *QualityAgentTranscriptMessage) (*QualityAgentTranscriptMessage, error) {
+	if input == nil || input.SessionID == 0 {
+		return nil, common.Errorf(common.Invalid, "a session id is required")
+	}
 	if input.ToolCalls == nil {
 		input.ToolCalls = &storepb.QualityToolCallList{}
 	}
@@ -684,7 +817,8 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 		case input.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
 			input.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK:
 			input.Audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
-		case input.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
+		case input.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT &&
+			input.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER:
 			// Runner-written report-ready notes are owner-facing; model wakes set their
 			// own audience explicitly so internal turns stay internal.
 			input.Audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
@@ -696,14 +830,6 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.GetDB().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin the session message transaction")
-	}
-	defer func() { _ = tx.Rollback() }()
-	// Serialize every writer of this session: the seq allocation below is MAX+1, and an
-	// external writer (the API's wake or an event from the check runner) does not hold
-	// the runner's lease.
 	var sessionID int64
 	if err := tx.QueryRowContext(ctx, `SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`,
 		input.SessionID).Scan(&sessionID); err != nil {
@@ -739,9 +865,6 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 		int16(input.Intent), int16(input.Audience), input.ReplyTo))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to append the session message")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit the session message")
 	}
 	return message, nil
 }
@@ -1141,35 +1264,23 @@ func (s *Store) EnsureQualityAgentConversation(ctx context.Context, workspaceID 
 // AllocateSubagentName returns a stable, model-facing name for one target. Callers
 // persist it; the live-session unique index is the concurrency guard.
 func (s *Store) AllocateSubagentName(ctx context.Context, agentID int64, targetGUID string) (string, error) {
-	base := subagentNameBase(targetGUID)
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT subagent_name FROM quality_agent_session
-		WHERE agent_id = $1 AND role = 2 AND archived_at IS NULL AND subagent_name <> ''`,
-		agentID)
+	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to read the existing subagent names")
+		return "", errors.Wrap(err, "failed to begin the name allocation transaction")
 	}
-	defer rows.Close()
-	taken := map[string]bool{}
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return "", errors.Wrap(err, "failed to scan a subagent name")
-		}
-		taken[name] = true
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+		fmt.Sprintf("quality-agent-session-name:%d", agentID)); err != nil {
+		return "", errors.Wrap(err, "failed to serialize the subagent name allocation")
 	}
-	if err := rows.Err(); err != nil {
-		return "", errors.Wrap(err, "failed to iterate the subagent names")
+	name, err := allocateSubagentNameTx(ctx, tx, agentID, targetGUID)
+	if err != nil {
+		return "", err
 	}
-	for i := 1; ; i++ {
-		candidate := base
-		if i > 1 {
-			candidate = base + "-" + strconv.Itoa(i)
-		}
-		if !taken[candidate] {
-			return candidate, nil
-		}
+	if err := tx.Commit(); err != nil {
+		return "", errors.Wrap(err, "failed to commit the name allocation")
 	}
+	return name, nil
 }
 
 // subagentNameBase derives a lower-case ASCII name from the target's object segment.
@@ -1200,7 +1311,7 @@ func subagentNameBase(targetGUID string) string {
 	if len(name) > 24 {
 		name = strings.TrimRight(name[:24], "-")
 	}
-	if name == "" || name[0] < 'a' || name[0] > 'z' {
+	if name == "" || name[0] < 'a' || name[0] > 'z' || name == "lead" {
 		return "target"
 	}
 	return name
@@ -1232,12 +1343,31 @@ func (s *Store) DeliverQualityAgentMessage(ctx context.Context, session *Quality
 	if session == nil || input == nil || input.SessionID == 0 {
 		return nil, common.Errorf(common.Invalid, "a message needs a session")
 	}
-	message, err := s.AppendQualityAgentTranscriptMessage(ctx, input)
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the delivery transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	message, err := s.appendQualityAgentTranscriptTx(ctx, tx, input)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, time.Now().UTC()); err != nil {
-		return nil, err
+	result, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+		WHERE id = $1 AND archived_at IS NULL`, session.ID, time.Now().UTC())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to wake the message recipient")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to count the delivered recipient")
+	}
+	if affected == 0 {
+		return nil, common.Errorf(common.Conflict, "the message recipient is archived")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the delivery")
 	}
 	return message, nil
 }
@@ -1252,7 +1382,7 @@ func (s *Store) HasActionableQualityExecutionsSince(ctx context.Context, targetG
 	if err := s.GetDB().QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM quality_execution
-			WHERE target_guid = $1 AND started_at > $2
+			WHERE target_guid = $1 AND COALESCE(finished_at, started_at) > $2
 			  AND status IN ($3, $4, $5)
 		)`, targetGUID, since,
 		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
