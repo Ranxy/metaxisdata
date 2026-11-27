@@ -513,6 +513,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentMessageAudience"><span class="badge">E</span>QualityAgentMessageAudience</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentMessageIntent"><span class="badge">E</span>QualityAgentMessageIntent</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentMessageOrigin"><span class="badge">E</span>QualityAgentMessageOrigin</a>
                 </li>
               
@@ -522,6 +530,10 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityAgentSessionMode"><span class="badge">E</span>QualityAgentSessionMode</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentSessionRole"><span class="badge">E</span>QualityAgentSessionRole</a>
                 </li>
               
                 <li>
@@ -3000,6 +3012,41 @@ name); empty for model and runner messages. </p></td>
 returned none; never sent back to the provider. </p></td>
                 </tr>
               
+                <tr>
+                  <td>sender_session_id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The agent session that sent this message; zero for owner/runner messages. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sender_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Model-facing sender name: lead, a subagent name, or empty. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#metaxisdata.store.QualityAgentMessageIntent">QualityAgentMessageIntent</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>audience</td>
+                  <td><a href="#metaxisdata.store.QualityAgentMessageAudience">QualityAgentMessageAudience</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reply_to</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The ask or request this message answers, as a resource id. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3183,6 +3230,34 @@ returned none; never sent back to the provider. </p></td>
                   <td><a href="#metaxisdata.store.QualityAgentSessionContextUsage">QualityAgentSessionContextUsage</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>role</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionRole">QualityAgentSessionRole</a></td>
+                  <td></td>
+                  <td><p>LEAD or SUBAGENT. Replaces the old kind column. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>parent_session_id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The lead&#39;s session id for a SUBAGENT; zero for LEAD. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subagent_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Model-facing unique name of a SUBAGENT; empty for LEAD. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_reviewed_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The last deterministic review that found nothing actionable. </p></td>
                 </tr>
               
             </tbody>
@@ -5606,6 +5681,88 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.store.QualityAgentMessageAudience">QualityAgentMessageAudience</h3>
+        <p>QualityAgentMessageAudience says who may read a message. OWNER rows are the</p><p>front-office conversation; INTERNAL rows are agent-to-agent traffic.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentMessageIntent">QualityAgentMessageIntent</h3>
+        <p>QualityAgentMessageIntent classifies an agent-to-agent message.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_MESSAGE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_REPORT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_QUESTION</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_ANSWER</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_ASSIGN</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_NOTICE</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.store.QualityAgentMessageOrigin">QualityAgentMessageOrigin</h3>
         <p>QualityAgentMessageOrigin says what produced a user or engine message.</p>
         <table class="enum-table">
@@ -5654,6 +5811,18 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
                 <td>QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION</td>
                 <td>6</td>
                 <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_AGENT</td>
+                <td>7</td>
+                <td><p>An agent-to-agent relay: a subagent report or a lead instruction.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_NOTICE</td>
+                <td>8</td>
+                <td><p>A runtime notice from the runner, not the model.</p></td>
               </tr>
             
           </tbody>
@@ -5734,6 +5903,35 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
             
               <tr>
                 <td>QUALITY_AGENT_SESSION_MODE_TRIAGE</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentSessionRole">QualityAgentSessionRole</h3>
+        <p>QualityAgentSessionRole is the session's place in the agent tree. LEAD is the</p><p>owner-facing coordinator; SUBAGENT owns exactly one target.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_ROLE_LEAD</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_ROLE_SUBAGENT</td>
                 <td>2</td>
                 <td><p></p></td>
               </tr>

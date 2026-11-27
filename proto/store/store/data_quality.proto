@@ -1166,6 +1166,14 @@ enum QualityAgentSessionMode {
   QUALITY_AGENT_SESSION_MODE_TRIAGE = 2;
 }
 
+// QualityAgentSessionRole is the session's place in the agent tree. LEAD is the
+// owner-facing coordinator; SUBAGENT owns exactly one target.
+enum QualityAgentSessionRole {
+  QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_ROLE_LEAD = 1;
+  QUALITY_AGENT_SESSION_ROLE_SUBAGENT = 2;
+}
+
 // QualityAgentEnrollmentState is the queue state of one target in the runner's
 // scope. The enrollment row is the desired state; a session is created lazily
 // when the row is admitted.
@@ -1199,6 +1207,25 @@ enum QualityAgentMessageRole {
   QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
 }
 
+// QualityAgentMessageAudience says who may read a message. OWNER rows are the
+// front-office conversation; INTERNAL rows are agent-to-agent traffic.
+enum QualityAgentMessageAudience {
+  QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER = 1;
+  QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL = 2;
+}
+
+// QualityAgentMessageIntent classifies an agent-to-agent message.
+enum QualityAgentMessageIntent {
+  QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_INTENT_MESSAGE = 1;
+  QUALITY_AGENT_MESSAGE_INTENT_REPORT = 2;
+  QUALITY_AGENT_MESSAGE_INTENT_QUESTION = 3;
+  QUALITY_AGENT_MESSAGE_INTENT_ANSWER = 4;
+  QUALITY_AGENT_MESSAGE_INTENT_ASSIGN = 5;
+  QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
+}
+
 // QualityAgentMessageOrigin says what produced a user or engine message.
 enum QualityAgentMessageOrigin {
   QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
@@ -1208,6 +1235,10 @@ enum QualityAgentMessageOrigin {
   QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
   QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
   QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
+  // An agent-to-agent relay: a subagent report or a lead instruction.
+  QUALITY_AGENT_MESSAGE_ORIGIN_AGENT = 7;
+  // A runtime notice from the runner, not the model.
+  QUALITY_AGENT_MESSAGE_ORIGIN_NOTICE = 8;
 }
 
 // QualityAgentSessionEngineState is the JSONB payload of
@@ -1285,6 +1316,14 @@ message QualityAgentSession {
   reserved "source";
   QualityAgentSessionMode mode = 28;
   QualityAgentSessionContextUsage context_usage = 29;
+  // LEAD or SUBAGENT. Replaces the old kind column.
+  QualityAgentSessionRole role = 30;
+  // The lead's session id for a SUBAGENT; zero for LEAD.
+  int64 parent_session_id = 31;
+  // Model-facing unique name of a SUBAGENT; empty for LEAD.
+  string subagent_name = 32;
+  // The last deterministic review that found nothing actionable.
+  google.protobuf.Timestamp last_reviewed_at = 33;
 }
 
 // QualityAgentEnrollment is one target's place in the runner's queue: the desired
@@ -1362,6 +1401,14 @@ message QualityAgentMessage {
   // Display-only model reasoning for this assistant turn. Empty when the provider
   // returned none; never sent back to the provider.
   string reasoning = 21;
+  // The agent session that sent this message; zero for owner/runner messages.
+  int64 sender_session_id = 22;
+  // Model-facing sender name: lead, a subagent name, or empty.
+  string sender_name = 23;
+  QualityAgentMessageIntent intent = 24;
+  QualityAgentMessageAudience audience = 25;
+  // The ask or request this message answers, as a resource id.
+  string reply_to = 26;
 }
 
 // QualityMemoryKind is what a memory records. Only deterministic asset facts are

@@ -20,6 +20,8 @@ UPDATE quality_suggestion SET agent_id = NULL WHERE agent_id IS NOT NULL;
 -- file is replayed on top of LATEST, where the child exists.
 DROP TABLE IF EXISTS quality_agent_case_action;
 DROP TABLE IF EXISTS quality_agent_case;
+DROP TABLE IF EXISTS quality_agent_request;
+DROP TABLE IF EXISTS quality_agent_ask;
 DROP TABLE IF EXISTS quality_agent_attention;
 DROP TABLE IF EXISTS quality_agent_report;
 DROP TABLE IF EXISTS quality_agent_adoption;

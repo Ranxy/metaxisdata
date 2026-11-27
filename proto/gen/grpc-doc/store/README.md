@@ -88,9 +88,12 @@
     - [UniqueConfig](#metaxisdata-store-UniqueConfig)
   
     - [QualityAgentEnrollmentState](#metaxisdata-store-QualityAgentEnrollmentState)
+    - [QualityAgentMessageAudience](#metaxisdata-store-QualityAgentMessageAudience)
+    - [QualityAgentMessageIntent](#metaxisdata-store-QualityAgentMessageIntent)
     - [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole)
     - [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode)
+    - [QualityAgentSessionRole](#metaxisdata-store-QualityAgentSessionRole)
     - [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityComparison](#metaxisdata-store-QualityComparison)
@@ -918,6 +921,11 @@ QualityAgentMessage is one append-only transcript entry of a session.
 | idempotency_key | [string](#string) |  | The store returns the existing row for a retried key. |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | reasoning | [string](#string) |  | Display-only model reasoning for this assistant turn. Empty when the provider returned none; never sent back to the provider. |
+| sender_session_id | [int64](#int64) |  | The agent session that sent this message; zero for owner/runner messages. |
+| sender_name | [string](#string) |  | Model-facing sender name: lead, a subagent name, or empty. |
+| intent | [QualityAgentMessageIntent](#metaxisdata-store-QualityAgentMessageIntent) |  |  |
+| audience | [QualityAgentMessageAudience](#metaxisdata-store-QualityAgentMessageAudience) |  |  |
+| reply_to | [string](#string) |  | The ask or request this message answers, as a resource id. |
 
 
 
@@ -957,6 +965,10 @@ QualityAgentSession is one target&#39;s durable agent conversation and wake sche
 | archived_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | mode | [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode) |  |  |
 | context_usage | [QualityAgentSessionContextUsage](#metaxisdata-store-QualityAgentSessionContextUsage) |  |  |
+| role | [QualityAgentSessionRole](#metaxisdata-store-QualityAgentSessionRole) |  | LEAD or SUBAGENT. Replaces the old kind column. |
+| parent_session_id | [int64](#int64) |  | The lead&#39;s session id for a SUBAGENT; zero for LEAD. |
+| subagent_name | [string](#string) |  | Model-facing unique name of a SUBAGENT; empty for LEAD. |
+| last_reviewed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The last deterministic review that found nothing actionable. |
 
 
 
@@ -1901,6 +1913,37 @@ when the row is admitted.
 
 
 
+<a name="metaxisdata-store-QualityAgentMessageAudience"></a>
+
+### QualityAgentMessageAudience
+QualityAgentMessageAudience says who may read a message. OWNER rows are the
+front-office conversation; INTERNAL rows are agent-to-agent traffic.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER | 1 |  |
+| QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualityAgentMessageIntent"></a>
+
+### QualityAgentMessageIntent
+QualityAgentMessageIntent classifies an agent-to-agent message.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_MESSAGE | 1 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_REPORT | 2 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_QUESTION | 3 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_ANSWER | 4 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_ASSIGN | 5 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_NOTICE | 6 |  |
+
+
+
 <a name="metaxisdata-store-QualityAgentMessageOrigin"></a>
 
 ### QualityAgentMessageOrigin
@@ -1915,6 +1958,8 @@ QualityAgentMessageOrigin says what produced a user or engine message.
 | QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER | 4 |  |
 | QUALITY_AGENT_MESSAGE_ORIGIN_MODEL | 5 |  |
 | QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION | 6 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_AGENT | 7 | An agent-to-agent relay: a subagent report or a lead instruction. |
+| QUALITY_AGENT_MESSAGE_ORIGIN_NOTICE | 8 | A runtime notice from the runner, not the model. |
 
 
 
@@ -1947,6 +1992,20 @@ and proposes a plan and checks for a person to approve.
 | QUALITY_AGENT_SESSION_MODE_UNSPECIFIED | 0 |  |
 | QUALITY_AGENT_SESSION_MODE_MONITOR | 1 |  |
 | QUALITY_AGENT_SESSION_MODE_TRIAGE | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionRole"></a>
+
+### QualityAgentSessionRole
+QualityAgentSessionRole is the session&#39;s place in the agent tree. LEAD is the
+owner-facing coordinator; SUBAGENT owns exactly one target.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_ROLE_LEAD | 1 |  |
+| QUALITY_AGENT_SESSION_ROLE_SUBAGENT | 2 |  |
 
 
 

@@ -1469,6 +1469,15 @@ COMMENT ON COLUMN quality_agent.capabilities IS 'JSON array of capability ids; v
 COMMENT ON COLUMN quality_agent.adoption_rule_types IS 'JSON array of QualityRuleType numbers; empty means the default low-risk set';
 ALTER SEQUENCE quality_agent_id_seq RESTART WITH 101;
 
+-- A: TRIAGE and MONITOR are separate workloads. max_active_sessions/max_new_sessions_per_hour
+-- remain for now but no longer gate session existence after the A refactor; the triage pair
+-- below is the independent budget for uncovered targets.
+ALTER TABLE quality_agent
+    ADD COLUMN IF NOT EXISTS max_triage_sessions INT4 NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS max_new_triage_sessions_per_hour INT4 NOT NULL DEFAULT 0;
+COMMENT ON COLUMN quality_agent.max_triage_sessions IS 'Concurrent TRIAGE targets; 0 means the server default';
+COMMENT ON COLUMN quality_agent.max_new_triage_sessions_per_hour IS 'TRIAGE sessions created per hour; 0 means the server default';
+
 
 -- An asset fact is what the agent knows deterministically about one target. A fact is
 -- written confirmed; a newer fact supersedes the previous one of the same subject, and
@@ -1506,11 +1515,11 @@ COMMENT ON COLUMN quality_memory.evidence IS 'Stored as QualityMemoryEvidenceLis
 ALTER SEQUENCE quality_memory_id_seq RESTART WITH 101;
 
 
--- A quality agent session is one target's long-lived conversation with the built-in
--- agent: every wake appends messages to the same thread. The message table is that
--- transcript (system/user/assistant/tool/engine/compaction); the runner's wake
--- scheduling and budgets live on the session row. "Running" is expressed by the lease,
--- never by the state.
+-- A quality agent session is one durable agent conversation. LEAD is the
+-- owner-facing coordinator; SUBAGENT owns exactly one target. Every target gets
+-- one SUBAGENT when it is discovered, and the daily review is deterministic until
+-- actionable evidence calls the model. "Running" is expressed by the lease, never
+-- by the state.
 CREATE TABLE IF NOT EXISTS quality_agent_session (
     id BIGSERIAL PRIMARY KEY,
     -- API-facing identity: workspaces/{workspace}/qualityAgentSessions/{resource_id}.
@@ -1521,6 +1530,12 @@ CREATE TABLE IF NOT EXISTS quality_agent_session (
     -- The database allowlist entry this session is scoped to.
     database_ref TEXT NOT NULL DEFAULT '',
     agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
+    -- 1 LEAD, 2 SUBAGENT (QualityAgentSessionRole).
+    role INT2 NOT NULL DEFAULT 2,
+    -- The lead session a SUBAGENT belongs to; NULL for LEAD.
+    parent_session_id INT8 REFERENCES quality_agent_session(id) ON DELETE CASCADE,
+    -- Model-facing unique name of a SUBAGENT; empty for LEAD.
+    subagent_name TEXT NOT NULL DEFAULT '',
     -- 1 ENABLED, 3 BLOCKED, 4 ARCHIVED (QualityAgentSessionState).
     state INT2 NOT NULL DEFAULT 1,
     blocked_code TEXT NOT NULL DEFAULT '',
@@ -1537,26 +1552,30 @@ CREATE TABLE IF NOT EXISTS quality_agent_session (
     next_wake_at TIMESTAMPTZ,
     lease_until TIMESTAMPTZ,
     restart_count INT4 NOT NULL DEFAULT 0,
+    -- The last deterministic daily review that found nothing actionable.
+    last_reviewed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     archived_at TIMESTAMPTZ,
     -- 1 MONITOR, 2 TRIAGE (QualityAgentSessionMode).
     mode INT2 NOT NULL DEFAULT 1,
-    -- 1 TARGET work thread, 2 CONVERSATION front office.
-    kind INT2 NOT NULL DEFAULT 1,
     -- The last model-input sample the session engine measured; observability only.
     context_usage JSONB NOT NULL DEFAULT '{}',
-    CONSTRAINT quality_agent_session_kind_check
-        CHECK ((kind = 1 AND target_guid <> '') OR (kind = 2 AND target_guid = ''))
+    CONSTRAINT quality_agent_session_role_check
+        CHECK ((role = 1 AND target_guid = '' AND parent_session_id IS NULL)
+            OR (role = 2 AND target_guid <> '' AND parent_session_id IS NOT NULL AND subagent_name <> ''))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_resource
     ON quality_agent_session(resource_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_target
     ON quality_agent_session(agent_id, target_guid)
-    WHERE archived_at IS NULL AND kind = 1;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_conversation
+    WHERE archived_at IS NULL AND role = 2;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_lead
     ON quality_agent_session(agent_id)
-    WHERE archived_at IS NULL AND kind = 2;
+    WHERE archived_at IS NULL AND role = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_subagent_name
+    ON quality_agent_session(agent_id, subagent_name)
+    WHERE archived_at IS NULL AND role = 2 AND subagent_name <> '';
 CREATE INDEX IF NOT EXISTS idx_quality_agent_session_agent_due
     ON quality_agent_session(agent_id, state, next_wake_at)
     WHERE archived_at IS NULL;
@@ -1566,19 +1585,23 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_session_workspace
     ON quality_agent_session(workspace_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_session_database
     ON quality_agent_session(database_ref) WHERE archived_at IS NULL;
-COMMENT ON TABLE quality_agent_session IS 'One long-lived agent conversation per target, with wake scheduling and budgets';
+COMMENT ON TABLE quality_agent_session IS 'One durable agent conversation per lead or target; the A architecture materializes a SUBAGENT for every discovered target';
+COMMENT ON COLUMN quality_agent_session.role IS '1 LEAD coordinator, 2 SUBAGENT one target (QualityAgentSessionRole)';
+COMMENT ON COLUMN quality_agent_session.parent_session_id IS 'The lead session a SUBAGENT reports to';
+COMMENT ON COLUMN quality_agent_session.subagent_name IS 'Model-facing unique name of a SUBAGENT; empty for LEAD';
 COMMENT ON COLUMN quality_agent_session.state IS 'Stored as QualityAgentSessionState (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_session.mode IS 'Stored as QualityAgentSessionMode (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_session.engine_state IS 'Stored as QualityAgentSessionEngineState (proto/store/store/data_quality.proto); deterministic wake bookkeeping';
 COMMENT ON COLUMN quality_agent_session.summary IS 'Rolling checkpoint summary that replaces messages up to summary_through_seq in model context';
-COMMENT ON COLUMN quality_agent_session.kind IS '1 TARGET work thread, 2 CONVERSATION front office';
+COMMENT ON COLUMN quality_agent_session.last_reviewed_at IS 'Last deterministic daily review that found nothing actionable';
 COMMENT ON COLUMN quality_agent_session.context_usage IS 'Stored as QualityAgentSessionContextUsage (proto/store/store/data_quality.proto); last measured model-input size and the pinned model capacities at that moment';
 ALTER SEQUENCE quality_agent_session_id_seq RESTART WITH 101;
 
 -- One row per message in a session's conversation. assistant rows carry their
 -- tool_calls JSON so the row maps 1:1 to a provider assistant message; tool rows carry
 -- the result the model actually saw. engine rows are runner/UI notes and are never sent
--- back to the model.
+-- back to the model. sender_* and audience distinguish owner-facing prose from
+-- agent-to-agent traffic.
 CREATE TABLE IF NOT EXISTS quality_agent_message (
     id BIGSERIAL PRIMARY KEY,
     session_id INT8 NOT NULL REFERENCES quality_agent_session(id) ON DELETE CASCADE,
@@ -1590,7 +1613,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_message (
     turn INT4 NOT NULL DEFAULT 0,
     -- 1 SYSTEM, 2 USER, 3 ASSISTANT, 4 TOOL, 5 ENGINE, 6 COMPACTION (QualityAgentMessageRole).
     role INT2 NOT NULL,
-    -- 1 WAKE, 2 EVENT, 3 ASK, 4 RUNNER, 5 MODEL, 6 COMPACTION (QualityAgentMessageOrigin).
+    -- 1 WAKE, 2 EVENT, 3 ASK, 4 RUNNER, 5 MODEL, 6 COMPACTION, 7 AGENT, 8 NOTICE
+    -- (QualityAgentMessageOrigin).
     origin INT2 NOT NULL DEFAULT 0,
     content TEXT NOT NULL DEFAULT '',
     -- Display-only model reasoning; never sent back to the provider.
@@ -1609,6 +1633,13 @@ CREATE TABLE IF NOT EXISTS quality_agent_message (
     -- The store returns the existing row for a retried key, so a repeated wake or a
     -- retried effect cannot duplicate the conversation.
     idempotency_key TEXT NOT NULL DEFAULT '',
+    sender_session_id INT8 REFERENCES quality_agent_session(id) ON DELETE SET NULL,
+    sender_name TEXT NOT NULL DEFAULT '',
+    -- 1 MESSAGE, 2 REPORT, 3 QUESTION, 4 ANSWER, 5 ASSIGN, 6 NOTICE (QualityAgentMessageIntent).
+    intent INT2 NOT NULL DEFAULT 1,
+    -- 1 OWNER, 2 INTERNAL (QualityAgentMessageAudience).
+    audience INT2 NOT NULL DEFAULT 2,
+    reply_to TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_message_seq
@@ -1619,11 +1650,18 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_message_session_activity
     ON quality_agent_message(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
     ON quality_agent_message(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_message_audience
+    ON quality_agent_message(session_id, audience, seq);
 COMMENT ON TABLE quality_agent_message IS 'Transcript of one quality agent session; append-only except the SYSTEM prompt row, rewritten when its rendered content changes';
 COMMENT ON COLUMN quality_agent_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_message.reasoning IS 'Display-only model reasoning; never sent back to the provider';
 COMMENT ON COLUMN quality_agent_message.tool_calls IS 'Stored as QualityToolCallList (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_agent_message.sender_session_id IS 'Agent session that sent this message; NULL for owner and runner rows';
+COMMENT ON COLUMN quality_agent_message.sender_name IS 'Model-facing sender name: lead or a subagent name';
+COMMENT ON COLUMN quality_agent_message.intent IS 'Stored as QualityAgentMessageIntent (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_agent_message.audience IS '1 OWNER front office, 2 INTERNAL agent traffic (QualityAgentMessageAudience)';
+COMMENT ON COLUMN quality_agent_message.reply_to IS 'Ask or request resource id this message answers';
 ALTER SEQUENCE quality_agent_message_id_seq RESTART WITH 101;
 
 
@@ -1912,6 +1950,77 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_attention_open_dedupe
 CREATE INDEX IF NOT EXISTS idx_quality_agent_attention_agent_status
     ON quality_agent_attention(agent_id, status, created_at DESC);
 COMMENT ON TABLE quality_agent_attention IS 'Per-agent escalation to the owner; the durable to-do behind a notification';
+
+-- One owner-facing question the lead asked. It may cover several requests.
+CREATE TABLE IF NOT EXISTS quality_agent_ask (
+    id BIGSERIAL PRIMARY KEY,
+    resource_id TEXT COLLATE "C" NOT NULL,
+    workspace_id TEXT COLLATE "C" NOT NULL,
+    agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
+    conversation_session_id INT8 REFERENCES quality_agent_session(id) ON DELETE CASCADE,
+    -- 1 QUESTION, 2 ANOMALY, 3 APPROVAL.
+    kind INT2 NOT NULL DEFAULT 1,
+    -- The seq of the owner-visible assistant message that states the question.
+    message_seq INT8 NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL DEFAULT '',
+    -- 1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED.
+    status INT2 NOT NULL DEFAULT 1,
+    answered_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    answered_at TIMESTAMPTZ,
+    answer_message_seq INT8 NOT NULL DEFAULT 0,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_ask_resource
+    ON quality_agent_ask(resource_id);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_agent_status
+    ON quality_agent_ask(agent_id, status, created_at DESC);
+COMMENT ON TABLE quality_agent_ask IS 'One owner-facing question from the lead; it can cover several subagent requests';
+COMMENT ON COLUMN quality_agent_ask.status IS '1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED';
+
+-- A subagent request for a decision from the lead. It is the durable hand-off
+-- between one target's subagent and the lead; an ask carries one or more requests
+-- to the owner when the lead cannot decide.
+CREATE TABLE IF NOT EXISTS quality_agent_request (
+    id BIGSERIAL PRIMARY KEY,
+    resource_id TEXT COLLATE "C" NOT NULL,
+    workspace_id TEXT COLLATE "C" NOT NULL,
+    agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
+    -- The subagent that raised the request.
+    origin_session_id INT8 REFERENCES quality_agent_session(id) ON DELETE SET NULL,
+    target_guid TEXT COLLATE "C" NOT NULL DEFAULT '',
+    target_type INT2 NOT NULL DEFAULT 0,
+    -- 1 DECISION, 2 PROPOSAL, 3 BLOCKED, 4 FROZEN, 5 ANOMALY, 6 QUESTION.
+    kind INT2 NOT NULL DEFAULT 1,
+    -- 1 OPEN, 2 FORWARDED, 3 ANSWERED, 4 RESOLVED, 5 DISMISSED.
+    status INT2 NOT NULL DEFAULT 1,
+    title TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL DEFAULT '',
+    case_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
+    -- Stored as QualityAgentFieldPatch (proto/store/store/data_quality.proto)
+    suggested_patch JSONB,
+    dedupe_key TEXT NOT NULL DEFAULT '',
+    ask_id INT8 REFERENCES quality_agent_ask(id) ON DELETE SET NULL,
+    resolution TEXT NOT NULL DEFAULT '',
+    resolved_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
+    forwarded_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_request_resource
+    ON quality_agent_request(resource_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_request_active_dedupe
+    ON quality_agent_request(agent_id, dedupe_key) WHERE status IN (1, 2);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_request_agent_status
+    ON quality_agent_request(agent_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_agent_request_target
+    ON quality_agent_request(agent_id, target_guid, status);
+COMMENT ON TABLE quality_agent_request IS 'One subagent decision request to the lead; OPEN/FORWARDED are active, ANSWERED/RESOLVED/DISMISSED are closed';
+COMMENT ON COLUMN quality_agent_request.status IS '1 OPEN, 2 FORWARDED, 3 ANSWERED, 4 RESOLVED, 5 DISMISSED';
+COMMENT ON COLUMN quality_agent_request.suggested_patch IS 'protojson of store.QualityAgentFieldPatch; NULL when the request carries no single change';
 
 -- The manual AI drafting job is retired: drafting is now the agent's triage work and
 -- its suggestions go through the same review queue. Drop the job table; suggestions

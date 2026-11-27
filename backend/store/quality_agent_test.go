@@ -20,7 +20,7 @@ func TestScanQualityAgentDecodesConfig(t *testing.T) {
 		int16(2), sql.NullInt32{Int32: owner, Valid: true},
 		[]byte(`["suggest","adopt","patrol"]`), int16(2), "09:00", "Asia/Shanghai",
 		int16(1), int16(2), []byte(`[3,4,12]`), float64(0.85), true,
-		int32(7), int32(30), int64(1000), int32(5), int32(1), int32(2), int32(50),
+		int32(7), int32(30), int64(1000), int32(5), int32(1), int32(2), int32(50), int32(3), int32(4),
 		int16(QualityAgentParticipationTune), int32(4), int32(9),
 		sql.NullInt32{Int32: createdBy, Valid: true}, now, now,
 	}
@@ -51,6 +51,8 @@ func TestScanQualityAgentDecodesConfig(t *testing.T) {
 	require.Equal(t, int32(1), agent.MaxConcurrentSessions)
 	require.Equal(t, int32(2), agent.MaxNewSessionsPerHour)
 	require.Equal(t, int32(50), agent.MaxActiveSessions)
+	require.Equal(t, int32(3), agent.MaxTriageSessions)
+	require.Equal(t, int32(4), agent.MaxNewTriageSessionsPerHour)
 	require.Equal(t, QualityAgentParticipationTune, agent.Participation)
 	require.Equal(t, int32(4), agent.RepairMaxPerDay)
 	require.Equal(t, int32(9), agent.RunMaxPerRulePerDay)
@@ -67,7 +69,7 @@ func TestScanQualityAgentWithoutOwnerOrCreator(t *testing.T) {
 		int64(8), "agent-res", 12, "Draft", "", "", "", "", int16(1), sql.NullInt32{},
 		[]byte(`[]`), int16(0), "", "", int16(0), int16(2), []byte(`[]`),
 		float64(0.7), false, int32(10), int32(60), int64(0), int32(0), int32(0),
-		int32(0), int32(0), int16(QualityAgentParticipationRepair), int32(0), int32(0),
+		int32(0), int32(0), int32(0), int32(0), int16(QualityAgentParticipationRepair), int32(0), int32(0),
 		sql.NullInt32{}, now, now,
 	}
 	agent, err := scanQualityAgent(&fakeScanner{values: values})
