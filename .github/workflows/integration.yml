@@ -1,9 +1,10 @@
 name: Integration
 
 # Two tiers in one file:
-#   - a pull request runs only the migration chain (LATEST.sql versus the
-#     incrementals): one container, ~20s of tests, the failure mode that has
-#     actually broken a pull request and the one that breaks every upgrade;
+#   - a pull request runs only the migrator integration package: six scenarios,
+#     a container each, ~30s of tests in all. LATEST.sql drifting from the
+#     incrementals is the failure that has actually broken a pull request, and
+#     the one that breaks every user's upgrade;
 #   - a push to main runs the whole real-server suite, so main is verified
 #     minutes after the merge without anyone waiting on it.
 # The expensive matrix lives in nightly.yml; neither tier there blocks a
@@ -14,6 +15,8 @@ on:
       - .github/workflows/integration.yml
       - .github/workflows/integration-suite.yml
       - Makefile
+      - go.mod
+      - go.sum
       - backend/migrator/**
       - backend/test/integration/dockerutil/**
   push:
@@ -33,13 +36,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: integration-${{ github.ref }}
-  # Stacked merges cancel the earlier run and verify the tip, which subsumes it.
+  # The event name keeps a manual dispatch in its own lane, so it neither
+  # cancels a push verification nor is cancelled by one. Within a lane a newer
+  # run cancels the older one: stacked merges verify the tip, which subsumes it.
+  group: integration-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   migrator:
-    name: Migration chain
+    name: Migrator
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -53,7 +58,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run the migration chain tests
+      - name: Run the migrator integration tests
         run: make test-integration-migrator
 
   full:

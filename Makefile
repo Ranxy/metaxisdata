@@ -99,10 +99,10 @@ test-integration-mysql:
 test-integration-data-quality:
 	go test -v -count=1 -tags=integration -run '^(TestDataQualityEnumValidationRealServerIntegration|TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration|TestDataQualityPersonalDataRedactionRealServerIntegration|TestDataQualityRuleTemplateRealServerIntegration|TestDataQualityCodeTableRealServerIntegration)$$' ./backend/test/integration/runner
 
-# The migration-chain gate: LATEST.sql and the increment chain must describe the
-# same schema, and only a real PostgreSQL can prove it. This is the one part of
-# the integration surface a pull request still runs, because a mismatch breaks
-# every user's upgrade while the run is cheap (one container, ~20s of tests).
+# The migrator gate: six scenarios, each starting its own PostgreSQL, ~30s in
+# all. LATEST.sql and the increment chain describing different schemas is the
+# failure that breaks every user's upgrade, so this is the one part of the
+# integration surface a pull request still runs.
 test-integration-migrator:
 	go test -count=1 -tags=integration ./backend/migrator/...
 

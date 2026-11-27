@@ -1,0 +1,49 @@
+name: Scripts
+
+# The nightly's issue reconciler is shell, and a wrong branch in it only shows up
+# at 02:00, when a red suite most needs a tracking issue. Its scenario tests are
+# the gate: open on red, close on green, never a duplicate, never from an
+# off-branch dispatch, never after a failed API call.
+on:
+  pull_request:
+    paths:
+      - .github/scripts/**
+      - .github/workflows/scripts.yml
+      - .github/workflows/nightly.yml
+  push:
+    branches:
+      - main
+    paths:
+      - .github/scripts/**
+      - .github/workflows/scripts.yml
+      - .github/workflows/nightly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nightly-issue:
+    name: Nightly issue reconciler
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check shell syntax
+        run: |
+          shopt -s nullglob
+          files=(.github/scripts/*.sh)
+          if (( ${#files[@]} == 0 )); then
+            echo "no shell scripts found" >&2
+            exit 1
+          fi
+          for file in "${files[@]}"; do bash -n "${file}"; done
+
+      - name: Run the scenario tests
+        run: bash .github/scripts/nightly-issue.test.sh

@@ -1,9 +1,9 @@
 name: Integration suite
 
 # One definition of the real-server suite, called by the merge-to-main run, the
-# nightly matrix and workflow_dispatch. The inputs exist so the nightly can move
-# the database versions and the go test flags without a second copy of these
-# steps; a change to what the suite is belongs here, once.
+# nightly matrix and workflow_dispatch. The inputs move the database versions
+# and the ref under test, so neither caller keeps a second copy of these steps;
+# a change to what the suite is belongs here, once.
 on:
   workflow_call:
     inputs:
@@ -18,7 +18,7 @@ on:
         type: string
         default: "8.4"
       ref:
-        description: Commit or branch to test; empty means the caller's ref
+        description: Commit or branch to test; empty means the triggering SHA
         required: false
         type: string
         default: ""
@@ -30,8 +30,8 @@ jobs:
   suite:
     name: postgres:${{ inputs.postgres }} mysql:${{ inputs.mysql }}
     runs-on: ubuntu-latest
-    # Headroom over the go test timeout the caller passes (30m at most), so a
-    # hung test reports its own stack instead of being killed by the job.
+    # Headroom over the Makefile's -timeout=20m, so a hung test reports its own
+    # stack instead of being killed by the job.
     timeout-minutes: 45
     services:
       postgres:
@@ -77,7 +77,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
