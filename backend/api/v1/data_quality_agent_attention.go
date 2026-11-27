@@ -67,10 +67,10 @@ func (s *DataQualityService) ListQualityAgentAttentions(ctx context.Context, req
 	return connect.NewResponse(response), nil
 }
 
-// ReplyQualityAgentAttention answers an escalation in one transaction: the reply
-// becomes an ASK on the target session, a blocked session resumes, the conversation
-// records the reply, and the attention resolves. A retry on a closed attention is a
-// no-op.
+// ReplyQualityAgentAttention answers a legacy escalation in one transaction: the reply
+// is appended to the lead conversation as the owner's ASK, the lead is woken, and the
+// attention resolves. The target is never addressed directly; the lead routes the
+// answer. A retry on a closed attention is a no-op.
 func (s *DataQualityService) ReplyQualityAgentAttention(ctx context.Context, req *connect.Request[v1pb.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1pb.QualityAgentAttention], error) {
 	workspaceID, attention, agent, err := s.qualityAgentAttentionForOwner(ctx, req.Msg.GetName())
 	if err != nil {

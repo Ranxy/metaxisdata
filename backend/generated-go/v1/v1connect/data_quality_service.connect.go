@@ -548,9 +548,9 @@ type DataQualityServiceClient interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
-	// Answer an escalation as the owner. The reply is appended to the target session,
-	// the session is resumed, and the attention is resolved; a retry on a closed
-	// attention is a no-op.
+	// Answer a legacy escalation as the owner. The reply is appended to the lead
+	// conversation and the attention is resolved; the lead routes the answer. A retry
+	// on a closed attention is a no-op.
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
@@ -1908,9 +1908,9 @@ type DataQualityServiceHandler interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
-	// Answer an escalation as the owner. The reply is appended to the target session,
-	// the session is resumed, and the attention is resolved; a retry on a closed
-	// attention is a no-op.
+	// Answer a legacy escalation as the owner. The reply is appended to the lead
+	// conversation and the attention is resolved; the lead routes the answer. A retry
+	// on a closed attention is a no-op.
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)

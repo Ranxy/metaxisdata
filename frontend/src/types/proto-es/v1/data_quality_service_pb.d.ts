@@ -13972,9 +13972,9 @@ export declare const DataQualityService: GenService<{
     output: typeof ListQualityAgentCaseActionsResponseSchema;
   },
   /**
-   * Answer an escalation as the owner. The reply is appended to the target session,
-   * the session is resumed, and the attention is resolved; a retry on a closed
-   * attention is a no-op.
+   * Answer a legacy escalation as the owner. The reply is appended to the lead
+   * conversation and the attention is resolved; the lead routes the answer. A retry
+   * on a closed attention is a no-op.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ReplyQualityAgentAttention
    */
