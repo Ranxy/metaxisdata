@@ -44,6 +44,12 @@ type httpAgentFixture struct {
 func newHTTPAgentFixture(t *testing.T) *httpAgentFixture {
 	t.Helper()
 
+	return newHTTPAgentFixtureWithTables(t, false)
+}
+
+func newHTTPAgentFixtureWithTables(t *testing.T, keepOrders bool) *httpAgentFixture {
+	t.Helper()
+
 	require.NotNil(t, testEnv)
 	ctx := context.Background()
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -69,10 +75,14 @@ func newHTTPAgentFixture(t *testing.T) *httpAgentFixture {
 	require.NoError(t, err)
 	require.NoError(t, testEnv.ExecPostgres(ctx, "postgres", fmt.Sprintf(`CREATE DATABASE %s`, sourceDatabase)))
 	require.NoError(t, testEnv.ExecPostgres(ctx, sourceDatabase, integrationenv.PostgresFixtureResetDDL))
-	// The agent scope is the whole database, so remove the fixture's other objects to
-	// leave exactly one target and one session in this scenario.
+	// The agent scope is the whole database. Unless a scenario needs a second target,
+	// remove the fixture's other objects so exactly one session exists.
 	require.NoError(t, testEnv.ExecPostgres(ctx, sourceDatabase,
-		`DROP VIEW IF EXISTS public.user_order_view; DROP TABLE IF EXISTS public.orders, public.manual_sql_summary`))
+		`DROP VIEW IF EXISTS public.user_order_view`))
+	if !keepOrders {
+		require.NoError(t, testEnv.ExecPostgres(ctx, sourceDatabase,
+			`DROP TABLE IF EXISTS public.orders, public.manual_sql_summary`))
+	}
 	t.Cleanup(func() {
 		background := context.Background()
 		_ = testEnv.ExecPostgres(background, "postgres", fmt.Sprintf(
@@ -190,7 +200,41 @@ func newHTTPAgentFixture(t *testing.T) *httpAgentFixture {
 	f.agent = stored
 	_, err = f.dataQuality.StartQualityAgent(ctx, withToken(f.adminToken, &v1pb.StartQualityAgentRequest{Name: f.agentName}))
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = f.dataQuality.PauseQualityAgent(context.Background(),
+			withToken(f.adminToken, &v1pb.PauseQualityAgentRequest{Name: f.agentName}))
+	})
 	return f
+}
+
+func (f *httpAgentFixture) waitForInitialReview(t *testing.T, session *v1pb.QualityAgentSession) {
+	t.Helper()
+
+	stored, err := f.env.Store.GetQualityAgentSession(f.ctx, resourceIDFromName(session.GetName()))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		current, err := f.env.Store.GetQualityAgentSession(f.ctx, stored.ResourceID)
+		return err == nil && current != nil && current.LastReviewedAt != nil
+	}, 60*time.Second, 250*time.Millisecond,
+		"the covered target never finished its deterministic review: %s", f.env.ServerLogs())
+	require.Empty(t, f.provider.recordedCalls(), "a healthy target's review must not call the model")
+}
+
+func (f *httpAgentFixture) waitForTargetSessions(t *testing.T, count int) []*v1pb.QualityAgentSession {
+	t.Helper()
+
+	var sessions []*v1pb.QualityAgentSession
+	require.Eventually(t, func() bool {
+		response, err := f.dataQuality.ListQualityAgentSessions(f.ctx, withToken(f.adminToken,
+			&v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-", Agent: f.agentName, PageSize: 100}))
+		if err != nil {
+			return false
+		}
+		sessions = response.Msg.GetQualityAgentSessions()
+		return len(sessions) >= count
+	}, 150*time.Second, 500*time.Millisecond,
+		"the enrollment runner never materialized %d target sessions: %s", count, f.env.ServerLogs())
+	return sessions
 }
 
 func (f *httpAgentFixture) waitForTargetSession(t *testing.T) *v1pb.QualityAgentSession {
@@ -363,6 +407,7 @@ func (f *httpAgentFixture) waitForAskStatus(t *testing.T, resourceID string, sta
 func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	f := newHTTPAgentFixture(t)
 	session := f.waitForTargetSession(t)
+	f.waitForInitialReview(t, session)
 	f.nudgeTarget(t, session)
 
 	request := f.waitForOpenQuestion(t)
@@ -437,6 +482,29 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	}
 	require.True(t, ownerAnswer, "the owner sees their own reply in the front office")
 	require.GreaterOrEqual(t, len(f.provider.recordedCalls()), 5, "the scripted lead/target turns all ran")
+	var attentionCount int
+	require.NoError(t, f.env.Store.GetDB().QueryRowContext(f.ctx,
+		`SELECT COUNT(*) FROM quality_agent_attention WHERE agent_id = $1`, f.agent.ID).Scan(&attentionCount))
+	require.Zero(t, attentionCount, "the new coordination path writes no legacy attention rows")
+}
+
+// The A architecture materializes every in-scope target, not one session per agent
+// under an old active-session cap. Two fixture tables produce two sessions.
+func TestQualityAgentMaterializesEveryTarget(t *testing.T) {
+	f := newHTTPAgentFixtureWithTables(t, true)
+	sessions := f.waitForTargetSessions(t, 2)
+	targets := map[string]bool{}
+	for _, session := range sessions {
+		targets[session.GetTarget().GetMetaGuid()] = true
+	}
+	require.True(t, targets[f.targetGUID], "the covered users table has a session")
+	var orders bool
+	for target := range targets {
+		if strings.HasSuffix(target, ";orders") {
+			orders = true
+		}
+	}
+	require.True(t, orders, "the uncovered orders table is admitted too")
 }
 
 func withToken[T any](token string, message *T) *connect.Request[T] {
