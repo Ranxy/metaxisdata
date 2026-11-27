@@ -22,6 +22,8 @@ func TestAdoptionToolSchemaIsCapabilityGated(t *testing.T) {
 
 	engine := NewEngine(newFakeStore())
 	session := testSession()
+	session.Kind = 2
+	session.TargetGUID = ""
 	agent := capabilityTestAgent("suggest", "adopt")
 
 	set, err := engine.toolSet(session, agent, &wakeControl{})
@@ -189,7 +191,9 @@ func TestWakeSkipsTheAutomaticPassWhenTheToolRan(t *testing.T) {
 		autoCalled = true
 	})
 	session := testSession()
-	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
+	session.Kind = 2
+	session.TargetGUID = ""
+	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
 
 	outcome, err := engine.Wake(context.Background(), session, Options{})
 	require.NoError(t, err)

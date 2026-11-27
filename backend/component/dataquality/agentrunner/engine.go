@@ -73,6 +73,7 @@ type Store interface {
 	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
 	ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentCaseMessage, error)
 	GetQualityAgentParticipation(ctx context.Context, agentID int64, databaseRef, targetGUID string) (*store.QualityAgentParticipationLevels, error)
+	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 
 	GetQualityAgentConversation(ctx context.Context, agentID int64) (*store.QualityAgentSessionMessage, error)
 	GetQualityAgentSessionByID(ctx context.Context, id int64) (*store.QualityAgentSessionMessage, error)
@@ -83,12 +84,16 @@ type Store interface {
 	HasActionableQualityExecutionsSince(ctx context.Context, targetGUID string, since time.Time) (bool, error)
 
 	CreateQualityAgentRequest(ctx context.Context, message *store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, bool, error)
+	RaiseQualityAgentRequest(ctx context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error)
+	AnswerQualityAgentRequestAtomic(ctx context.Context, resourceID string, fromStatus store.QualityAgentRequestStatus, answer string, subagent *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, at time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error)
 	GetQualityAgentRequestByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentRequestMessage, error)
 	ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []store.QualityAgentRequestStatus, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
 	UpdateQualityAgentRequestStatus(ctx context.Context, resourceID string, from, to store.QualityAgentRequestStatus, askID *int64, resolution string, resolvedBy *int32, at time.Time) (*store.QualityAgentRequestMessage, bool, error)
 	ResolveQualityAgentRequestsForCase(ctx context.Context, agentID int64, caseResourceID string, at time.Time) (int64, error)
 
 	CreateQualityAgentAsk(ctx context.Context, message *store.QualityAgentAskMessage) (*store.QualityAgentAskMessage, error)
+	CreateQualityAgentAskAtomic(ctx context.Context, ask *store.QualityAgentAskMessage, lead *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage, at time.Time) (*store.QualityAgentAskMessage, error)
+	ResolveQualityAgentAskIfDrained(ctx context.Context, askID int64, at time.Time) (bool, error)
 	GetQualityAgentAskByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentAskMessage, error)
 	ListQualityAgentAsks(ctx context.Context, agentID int64, statuses []store.QualityAgentAskStatus, limit int) ([]*store.QualityAgentAskMessage, error)
 	MarkQualityAgentAskAnswered(ctx context.Context, resourceID string, answeredBy int32, answerSeq int64, at time.Time) (*store.QualityAgentAskMessage, bool, error)
@@ -248,8 +253,11 @@ type Outcome struct {
 	// adoptionUsed reports that the model called the owner-requested adoption tool,
 	// so the wake must not also run the automatic adoption pass.
 	adoptionUsed bool
-	EngineState  *storepb.QualityAgentSessionEngineState
-	Summary      string
+	// ReviewedAt is when this wake consumed the evidence it read. The runner writes it
+	// to last_reviewed_at so the next deterministic review starts after it.
+	ReviewedAt  *time.Time
+	EngineState *storepb.QualityAgentSessionEngineState
+	Summary     string
 }
 
 // Wake runs one wake of a session. It repairs a tool call a crash left unanswered,
@@ -314,6 +322,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 		outcome.EngineState = cloneEngineState(session.EngineState)
 	}
 	e.recordEngine(ctx, session, wake, 0, "wake finished: "+outcome.Summary)
+	outcome.ReviewedAt = ptrTime(e.now())
 	return outcome, nil
 }
 
@@ -815,6 +824,33 @@ func (e *Engine) deterministicWake(
 	}
 	outcome.ProcessedSeq = session.ProcessedSeq
 	return outcome, nil
+}
+
+// coverageGaps lists the declared properties the target's plan leaves uncovered.
+// It is the read half of maintain, shared with the deterministic review so a no-op
+// day writes nothing.
+func (e *Engine) coverageGaps(ctx context.Context, session *store.QualityAgentSessionMessage) ([]string, error) {
+	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's rules")
+	}
+	contract, err := e.store.GetQualityContract(ctx, session.TargetGUID, storepb.MetaType(session.TargetType))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's contract")
+	}
+	var contractSettings *storepb.QualityContractSettings
+	if contract != nil {
+		contractSettings = contract.Settings
+	}
+	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(contractSettings.GetIntent(), e.now()), quality.RuleShapes(rules))
+	gaps := make([]string, 0, len(plan.Requirements))
+	for _, requirement := range plan.Requirements {
+		if requirement.Satisfied || requirement.Exempted {
+			continue
+		}
+		gaps = append(gaps, quality.GapLabel(requirement))
+	}
+	return gaps, nil
 }
 
 // maintain surveys the target's plan. A fully surveyed target sleeps until the next

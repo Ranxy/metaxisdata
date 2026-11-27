@@ -111,28 +111,34 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid send_lead_message arguments")
 	}
-	lead, err := e.leadFor(ctx, session)
-	if err != nil {
-		return "", err
-	}
 	intent := parseMessageIntent(input.Intent)
 	if strings.TrimSpace(input.Intent) == "" {
 		intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT
 	}
-	message, err := e.deliverAgentMessage(ctx, session, session.SubagentName, lead, input.Message, intent, "")
-	if err != nil {
-		return "", err
-	}
-	if input.Case != "" {
-		if err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+	if intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION {
+		dedupe := fmt.Sprintf("target:%s:question", session.TargetGUID)
+		if input.Case != "" {
+			dedupe = fmt.Sprintf("target:%s:case:%s:question", session.TargetGUID, input.Case)
+		}
+		request, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindQuestion,
 			CaseResourceID: input.Case,
 			Title:          "Subagent question",
 			Question:       input.Message,
-			DedupeKey:      fmt.Sprintf("target:%s:case:%s:question", session.TargetGUID, input.Case),
-		}); err != nil {
+			DedupeKey:      dedupe,
+		})
+		if err != nil {
 			return "", err
 		}
+		return marshalJSON(map[string]any{"delivered": true, "to": "lead", "request": requestName(request.ResourceID)})
+	}
+	lead, err := e.leadFor(ctx, session)
+	if err != nil {
+		return "", err
+	}
+	message, err := e.deliverAgentMessage(ctx, session, session.SubagentName, lead, input.Message, intent, "")
+	if err != nil {
+		return "", err
 	}
 	return marshalJSON(map[string]any{"delivered": true, "message_id": message.ID, "to": "lead"})
 }
@@ -144,6 +150,9 @@ func (e *Engine) leadFor(ctx context.Context, session *store.QualityAgentSession
 			return nil, err
 		}
 		if lead != nil {
+			if lead.AgentID != session.AgentID || lead.ArchivedAt != nil {
+				return nil, common.Errorf(common.NotAuthorized, "the subagent's lead is not available")
+			}
 			return lead, nil
 		}
 	}
@@ -151,7 +160,7 @@ func (e *Engine) leadFor(ctx context.Context, session *store.QualityAgentSession
 	if err != nil {
 		return nil, err
 	}
-	if lead == nil {
+	if lead == nil || lead.AgentID != session.AgentID || lead.ArchivedAt != nil {
 		return nil, errors.New("the subagent has no lead conversation")
 	}
 	return lead, nil
@@ -159,7 +168,7 @@ func (e *Engine) leadFor(ctx context.Context, session *store.QualityAgentSession
 
 // raiseRequest records one subagent request and tells the lead once. A retried
 // request returns the existing active row and does not append a second message.
-func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) error {
+func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, error) {
 	message.WorkspaceID = session.WorkspaceID
 	message.AgentID = session.AgentID
 	message.OriginSessionID = &session.ID
@@ -168,23 +177,27 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	if message.DedupeKey == "" {
 		message.DedupeKey = fmt.Sprintf("target:%s:kind:%d", session.TargetGUID, message.Kind)
 	}
-	created, isNew, err := e.store.CreateQualityAgentRequest(ctx, &message)
-	if err != nil {
-		return err
-	}
-	if !isNew {
-		return nil
-	}
 	lead, err := e.leadFor(ctx, session)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	body := fmt.Sprintf("[question] request %s: %s", requestName(created.ResourceID), created.Question)
-	if _, err := e.deliverAgentMessage(ctx, session, session.SubagentName, lead, body,
-		storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION, created.ResourceID); err != nil {
-		return err
+	content := fmt.Sprintf("Agent %s sent a message:\n[question] %s", session.SubagentName, message.Question)
+	notice := &store.QualityAgentTranscriptMessage{
+		Wake:            lead.WakeCount + 1,
+		Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:          storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Content:         content,
+		SenderSessionID: &session.ID,
+		SenderName:      session.SubagentName,
+		Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
+		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		IdempotencyKey:  fmt.Sprintf("request-notice:%s:%d", message.DedupeKey, session.ID),
 	}
-	return nil
+	created, _, err := e.store.RaiseQualityAgentRequest(ctx, &message, lead, notice)
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 // listSubagents returns a bounded page of the lead's roster.
@@ -253,7 +266,7 @@ func (e *Engine) getSubagent(ctx context.Context, session *store.QualityAgentSes
 	caseRows := make([]map[string]any, 0, len(cases))
 	for _, openCase := range cases {
 		caseRows = append(caseRows, map[string]any{
-			"case":          requestName(openCase.ResourceID),
+			"case":          "qualityAgentCases/" + openCase.ResourceID,
 			"state":         openCase.State.Name(),
 			"failure_class": openCase.FailureClass,
 			"summary":       openCase.Summary,
@@ -291,7 +304,11 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 	case "FORWARDED":
 		statuses = []store.QualityAgentRequestStatus{store.QualityAgentRequestStatusForwarded}
 	case "CLOSED":
-		statuses = nil
+		statuses = []store.QualityAgentRequestStatus{
+			store.QualityAgentRequestStatusAnswered,
+			store.QualityAgentRequestStatusResolved,
+			store.QualityAgentRequestStatusDismissed,
+		}
 	case "":
 	default:
 		return "", errors.Errorf("unknown request status %q", input.Status)
@@ -334,18 +351,28 @@ func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentS
 	if err != nil {
 		return "", err
 	}
-	if subagent == nil {
-		return "", common.Errorf(common.NotFound, "the request's subagent no longer exists")
+	if subagent == nil || subagent.AgentID != session.AgentID || subagent.ArchivedAt != nil {
+		return "", common.Errorf(common.NotFound, "the request's subagent is no longer available")
 	}
-	if _, applied, err := e.store.UpdateQualityAgentRequestStatus(ctx, request.ResourceID,
-		request.Status, store.QualityAgentRequestStatusAnswered, nil, input.Answer, nil, e.now()); err != nil {
+	content := fmt.Sprintf("Agent lead sent a message:\n[answer] %s", input.Answer)
+	_, _, applied, err := e.store.AnswerQualityAgentRequestAtomic(ctx, request.ResourceID,
+		request.Status, input.Answer, subagent, &store.QualityAgentTranscriptMessage{
+			Wake:            subagent.WakeCount + 1,
+			Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:          storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+			Content:         content,
+			SenderSessionID: &session.ID,
+			SenderName:      "lead",
+			Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+			Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+			ReplyTo:         request.ResourceID,
+			IdempotencyKey:  fmt.Sprintf("answer:%s", request.ResourceID),
+		}, e.now())
+	if err != nil {
 		return "", err
-	} else if !applied {
+	}
+	if !applied {
 		return marshalJSON(map[string]any{"answered": false, "reason": "the request already moved on"})
-	}
-	if _, err := e.deliverAgentMessage(ctx, session, "lead", subagent, "[answer] "+input.Answer,
-		storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER, request.ResourceID); err != nil {
-		return "", err
 	}
 	return marshalJSON(map[string]any{"answered": true, "request": requestName(request.ResourceID)})
 }
@@ -419,27 +446,29 @@ func (e *Engine) replyOwner(ctx context.Context, session *store.QualityAgentSess
 }
 
 func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgentSessionMessage, question string, requests []*store.QualityAgentRequestMessage, control *wakeControl) (*store.QualityAgentAskMessage, error) {
-	message, err := e.appendOwnerMessage(ctx, session, question, "", storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION, control)
+	now := e.now()
+	ask, err := e.store.CreateQualityAgentAskAtomic(ctx, &store.QualityAgentAskMessage{
+		WorkspaceID: session.WorkspaceID,
+		AgentID:     session.AgentID,
+		Kind:        store.QualityAgentAskKindQuestion,
+		Title:       "The quality agent needs a decision",
+		Question:    question,
+	}, session, &store.QualityAgentTranscriptMessage{
+		Wake:           session.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:        question,
+		SenderName:     "lead",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: fmt.Sprintf("ownerask:%d:%s", session.WakeCount+1, contentHash(question)),
+	}, requests, now)
 	if err != nil {
 		return nil, err
 	}
-	ask, err := e.store.CreateQualityAgentAsk(ctx, &store.QualityAgentAskMessage{
-		WorkspaceID:           session.WorkspaceID,
-		AgentID:               session.AgentID,
-		ConversationSessionID: &session.ID,
-		Kind:                  store.QualityAgentAskKindQuestion,
-		MessageSeq:            message.Seq,
-		Title:                 "The quality agent needs a decision",
-		Question:              question,
-	})
-	if err != nil {
-		return nil, err
-	}
-	for _, request := range requests {
-		if _, _, err := e.store.UpdateQualityAgentRequestStatus(ctx, request.ResourceID,
-			request.Status, store.QualityAgentRequestStatusForwarded, &ask.ID, "", nil, e.now()); err != nil {
-			return nil, err
-		}
+	if control != nil {
+		control.ownerFacing = true
+		control.ownerMessageWritten = true
 	}
 	return ask, nil
 }
@@ -478,8 +507,8 @@ func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSes
 	if request.AgentID != session.AgentID {
 		return nil, common.Errorf(common.NotAuthorized, "request %q belongs to another agent", name)
 	}
-	if request.Status != store.QualityAgentRequestStatusOpen && request.Status != store.QualityAgentRequestStatusForwarded {
-		return nil, common.Errorf(common.Conflict, "request %q is already closed", name)
+	if request.Status != store.QualityAgentRequestStatusOpen {
+		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
 	}
 	return request, nil
 }

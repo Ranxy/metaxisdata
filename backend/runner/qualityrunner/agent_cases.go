@@ -99,6 +99,9 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						// that from the table, so it has to reach the owner.
 						r.escalateFrozenCase(ctx, openCase, assessment.Rule)
 					}
+					if state.Terminal() {
+						r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
+					}
 					if state == store.QualityAgentCaseStateResolved {
 						// The item is settled, so the target's decision card must stop listing it.
 						r.refreshTargetCard(ctx, agent.ID, targetGUID)
@@ -120,6 +123,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				} else if applied {
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
+					r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
 					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
@@ -139,6 +143,7 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 				} else if applied {
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
+					r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
 					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
@@ -252,4 +257,16 @@ func caseSummary(rule *store.QualityRuleMessage, diagnosis *dataquality.Diagnosi
 		title = "a check"
 	}
 	return fmt.Sprintf("check %q (qualityRules/%s): %s", title, rule.ResourceID, diagnosis.Summary)
+}
+
+// closeCaseRequests closes the requests (and any drained asks) of a terminal case.
+// It is best effort: the case row is the durable record.
+func (r *Runner) closeCaseRequests(ctx context.Context, agentID int64, caseResourceID string) {
+	now := time.Now().UTC()
+	if _, err := r.stores.ResolveQualityAgentRequestsForCase(ctx, agentID, caseResourceID, now); err != nil {
+		slog.Warn("failed to close a case's requests", slog.String("case", caseResourceID), log.WithError(err))
+	}
+	if _, err := r.stores.ResolveDrainedQualityAgentAsks(ctx, agentID, now); err != nil {
+		slog.Warn("failed to close drained asks", slog.Int64("agent", agentID), log.WithError(err))
+	}
 }

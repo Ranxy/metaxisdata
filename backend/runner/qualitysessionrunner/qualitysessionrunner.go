@@ -51,6 +51,8 @@ const (
 // Waker runs one wake of one session.
 type Waker interface {
 	Wake(ctx context.Context, session *store.QualityAgentSessionMessage, options agentrunner.Options) (agentrunner.Outcome, error)
+	NeedsModel(ctx context.Context, session *store.QualityAgentSessionMessage) (bool, error)
+	Review(ctx context.Context, session *store.QualityAgentSessionMessage) agentrunner.Outcome
 }
 
 type SessionStore interface {
@@ -60,6 +62,7 @@ type SessionStore interface {
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 	ListQualityAgentDatabases(ctx context.Context, agentID int64) ([]string, error)
 	UpdateQualityAgentSessionProgress(ctx context.Context, resourceID string, result *store.QualityAgentSessionWakeResult) (*store.QualityAgentSessionMessage, error)
+	RecordQualityAgentReview(ctx context.Context, resourceID string, reviewedAt, nextWakeAt time.Time) (bool, error)
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
@@ -239,6 +242,24 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		return
 	}
 	defer r.releaseAgentSlot(agent.ID)
+	needsModel, err := r.engine.NeedsModel(ctx, session)
+	if err != nil {
+		r.block(ctx, session, "internal-error", "the session review check failed: "+err.Error(),
+			ptrTime(r.now().Add(retryWake)))
+		return
+	}
+	if !needsModel {
+		outcome := r.engine.Review(ctx, session)
+		next := r.idleWake()
+		if outcome.NextWakeAt != nil {
+			next = outcome.NextWakeAt
+		}
+		if _, err := r.store.RecordQualityAgentReview(ctx, session.ResourceID, r.now(), *next); err != nil {
+			slog.Warn("failed to record a deterministic review",
+				slog.String("session", session.ResourceID), log.WithError(err))
+		}
+		return
+	}
 	tokenLimit := agent.TokensPerHour
 	if tokenLimit <= 0 {
 		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
@@ -294,6 +315,7 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			WakeCountIncrement: 1,
 			ProcessedSeq:       outcome.ProcessedSeq,
 			EngineState:        outcome.EngineState,
+			LastReviewedAt:     outcome.ReviewedAt,
 		})
 	if err != nil {
 		slog.Error("failed to record the quality agent session progress",

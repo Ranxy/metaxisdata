@@ -4263,8 +4263,11 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		if err != nil || fresh == nil {
 			return false
 		}
+		// A deterministic daily review does not increment WakeCount; either a real wake or
+		// a completed review settles the row after the resume.
 		return fresh.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED &&
-			fresh.LeaseUntil == nil && fresh.WakeCount > parked.WakeCount
+			fresh.LeaseUntil == nil &&
+			(fresh.WakeCount > parked.WakeCount || fresh.UpdatedAt.After(parked.UpdatedAt))
 	}, 30*time.Second, 100*time.Millisecond,
 		"the resumed session never finished its wake: %s", fixture.env.ServerLogs())
 

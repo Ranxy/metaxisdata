@@ -34,6 +34,13 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 		return false, nil
 	}
 	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		enrollment, err := e.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.AgentID, session.TargetGUID)
+		if err != nil {
+			return false, err
+		}
+		if enrollment != nil && enrollment.NextReviewAt != nil && enrollment.NextReviewAt.After(e.now()) {
+			return false, nil
+		}
 		return true, nil
 	}
 	now := e.now()
@@ -55,16 +62,32 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 
 // Review is the deterministic daily pass for a target with nothing actionable. It
 // returns the next daily wake without writing a transcript row.
-func (e *Engine) Review(session *store.QualityAgentSessionMessage) Outcome {
+func (e *Engine) Review(ctx context.Context, session *store.QualityAgentSessionMessage) Outcome {
 	now := e.now()
+	// A no-op review is silent, but a newly uncovered declared property is durable
+	// knowledge: only that case runs the deterministic survey and records its note.
+	if gaps, err := e.coverageGaps(ctx, session); err == nil && len(gaps) > 0 {
+		if _, maintainErr := e.maintain(ctx, session, 0); maintainErr != nil {
+			return Outcome{
+				NextWakeAt:  ptrTime(now.Add(retryWake)),
+				EngineState: cloneEngineState(session.EngineState),
+				ReviewedAt:  ptrTime(now),
+				Summary:     "review deferred: the coverage survey failed",
+			}
+		}
+	}
 	outcome := Outcome{
 		NextWakeAt:   ptrTime(now.Add(maintainWake)),
 		ProcessedSeq: session.ProcessedSeq,
 		EngineState:  cloneEngineState(session.EngineState),
+		ReviewedAt:   ptrTime(now),
 		Summary:      "reviewed: nothing actionable",
 	}
 	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
 		outcome.NextWakeAt = ptrTime(now.Add(triageReviewDelay))
+		if enrollment, err := e.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.AgentID, session.TargetGUID); err == nil && enrollment != nil && enrollment.NextReviewAt != nil {
+			outcome.NextWakeAt = enrollment.NextReviewAt
+		}
 	}
 	return outcome
 }

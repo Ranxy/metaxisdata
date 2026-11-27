@@ -56,6 +56,10 @@ func (f *fakeStore) UpdateQualityAgentSessionProgress(_ context.Context, _ strin
 	return &store.QualityAgentSessionMessage{ResourceID: "session-1", Revision: 5}, nil
 }
 
+func (*fakeStore) RecordQualityAgentReview(context.Context, string, time.Time, time.Time) (bool, error) {
+	return true, nil
+}
+
 func (f *fakeStore) UpdateQualityAgentSessionState(_ context.Context, _ string, _ int32, state storepb.QualityAgentSessionState, code, _ string, nextWake *time.Time) (*store.QualityAgentSessionMessage, bool, error) {
 	f.states = append(f.states, state)
 	f.blockedCodes = append(f.blockedCodes, code)
@@ -112,14 +116,26 @@ func (f *fakeStore) UpdateQualityAgentEnrollmentAfterTriage(_ context.Context, r
 
 // fakeEngine reports one fixed outcome.
 type fakeEngine struct {
-	outcome agentrunner.Outcome
-	err     error
-	called  int
+	outcome    agentrunner.Outcome
+	err        error
+	called     int
+	skipModel  bool
+	reviewed   int
+	reviewWake *time.Time
 }
 
 func (f *fakeEngine) Wake(context.Context, *store.QualityAgentSessionMessage, agentrunner.Options) (agentrunner.Outcome, error) {
 	f.called++
 	return f.outcome, f.err
+}
+
+func (f *fakeEngine) NeedsModel(context.Context, *store.QualityAgentSessionMessage) (bool, error) {
+	return !f.skipModel, nil
+}
+
+func (f *fakeEngine) Review(context.Context, *store.QualityAgentSessionMessage) agentrunner.Outcome {
+	f.reviewed++
+	return agentrunner.Outcome{NextWakeAt: f.reviewWake}
 }
 
 func testSession() *store.QualityAgentSessionMessage {
@@ -378,4 +394,16 @@ func TestHostRequeuesASessionOverTheAgentConcurrencyBudget(t *testing.T) {
 	require.Zero(t, engine.called)
 	require.Len(t, stores.releasedWakes, 1)
 	require.NotNil(t, stores.releasedWakes[0])
+}
+
+func TestHostRunsADeterministicReviewWithoutAWake(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{}
+	future := time.Unix(20_000, 0).UTC()
+	engine := &fakeEngine{skipModel: true, reviewWake: &future}
+	runner := testRunner(stores, engine)
+	runner.host(context.Background(), testSession())
+	require.Zero(t, engine.called, "a no-op review must not call the model wake")
+	require.Equal(t, 1, engine.reviewed)
 }
