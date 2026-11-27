@@ -121,6 +121,17 @@ func TestReconcileScopeQueryPinsSafetyPredicates(t *testing.T) {
 	requirePlaceholdersMatchArgs(t, restoreInScopeEnrollmentsQuery, []any{
 		"ws", int64(3), []string{"instances/i/databases/d"}, int16(1), int16(5),
 	})
+	require.Contains(t, unblockRestoredSessionsQuery, "s.blocked_code = 'out-of-scope'")
+	require.Contains(t, unblockRestoredSessionsQuery, "e.database_ref = ANY($5)")
+	require.Contains(t, unblockRestoredSessionsQuery, "e.mode = $7")
+	requirePlaceholdersMatchArgs(t, unblockRestoredSessionsQuery, []any{
+		"ws", int16(3), int16(3), int64(3),
+		[]string{"instances/i/databases/d"}, int16(1), int16(1),
+	})
+	require.Contains(t, activateRestoredMonitorEnrollmentsQuery, "mode = $6")
+	requirePlaceholdersMatchArgs(t, activateRestoredMonitorEnrollmentsQuery, []any{
+		"ws", int64(3), []string{"instances/i/databases/d"}, int16(2), int16(1), int16(1), int16(1),
+	})
 }
 
 // Every read that aliases the queue must use the alias-qualified projection. The

@@ -46,6 +46,9 @@ type QualityAgentAskMessage struct {
 	MessageSeq            int64
 	Title                 string
 	Question              string
+	// TargetGUID is the target an approval ask is about; empty for an agent-level ask.
+	TargetGUID string
+	TargetType storepb.MetaType
 	// DedupeKey keeps one active ask per (agent, key); empty means not deduped.
 	DedupeKey        string
 	Status           QualityAgentAskStatus
@@ -58,8 +61,9 @@ type QualityAgentAskMessage struct {
 }
 
 const qualityAgentAskColumns = `id, resource_id, workspace_id, agent_id,
-	conversation_session_id, kind, message_seq, title, question, dedupe_key, status,
-	answered_by, answered_at, answer_message_seq, resolved_at, created_at, updated_at`
+	conversation_session_id, kind, message_seq, title, question, target_guid, target_type,
+	dedupe_key, status, answered_by, answered_at, answer_message_seq, resolved_at,
+	created_at, updated_at`
 
 // CreateQualityAgentAsk inserts one owner-facing question.
 func (s *Store) CreateQualityAgentAsk(ctx context.Context, message *QualityAgentAskMessage) (*QualityAgentAskMessage, error) {
@@ -90,12 +94,13 @@ func (s *Store) CreateQualityAgentAsk(ctx context.Context, message *QualityAgent
 	created, err := scanQualityAgentAsk(s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_ask
 			(resource_id, workspace_id, agent_id, conversation_session_id, kind, message_seq,
-			 title, question, dedupe_key, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 title, question, target_guid, target_type, dedupe_key, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+qualityAgentAskColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.ConversationSessionID,
 		int16(message.Kind), message.MessageSeq, message.Title, message.Question,
-		message.DedupeKey, int16(message.Status), message.CreatedAt, message.UpdatedAt))
+		message.TargetGUID, int16(message.TargetType), message.DedupeKey,
+		int16(message.Status), message.CreatedAt, message.UpdatedAt))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality agent ask")
 	}
@@ -234,26 +239,38 @@ func (s *Store) MarkLatestOpenQualityAgentAskAnswered(ctx context.Context, agent
 	return message, true, nil
 }
 
-// ResolveQualityAgentAskByDedupe closes the active ask holding a dedupe key. It is how
-// an approval queue closes its ask when the last pending draft is gone.
-func (s *Store) ResolveQualityAgentAskByDedupe(ctx context.Context, agentID int64, dedupeKey string, status QualityAgentAskStatus, at time.Time) (bool, error) {
-	if dedupeKey == "" {
+// ProposalAskDedupeKey is the one key a target's approval ask uses. Creating and
+// draining it must use the same value, or the ask can never close.
+func ProposalAskDedupeKey(targetGUID string) string {
+	return "proposal:" + targetGUID
+}
+
+// ResolveProposalAskIfDrained closes a target's approval ask only when it has no
+// pending rule draft left. A single decided draft must not close a queue that still
+// holds others; the old attention writer guarded this with the same NOT EXISTS.
+func (s *Store) ResolveProposalAskIfDrained(ctx context.Context, agentID int64, targetGUID, dedupeKey string, at time.Time) (bool, error) {
+	if agentID <= 0 || targetGUID == "" || dedupeKey == "" {
 		return false, nil
 	}
-	if status != QualityAgentAskStatusResolved && status != QualityAgentAskStatusDismissed {
-		return false, common.Errorf(common.Invalid, "an ask can only resolve or dismiss")
-	}
 	result, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_agent_ask SET status = $3, resolved_at = $4, updated_at = $4
-		WHERE agent_id = $1 AND dedupe_key = $2 AND status IN ($5, $6)`,
-		agentID, dedupeKey, int16(status), at.UTC(),
-		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered))
+		UPDATE quality_agent_ask a
+		SET status = $3, resolved_at = $4, updated_at = $4
+		WHERE a.agent_id = $1 AND a.dedupe_key = $2 AND a.status IN ($5, $6)
+		  AND NOT EXISTS (
+			SELECT 1 FROM quality_suggestion s
+			WHERE s.agent_id = $1 AND s.target_guid = $7
+			  AND s.status = $8 AND s.kind = $9
+		  )`,
+		agentID, dedupeKey, int16(QualityAgentAskStatusResolved), at.UTC(),
+		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered),
+		targetGUID, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
+		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT))
 	if err != nil {
-		return false, errors.Wrap(err, "failed to resolve the ask by dedupe")
+		return false, errors.Wrap(err, "failed to resolve a drained proposal ask")
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return false, errors.Wrap(err, "failed to count the resolved asks")
+		return false, errors.Wrap(err, "failed to count the resolved proposal asks")
 	}
 	return affected > 0, nil
 }
@@ -283,6 +300,7 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 		message      QualityAgentAskMessage
 		kind         int16
 		status       int16
+		targetType   int16
 		conversation sql.NullInt64
 		answeredBy   sql.NullInt32
 		answeredAt   sql.NullTime
@@ -291,7 +309,8 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 	err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&conversation, &kind, &message.MessageSeq, &message.Title, &message.Question,
-		&message.DedupeKey, &status, &answeredBy, &answeredAt, &message.AnswerMessageSeq, &resolvedAt,
+		&message.TargetGUID, &targetType, &message.DedupeKey, &status,
+		&answeredBy, &answeredAt, &message.AnswerMessageSeq, &resolvedAt,
 		&message.CreatedAt, &message.UpdatedAt,
 	)
 	if err != nil {
@@ -299,6 +318,7 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 	}
 	message.Kind = QualityAgentAskKind(kind)
 	message.Status = QualityAgentAskStatus(status)
+	message.TargetType = storepb.MetaType(targetType)
 	if conversation.Valid {
 		value := conversation.Int64
 		message.ConversationSessionID = &value
@@ -391,11 +411,12 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 	created, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_ask
 			(resource_id, workspace_id, agent_id, conversation_session_id, kind, message_seq,
-			 title, question, dedupe_key, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 title, question, target_guid, target_type, dedupe_key, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+qualityAgentAskColumns,
 		ask.ResourceID, ask.WorkspaceID, ask.AgentID, ask.ConversationSessionID,
-		int16(ask.Kind), ask.MessageSeq, ask.Title, ask.Question, ask.DedupeKey,
+		int16(ask.Kind), ask.MessageSeq, ask.Title, ask.Question,
+		ask.TargetGUID, int16(ask.TargetType), ask.DedupeKey,
 		int16(ask.Status), ask.CreatedAt, ask.UpdatedAt))
 	if err != nil {
 		return nil, false, errors.Wrap(err, "failed to create the quality agent ask")
@@ -458,6 +479,11 @@ func (s *Store) ResolveDrainedQualityAgentAsks(ctx context.Context, agentID int6
 		UPDATE quality_agent_ask a
 		SET status = $2, resolved_at = $3, updated_at = $3
 		WHERE a.agent_id = $1 AND a.status IN ($4, $5)
+		  -- Only a request-backed ask can drain. An anomaly or approval ask has no
+		  -- requests at all, and an unrelated case ending must not close it.
+		  AND EXISTS (
+			SELECT 1 FROM quality_agent_request owned WHERE owned.ask_id = a.id
+		  )
 		  AND NOT EXISTS (
 			SELECT 1 FROM quality_agent_request r
 			WHERE r.ask_id = a.id AND r.status IN ($6, $7)

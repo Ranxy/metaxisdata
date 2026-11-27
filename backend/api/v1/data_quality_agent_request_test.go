@@ -51,6 +51,8 @@ func TestConvertCoordinationRowsNamesTheirRelations(t *testing.T) {
 		ConversationSessionID: &conversation,
 		MessageSeq:            11,
 		AnswerMessageSeq:      12,
+		TargetGUID:            "inst;db;;audit",
+		TargetType:            storepb.MetaType_TABLE,
 		AnsweredBy:            &answeredBy,
 		AnsweredAt:            &now,
 		CreatedAt:             now,
@@ -68,8 +70,9 @@ func TestConvertCoordinationRowsNamesTheirRelations(t *testing.T) {
 	require.Equal(t, int64(11), ask.GetMessageSeq())
 	require.Equal(t, int64(12), ask.GetAnswerMessageSeq())
 	require.EqualValues(t, 3, ask.GetRequestCount())
-	require.Len(t, ask.GetTargets(), 2, "targets are deduplicated, requests are not")
-	require.Equal(t, "orders", ask.GetTargets()[0].GetPath().GetObject())
+	require.Len(t, ask.GetTargets(), 3, "the ask's own target is added before the requests")
+	require.Equal(t, "audit", ask.GetTargets()[0].GetPath().GetObject())
+	require.Equal(t, "orders", ask.GetTargets()[1].GetPath().GetObject())
 
 	request := convertQualityAgentRequestToV1("ws", "agent1", &store.QualityAgentRequestMessage{
 		ResourceID:      "r1",

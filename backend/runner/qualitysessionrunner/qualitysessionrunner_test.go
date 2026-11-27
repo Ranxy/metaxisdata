@@ -379,6 +379,24 @@ func TestRunOnceEscalatesRestartLimitSessions(t *testing.T) {
 	require.Equal(t, []string{"session-2:restart-limit"}, escalated)
 }
 
+// A budget block is retryable: when the next window runs the wake successfully, the
+// session must return to ENABLED, or events can never advance its next wake again.
+func TestHostClearsARetryableBlockAfterASuccessfulWake(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{}
+	engine := &fakeEngine{}
+	runner := testRunner(stores, engine)
+	session := testSession()
+	session.State = storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED
+	session.BlockedCode = "token-budget"
+
+	runner.host(context.Background(), session)
+
+	require.Equal(t, 1, engine.called)
+	require.Contains(t, stores.states, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)
+}
+
 // A deterministic review does not take a model slot: a target whose agent is already
 // at max_concurrent_sessions must still be reviewed today, not requeued behind model
 // wakes.

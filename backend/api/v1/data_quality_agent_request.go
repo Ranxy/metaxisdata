@@ -339,6 +339,11 @@ func convertQualityAgentAskToV1(workspaceID, agentResourceID string, ask *store.
 		RequestCount:     int32(len(requests)),
 	}
 	seenTargets := map[string]bool{}
+	if ask.TargetGUID != "" {
+		seenTargets[ask.TargetGUID] = true
+		converted.Targets = append(converted.Targets,
+			convertQualityTargetIdentityToV1(ask.TargetGUID, ask.TargetType))
+	}
 	for _, request := range requests {
 		if request.TargetGUID == "" || seenTargets[request.TargetGUID] {
 			continue

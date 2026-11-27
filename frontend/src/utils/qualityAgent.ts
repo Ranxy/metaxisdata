@@ -151,3 +151,15 @@ export function qualityAgentAskIsApproval(ask: QualityAgentAsk): boolean {
     ask.status === QualityAgentAskStatus.OPEN
   );
 }
+
+/**
+ * The target an approval ask covers. Exactly one target is required: approving an ask
+ * that names several targets would create checks the owner did not see, so an ambiguous
+ * ask yields "" and the caller refuses the action.
+ */
+export function qualityAgentAskTargetGuid(ask: QualityAgentAsk): string {
+  if (ask.targets.length !== 1) {
+    return "";
+  }
+  return ask.targets[0]?.metaGuid ?? "";
+}

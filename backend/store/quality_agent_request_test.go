@@ -39,7 +39,8 @@ func TestScanQualityAgentAsk(t *testing.T) {
 	conversation := int64(2)
 	values := []any{
 		int64(1), "ask", "ws", int64(3), sql.NullInt64{Int64: conversation, Valid: true},
-		int16(QualityAgentAskKindQuestion), int64(12), "title", "question", "proposal:t",
+		int16(QualityAgentAskKindQuestion), int64(12), "title", "question",
+		"inst;db;;t", int16(storepb.MetaType_TABLE), "proposal:t",
 		int16(QualityAgentAskStatusOpen), sql.NullInt32{}, sql.NullTime{}, int64(0),
 		sql.NullTime{}, now, now,
 	}
@@ -50,4 +51,6 @@ func TestScanQualityAgentAsk(t *testing.T) {
 	require.Equal(t, conversation, *message.ConversationSessionID)
 	require.Equal(t, int64(12), message.MessageSeq)
 	require.Equal(t, "proposal:t", message.DedupeKey)
+	require.Equal(t, "inst;db;;t", message.TargetGUID)
+	require.Equal(t, storepb.MetaType_TABLE, message.TargetType)
 }

@@ -398,7 +398,7 @@ func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentS
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid answer_request arguments")
 	}
-	request, err := e.openRequest(ctx, session, input.Request)
+	request, err := e.answerableRequest(ctx, session, input.Request)
 	if err != nil {
 		return "", err
 	}
@@ -561,7 +561,35 @@ func (e *Engine) appendOwnerMessage(ctx context.Context, session *store.QualityA
 	return message, nil
 }
 
+// answerableRequest resolves a request the lead may answer. A request the lead already
+// forwarded to the owner is FORWARDED, not OPEN: the owner's reply is exactly the answer
+// it is waiting for, so both states are valid here.
+func (e *Engine) answerableRequest(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
+	request, err := e.requestByAddress(ctx, session, name)
+	if err != nil {
+		return nil, err
+	}
+	if request.Status != store.QualityAgentRequestStatusOpen &&
+		request.Status != store.QualityAgentRequestStatusForwarded {
+		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
+	}
+	return request, nil
+}
+
 func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
+	request, err := e.requestByAddress(ctx, session, name)
+	if err != nil {
+		return nil, err
+	}
+	if request.Status != store.QualityAgentRequestStatusOpen {
+		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
+	}
+	return request, nil
+}
+
+// requestByAddress resolves a request name and proves it belongs to the caller's agent.
+// Status is the caller's concern: forwarding and answering accept different sets.
+func (e *Engine) requestByAddress(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
 	resourceID := strings.TrimPrefix(strings.TrimSpace(name), "qualityAgentRequests/")
 	request, err := e.store.GetQualityAgentRequestByResourceID(ctx, resourceID)
 	if err != nil {
@@ -572,9 +600,6 @@ func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSes
 	}
 	if request.AgentID != session.AgentID {
 		return nil, common.Errorf(common.NotAuthorized, "request %q belongs to another agent", name)
-	}
-	if request.Status != store.QualityAgentRequestStatusOpen {
-		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
 	}
 	return request, nil
 }

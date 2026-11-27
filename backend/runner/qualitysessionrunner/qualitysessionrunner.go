@@ -358,6 +358,22 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			slog.String("session", session.ResourceID), log.WithError(err))
 		return
 	}
+	// A retryable budget or infrastructure block buys one deferral, not a permanent
+	// state: the wake just ran successfully, so the session is healthy again. Without
+	// this clear, a blocked session stays BLOCKED even after the window reopens, and
+	// AdvanceQualityAgentSessionWake (which requires ENABLED) can no longer pull it
+	// forward for a new event.
+	if !outcome.Blocked && session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED &&
+		store.QualityAgentSessionBlockedCodeRetryable(session.BlockedCode) {
+		if _, applied, stateErr := r.store.UpdateQualityAgentSessionState(ctx, progress.ResourceID, progress.Revision,
+			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", nil); stateErr != nil {
+			slog.Warn("failed to clear a retryable session block",
+				slog.String("session", session.ResourceID), log.WithError(stateErr))
+		} else if !applied {
+			slog.Warn("the session changed before its retryable block could be cleared",
+				slog.String("session", session.ResourceID))
+		}
+	}
 	if outcome.TriageComplete {
 		// The triage analysis is done: park the queue row until its review. The session
 		// stays as the target's conversation and wakes again only when something new

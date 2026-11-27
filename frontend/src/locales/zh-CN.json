@@ -3362,6 +3362,7 @@
     "agentReply": "Agent",
     "allDatabases": "全部数据库",
     "askAnsweredBy": "由 {user} 回答",
+    "askApproveNoTarget": "这个问题没有明确指向单个目标；请到目标页面批准草案。",
     "askAwaitingLead": "已回答，主 Agent 正在处理。",
     "askDismiss": "忽略",
     "askDismissMessage": "忽略这个请求。",

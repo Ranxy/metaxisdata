@@ -1,14 +1,18 @@
+import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import {
   type QualityAgentAsk,
   QualityAgentAskKind,
+  QualityAgentAskSchema,
   QualityAgentAskStatus,
+  QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   qualityAgentAskIsActive,
   qualityAgentAskIsApproval,
   qualityAgentAskKindKey,
   qualityAgentAskStatusKey,
+  qualityAgentAskTargetGuid,
   qualityAgentName,
   qualityAgentPath,
   qualityAgentRoute,
@@ -172,5 +176,27 @@ describe("quality agent ask helpers", () => {
         ask(QualityAgentAskKind.ANOMALY, QualityAgentAskStatus.OPEN)
       )
     ).toBe(false);
+  });
+});
+
+describe("quality agent ask target", () => {
+  it("returns the one target an approval ask covers", () => {
+    const ask = create(QualityAgentAskSchema, {
+      targets: [create(QualityTargetSchema, { metaGuid: "inst;db;;orders" })],
+    });
+    expect(qualityAgentAskTargetGuid(ask)).toBe("inst;db;;orders");
+  });
+
+  it("refuses an ask with no target or several targets", () => {
+    expect(qualityAgentAskTargetGuid(create(QualityAgentAskSchema, {}))).toBe(
+      ""
+    );
+    const many = create(QualityAgentAskSchema, {
+      targets: [
+        create(QualityTargetSchema, { metaGuid: "a" }),
+        create(QualityTargetSchema, { metaGuid: "b" }),
+      ],
+    });
+    expect(qualityAgentAskTargetGuid(many)).toBe("");
   });
 });

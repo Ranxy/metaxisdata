@@ -534,6 +534,7 @@ import {
 import { formatDateTime } from "@/utils/datetime";
 import {
   qualityAgentAskIsActive,
+  qualityAgentAskTargetGuid,
   qualityAgentName,
   qualityAgentSessionRoute,
   qualityAgentSessionsRoute,
@@ -799,9 +800,14 @@ async function dismissAsk(ask: QualityAgentAsk) {
   await replyToAsk(ask, t("qualityAgent.askDismissMessage"));
 }
 
-/** The approval ask reuses the adoption path; it always covers the whole agent. */
-async function approveAsk() {
-  await adoptPending("");
+/** An approval ask covers exactly one target; never widen it to the whole agent. */
+async function approveAsk(ask: QualityAgentAsk) {
+  const target = qualityAgentAskTargetGuid(ask);
+  if (target === "") {
+    notify.error(t("qualityAgent.askApproveNoTarget"));
+    return;
+  }
+  await adoptPending(target);
 }
 
 async function loadReports() {

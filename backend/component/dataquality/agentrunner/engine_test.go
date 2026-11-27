@@ -45,6 +45,8 @@ type fakeStore struct {
 	enrollment           *store.QualityAgentEnrollmentMessage
 	lastSessionFind      *store.FindQualityAgentSessionMessage
 	sessions             []*store.QualityAgentSessionMessage
+	requestByID          map[string]*store.QualityAgentRequestMessage
+	answerFrom           store.QualityAgentRequestStatus
 }
 
 func newFakeStore() *fakeStore {
@@ -246,8 +248,8 @@ func (*fakeStore) CreateQualityAgentRequest(_ context.Context, message *store.Qu
 	return message, true, nil
 }
 
-func (*fakeStore) GetQualityAgentRequestByResourceID(context.Context, string) (*store.QualityAgentRequestMessage, error) {
-	return nil, nil
+func (f *fakeStore) GetQualityAgentRequestByResourceID(_ context.Context, resourceID string) (*store.QualityAgentRequestMessage, error) {
+	return f.requestByID[resourceID], nil
 }
 
 func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
@@ -279,7 +281,8 @@ func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.Q
 	return message, true, nil
 }
 
-func (*fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string, _ store.QualityAgentRequestStatus, _ string, _ *store.QualityAgentSessionMessage, _ *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error) {
+func (f *fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string, from store.QualityAgentRequestStatus, _ string, _ *store.QualityAgentSessionMessage, _ *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error) {
+	f.answerFrom = from
 	return &store.QualityAgentRequestMessage{}, &store.QualityAgentTranscriptMessage{}, true, nil
 }
 
@@ -1193,6 +1196,41 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 }
 
 // fakeToolAudit collects the tool audit entries a wake reports.
+// A request the lead already forwarded to the owner is answered by the owner's reply;
+// the lead's answer_request must accept FORWARDED, not only OPEN, or the closed loop
+// stops before the subagent ever hears the answer.
+func TestAnswerRequestAcceptsAForwardedRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		status store.QualityAgentRequestStatus
+	}{
+		{name: "open", status: store.QualityAgentRequestStatusOpen},
+		{name: "forwarded", status: store.QualityAgentRequestStatusForwarded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores, engine, _ := newOrchestrationHarness(t)
+			lead := stores.lead
+			subagent := stores.sessionsByID[3]
+			request := &store.QualityAgentRequestMessage{
+				ResourceID:      "r1",
+				AgentID:         lead.AgentID,
+				Status:          tc.status,
+				OriginSessionID: &subagent.ID,
+			}
+			stores.requestByID = map[string]*store.QualityAgentRequestMessage{"r1": request}
+
+			output, err := engine.answerRequest(context.Background(), lead,
+				`{"request":"qualityAgentRequests/r1","answer":"keep it covered"}`)
+			require.NoError(t, err)
+			require.Contains(t, output, `"answered":true`)
+			require.Equal(t, tc.status, stores.answerFrom)
+		})
+	}
+}
+
 // The roster filters and pages in SQL: the engine must hand the store the search, state
 // and offset instead of filtering one unfiltered page in Go.
 func TestListSubagentsFiltersAndPagesInTheStore(t *testing.T) {

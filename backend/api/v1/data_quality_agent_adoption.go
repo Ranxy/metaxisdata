@@ -368,7 +368,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	if leadErr != nil || lead == nil {
 		return result
 	}
-	dedupeKey := "proposal:" + targetGUID
+	dedupeKey := store.ProposalAskDedupeKey(targetGUID)
 	askResourceID, idErr := common.RandomString(12)
 	if idErr != nil {
 		return result
@@ -380,6 +380,8 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		Kind:        store.QualityAgentAskKindApproval,
 		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
 		Question:    question,
+		TargetGUID:  targetGUID,
+		TargetType:  storepb.MetaType(session.TargetType),
 		DedupeKey:   dedupeKey,
 	}, lead, &store.QualityAgentTranscriptMessage{
 		Wake:           lead.WakeCount + 1,
@@ -562,8 +564,8 @@ func proposalAttentionKey(suggestion *store.QualitySuggestionMessage) (agentTarg
 // last draft is the other way the queue empties.
 func (s *DataQualityService) resolveProposalAttentionIfDrained(ctx context.Context, key agentTargetKey, resolvedBy *int32) {
 	now := time.Now().UTC()
-	if _, err := s.store.ResolveQualityAgentAskByDedupe(ctx, key.agentID, "proposal:"+key.targetGUID,
-		store.QualityAgentAskStatusResolved, now); err != nil {
+	dedupeKey := store.ProposalAskDedupeKey(key.targetGUID)
+	if _, err := s.store.ResolveProposalAskIfDrained(ctx, key.agentID, key.targetGUID, dedupeKey, now); err != nil {
 		slog.Warn("failed to resolve a drained proposal ask", log.WithError(err))
 	}
 	// The legacy row is still resolved for any attention written before the cutover;

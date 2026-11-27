@@ -217,6 +217,38 @@ func scopeDatabaseArray(keepDatabases []string) pq.StringArray {
 	return pq.StringArray(append([]string{}, keepDatabases...))
 }
 
+// activateRestoredMonitorEnrollmentsQuery returns restored covered targets to the
+// active monitor set. A restored row is PENDING only so the unblock can find it; a
+// MONITOR row has no triage step left and must not sit in the pending queue for ever.
+const activateRestoredMonitorEnrollmentsQuery = `
+		UPDATE quality_agent_enrollment
+		SET state = $4, next_review_at = NULL, blocked_reason = '',
+			revision = revision + 1, updated_at = NOW()
+		WHERE workspace_id = $1 AND agent_id = $2 AND database_ref = ANY($3)
+			AND state = $5 AND mode = $6 AND session_id IS NOT NULL
+			AND EXISTS (
+				SELECT 1 FROM quality_agent_session s
+				WHERE s.id = session_id AND s.state = $7 AND s.archived_at IS NULL
+			)`
+
+// unblockRestoredSessionsQuery releases the reversible out-of-scope block on sessions
+// whose database just came back. The queue row alone is not enough: materialize only
+// looks for a missing session, triage only looks at TRIAGE rows, and recoverBlocked only
+// looks at ACTIVE rows, so a restored PENDING row with a blocked session would otherwise
+// never run again.
+const unblockRestoredSessionsQuery = `
+		UPDATE quality_agent_session s
+		SET state = $2, blocked_code = '', blocked_reason = '',
+			next_wake_at = LEAST(COALESCE(s.next_wake_at, NOW()), NOW()),
+			revision = s.revision + 1, updated_at = NOW()
+		WHERE s.archived_at IS NULL AND s.state = $3 AND s.blocked_code = 'out-of-scope'
+			AND s.id IN (
+				SELECT e.session_id FROM quality_agent_enrollment e
+				WHERE e.workspace_id = $1 AND e.agent_id = $4
+				  AND e.database_ref = ANY($5) AND e.state = $6 AND e.mode = $7
+				  AND e.session_id IS NOT NULL
+			)`
+
 // ReconcileQualityAgentEnrollmentScope aligns the queue with the settings' database
 // list: rows outside the list become OUT_OF_SCOPE and their sessions are blocked with
 // the reversible out-of-scope code; rows that came back become PENDING again, so
@@ -256,6 +288,22 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 	restored, err = restoreResult.RowsAffected()
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to count the restored enrollments")
+	}
+	if _, err := tx.ExecContext(ctx, unblockRestoredSessionsQuery,
+		workspaceID, int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
+		agentID, keep,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)); err != nil {
+		return 0, 0, errors.Wrap(err, "failed to unblock the restored sessions")
+	}
+	if _, err := tx.ExecContext(ctx, activateRestoredMonitorEnrollmentsQuery,
+		workspaceID, agentID, keep,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)); err != nil {
+		return 0, 0, errors.Wrap(err, "failed to reactivate the restored monitor enrollments")
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to commit the enrollment scope reconciliation")
