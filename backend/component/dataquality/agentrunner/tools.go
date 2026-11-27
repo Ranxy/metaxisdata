@@ -122,7 +122,7 @@ func (e *Engine) executeTool(
 		}
 		_ = json.Unmarshal([]byte(arguments), &input)
 		question := fmt.Sprintf("propose %s = %s: %s", input.Field, input.Value, input.Rationale)
-		if _, _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindProposal,
 			CaseResourceID: input.Case,
 			Title:          "A check change needs approval",
@@ -144,7 +144,7 @@ func (e *Engine) executeTool(
 			Reason string `json:"reason"`
 		}
 		_ = json.Unmarshal([]byte(arguments), &input)
-		if _, _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindDecision,
 			CaseResourceID: input.Case,
 			Title:          "A work item needs a decision",

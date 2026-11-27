@@ -124,7 +124,7 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		return "", err
 	}
 	if input.Case != "" {
-		if _, _, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindQuestion,
 			CaseResourceID: input.Case,
 			Title:          "Subagent question",
@@ -159,7 +159,7 @@ func (e *Engine) leadFor(ctx context.Context, session *store.QualityAgentSession
 
 // raiseRequest records one subagent request and tells the lead once. A retried
 // request returns the existing active row and does not append a second message.
-func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, bool, error) {
+func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) error {
 	message.WorkspaceID = session.WorkspaceID
 	message.AgentID = session.AgentID
 	message.OriginSessionID = &session.ID
@@ -170,21 +170,21 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	}
 	created, isNew, err := e.store.CreateQualityAgentRequest(ctx, &message)
 	if err != nil {
-		return nil, false, err
+		return err
 	}
 	if !isNew {
-		return created, false, nil
+		return nil
 	}
 	lead, err := e.leadFor(ctx, session)
 	if err != nil {
-		return nil, false, err
+		return err
 	}
 	body := fmt.Sprintf("[question] request %s: %s", requestName(created.ResourceID), created.Question)
 	if _, err := e.deliverAgentMessage(ctx, session, session.SubagentName, lead, body,
 		storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION, created.ResourceID); err != nil {
-		return nil, false, err
+		return err
 	}
-	return created, true, nil
+	return nil
 }
 
 // listSubagents returns a bounded page of the lead's roster.
