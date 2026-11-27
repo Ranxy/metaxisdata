@@ -201,6 +201,21 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	message.OriginSessionID = &session.ID
 	message.TargetGUID = session.TargetGUID
 	message.CaseResourceID = normalizeCaseResourceID(message.CaseResourceID)
+	if message.CaseResourceID != "" {
+		// A case id is a namespace, not a free-form suffix: a colon would let "c1:timeout"
+		// collide with case c1 plus key timeout. The row must also belong to this target, so
+		// a subagent cannot address another target's case.
+		if strings.Contains(message.CaseResourceID, ":") {
+			return nil, false, common.Errorf(common.Invalid, "case %q is not a valid case id", message.CaseResourceID)
+		}
+		openCase, err := e.store.GetQualityAgentCaseByResourceID(ctx, message.CaseResourceID)
+		if err != nil {
+			return nil, false, err
+		}
+		if openCase == nil || openCase.AgentID != session.AgentID || openCase.TargetGUID != session.TargetGUID {
+			return nil, false, common.Errorf(common.Invalid, "case %q does not belong to this target", message.CaseResourceID)
+		}
+	}
 	message.TargetType = storepb.MetaType(session.TargetType)
 	if message.DedupeKey == "" {
 		message.DedupeKey = fmt.Sprintf("target:%s:kind:%d", session.TargetGUID, message.Kind)
@@ -672,9 +687,9 @@ var questionKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
 func questionDedupeKey(targetGUID, caseID, questionKey, question string) string {
 	switch {
 	case caseID != "" && questionKey != "":
-		return "case:" + caseID + ":" + questionKey
+		return "target:" + targetGUID + ":case:" + caseID + ":question:" + questionKey
 	case caseID != "":
-		return "case:" + caseID
+		return "target:" + targetGUID + ":case:" + caseID + ":question"
 	case questionKey != "":
 		return fmt.Sprintf("target:%s:question:%s", targetGUID, questionKey)
 	default:

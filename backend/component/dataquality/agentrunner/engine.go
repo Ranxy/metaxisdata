@@ -87,6 +87,7 @@ type Store interface {
 	RaiseQualityAgentRequest(ctx context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error)
 	AnswerQualityAgentRequestAtomic(ctx context.Context, resourceID string, fromStatus store.QualityAgentRequestStatus, answer string, subagent *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, at time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error)
 	GetQualityAgentRequestByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentRequestMessage, error)
+	GetQualityAgentCaseByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentCaseMessage, error)
 	ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []store.QualityAgentRequestStatus, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
 	ListQualityAgentOpenQuestions(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
 	ListQualityAgentRequestsByAskIDs(ctx context.Context, askIDs []int64) (map[int64][]*store.QualityAgentRequestMessage, error)

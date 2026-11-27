@@ -258,6 +258,15 @@ func (f *fakeStore) GetQualityAgentRequestByResourceID(_ context.Context, resour
 	return f.requestByID[resourceID], nil
 }
 
+func (f *fakeStore) GetQualityAgentCaseByResourceID(_ context.Context, resourceID string) (*store.QualityAgentCaseMessage, error) {
+	for _, openCase := range f.openCases {
+		if openCase.ResourceID == resourceID {
+			return openCase, nil
+		}
+	}
+	return nil, nil
+}
+
 func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
 	return f.requests, nil
 }
@@ -1384,6 +1393,7 @@ func TestSendLeadMessageDerivesQuestionDedupeKeys(t *testing.T) {
 	t.Parallel()
 
 	stores, engine, session := newOrchestrationHarness(t)
+	stores.openCases = []*store.QualityAgentCaseMessage{{ResourceID: "c1", AgentID: 1, TargetGUID: "t"}}
 	_, err := engine.sendLeadMessage(context.Background(), session,
 		`{"intent":"QUESTION","message":"Raise the timeout?","question_key":"timeout"}`)
 	require.NoError(t, err)
@@ -1399,13 +1409,13 @@ func TestSendLeadMessageDerivesQuestionDedupeKeys(t *testing.T) {
 	_, err = engine.sendLeadMessage(context.Background(), session,
 		`{"intent":"QUESTION","message":"Is this case settled?","case":"qualityAgentCases/c1"}`)
 	require.NoError(t, err)
-	require.Equal(t, "case:c1", stores.requests[2].DedupeKey)
+	require.Equal(t, "target:t:case:c1:question", stores.requests[2].DedupeKey)
 	require.Equal(t, "c1", stores.requests[2].CaseResourceID)
 
 	_, err = engine.sendLeadMessage(context.Background(), session,
 		`{"intent":"QUESTION","message":"Should the timeout change?","case":"c1","question_key":"timeout"}`)
 	require.NoError(t, err)
-	require.Equal(t, "case:c1:timeout", stores.requests[3].DedupeKey)
+	require.Equal(t, "target:t:case:c1:question:timeout", stores.requests[3].DedupeKey)
 }
 
 // A retry with the same question and key reports the existing request instead of
@@ -1436,6 +1446,36 @@ func TestSendLeadMessageRejectsAnInvalidQuestionKey(t *testing.T) {
 			`{"intent":"QUESTION","message":"A question?","question_key":"`+key+`"}`)
 		require.Error(t, err)
 	}
+}
+
+func TestSendLeadMessageRejectsACaseFromAnotherTarget(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	stores.openCases = []*store.QualityAgentCaseMessage{{ResourceID: "c9", AgentID: 1, TargetGUID: "other"}}
+
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Is this case settled?","case":"c9"}`)
+	require.Error(t, err)
+	require.Empty(t, stores.requests)
+}
+
+func TestSendLeadMessageRejectsAnUnknownCase(t *testing.T) {
+	t.Parallel()
+
+	_, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Is this case settled?","case":"missing"}`)
+	require.Error(t, err)
+}
+
+func TestSendLeadMessageRejectsAColonInACaseID(t *testing.T) {
+	t.Parallel()
+
+	_, engine, session := newOrchestrationHarness(t)
+	_, err := engine.sendLeadMessage(context.Background(), session,
+		`{"intent":"QUESTION","message":"Is this case settled?","case":"c1:timeout"}`)
+	require.Error(t, err)
 }
 
 func TestSendLeadMessageRejectsAnEmptyQuestion(t *testing.T) {
@@ -1502,6 +1542,7 @@ func TestEscalateCaseDismissesTheRequestWhenTheCaseRefuses(t *testing.T) {
 	t.Parallel()
 
 	stores, engine, session := newOrchestrationHarness(t)
+	stores.openCases = []*store.QualityAgentCaseMessage{{ResourceID: "case-1", AgentID: 1, TargetGUID: "t"}}
 	engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
 		return quality.EscalationOutcome{}, errors.New("the case moved on")
 	})
@@ -1528,6 +1569,7 @@ func TestEscalateCaseStoresTheBareCaseID(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			stores, engine, session := newOrchestrationHarness(t)
+			stores.openCases = []*store.QualityAgentCaseMessage{{ResourceID: "case-1", AgentID: 1, TargetGUID: "t"}}
 			engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
 				return quality.EscalationOutcome{State: "ESCALATED"}, nil
 			})
@@ -1545,6 +1587,7 @@ func TestEscalateCaseKeepsTheRequestItRaised(t *testing.T) {
 	t.Parallel()
 
 	stores, engine, session := newOrchestrationHarness(t)
+	stores.openCases = []*store.QualityAgentCaseMessage{{ResourceID: "case-1", AgentID: 1, TargetGUID: "t"}}
 	engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
 		return quality.EscalationOutcome{State: "ESCALATED", Reason: "a person must decide"}, nil
 	})
