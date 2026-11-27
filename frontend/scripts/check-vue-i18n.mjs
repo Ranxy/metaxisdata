@@ -66,6 +66,7 @@ export const DYNAMIC_PREFIXES = [
   "qualityAgent.askKind",
   "qualityAgent.askStatus",
   "qualityAgent.role",
+  "qualityAgent.rail",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.
@@ -135,6 +136,7 @@ export const DYNAMIC_PREFIXES = [
   "qualityAgent.state",
   "qualityAgent.mode",
   "qualityAgent.role",
+  "qualityAgent.rail",
   "qualityAgent.origin",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its

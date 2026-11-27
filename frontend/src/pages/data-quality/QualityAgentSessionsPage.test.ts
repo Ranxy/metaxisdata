@@ -77,12 +77,12 @@ async function mountPage() {
         component: Dummy,
       },
       {
-        path: "/data-quality/agents/:workspace/:agentId/sessions",
+        path: "/data-quality/agents/:workspace/:agentId/subagents",
         name: "QualityAgentSessions",
         component: QualityAgentSessionsPage,
       },
       {
-        path: "/data-quality/agents/:workspace/:agentId/sessions/:sessionId",
+        path: "/data-quality/agents/:workspace/:agentId/subagents/:sessionId",
         name: "QualityAgentSession",
         component: Dummy,
       },
@@ -93,7 +93,7 @@ async function mountPage() {
       },
     ],
   });
-  await router.push("/data-quality/agents/ws/agent-1/sessions");
+  await router.push("/data-quality/agents/ws/agent-1/subagents");
   await router.isReady();
   const wrapper = mount(QualityAgentSessionsPage, {
     global: { plugins: [router, i18n] },
@@ -126,7 +126,7 @@ describe("QualityAgentSessionsPage", () => {
       .findAll("a")
       .find((anchor) => anchor.text().includes("orders"));
     expect(link?.attributes("href")).toContain(
-      "/data-quality/agents/ws/agent-1/sessions/session-1"
+      "/data-quality/agents/ws/agent-1/subagents/session-1"
     );
     expect(mocks.listQualityAgentSessionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ agent: AGENT, pageSize: 50 })
@@ -134,15 +134,15 @@ describe("QualityAgentSessionsPage", () => {
     wrapper.unmount();
   });
 
-  it("shows the enrollment hint when the agent has no work sessions", async () => {
+  it("shows the materializes hint when the agent has no work sessions", async () => {
     mocks.listQualityAgentSessionsPage.mockResolvedValue({
       sessions: [],
       nextPageToken: "",
     });
     const wrapper = await mountPage();
 
-    expect(wrapper.text()).toContain("No work sessions yet");
-    expect(wrapper.text()).toContain("enrollment");
+    expect(wrapper.text()).toContain("No subagents yet");
+    expect(wrapper.text()).toContain("materializes");
     wrapper.unmount();
   });
 });

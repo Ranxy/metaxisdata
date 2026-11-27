@@ -22,7 +22,7 @@ async function mountList() {
         component: { template: "<div />" },
       },
       {
-        path: "/agents/:workspace/:agentId/sessions/:sessionId",
+        path: "/agents/:workspace/:agentId/subagents/:sessionId",
         name: "QualityAgentSession",
         component: { template: "<div />" },
       },
@@ -62,6 +62,6 @@ describe("QualityAgentSubagentList", () => {
     expect(wrapper.text()).toContain("orders");
     expect(wrapper.text()).toContain("Monitor");
     const link = wrapper.find("a");
-    expect(link.attributes("href")).toBe("/agents/ws/agent-1/sessions/s1");
+    expect(link.attributes("href")).toBe("/agents/ws/agent-1/subagents/s1");
   });
 });

@@ -496,7 +496,7 @@ ones they own.
 - **An agent's home** is its working page: the conversation with its owner, its **Team**, its **Patrol reports**, its **Needs you**
 ask list, its auto-adoption setting, and its scope and state. A breadcrumb and the **Conversation / Team** tabs keep the agent and its
 two views visible; an ask names the target it covers and is answered or dismissed in place.
-- **Team** (`/data-quality/agents/{workspace}/{id}/sessions`) lists the agent's fixed subagents, one per target it watches.
+- **Team** (`/data-quality/agents/{workspace}/{id}/subagents`) lists the agent's fixed subagents, one per target it watches.
 Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
 its arguments and result, and the runner's notes. The transcript opens on the newest message and keeps up with a running session while you
 stay at the bottom; scroll back to read history and the previous page loads when you reach the top. A **Jump to latest** control appears

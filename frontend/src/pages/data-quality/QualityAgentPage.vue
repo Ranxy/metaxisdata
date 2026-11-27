@@ -54,7 +54,7 @@
       </div>
       <div
         v-else
-        class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
+        class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]"
       >
         <Card class="flex h-[36rem] min-h-0 flex-col">
           <CardHeader class="border-b">
@@ -244,62 +244,162 @@
               </Button>
             </CardContent>
           </Card>
+
+          <Card class="flex min-h-0 flex-col">
+            <div
+              role="tablist"
+              :aria-label="t('qualityAgent.railTabsLabel')"
+              class="grid grid-cols-2 gap-1 border-b p-2"
+            >
+              <Button
+                v-for="tab in railTabs"
+                :key="tab.id"
+                role="tab"
+                size="sm"
+                :variant="activeTab === tab.id ? 'secondary' : 'ghost'"
+                :aria-selected="activeTab === tab.id"
+                @click="activeTab = tab.id"
+              >
+                {{ t(tab.label) }}
+                <span
+                  v-if="tab.count > 0"
+                  class="ml-1 text-xs tabular-nums text-muted-foreground"
+                >
+                  {{ tab.count }}
+                </span>
+              </Button>
+            </div>
+            <CardContent class="p-3">
+              <div
+                v-if="activeTab === 'asks'"
+                role="tabpanel"
+                class="space-y-2"
+              >
+                <p class="text-xs text-muted-foreground">
+                  {{ t("qualityAgent.asksHint") }}
+                </p>
+                <p
+                  v-if="asks.length === 0"
+                  class="text-sm text-muted-foreground"
+                >
+                  {{ t("qualityAgent.asksEmpty") }}
+                </p>
+                <QualityAgentAskCard
+                  v-for="ask in asks"
+                  :key="ask.name"
+                  :ask="ask"
+                  :can-reply="canChat"
+                  :can-approve="canApprove"
+                  :busy="busy"
+                  @reply="replyToAsk"
+                  @dismiss="dismissAsk"
+                  @approve="approveAsk"
+                />
+                <div
+                  v-if="asksNextToken !== ''"
+                  class="flex justify-center pt-2"
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="asksLoadingMore"
+                    @click="loadMoreAsks"
+                  >
+                    {{ asksLoadingMore ? t("common.loading") : t("common.loadMore") }}
+                  </Button>
+                </div>
+                <p
+                  v-if="!canChat && asks.length > 0"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ t("qualityAgent.attentionReadOnly") }}
+                </p>
+              </div>
+
+              <div
+                v-else-if="activeTab === 'team'"
+                role="tabpanel"
+                class="space-y-2"
+              >
+                <p class="text-xs text-muted-foreground">
+                  {{ t("qualityAgent.teamHint") }}
+                </p>
+                <div class="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    as-child
+                  >
+                    <RouterLink :to="sessionsRoute">
+                      {{ t("qualityAgent.workSessionsViewAll") }}
+                    </RouterLink>
+                  </Button>
+                </div>
+                <QualityAgentSubagentList
+                  :sessions="sessions"
+                  :loading="sessionsLoading"
+                  :error="sessionsError"
+                  :session-route="sessionRoute"
+                />
+              </div>
+
+              <div
+                v-else-if="activeTab === 'reports'"
+                role="tabpanel"
+                class="space-y-2"
+              >
+                <p class="text-xs text-muted-foreground">
+                  {{ t("qualityAgent.reportsHint") }}
+                </p>
+                <p
+                  v-if="reports.length === 0"
+                  class="text-sm text-muted-foreground"
+                >
+                  {{ t("qualityAgent.reportsEmpty") }}
+                </p>
+                <div
+                  v-for="report in reports"
+                  :key="report.name"
+                  class="rounded-md border px-2 py-2 text-sm"
+                >
+                  <p class="font-medium">
+                    {{ formatDateTime(report.periodStart, locale) }} – {{ formatDateTime(report.periodEnd, locale) }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("qualityAgent.reportCounts", {
+                      targets: report.targetCount,
+                      rules: report.ruleCount,
+                      failed: report.failedCount,
+                      repaired: report.repairedCount,
+                      waiting: report.escalatedCount + report.openCaseCount,
+                    }) }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-1"
+                    @click="openReport(report)"
+                  >
+                    {{ t("qualityAgent.reportView") }}
+                  </Button>
+                </div>
+              </div>
+
+              <div
+                v-else
+                role="tabpanel"
+                class="space-y-2"
+              >
+                <p class="text-xs text-muted-foreground">
+                  {{ t("qualityAgent.activity.hint") }}
+                </p>
+                <QualityAgentCaseActivity :agent-name="agentName" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </PageState>
-
-    <Card v-if="agent">
-      <CardHeader class="border-b">
-        <div class="flex flex-wrap items-center gap-2">
-          <CardTitle class="text-base">{{ t("qualityAgent.asksTitle") }}</CardTitle>
-          <Badge
-            v-if="asks.length > 0"
-            variant="warning"
-          >
-            {{ asks.length }}
-          </Badge>
-        </div>
-        <CardDescription>{{ t("qualityAgent.asksHint") }}</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-2 pt-4">
-        <p
-          v-if="asks.length === 0"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("qualityAgent.asksEmpty") }}
-        </p>
-        <QualityAgentAskCard
-          v-for="ask in asks"
-          :key="ask.name"
-          :ask="ask"
-          :can-reply="canChat"
-          :can-approve="canApprove"
-          :busy="busy"
-          @reply="replyToAsk"
-          @dismiss="dismissAsk"
-          @approve="approveAsk"
-        />
-        <div
-          v-if="asksNextToken !== ''"
-          class="flex justify-center pt-2"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="asksLoadingMore"
-            @click="loadMoreAsks"
-          >
-            {{ asksLoadingMore ? t("common.loading") : t("common.loadMore") }}
-          </Button>
-        </div>
-        <p
-          v-if="!canChat && asks.length > 0"
-          class="text-xs text-muted-foreground"
-        >
-          {{ t("qualityAgent.attentionReadOnly") }}
-        </p>
-      </CardContent>
-    </Card>
 
     <Card v-if="agent">
       <CardHeader class="border-b">
@@ -358,86 +458,6 @@
             </p>
           </li>
         </ul>
-      </CardContent>
-    </Card>
-
-    <Card v-if="agent">
-      <CardHeader class="border-b">
-        <CardTitle class="text-base">{{ t("qualityAgent.activity.title") }}</CardTitle>
-        <CardDescription>{{ t("qualityAgent.activity.hint") }}</CardDescription>
-      </CardHeader>
-      <CardContent class="pt-4">
-        <QualityAgentCaseActivity :agent-name="agentName" />
-      </CardContent>
-    </Card>
-
-    <Card v-if="agent">
-      <CardHeader class="border-b">
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div class="min-w-0">
-            <CardTitle class="text-base">{{ t("qualityAgent.teamTitle") }}</CardTitle>
-            <CardDescription>{{ t("qualityAgent.teamHint") }}</CardDescription>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            as-child
-          >
-            <RouterLink :to="sessionsRoute">
-              {{ t("qualityAgent.workSessionsViewAll") }}
-            </RouterLink>
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent class="space-y-2 pt-4">
-        <QualityAgentSubagentList
-          :sessions="sessions"
-          :loading="sessionsLoading"
-          :error="sessionsError"
-          :session-route="sessionRoute"
-        />
-      </CardContent>
-    </Card>
-
-    <Card v-if="agent">
-      <CardHeader class="border-b">
-        <CardTitle class="text-base">{{ t("qualityAgent.reportsTitle") }}</CardTitle>
-        <CardDescription>{{ t("qualityAgent.reportsHint") }}</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-2 pt-4">
-        <p
-          v-if="reports.length === 0"
-          class="text-sm text-muted-foreground"
-        >
-          {{ t("qualityAgent.reportsEmpty") }}
-        </p>
-        <div
-          v-for="report in reports"
-          :key="report.name"
-          class="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-        >
-          <div class="min-w-0">
-            <p class="font-medium">
-              {{ formatDateTime(report.periodStart, locale) }} – {{ formatDateTime(report.periodEnd, locale) }}
-            </p>
-            <p class="text-xs text-muted-foreground">
-              {{ t("qualityAgent.reportCounts", {
-                targets: report.targetCount,
-                rules: report.ruleCount,
-                failed: report.failedCount,
-                repaired: report.repairedCount,
-                waiting: report.escalatedCount + report.openCaseCount,
-              }) }}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            @click="openReport(report)"
-          >
-            {{ t("qualityAgent.reportView") }}
-          </Button>
-        </div>
       </CardContent>
     </Card>
 
@@ -570,6 +590,20 @@ const busy = ref(false);
 const asks = ref<QualityAgentAsk[]>([]);
 const asksNextToken = ref("");
 const asksLoadingMore = ref(false);
+type RailTabID = "asks" | "team" | "reports" | "activity";
+const activeTab = ref<RailTabID>("asks");
+const railTabs = computed<
+  Array<{ id: RailTabID; label: string; count: number }>
+>(() => [
+  { id: "asks", label: "qualityAgent.railNeedsYou", count: asks.value.length },
+  { id: "team", label: "qualityAgent.railTeam", count: sessions.value.length },
+  {
+    id: "reports",
+    label: "qualityAgent.railReports",
+    count: reports.value.length,
+  },
+  { id: "activity", label: "qualityAgent.railActivity", count: 0 },
+]);
 const cases = ref<QualityAgentCase[]>([]);
 const caseHistoryOpen = ref(false);
 const caseHistoryCase = ref<QualityAgentCase>();
