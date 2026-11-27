@@ -11,6 +11,7 @@ package qualityenrollmentrunner
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"slices"
 	"strings"
@@ -42,11 +43,16 @@ const (
 	coveredDormantBatch = 100
 	// recoverableBatch is how many reversibly blocked sessions are recovered per tick.
 	recoverableBatch = 100
-	// admitBatch bounds how many sessions one tick creates.
-	admitBatch = 20
-	// admissionStagger spreads new sessions' first wake so a batch does not become
-	// due in the same second.
-	admissionStagger = 30 * time.Second
+	// materializeBatch bounds how many subagents one tick creates. Ten thousand
+	// targets converge in about an hour at this size, and each creation is one small
+	// transaction under the per-agent name lock.
+	materializeBatch = 200
+	// triageBatch bounds how many waiting targets one tick admits into triage.
+	triageBatch = 20
+	// initialWakeWindow spreads the first review of newly materialized targets. It is
+	// short because a target should be looked at soon after discovery; the daily
+	// cadence is jittered separately by the session runner.
+	initialWakeWindow = 20 * time.Second
 	// priorityLookback bounds the failure and schema-change signals.
 	priorityLookback = 7 * 24 * time.Hour
 	// maxPriorityRowsPerDatabase bounds one database's priority recomputation.
@@ -61,7 +67,11 @@ type Store interface {
 	MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID string, agentID int64, databaseRef string, scanStartedAt time.Time) (int64, error)
 	ReconcileQualityAgentEnrollmentScope(ctx context.Context, workspaceID string, agentID int64, keepDatabases []string) (int64, int64, error)
 	ListQualityAgentEnrollments(ctx context.Context, find *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error)
-	ListAdmissibleQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	ListUnmaterializedQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	AttachQualityAgentEnrollmentSession(ctx context.Context, resourceID string, sessionID int64, mode storepb.QualityAgentSessionMode) (*store.QualityAgentEnrollmentMessage, bool, error)
+	ListPendingTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
+	CountActiveTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error)
+	CountQualityAgentTriageReviewsSince(ctx context.Context, agentID int64, since time.Time) (int, error)
 	ListDueDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, now time.Time, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListRecoverableQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
@@ -73,12 +83,11 @@ type Store interface {
 	UpdateQualityAgentEnrollmentPriority(ctx context.Context, updates []*store.QualityAgentEnrollmentPriorityUpdate) error
 
 	GetQualityAgentSessionByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentSessionMessage, error)
+	AdmitQualityAgentTriage(ctx context.Context, enrollmentResourceID, sessionResourceID string, now time.Time) (bool, error)
 	CreateQualityAgentSession(ctx context.Context, input *store.CreateQualityAgentSessionInput) (*store.QualityAgentSessionMessage, error)
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	UpdateQualityAgentSessionMode(ctx context.Context, resourceID string, mode storepb.QualityAgentSessionMode) (bool, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
-	CountActiveQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error)
-	CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	CurrentDatabaseTime(ctx context.Context) (time.Time, error)
 	ListQualityAgents(ctx context.Context) ([]*store.QualityAgentMessage, error)
@@ -193,7 +202,8 @@ func (r *Runner) runOnce(ctx context.Context) {
 		}
 	}
 	for _, current := range agents {
-		r.admit(ctx, workspaceID, current, now)
+		r.materialize(ctx, workspaceID, current, now)
+		r.admitTriage(ctx, workspaceID, current, now)
 	}
 }
 
@@ -604,96 +614,174 @@ func computePriority(signals prioritySignals) (int32, string) {
 	return score, strings.Join(reasons, ",")
 }
 
-// admit creates or resumes sessions for one agent's pending enrollments, within its
-// own rate, active-set and event-reserve limits.
-func (r *Runner) admit(ctx context.Context, workspaceID string, current *activeAgent, now time.Time) {
-	maxNew := int(current.agent.MaxNewSessionsPerHour)
-	if maxNew <= 0 {
-		maxNew = dataquality.DefaultAgentRunnerMaxNewSessionsPerHour
-	}
-	maxActive := int(current.agent.MaxActiveSessions)
-	if maxActive <= 0 {
-		maxActive = dataquality.DefaultAgentRunnerMaxActiveSessions
-	}
-	created, err := r.store.CountQualityAgentSessionsCreatedSince(ctx, workspaceID, current.agent.ID,
-		now.Add(-time.Hour))
+// materialize creates the fixed subagent of every pending target. It is not
+// admission: existence no longer depends on a budget. A covered target is linked as
+// an active monitor immediately; an uncovered one waits in the triage queue with the
+// session already created, so the lead can address it by name before its first run.
+func (r *Runner) materialize(ctx context.Context, workspaceID string, current *activeAgent, now time.Time) {
+	candidates, err := r.store.ListUnmaterializedQualityAgentEnrollments(ctx, workspaceID, current.agent.ID, materializeBatch)
 	if err != nil {
-		slog.Error("failed to count the automatic sessions", slog.Int64("agent", current.agent.ID), log.WithError(err))
-		return
-	}
-	active, err := r.store.CountActiveQualityAgentEnrollments(ctx, workspaceID, current.agent.ID)
-	if err != nil {
-		slog.Error("failed to count the active enrollments", slog.Int64("agent", current.agent.ID), log.WithError(err))
-		return
-	}
-	if created >= maxNew {
-		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "admission-limit")
-		return
-	}
-	if active >= maxActive {
-		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "active-limit")
-		return
-	}
-	// Automated admission may only spend the share of the wake budget that is not
-	// reserved for failed checks and people.
-	wakeLimit := current.agent.WakesPerHour
-	if wakeLimit <= 0 {
-		wakeLimit = int32(dataquality.DefaultAgentRunnerWakesPerHour)
-	}
-	automaticShare := int(wakeLimit) * (100 - dataquality.DefaultAgentRunnerEventBudgetPercent) / 100
-	if automaticShare < 1 {
-		automaticShare = 1
-	}
-	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, workspaceID, current.agent.ID, now.Add(-time.Hour))
-	if err != nil {
-		slog.Error("failed to count the session wakes", slog.Int64("agent", current.agent.ID), log.WithError(err))
-		return
-	}
-	if wakes >= int64(automaticShare) {
-		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "event-budget")
-		return
-	}
-	remaining := maxNew - created
-	if activeRemaining := maxActive - active; activeRemaining < remaining {
-		remaining = activeRemaining
-	}
-	if remaining <= 0 {
-		r.reasonCandidates(ctx, workspaceID, current.agent.ID, "active-limit")
-		return
-	}
-	limit := admitBatch
-	if remaining < limit {
-		limit = remaining
-	}
-	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, current.agent.ID, limit)
-	if err != nil {
-		slog.Error("failed to read the admissible enrollments", slog.Int64("agent", current.agent.ID), log.WithError(err))
+		slog.Error("failed to read the unmaterialized enrollments",
+			slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
 	inScope := make(map[string]bool, len(current.databases))
 	for _, database := range current.databases {
 		inScope[database] = true
 	}
-	for index, enrollment := range candidates {
-		if active+index >= maxActive {
-			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "active-limit")
-			continue
-		}
+	for _, enrollment := range candidates {
 		if !inScope[enrollment.DatabaseRef] {
 			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "out-of-scope")
 			continue
 		}
-		if err := r.admitOne(ctx, workspaceID, current, enrollment, index, now); err != nil {
-			slog.Warn("failed to admit an enrollment",
+		if err := r.materializeOne(ctx, workspaceID, current.agent, enrollment, now); err != nil {
+			slog.Warn("failed to materialize a target's subagent",
 				slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
 		}
 	}
 }
 
-// reasonCandidates records on a few rows why admission is not progressing, so the queue
-// page can explain a stalled run instead of showing an unexplained PENDING.
-func (r *Runner) reasonCandidates(ctx context.Context, workspaceID string, agentID int64, reason string) {
-	candidates, err := r.store.ListAdmissibleQualityAgentEnrollments(ctx, workspaceID, agentID, 5)
+// materializeOne creates or reuses the target's session and links it. The session
+// starts in MONITOR mode even for an uncovered target: a waiting triage must not model
+// wake before its admission, and a deterministic review is harmless. Triage admission
+// switches the mode when the target reaches the front of its queue.
+func (r *Runner) materializeOne(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, enrollment *store.QualityAgentEnrollmentMessage, now time.Time) error {
+	mode := enrollment.Mode
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
+		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
+	}
+	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agent.ID, enrollment.TargetGUID)
+	if err != nil {
+		return err
+	}
+	if session == nil || session.ArchivedAt != nil {
+		nextWake := now.Add(initialWakeOffset(enrollment.TargetGUID))
+		session, err = r.store.CreateQualityAgentSession(ctx, &store.CreateQualityAgentSessionInput{
+			WorkspaceID: workspaceID,
+			TargetGUID:  enrollment.TargetGUID,
+			TargetType:  enrollment.TargetType,
+			DatabaseRef: enrollment.DatabaseRef,
+			AgentID:     agent.ID,
+			Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
+			NextWakeAt:  &nextWake,
+		})
+		if err != nil {
+			if common.ErrorCode(err) != common.Conflict {
+				return err
+			}
+			session, err = r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agent.ID, enrollment.TargetGUID)
+			if err != nil {
+				return err
+			}
+			if session == nil {
+				return err
+			}
+		}
+	}
+	if _, applied, err := r.store.AttachQualityAgentEnrollmentSession(ctx, enrollment.ResourceID, session.ID, mode); err != nil {
+		return err
+	} else if !applied {
+		// Another pass admitted it between the read and the link.
+		return nil
+	}
+	if mode != storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR {
+		return nil
+	}
+	_, _, err = r.store.LinkQualityAgentEnrollmentSession(ctx, enrollment.ResourceID, session.ID, mode)
+	return err
+}
+
+// admitTriage moves waiting, materialized targets into triage within the agent's
+// separate triage budget. A stuck triage cannot block the queue: completion parks the
+// enrollment DORMANT, which frees the slot for the next target.
+func (r *Runner) admitTriage(ctx context.Context, workspaceID string, current *activeAgent, now time.Time) {
+	if !slices.Contains(current.agent.Capabilities, "suggest") {
+		r.reasonTriageCandidates(ctx, workspaceID, current.agent.ID, "capability-suggest-disabled")
+		return
+	}
+	if !r.llmConfiguredFor(ctx, current.agent) {
+		r.reasonTriageCandidates(ctx, workspaceID, current.agent.ID, "no-model")
+		return
+	}
+	maxTriage := int(current.agent.MaxTriageSessions)
+	if maxTriage <= 0 {
+		maxTriage = dataquality.DefaultAgentRunnerMaxTriageSessions
+	}
+	maxNew := int(current.agent.MaxNewTriageSessionsPerHour)
+	if maxNew <= 0 {
+		maxNew = dataquality.DefaultAgentRunnerMaxNewTriageSessionsPerHour
+	}
+	active, err := r.store.CountActiveTriageQualityAgentEnrollments(ctx, workspaceID, current.agent.ID)
+	if err != nil {
+		slog.Error("failed to count the active triage targets", slog.Int64("agent", current.agent.ID), log.WithError(err))
+		return
+	}
+	reviewed, err := r.store.CountQualityAgentTriageReviewsSince(ctx, current.agent.ID, now.Add(-time.Hour))
+	if err != nil {
+		slog.Error("failed to count the triage reviews", slog.Int64("agent", current.agent.ID), log.WithError(err))
+		return
+	}
+	remaining := min(maxTriage-active, maxNew-reviewed)
+	if remaining <= 0 {
+		r.reasonTriageCandidates(ctx, workspaceID, current.agent.ID, "triage-limit")
+		return
+	}
+	if remaining > triageBatch {
+		remaining = triageBatch
+	}
+	candidates, err := r.store.ListPendingTriageQualityAgentEnrollments(ctx, workspaceID, current.agent.ID, remaining)
+	if err != nil {
+		slog.Error("failed to read the pending triage enrollments", slog.Int64("agent", current.agent.ID), log.WithError(err))
+		return
+	}
+	inScope := make(map[string]bool, len(current.databases))
+	for _, database := range current.databases {
+		inScope[database] = true
+	}
+	for _, enrollment := range candidates {
+		if !inScope[enrollment.DatabaseRef] {
+			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "out-of-scope")
+			continue
+		}
+		if err := r.admitTriageOne(ctx, current.agent, enrollment, now); err != nil {
+			slog.Warn("failed to admit a triage target",
+				slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
+		}
+	}
+}
+
+// admitTriageOne starts the target's first analysis: switch the session to TRIAGE,
+// activate the queue row, and make its wake due now.
+func (r *Runner) admitTriageOne(ctx context.Context, agent *store.QualityAgentMessage, enrollment *store.QualityAgentEnrollmentMessage, now time.Time) error {
+	session, err := r.store.GetQualityAgentSessionByTarget(ctx, enrollment.WorkspaceID, agent.ID, enrollment.TargetGUID)
+	if err != nil {
+		return err
+	}
+	if session == nil || session.ArchivedAt != nil {
+		return nil
+	}
+	if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED {
+		switch session.BlockedCode {
+		case "out-of-scope", "agent-disabled":
+			_, applied, enableErr := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
+				storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now)
+			if enableErr != nil {
+				return enableErr
+			}
+			if !applied {
+				return nil
+			}
+		default:
+			return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "session-blocked")
+		}
+	}
+	_, err = r.store.AdmitQualityAgentTriage(ctx, enrollment.ResourceID, session.ResourceID, now)
+	return err
+}
+
+// reasonTriageCandidates records on a few rows why the triage queue is not moving.
+func (r *Runner) reasonTriageCandidates(ctx context.Context, workspaceID string, agentID int64, reason string) {
+	candidates, err := r.store.ListPendingTriageQualityAgentEnrollments(ctx, workspaceID, agentID, 5)
 	if err != nil {
 		return
 	}
@@ -702,81 +790,13 @@ func (r *Runner) reasonCandidates(ctx context.Context, workspaceID string, agent
 	}
 }
 
-// admitOne creates the target's session or resumes an existing one, then links the
-// enrollment to it.
-func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *activeAgent, enrollment *store.QualityAgentEnrollmentMessage, index int, now time.Time) error {
-	agentID := current.agent.ID
-	mode := enrollment.Mode
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
-		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
-	}
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
-		!slices.Contains(current.agent.Capabilities, "suggest") {
-		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-suggest-disabled")
-	}
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR &&
-		!slices.Contains(current.agent.Capabilities, "patrol") {
-		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-patrol-disabled")
-	}
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx, current.agent) {
-		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "no-model")
-	}
-	session, err := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, enrollment.TargetGUID)
-	if err != nil {
-		return err
-	}
-	if session != nil && session.ArchivedAt == nil {
-		if session.State == storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED {
-			switch session.BlockedCode {
-			case "out-of-scope", "agent-disabled":
-				_, applied, enableErr := r.store.UpdateQualityAgentSessionState(ctx, session.ResourceID, session.Revision,
-					storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, "", "", &now)
-				if enableErr != nil {
-					return enableErr
-				}
-				if !applied {
-					return nil
-				}
-			default:
-				return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "session-blocked")
-			}
-		} else {
-			_, wakeErr := r.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now)
-			if wakeErr != nil {
-				return wakeErr
-			}
-		}
-		if _, err := r.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID, mode); err != nil {
-			return err
-		}
-		_, _, err = r.store.LinkQualityAgentEnrollmentSession(ctx, enrollment.ResourceID, session.ID, mode)
-		return err
-	}
-	nextWake := now.Add(time.Duration(index) * admissionStagger)
-	session, err = r.store.CreateQualityAgentSession(ctx, &store.CreateQualityAgentSessionInput{
-		WorkspaceID: workspaceID,
-		TargetGUID:  enrollment.TargetGUID,
-		TargetType:  enrollment.TargetType,
-		DatabaseRef: enrollment.DatabaseRef,
-		AgentID:     agentID,
-		Mode:        mode,
-		NextWakeAt:  &nextWake,
-	})
-	if err != nil {
-		if common.ErrorCode(err) != common.Conflict {
-			return err
-		}
-		existing, findErr := r.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, enrollment.TargetGUID)
-		if findErr != nil {
-			return findErr
-		}
-		if existing == nil {
-			return err
-		}
-		session = existing
-	}
-	_, _, err = r.store.LinkQualityAgentEnrollmentSession(ctx, enrollment.ResourceID, session.ID, mode)
-	return err
+// initialWakeOffset hashes a target into a short window. It is stable across process
+// restarts and keeps a ten-thousand-target materialization from reviewing every target
+// in the same second, without delaying a target's first look until tomorrow.
+func initialWakeOffset(targetGUID string) time.Duration {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(targetGUID))
+	return time.Duration(hash.Sum64() % uint64(initialWakeWindow))
 }
 
 // llmConfiguredFor reports whether triage can call a model for one agent.

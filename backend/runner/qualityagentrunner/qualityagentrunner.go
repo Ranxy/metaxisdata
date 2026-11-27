@@ -37,7 +37,7 @@ type Store interface {
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
-	CreateQualityAgentAttention(ctx context.Context, message *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error)
+	CreateQualityAgentAskAtomic(ctx context.Context, ask *store.QualityAgentAskMessage, lead *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage, at time.Time) (*store.QualityAgentAskMessage, error)
 }
 
 // Runner generates the agents' scheduled reports.
@@ -190,7 +190,7 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, agent *sto
 	if _, err := r.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, now); err != nil {
 		return err
 	}
-	r.escalateAnomaly(ctx, workspaceID, agent, report, snapshot)
+	r.escalateAnomaly(ctx, workspaceID, agent, report, snapshot, conversation)
 	return nil
 }
 
@@ -204,39 +204,56 @@ func (r *Runner) agentLanguage(ctx context.Context, agent *store.QualityAgentMes
 	return agentlang.ForAgent(agent, owner)
 }
 
-// escalateAnomaly opens one owner attention when a report has failures or new
-// issues; the notification is the doorbell.
-func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot) {
-	if r.notifier == nil {
-		return
-	}
+// escalateAnomaly records one agent-level ask when a report has failures or new
+// issues. It is deliberately not a request: the anomaly belongs to the agent, not to
+// one target's subagent, and waking the lead for every patrol report would make the
+// coordinator spend a model call on a report it cannot improve. The ask is the
+// owner's to-do; the notification is the doorbell.
+func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot, conversation *store.QualityAgentSessionMessage) {
 	if snapshot.FailedCount == 0 && snapshot.NewIssueCount == 0 {
 		return
 	}
-	if agent == nil {
+	if agent == nil || conversation == nil {
 		return
 	}
 	language := r.agentLanguage(ctx, agent)
-	attention, created, err := r.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
+	title := agentlang.AttentionTitle(language, store.QualityAgentAttentionKindReportAnomaly)
+	question := agentlang.ReportQuestion(language, snapshot.FailedCount, snapshot.NewIssueCount)
+	now := time.Now().UTC()
+	ask, err := r.store.CreateQualityAgentAskAtomic(ctx, &store.QualityAgentAskMessage{
 		WorkspaceID: workspaceID,
 		AgentID:     agent.ID,
-		Kind:        store.QualityAgentAttentionKindReportAnomaly,
-		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindReportAnomaly),
-		Question:    agentlang.ReportQuestion(language, snapshot.FailedCount, snapshot.NewIssueCount),
-		DedupeKey:   "report:" + report.ResourceID,
-		CreatedAt:   time.Now().UTC(),
-	})
-	if err != nil || !created {
+		Kind:        store.QualityAgentAskKindAnomaly,
+		Title:       title,
+		Question:    question,
+	}, conversation, &store.QualityAgentTranscriptMessage{
+		Wake:           conversation.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
+		Content:        question,
+		Reference:      "qualityAgentReports/" + report.ResourceID,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "report-anomaly-ask:" + report.ResourceID,
+	}, nil, now)
+	if err != nil {
+		slog.Warn("failed to record a report anomaly ask",
+			slog.String("report", report.ResourceID), log.WithError(err))
 		return
 	}
+	if r.notifier == nil {
+		return
+	}
+	// Phase 4 adds an ask-shaped notification detail; until then the inbox copy
+	// carries the same prose through the existing agent notification envelope.
 	detail := &storepb.QualityAgentAttentionDetail{
 		Agent:     common.FormatWorkspace(workspaceID) + "/qualityAgents/" + agent.ResourceID,
-		Attention: common.FormatWorkspace(workspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
+		Attention: common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + ask.ResourceID,
 		Kind:      int32(store.QualityAgentAttentionKindReportAnomaly),
-		Title:     attention.Title,
-		Question:  attention.Question,
+		Title:     title,
+		Question:  question,
 	}
-	dedupeKey := "dqagent:" + attention.ResourceID
+	dedupeKey := "dqagent:ask:" + ask.ResourceID
 	if agent.OwnerPrincipalID != nil {
 		if sendErr := r.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
 			slog.Warn("failed to send a report anomaly notification", log.WithError(sendErr))

@@ -413,6 +413,10 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 		return nil, nil, err
 	}
 	config.ID = current.ID
+	// The v1 budget has no triage fields yet. Preserve the stored values instead of
+	// letting every unrelated save reset them to "server default".
+	config.MaxTriageSessions = current.MaxTriageSessions
+	config.MaxNewTriageSessionsPerHour = current.MaxNewTriageSessionsPerHour
 	return config, nextDatabases, nil
 }
 

@@ -44,10 +44,16 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 		return true, nil
 	}
 	now := e.now()
-	for _, openCase := range e.openCases(ctx, session) {
+	openCases := e.openCases(ctx, session)
+	for _, openCase := range openCases {
 		if openCase.NextActionAt == nil || !openCase.NextActionAt.After(now) {
 			return true, nil
 		}
+	}
+	// The read is bounded. If it filled the bound, a due case may be just past it, so
+	// the review errs toward a model wake instead of silently skipping one.
+	if len(openCases) >= 3 {
+		return true, nil
 	}
 	since := session.CreatedAt
 	if session.LastReviewedAt != nil {

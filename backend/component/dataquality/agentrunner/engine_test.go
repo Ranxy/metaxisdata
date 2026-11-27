@@ -18,6 +18,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -25,22 +26,23 @@ import (
 
 // fakeStore is the in-memory slice of the store the engine tests need.
 type fakeStore struct {
-	messages      []*store.QualityAgentTranscriptMessage
-	memories      []*store.QualityMemoryMessage
-	executions    map[int64]*store.QualityExecutionMessage
-	memoryInputs  []*store.CreateQualityMemoryInput
-	nextSeq       int64
-	systemUpdates int
-	contextUsage  []*storepb.QualityAgentSessionContextUsage
-	agent         *store.QualityAgentMessage
-	openCases     []*store.QualityAgentCaseMessage
-	participation *store.QualityAgentParticipationLevels
-	actionable    bool
-	lead          *store.QualityAgentSessionMessage
-	subagents     map[string]*store.QualityAgentSessionMessage
-	sessionsByID  map[int64]*store.QualityAgentSessionMessage
-	requests      []*store.QualityAgentRequestMessage
-	enrollment    *store.QualityAgentEnrollmentMessage
+	messages             []*store.QualityAgentTranscriptMessage
+	memories             []*store.QualityMemoryMessage
+	executions           map[int64]*store.QualityExecutionMessage
+	memoryInputs         []*store.CreateQualityMemoryInput
+	nextSeq              int64
+	systemUpdates        int
+	contextUsage         []*storepb.QualityAgentSessionContextUsage
+	agent                *store.QualityAgentMessage
+	openCases            []*store.QualityAgentCaseMessage
+	participation        *store.QualityAgentParticipationLevels
+	actionable           bool
+	lead                 *store.QualityAgentSessionMessage
+	subagents            map[string]*store.QualityAgentSessionMessage
+	sessionsByID         map[int64]*store.QualityAgentSessionMessage
+	requests             []*store.QualityAgentRequestMessage
+	requestStatusUpdates []store.QualityAgentRequestStatus
+	enrollment           *store.QualityAgentEnrollmentMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -249,7 +251,8 @@ func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.Qua
 	return f.requests, nil
 }
 
-func (*fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
+func (f *fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
+	f.requestStatusUpdates = append(f.requestStatusUpdates, to)
 	return &store.QualityAgentRequestMessage{Status: to}, true, nil
 }
 
@@ -262,6 +265,10 @@ func (*fakeStore) CreateQualityAgentAsk(_ context.Context, message *store.Qualit
 }
 
 func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error) {
+	if message.ResourceID == "" {
+		message.ResourceID = fmt.Sprintf("request-%d", len(f.requests)+1)
+	}
+	f.requests = append(f.requests, message)
 	notice.SessionID = lead.ID
 	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), notice); err != nil {
 		return nil, false, err
@@ -1183,6 +1190,62 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 }
 
 // fakeToolAudit collects the tool audit entries a wake reports.
+// A case verb raises its request before the write so a refused write can never leave
+// an escalated case the lead cannot see; the request it created is then dismissed.
+func TestEscalateCaseDismissesTheRequestWhenTheCaseRefuses(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
+		return quality.EscalationOutcome{}, errors.New("the case moved on")
+	})
+
+	_, err := engine.executeTool(context.Background(), session, stores.agent, "escalate_case",
+		`{"case":"case-1","reason":"a person must decide"}`, &wakeControl{})
+	require.Error(t, err)
+	require.Len(t, stores.requests, 1, "the request is raised before the refused case write")
+	require.Equal(t, []store.QualityAgentRequestStatus{store.QualityAgentRequestStatusDismissed},
+		stores.requestStatusUpdates)
+}
+
+// A successful escalation keeps the request it raised for the lead.
+func TestEscalateCaseKeepsTheRequestItRaised(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, session := newOrchestrationHarness(t)
+	engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
+		return quality.EscalationOutcome{State: "ESCALATED", Reason: "a person must decide"}, nil
+	})
+
+	_, err := engine.executeTool(context.Background(), session, stores.agent, "escalate_case",
+		`{"case":"case-1","reason":"a person must decide"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Len(t, stores.requests, 1)
+	require.Empty(t, stores.requestStatusUpdates)
+}
+
+// newOrchestrationHarness builds a subagent with a live lead and one engine over the
+// fake store, which is all the coordination verbs read.
+func newOrchestrationHarness(t *testing.T) (*fakeStore, *Engine, *store.QualityAgentSessionMessage) {
+	t.Helper()
+	agent := &store.QualityAgentMessage{ID: 1, State: store.QualityAgentStateActive}
+	lead := &store.QualityAgentSessionMessage{
+		ID: 2, ResourceID: "lead", WorkspaceID: "ws", AgentID: 1,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+	}
+	session := &store.QualityAgentSessionMessage{
+		ID: 3, ResourceID: "sub", WorkspaceID: "ws", AgentID: 1,
+		Role:            storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT,
+		ParentSessionID: &lead.ID, SubagentName: "orders", TargetGUID: "t",
+	}
+	stores := newFakeStore()
+	stores.agent = agent
+	stores.lead = lead
+	stores.sessionsByID = map[int64]*store.QualityAgentSessionMessage{lead.ID: lead, session.ID: session}
+	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+	return stores, engine, session
+}
+
 type fakeToolAudit struct {
 	entries []tool.AuditEntry
 }

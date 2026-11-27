@@ -15,12 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/iam"
@@ -315,43 +313,31 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
-	s.sessionRunner.SetAttentionSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
-		agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
-		if err != nil || agent == nil {
+	s.sessionRunner.SetBlockedSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
+		// A blocked lead has no one above it; the owner sees the conversation stall. A
+		// subagent's block is coordination, so the lead hears it and decides whether the
+		// owner needs a question.
+		if session.Role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD {
 			return
 		}
-		var owner *store.UserMessage
-		if agent.OwnerPrincipalID != nil {
-			owner, _ = s.store.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
-		}
-		language := agentlang.ForAgent(agent, owner)
-		attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
-			WorkspaceID: session.WorkspaceID,
-			AgentID:     session.AgentID,
-			Kind:        store.QualityAgentAttentionKindBlocked,
-			SessionID:   &session.ID,
-			Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindBlocked),
-			Question:    agentlang.BlockedQuestion(language, reason),
-			DedupeKey:   store.SessionBlockedAttentionDedupeKey(session.ResourceID, code),
-			CreatedAt:   time.Now().UTC(),
-		})
-		if err != nil || !created {
+		lead, err := s.store.GetQualityAgentConversation(ctx, session.AgentID)
+		if err != nil || lead == nil {
 			return
 		}
-		detail := &storepb.QualityAgentAttentionDetail{
-			Agent:     common.FormatWorkspace(session.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
-			Attention: common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
-			Kind:      int32(store.QualityAgentAttentionKindBlocked),
-			Title:     attention.Title,
-			Question:  attention.Question,
-		}
-		dedupeKey := "dqagent:" + attention.ResourceID
-		if agent.OwnerPrincipalID != nil {
-			if sendErr := s.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
-				slog.Warn("failed to send a quality agent attention notification", log.WithError(sendErr))
-			}
-		} else if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
-			slog.Warn("failed to send a quality agent attention notification to admins", log.WithError(sendErr))
+		content := fmt.Sprintf("[runtime notice] subagent %s is blocked: %s: %s", session.SubagentName, code, reason)
+		if _, err := s.store.DeliverQualityAgentMessage(ctx, lead, &store.QualityAgentTranscriptMessage{
+			SessionID:      lead.ID,
+			WorkspaceID:    lead.WorkspaceID,
+			Wake:           lead.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_NOTICE,
+			Content:        content,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+			IdempotencyKey: "notice:blocked:" + session.ResourceID + ":" + code,
+		}); err != nil {
+			slog.Warn("failed to tell a lead that its subagent is blocked",
+				slog.String("session", session.ResourceID), log.WithError(err))
 		}
 	})
 	s.agentReportRunner = qualityagentrunner.NewRunner(stores, s.notifier)

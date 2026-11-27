@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -90,11 +92,18 @@ func (e *Engine) sendSubagentMessage(ctx context.Context, session *store.Quality
 	if err != nil {
 		return "", err
 	}
+	// Queued is still delivered: the message waits in the transcript. Wakeable says
+	// whether the recipient can consume it now, so the lead knows to involve the owner
+	// instead of expecting a report.
+	wakeable := subagent.State != storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED ||
+		store.QualityAgentSessionBlockedCodeRetryable(subagent.BlockedCode)
 	return marshalJSON(map[string]any{
 		"delivered":  true,
+		"wakeable":   wakeable,
 		"message_id": message.ID,
 		"agent":      subagent.SubagentName,
 		"state":      subagent.State.String(),
+		"blocked":    subagent.BlockedCode,
 	})
 }
 
@@ -120,7 +129,7 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		if input.Case != "" {
 			dedupe = fmt.Sprintf("target:%s:case:%s:question", session.TargetGUID, input.Case)
 		}
-		request, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		request, _, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindQuestion,
 			CaseResourceID: input.Case,
 			Title:          "Subagent question",
@@ -167,8 +176,10 @@ func (e *Engine) leadFor(ctx context.Context, session *store.QualityAgentSession
 }
 
 // raiseRequest records one subagent request and tells the lead once. A retried
-// request returns the existing active row and does not append a second message.
-func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, error) {
+// request returns the existing active row and does not append a second message. The
+// second result reports whether this call created the row, which lets a caller that
+// raised it before a write undo its own request when that write is refused.
+func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSessionMessage, message store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, bool, error) {
 	message.WorkspaceID = session.WorkspaceID
 	message.AgentID = session.AgentID
 	message.OriginSessionID = &session.ID
@@ -179,7 +190,7 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	}
 	lead, err := e.leadFor(ctx, session)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	content := fmt.Sprintf("Agent %s sent a message:\n[question] %s", session.SubagentName, message.Question)
 	notice := &store.QualityAgentTranscriptMessage{
@@ -193,22 +204,41 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
 		IdempotencyKey:  fmt.Sprintf("request-notice:%s:%d", message.DedupeKey, session.ID),
 	}
-	created, _, err := e.store.RaiseQualityAgentRequest(ctx, &message, lead, notice)
+	created, isNew, err := e.store.RaiseQualityAgentRequest(ctx, &message, lead, notice)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return created, nil
+	return created, isNew, nil
 }
 
-// listSubagents returns a bounded page of the lead's roster.
+// dismissRaisedRequest throws away a request this wake raised before the write it
+// describes was refused. A request that already existed is left alone: it reports a
+// real earlier escalation, not this attempt.
+func (e *Engine) dismissRaisedRequest(ctx context.Context, request *store.QualityAgentRequestMessage, created bool, reason string) {
+	if !created || request == nil || request.ResourceID == "" {
+		return
+	}
+	if _, _, err := e.store.UpdateQualityAgentRequestStatus(ctx, request.ResourceID,
+		store.QualityAgentRequestStatusOpen, store.QualityAgentRequestStatusDismissed,
+		nil, reason, nil, e.now()); err != nil {
+		slog.Warn("failed to dismiss a request whose write was refused",
+			slog.String("request", request.ResourceID), log.WithError(err))
+	}
+}
+
+// listSubagents returns a bounded page of the lead's roster. Filtering and paging are
+// SQL predicates: a ten-thousand-target agent cannot be filtered in Go after a LIMIT,
+// because the page would miss most matches.
 func (e *Engine) listSubagents(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (string, error) {
 	if !isLeadSession(session) {
 		return "", errors.New("only the lead has a subagent roster")
 	}
 	var input struct {
-		Query string `json:"query"`
-		State string `json:"state"`
-		Limit int    `json:"limit"`
+		Query  string `json:"query"`
+		State  string `json:"state"`
+		Mode   string `json:"mode"`
+		Limit  int    `json:"limit"`
+		Offset int    `json:"offset"`
 	}
 	if strings.TrimSpace(arguments) != "" {
 		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
@@ -219,35 +249,62 @@ func (e *Engine) listSubagents(ctx context.Context, session *store.QualityAgentS
 	if limit <= 0 || limit > maxListedSubagents {
 		limit = maxListedSubagents
 	}
+	offset := input.Offset
+	if offset < 0 {
+		offset = 0
+	}
 	find := &store.FindQualityAgentSessionMessage{
 		AgentID: &session.AgentID,
 		Role:    storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT,
+		Search:  strings.TrimSpace(input.Query),
 		Limit:   &limit,
+		Offset:  &offset,
+	}
+	if state := strings.TrimSpace(input.State); state != "" {
+		key := strings.ToUpper(state)
+		if !strings.HasPrefix(key, "QUALITY_AGENT_SESSION_STATE_") {
+			key = "QUALITY_AGENT_SESSION_STATE_" + key
+		}
+		value, ok := storepb.QualityAgentSessionState_value[key]
+		if !ok {
+			return "", errors.Errorf("unknown subagent state %q", input.State)
+		}
+		find.States = []storepb.QualityAgentSessionState{storepb.QualityAgentSessionState(value)}
+	}
+	if mode := strings.TrimSpace(input.Mode); mode != "" {
+		key := strings.ToUpper(mode)
+		if !strings.HasPrefix(key, "QUALITY_AGENT_SESSION_MODE_") {
+			key = "QUALITY_AGENT_SESSION_MODE_" + key
+		}
+		value, ok := storepb.QualityAgentSessionMode_value[key]
+		if !ok {
+			return "", errors.Errorf("unknown subagent mode %q", input.Mode)
+		}
+		find.Mode = storepb.QualityAgentSessionMode(value)
 	}
 	sessions, err := e.store.ListQualityAgentSessions(ctx, find)
 	if err != nil {
 		return "", err
 	}
-	query := strings.ToLower(strings.TrimSpace(input.Query))
 	rows := make([]map[string]any, 0, len(sessions))
 	for _, subagent := range sessions {
-		if query != "" && !strings.Contains(strings.ToLower(subagent.SubagentName+" "+subagent.TargetGUID), query) {
-			continue
-		}
-		if input.State != "" && !strings.EqualFold(input.State, subagent.State.String()) {
-			continue
-		}
-		row := map[string]any{
+		rows = append(rows, map[string]any{
 			"name":          subagent.SubagentName,
 			"target":        subagent.TargetGUID,
+			"resource":      common.FormatWorkspace(subagent.WorkspaceID) + "/qualityAgentSessions/" + subagent.ResourceID,
 			"state":         subagent.State.String(),
 			"mode":          subagent.Mode.String(),
+			"blocked":       subagent.BlockedCode,
 			"next_wake":     subagent.NextWakeAt,
 			"last_reviewed": subagent.LastReviewedAt,
-		}
-		rows = append(rows, row)
+		})
 	}
-	return marshalJSON(map[string]any{"subagents": rows, "count": len(rows)})
+	return marshalJSON(map[string]any{
+		"subagents":   rows,
+		"count":       len(rows),
+		"next_offset": offset + len(rows),
+		"has_more":    len(rows) == limit,
+	})
 }
 
 // getSubagent returns one subagent's status and open work items.

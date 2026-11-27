@@ -7,6 +7,7 @@ package qualitysessionrunner
 
 import (
 	"context"
+	"hash/fnv"
 	"log/slog"
 	"slices"
 	"sync"
@@ -38,6 +39,13 @@ const (
 	restartLimit int32 = 3
 	// restartEscalationLimit bounds how many restart-limit sessions one sweep escalates.
 	restartEscalationLimit = 100
+	// reviewConcurrency bounds deterministic reviews. They do not call a model, so they
+	// must not wait behind model wakes: ten thousand healthy targets review in a day,
+	// and the old model concurrency (two) would turn that into a crawl.
+	reviewConcurrency = 32
+	// reviewRetryWake is how soon a review deferred for lack of a review slot is looked
+	// at again.
+	reviewRetryWake = 2 * time.Second
 	// caseWakeFloor is the soonest a due case may wake a session, so a past-due case cannot
 	// make the three-second tick spin.
 	caseWakeFloor = time.Minute
@@ -66,6 +74,7 @@ type SessionStore interface {
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
+	SumQualityAgentSubagentTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	ClearQualityAgentSessionManualResume(ctx context.Context, resourceID string) error
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
@@ -75,9 +84,9 @@ type SessionStore interface {
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
 
-// AttentionSink is called after a session is parked for a person. The wiring loads
-// the agent owner, writes the attention to-do and sends the inbox notification.
-type AttentionSink func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string)
+// BlockedSink is called after a session is parked for a person. The wiring tells
+// the target's lead, which decides whether the owner has to hear about it.
+type BlockedSink func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string)
 
 // Runner hosts the agent's sessions.
 type Runner struct {
@@ -91,20 +100,21 @@ type Runner struct {
 	swept                  bool
 	escalatedRestartLimits bool
 	inFlight               atomic.Int32
+	reviewInFlight         atomic.Int32
 	wg                     sync.WaitGroup
 	// agentSlots counts the sessions this process is running for one agent, so a
 	// claim batch larger than the agent's concurrent budget does not make every
 	// session of the batch park at once.
 	agentSlotsMu sync.Mutex
 	agentSlots   map[int64]int
-	// attention escalates a session parked for a person. Nil keeps the runner
-	// usable without notifications (tests, embedded use).
-	attention AttentionSink
+	// blocked tells the target's lead that a session parked for a person. Nil keeps
+	// the runner usable without a lead (tests, embedded use).
+	blocked BlockedSink
 }
 
-// SetAttentionSink wires the owner escalation. It is called once before Run.
-func (r *Runner) SetAttentionSink(sink AttentionSink) {
-	r.attention = sink
+// SetBlockedSink wires the lead notice. It is called once before Run.
+func (r *Runner) SetBlockedSink(sink BlockedSink) {
+	r.blocked = sink
 }
 
 // NewRunner creates the session runner. Production passes the model engine; a nil
@@ -197,9 +207,9 @@ func (r *Runner) runOnce(ctx context.Context) {
 		r.escalatedRestartLimits = true
 		r.escalateRestartLimits(ctx)
 	}
-	// The worker pool is bounded by the workspace hard cap; each agent's own
-	// concurrency budget is enforced when its session starts.
-	slots := dataquality.MaxAgentRunnerConcurrentSessions - int(r.inFlight.Load())
+	// Model wakes are bounded by the workspace hard cap; deterministic reviews get
+	// their own review slots, so a healthy backlog does not wait behind model calls.
+	slots := dataquality.MaxAgentRunnerConcurrentSessions + reviewConcurrency - int(r.inFlight.Load())
 	if slots <= 0 {
 		return
 	}
@@ -226,12 +236,52 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		r.block(ctx, session, code, reason, next)
 		return
 	}
+	needsModel, err := r.engine.NeedsModel(ctx, session)
+	if err != nil {
+		r.block(ctx, session, "internal-error", "the session review check failed: "+err.Error(),
+			ptrTime(r.now().Add(retryWake)))
+		return
+	}
+	if !needsModel {
+		if r.reviewInFlight.Add(1) > reviewConcurrency {
+			r.reviewInFlight.Add(-1)
+			if _, err := r.store.ReleaseQualityAgentSessionLease(ctx, session.ResourceID,
+				ptrTime(r.now().Add(reviewRetryWake))); err != nil {
+				slog.Error("failed to requeue a deterministic review over its concurrency limit",
+					slog.String("session", session.ResourceID), log.WithError(err))
+			}
+			return
+		}
+		defer r.reviewInFlight.Add(-1)
+		outcome := r.engine.Review(ctx, session)
+		next := r.idleWake()
+		if outcome.NextWakeAt != nil {
+			next = outcome.NextWakeAt
+			// Daily reviews would otherwise fall due in the same second on every
+			// target: hash the target into a two-hour tail so ten thousand reviews
+			// smooth out after the first day. Short retries are not jittered.
+			if next.Sub(r.now()) >= 23*time.Hour {
+				jittered := next.Add(reviewJitter(session.TargetGUID))
+				next = &jittered
+			}
+		}
+		if _, err := r.store.RecordQualityAgentReview(ctx, session.ResourceID, r.now(), *next); err != nil {
+			slog.Warn("failed to record a deterministic review",
+				slog.String("session", session.ResourceID), log.WithError(err))
+		}
+		return
+	}
 	concurrencyLimit := agent.MaxConcurrentSessions
 	if concurrencyLimit <= 0 {
 		concurrencyLimit = dataquality.DefaultAgentRunnerMaxConcurrentSessions
 	}
 	if concurrencyLimit < 1 {
 		concurrencyLimit = 1
+	}
+	// The lead is the coordinator: it gets one slot beyond the subagent budget so a
+	// burst of subagent wakes cannot make the owner's question wait.
+	if session.Role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD {
+		concurrencyLimit++
 	}
 	if !r.acquireAgentSlot(agent.ID, int(concurrencyLimit)) {
 		nextWake := ptrTime(r.now().Add(concurrencyRetryWake))
@@ -242,28 +292,11 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		return
 	}
 	defer r.releaseAgentSlot(agent.ID)
-	needsModel, err := r.engine.NeedsModel(ctx, session)
-	if err != nil {
-		r.block(ctx, session, "internal-error", "the session review check failed: "+err.Error(),
-			ptrTime(r.now().Add(retryWake)))
-		return
-	}
-	if !needsModel {
-		outcome := r.engine.Review(ctx, session)
-		next := r.idleWake()
-		if outcome.NextWakeAt != nil {
-			next = outcome.NextWakeAt
-		}
-		if _, err := r.store.RecordQualityAgentReview(ctx, session.ResourceID, r.now(), *next); err != nil {
-			slog.Warn("failed to record a deterministic review",
-				slog.String("session", session.ResourceID), log.WithError(err))
-		}
-		return
-	}
 	tokenLimit := agent.TokensPerHour
 	if tokenLimit <= 0 {
 		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
 	}
+	isLead := session.Role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD
 	// A person pressed "resume". The budgets still describe the hour, but the decision to run now is
 	// theirs, so the marker is spent here and the wake proceeds. It is cleared immediately: one wake,
 	// not a standing exemption.
@@ -273,15 +306,18 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			slog.Warn("failed to clear a manual resume", slog.String("session", session.ResourceID), log.WithError(clearErr))
 		}
 	}
-	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
+	// A person's question and the lead's coordination are the reserve: subagents may
+	// spend at most four fifths of the hourly token budget, so the lead always has a
+	// fifth left to answer the owner. The lead itself is not blocked by that reserve.
+	spent, err := r.store.SumQualityAgentSubagentTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
 		r.block(ctx, session, "internal-error", "the agent token spend could not be read",
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if spent >= tokenLimit && !manual {
+	if !isLead && spent >= tokenLimit*4/5 && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
-		r.block(ctx, session, "token-budget", "the hourly agent token budget is spent", &nextWindow)
+		r.block(ctx, session, "token-budget", "the hourly token budget reserved for the lead is spent", &nextWindow)
 		return
 	}
 	wakeLimit := int64(agent.WakesPerHour)
@@ -294,7 +330,7 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if wakes >= wakeLimit && !manual {
+	if !isLead && wakes >= wakeLimit && !manual {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
 		r.block(ctx, session, "wake-budget", "the hourly agent wake budget is spent", &nextWindow)
 		return
@@ -338,8 +374,8 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 		} else if !parked {
 			slog.Warn("the quality agent session changed before it could be parked",
 				slog.String("session", session.ResourceID))
-		} else if r.attention != nil && attentionWorthy(outcome.BlockedCode) {
-			r.attention(ctx, session, outcome.BlockedCode, outcome.BlockedReason)
+		} else if r.blocked != nil && attentionWorthy(outcome.BlockedCode) {
+			r.blocked(ctx, session, outcome.BlockedCode, outcome.BlockedReason)
 		}
 		return
 	}
@@ -393,11 +429,10 @@ func (r *Runner) host(ctx context.Context, session *store.QualityAgentSessionMes
 	}
 }
 
-// escalateRestartLimits raises one owner attention for every session the lease sweep
-// just parked on the restart limit. The attention sink dedupes per session, so a
-// repeated pass converges on the open to-do.
+// escalateRestartLimits tells the lead about every session the lease sweep just
+// parked on the restart limit. The lead decides whether the owner has to hear it.
 func (r *Runner) escalateRestartLimits(ctx context.Context) {
-	if r.attention == nil {
+	if r.blocked == nil {
 		return
 	}
 	sessions, err := r.store.ListQualityAgentSessionsByBlockedCode(ctx, "restart-limit", restartEscalationLimit)
@@ -410,7 +445,7 @@ func (r *Runner) escalateRestartLimits(ctx context.Context) {
 		if err != nil || agent == nil || agent.State != store.QualityAgentStateActive {
 			continue
 		}
-		r.attention(ctx, session, "restart-limit", session.BlockedReason)
+		r.blocked(ctx, session, "restart-limit", session.BlockedReason)
 	}
 }
 
@@ -456,13 +491,13 @@ func (r *Runner) block(ctx context.Context, session *store.QualityAgentSessionMe
 	} else if !parked {
 		slog.Warn("the quality agent session changed before it could be parked",
 			slog.String("session", session.ResourceID))
-	} else if r.attention != nil && attentionWorthy(code) {
-		r.attention(ctx, session, code, reason)
+	} else if r.blocked != nil && attentionWorthy(code) {
+		r.blocked(ctx, session, code, reason)
 	}
 }
 
-// attentionWorthy reports whether a blocked code needs the owner's decision rather
-// than the next retry. Retryable budget/concurrency codes and runner-managed scope
+// attentionWorthy reports whether a blocked code needs a person rather than the next
+// retry. Retryable budget/concurrency codes and runner-managed scope
 // or disabled-agent parks stay silent.
 func attentionWorthy(code string) bool {
 	if store.QualityAgentSessionBlockedCodeRetryable(code) {
@@ -510,3 +545,11 @@ func (r *Runner) idleWake() *time.Time {
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }
+
+// reviewJitter spreads a target's daily review over two hours. It is derived from the
+// target, so the same target keeps its slot across restarts.
+func reviewJitter(targetGUID string) time.Duration {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(targetGUID))
+	return time.Duration(hash.Sum64() % uint64(2*time.Hour))
+}

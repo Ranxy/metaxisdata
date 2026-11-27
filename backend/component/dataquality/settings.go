@@ -109,6 +109,17 @@ const (
 	DefaultAgentRunnerMaxActiveSessions = 100
 	// MaxAgentRunnerActiveSessions is the hard ceiling of the active set.
 	MaxAgentRunnerActiveSessions = 10000
+	// DefaultAgentRunnerMaxTriageSessions is the fallback number of targets that may
+	// be triaged at once. Triage is a model call per uncovered target, so it is
+	// separate from the monitor existence, which is unbounded.
+	DefaultAgentRunnerMaxTriageSessions = 4
+	// MaxAgentRunnerMaxTriageSessions is the hard ceiling of that concurrency.
+	MaxAgentRunnerMaxTriageSessions = 32
+	// DefaultAgentRunnerMaxNewTriageSessionsPerHour is the fallback triage rate: ten
+	// thousand uncovered targets drain in about two weeks at thirty an hour.
+	DefaultAgentRunnerMaxNewTriageSessionsPerHour = 30
+	// MaxAgentRunnerMaxNewTriageSessionsPerHour is the hard ceiling of that rate.
+	MaxAgentRunnerMaxNewTriageSessionsPerHour = 1000
 	// MaxAgentRunnerConversationMessagesPerHour is the hard ceiling of an agent's
 	// owner-conversation message budget.
 	MaxAgentRunnerConversationMessagesPerHour = 10_000

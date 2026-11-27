@@ -15,8 +15,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/common/resource"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
-	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -116,12 +114,6 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 			slog.String("case", openCase.ResourceID))
 	} else {
 		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
-		// An escalated case is a decision the owner owes, so it has to reach them. The notice is
-		// deduped per case: a retried verb must not page twice.
-		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
-			Kind:     store.QualityAgentAttentionKindBlocked,
-			Question: reason,
-		})
 	}
 	return &AgentControlResult{
 		Case:     openCase.ResourceID,
@@ -170,17 +162,6 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 func caseNotFoundError(resourceID string) error {
 	return connect.NewError(connect.CodeNotFound, errors.Errorf(
 		"case %q not found: these verbs act on a work item (qualityAgentCases/<id>), and a check or an execution is not one. A check that produced a FAIL has no work item because the issue ledger already reported it to the owner; record what you concluded and leave it there", resourceID))
-}
-
-// checkTitle names a check for prose, falling back to its id when a person never titled it.
-func checkTitle(rule *store.QualityRuleMessage) string {
-	if rule == nil {
-		return ""
-	}
-	if title := strings.TrimSpace(rule.Title); title != "" {
-		return title
-	}
-	return "qualityRules/" + rule.ResourceID
 }
 
 // agentPolicy resolves how far the agent may go on one target.
@@ -477,11 +458,6 @@ func (s *DataQualityService) RunAgentCheck(ctx context.Context, agentPrincipalID
 	}, nil
 }
 
-// agentOwnerLanguage resolves the language an agent's server prose is written in for its owner.
-func (s *DataQualityService) agentOwnerLanguage(ctx context.Context, agent *store.QualityAgentMessage) (string, *store.UserMessage) {
-	return agentattention.OwnerLanguage(ctx, s.store, agent)
-}
-
 // revisedAgentConfig is the definition one repair would write. The value is the server's when the
 // case names no field: aligning a structure snapshot means writing the columns the registry holds
 // now, and a value the model supplied would let it pin a snapshot that never existed.
@@ -705,7 +681,7 @@ type AgentEscalationResult struct {
 // target it covered and nothing could wake it, while an escalated case silences exactly one question
 // and the attention tells the owner what the question is.
 func (s *DataQualityService) EscalateAgentCase(ctx context.Context, agentPrincipalID int32, caseResourceID, reason string) (*AgentEscalationResult, error) {
-	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesEvidence)
+	openCase, _, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesEvidence)
 	if err != nil {
 		return nil, err
 	}
@@ -740,11 +716,6 @@ func (s *DataQualityService) EscalateAgentCase(ctx context.Context, agentPrincip
 			errors.New("the case changed before it could be escalated"))
 	}
 	s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
-	language, _ := s.agentOwnerLanguage(ctx, agent)
-	s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
-		Kind:     store.QualityAgentAttentionKindBlocked,
-		Question: agentlang.CaseEscalationQuestion(language, checkTitle(rule), reason),
-	})
 	return &AgentEscalationResult{
 		Case:   openCase.ResourceID,
 		Check:  checkResourceName(rule),
@@ -853,15 +824,6 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 	entry.Field = field
 	entry.Reason = ledgerClass(diagnosis)
 	s.recordAgentCaseAction(ctx, entry)
-	language, _ := s.agentOwnerLanguage(ctx, agent)
-	question := agentlang.CaseRevisionQuestion(language, agentlang.CaseRevision{
-		Check:     checkTitle(rule),
-		Field:     field,
-		From:      diagnosis.FieldValue,
-		To:        value,
-		Effect:    patch.GetEffect(),
-		Rationale: patch.GetRationale(),
-	})
 	reason := "the agent proposed " + field + " = " + value + "; a person decides whether to apply it"
 	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
 		openCase.State, store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason); caseErr != nil {
@@ -871,12 +833,6 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 		slog.Warn("the case changed before it could be escalated", slog.String("case", openCase.ResourceID))
 	} else {
 		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
-		s.raiseCaseAttention(ctx, openCase, agent, agentattention.Notice{
-			Kind:     store.QualityAgentAttentionKindProposalPending,
-			Title:    agentlang.CaseRevisionTitle(language),
-			Question: question,
-			Patch:    patch,
-		})
 	}
 	return &AgentProposalResult{
 		Case:   openCase.ResourceID,
@@ -886,13 +842,4 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 		Effect: patch.GetEffect(),
 		State:  store.QualityAgentCaseStateEscalated.Name(),
 	}, nil
-}
-
-// raiseCaseAttention tells the owner that a case needs a decision, through the one escalation
-// writer both this service and the runner use.
-func (s *DataQualityService) raiseCaseAttention(ctx context.Context, openCase *store.QualityAgentCaseMessage, agent *store.QualityAgentMessage, notice agentattention.Notice) {
-	if s.caseAttention == nil {
-		return
-	}
-	s.caseAttention.Raise(ctx, openCase, agent, notice)
 }

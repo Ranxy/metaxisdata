@@ -102,10 +102,6 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 					if state.Terminal() {
 						r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
 					}
-					if state == store.QualityAgentCaseStateResolved {
-						// The item is settled, so the target's decision card must stop listing it.
-						r.refreshTargetCard(ctx, agent.ID, targetGUID)
-					}
 				}
 				continue
 			}
@@ -124,7 +120,6 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
 					r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
-					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
 			}
@@ -144,7 +139,6 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 					resolved++
 					r.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateResolved.Name())
 					r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
-					r.refreshTargetCard(ctx, agent.ID, targetGUID)
 				}
 				continue
 			}
