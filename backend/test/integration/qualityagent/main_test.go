@@ -39,8 +39,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	testEnv = env
-	code := m.Run()
+	m.Run()
 	cleanup()
 	cancel()
-	os.Exit(code)
 }

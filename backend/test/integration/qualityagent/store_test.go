@@ -134,12 +134,10 @@ func TestQualityAgentRequestConcurrentDedupe(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
 	for worker := 0; worker < workers; worker++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, _, err := f.raiseRaw(raiseOptions{dedupeKey: "it-concurrent-same", question: "The same question?"})
 			errs <- err
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)
@@ -152,16 +150,14 @@ func TestQualityAgentRequestConcurrentDedupe(t *testing.T) {
 	var different sync.WaitGroup
 	conflicts := make(chan error, workers)
 	for worker := 0; worker < workers; worker++ {
-		different.Add(1)
-		go func(worker int) {
-			defer different.Done()
+		different.Go(func() {
 			_, _, err := f.raiseRaw(raiseOptions{
 				dedupeKey: "it-concurrent-different",
 				question:  fmt.Sprintf("Different question %d?", worker),
 				conflict:  true,
 			})
 			conflicts <- err
-		}(worker)
+		})
 	}
 	different.Wait()
 	close(conflicts)
