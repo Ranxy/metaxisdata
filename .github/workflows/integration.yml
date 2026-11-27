@@ -1,0 +1,62 @@
+name: Integration
+
+# Two tiers in one file:
+#   - a pull request runs only the migration chain (LATEST.sql versus the
+#     incrementals): one container, ~20s of tests, the failure mode that has
+#     actually broken a pull request and the one that breaks every upgrade;
+#   - a push to main runs the whole real-server suite, so main is verified
+#     minutes after the merge without anyone waiting on it.
+# The expensive matrix lives in nightly.yml; neither tier there blocks a
+# pull request.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/integration.yml
+      - .github/workflows/integration-suite.yml
+      - Makefile
+      - backend/migrator/**
+      - backend/test/integration/dockerutil/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/integration.yml
+      - .github/workflows/integration-suite.yml
+      - Makefile
+      - backend/**
+      - go.mod
+      - go.sum
+      - proto/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  # Stacked merges cancel the earlier run and verify the tip, which subsumes it.
+  cancel-in-progress: true
+
+jobs:
+  migrator:
+    name: Migration chain
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run the migration chain tests
+        run: make test-integration-migrator
+
+  full:
+    name: Full suite
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/integration-suite.yml

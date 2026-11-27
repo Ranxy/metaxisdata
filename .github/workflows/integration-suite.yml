@@ -1,0 +1,89 @@
+name: Integration suite
+
+# One definition of the real-server suite, called by the merge-to-main run, the
+# nightly matrix and workflow_dispatch. The inputs exist so the nightly can move
+# the database versions and the go test flags without a second copy of these
+# steps; a change to what the suite is belongs here, once.
+on:
+  workflow_call:
+    inputs:
+      postgres:
+        description: PostgreSQL image tag (for example 16-alpine)
+        required: false
+        type: string
+        default: 16-alpine
+      mysql:
+        description: MySQL image tag (for example 8.4)
+        required: false
+        type: string
+        default: "8.4"
+      ref:
+        description: Commit or branch to test; empty means the caller's ref
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: postgres:${{ inputs.postgres }} mysql:${{ inputs.mysql }}
+    runs-on: ubuntu-latest
+    # Headroom over the go test timeout the caller passes (30m at most), so a
+    # hung test reports its own stack instead of being killed by the job.
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:${{ inputs.postgres }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: metaxisdata
+        # The harness starts its own container with the same 300: every instance
+        # in the package syncs against this one server at up to 10 connections
+        # each, and the image's default 100 breaks parallel runs with "too many
+        # clients". The external mode has to match the local mode.
+        command: postgres -c max_connections=300
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d metaxisdata"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      mysql:
+        image: mysql:${{ inputs.mysql }}
+        env:
+          # The harness connects as root/root by default; MYSQL_USER would create
+          # a second account it never uses.
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      # External service mode: the harness skips testcontainers and keeps its
+      # readiness checks, migrations and fixtures against these endpoints.
+      INTEGRATION_POSTGRES_HOST: 127.0.0.1
+      INTEGRATION_POSTGRES_PORT: "5432"
+      INTEGRATION_POSTGRES_DB: metaxisdata
+      INTEGRATION_MYSQL_HOST: 127.0.0.1
+      INTEGRATION_MYSQL_PORT: "3306"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration suite
+        run: make test-integration

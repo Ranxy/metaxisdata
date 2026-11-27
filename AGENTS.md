@@ -102,7 +102,7 @@ After a code change, run that area's checks — each nested file lists the exact
 | Frontend | `biome:check`, `lint`, `i18n`, `type-check`, `test run` — [frontend/AGENTS.md](frontend/AGENTS.md) |
 | Proto | `buf format -w proto`, `buf lint proto`, `cd proto && buf generate` — [proto/AGENTS.md](proto/AGENTS.md) |
 
-Go integration suites run the real server against PostgreSQL + MySQL behind the `integration` build tag: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql`. See [backend/test/integration/README.md](backend/test/integration/README.md).
+Go integration suites run the real server against PostgreSQL + MySQL behind the `integration` build tag: `make test-integration-smoke`, `make test-integration`, `make test-integration-mysql`. A pull request runs only `make test-integration-migrator`; the full suite runs when a change lands on main and in the nightly matrix, so a change to schema sync, lineage analysis or server wiring needs the full suite run locally. See [backend/test/integration/README.md](backend/test/integration/README.md).
 
 ## Deliberate, Accepted Decisions (Not Bugs)
 

@@ -1,4 +1,4 @@
-.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-mysql test-integration-data-quality test-integration
+.PHONY: run build build-release build-cli build-embed build-binary frontend-dist docker-build docker-build-dev docker-up docker-down test-integration-smoke test-integration-migrator test-integration-mysql test-integration-data-quality test-integration
 
 # Build metadata baked into the binary: `metaxisdata --version` and the SPA's
 # user menu read it, so a binary built here can be matched to a commit. The
@@ -99,14 +99,27 @@ test-integration-mysql:
 test-integration-data-quality:
 	go test -v -count=1 -tags=integration -run '^(TestDataQualityEnumValidationRealServerIntegration|TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration|TestDataQualityPersonalDataRedactionRealServerIntegration|TestDataQualityRuleTemplateRealServerIntegration|TestDataQualityCodeTableRealServerIntegration)$$' ./backend/test/integration/runner
 
+# The migration-chain gate: LATEST.sql and the increment chain must describe the
+# same schema, and only a real PostgreSQL can prove it. This is the one part of
+# the integration surface a pull request still runs, because a mismatch breaks
+# every user's upgrade while the run is cheap (one container, ~20s of tests).
+test-integration-migrator:
+	go test -count=1 -tags=integration ./backend/migrator/...
+
 # The integration gate: every real-server scenario in this package plus the
 # migrator paths. Selection is by package, not by test-name substring: a test
 # whose name does not match the old 'RealServerIntegration' filter used to be
 # skipped silently, and renaming one is not a contract. -race matters here more
 # than in the hermetic suite: the refresh-token rotation, grant revocation and
 # limiter paths only run against a real server.
+#
+# Pull requests do not run this: it is the merge-to-main and nightly gate. The
+# suite is the only place that can grow (extra engines, repeated runs), and its
+# cost belongs where nobody waits for it. -timeout is explicit because a slow
+# runner can push the package past go test's 10m default, which then fails as a
+# panic rather than as a test.
 test-integration:
-	go test -v -count=1 -tags=integration -race ./backend/test/integration/runner
+	go test -v -count=1 -race -timeout=20m -tags=integration ./backend/test/integration/runner
 	go test -count=1 -tags=integration ./backend/migrator/...
 
 # The documentation gate: links, index coverage, size budgets, the English rule,
