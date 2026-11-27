@@ -244,21 +244,19 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent 
 	if r.notifier == nil {
 		return
 	}
-	// Phase 4 adds an ask-shaped notification detail; until then the inbox copy
-	// carries the same prose through the existing agent notification envelope.
-	detail := &storepb.QualityAgentAttentionDetail{
-		Agent:     common.FormatWorkspace(workspaceID) + "/qualityAgents/" + agent.ResourceID,
-		Attention: common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + ask.ResourceID,
-		Kind:      int32(store.QualityAgentAttentionKindReportAnomaly),
-		Title:     title,
-		Question:  question,
+	detail := &storepb.QualityAgentAskDetail{
+		Agent:    common.FormatWorkspace(workspaceID) + "/qualityAgents/" + agent.ResourceID,
+		Ask:      common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + ask.ResourceID,
+		Kind:     int32(store.QualityAgentAskKindAnomaly),
+		Title:    title,
+		Question: question,
 	}
 	dedupeKey := "dqagent:ask:" + ask.ResourceID
 	if agent.OwnerPrincipalID != nil {
-		if sendErr := r.notifier.SendQualityAgentAttention(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+		if sendErr := r.notifier.SendQualityAgentAsk(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
 			slog.Warn("failed to send a report anomaly notification", log.WithError(sendErr))
 		}
-	} else if sendErr := r.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+	} else if sendErr := r.notifier.SendQualityAgentAskToAdmins(ctx, dedupeKey, detail); sendErr != nil {
 		slog.Warn("failed to send a report anomaly notification to admins", log.WithError(sendErr))
 	}
 }

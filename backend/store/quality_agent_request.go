@@ -241,8 +241,16 @@ func (s *Store) GetQualityAgentRequestByResourceID(ctx context.Context, resource
 
 // ListQualityAgentRequests lists an agent's requests, newest first.
 func (s *Store) ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []QualityAgentRequestStatus, targetGUID string, limit int) ([]*QualityAgentRequestMessage, error) {
+	return s.ListQualityAgentRequestsPage(ctx, agentID, statuses, targetGUID, limit, 0)
+}
+
+// ListQualityAgentRequestsPage lists one page of an agent's requests, newest first.
+func (s *Store) ListQualityAgentRequestsPage(ctx context.Context, agentID int64, statuses []QualityAgentRequestStatus, targetGUID string, limit, offset int) ([]*QualityAgentRequestMessage, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	query := `SELECT ` + qualityAgentRequestColumns + ` FROM quality_agent_request WHERE agent_id = $1`
 	args := []any{agentID}
@@ -258,8 +266,9 @@ func (s *Store) ListQualityAgentRequests(ctx context.Context, agentID int64, sta
 		args = append(args, values)
 		query += ` AND status = ANY($` + strconv.Itoa(len(args)) + `::int2[])`
 	}
-	args = append(args, limit)
-	query += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args))
+	args = append(args, limit, offset)
+	query += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)-1) +
+		` OFFSET $` + strconv.Itoa(len(args))
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality agent requests")

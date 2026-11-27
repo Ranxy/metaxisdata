@@ -145,6 +145,33 @@ func TestConvertToV1NotificationMapsADataQualityDetail(t *testing.T) {
 
 // A notification written by a newer server may carry a detail this build does
 // not know; the envelope still has to render.
+// An ask notification renders its structured detail, including how many requests and
+// which targets the answer covers.
+func TestConvertToV1NotificationMapsAQualityAgentAskDetail(t *testing.T) {
+	t.Parallel()
+
+	notification := convertToV1Notification(&storepb.Notification{
+		Id:       9,
+		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_AGENT,
+		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
+		Detail: &storepb.Notification_QualityAgentAsk{QualityAgentAsk: &storepb.QualityAgentAskDetail{
+			Agent:        "workspaces/ws/qualityAgents/a1",
+			Ask:          "workspaces/ws/qualityAgentAsks/ask1",
+			Kind:         3,
+			Title:        "Drafts need a decision",
+			Question:     "Approve the drafts?",
+			RequestCount: 2,
+			Targets:      []string{"inst;db;;orders"},
+		}},
+	}, "ws")
+	detail := notification.GetQualityAgentAsk()
+	require.NotNil(t, detail)
+	require.Equal(t, "workspaces/ws/qualityAgentAsks/ask1", detail.GetAsk())
+	require.Equal(t, int32(3), detail.GetKind())
+	require.Equal(t, int32(2), detail.GetRequestCount())
+	require.Equal(t, []string{"inst;db;;orders"}, detail.GetTargets())
+}
+
 func TestConvertToV1NotificationWithoutAKnownDetail(t *testing.T) {
 	t.Parallel()
 

@@ -391,10 +391,13 @@ type FindQualityAgentSessionMessage struct {
 	AgentID     *int64
 	Kind        int16
 	Role        storepb.QualityAgentSessionRole
-	TargetGUID  *string
-	DatabaseRef *string
-	States      []storepb.QualityAgentSessionState
-	Mode        storepb.QualityAgentSessionMode
+	// ParentSessionID keeps one lead's subagents. SubagentName keeps one named target.
+	ParentSessionID *int64
+	SubagentName    *string
+	TargetGUID      *string
+	DatabaseRef     *string
+	States          []storepb.QualityAgentSessionState
+	Mode            storepb.QualityAgentSessionMode
 	// Search matches the name or target GUID; it is applied in SQL so a page is not
 	// the first page of an unfiltered roster.
 	Search          string
@@ -428,6 +431,12 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 			role = storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD
 		}
 		where += ` AND role = ` + arg(int16(role))
+	}
+	if find.ParentSessionID != nil && *find.ParentSessionID > 0 {
+		where += ` AND parent_session_id = ` + arg(*find.ParentSessionID)
+	}
+	if find.SubagentName != nil && *find.SubagentName != "" {
+		where += ` AND subagent_name = ` + arg(*find.SubagentName)
 	}
 	if find.TargetGUID != nil && *find.TargetGUID != "" {
 		where += ` AND target_guid = ` + arg(*find.TargetGUID)

@@ -7228,6 +7228,20 @@ export declare type QualityAgentBudget = Message<"metaxisdata.v1.QualityAgentBud
    * @generated from field: int32 run_max_per_rule_per_day = 8;
    */
   runMaxPerRulePerDay: number;
+
+  /**
+   * How many uncovered targets may be triaged at once. Zero uses the server default.
+   *
+   * @generated from field: int32 max_triage_sessions = 9;
+   */
+  maxTriageSessions: number;
+
+  /**
+   * How many uncovered targets may enter triage per hour. Zero uses the server default.
+   *
+   * @generated from field: int32 max_new_triage_sessions_per_hour = 10;
+   */
+  maxNewTriageSessionsPerHour: number;
 };
 
 /**
@@ -7511,6 +7525,15 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
    * @generated from field: string request_id = 3;
    */
   requestId: string;
+
+  /**
+   * The ask this message answers, when it is a reply to a question. Format:
+   * workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
+   * is marked answered and the lead routes the answer.
+   *
+   * @generated from field: string reply_to = 4;
+   */
+  replyTo: string;
 };
 
 /**
@@ -7776,8 +7799,357 @@ export declare type ListQualityAgentReportsResponse = Message<"metaxisdata.v1.Li
 export declare const ListQualityAgentReportsResponseSchema: GenMessage<ListQualityAgentReportsResponse>;
 
 /**
- * QualityAgentAttention is one owner escalation inside an agent.
+ * QualityAgentRequest is one subagent's decision request to the lead. It is the
+ * coordination record behind an ask; the owner sees the ask, not this row.
  *
+ * @generated from message metaxisdata.v1.QualityAgentRequest
+ */
+export declare type QualityAgentRequest = Message<"metaxisdata.v1.QualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 3;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentRequestKind kind = 4;
+   */
+  kind: QualityAgentRequestKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentRequestStatus status = 5;
+   */
+  status: QualityAgentRequestStatus;
+
+  /**
+   * @generated from field: string title = 6;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string question = 7;
+   */
+  question: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when
+   * the request is not about one work item.
+   *
+   * @generated from field: string case = 8;
+   */
+  case: string;
+
+  /**
+   * The concrete change a proposal asks for; empty for other kinds.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentFieldPatch suggested_patch = 9;
+   */
+  suggestedPatch?: QualityAgentFieldPatch;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}; the subagent that
+   * raised it.
+   *
+   * @generated from field: string origin_session = 10;
+   */
+  originSession: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}; empty until
+   * the lead forwards it.
+   *
+   * @generated from field: string ask = 11;
+   */
+  ask: string;
+
+  /**
+   * The lead's or owner's answer, once answered.
+   *
+   * @generated from field: string resolution = 12;
+   */
+  resolution: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 13;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 14;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentRequest.
+ * Use `create(QualityAgentRequestSchema)` to create a new message.
+ */
+export declare const QualityAgentRequestSchema: GenMessage<QualityAgentRequest>;
+
+/**
+ * QualityAgentAsk is one owner-facing question from the lead. It can cover several
+ * requests through their ask link.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAsk
+ */
+export declare type QualityAgentAsk = Message<"metaxisdata.v1.QualityAgentAsk"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAskKind kind = 3;
+   */
+  kind: QualityAgentAskKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAskStatus status = 4;
+   */
+  status: QualityAgentAskStatus;
+
+  /**
+   * @generated from field: string title = 5;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string question = 6;
+   */
+  question: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}; the lead conversation
+   * the question was written into.
+   *
+   * @generated from field: string conversation = 7;
+   */
+  conversation: string;
+
+  /**
+   * The transcript seq of the question.
+   *
+   * @generated from field: int64 message_seq = 8;
+   */
+  messageSeq: bigint;
+
+  /**
+   * Format: users/{user}; empty until the owner answers.
+   *
+   * @generated from field: string answered_by = 9;
+   */
+  answeredBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp answer_time = 10;
+   */
+  answerTime?: Timestamp;
+
+  /**
+   * The transcript seq of the owner's answer.
+   *
+   * @generated from field: int64 answer_message_seq = 11;
+   */
+  answerMessageSeq: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp resolve_time = 12;
+   */
+  resolveTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 13;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 14;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAsk.
+ * Use `create(QualityAgentAskSchema)` to create a new message.
+ */
+export declare const QualityAgentAskSchema: GenMessage<QualityAgentAsk>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentRequestsRequest
+ */
+export declare type ListQualityAgentRequestsRequest = Message<"metaxisdata.v1.ListQualityAgentRequestsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * UNSPECIFIED lists open and forwarded requests.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentRequestStatus status = 2;
+   */
+  status: QualityAgentRequestStatus;
+
+  /**
+   * @generated from field: string target_guid = 3;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentRequestsRequest.
+ * Use `create(ListQualityAgentRequestsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentRequestsRequestSchema: GenMessage<ListQualityAgentRequestsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentRequestsResponse
+ */
+export declare type ListQualityAgentRequestsResponse = Message<"metaxisdata.v1.ListQualityAgentRequestsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentRequest quality_agent_requests = 1;
+   */
+  qualityAgentRequests: QualityAgentRequest[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentRequestsResponse.
+ * Use `create(ListQualityAgentRequestsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentRequestsResponseSchema: GenMessage<ListQualityAgentRequestsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentDecisionRequestRequest
+ */
+export declare type GetQualityAgentDecisionRequestRequest = Message<"metaxisdata.v1.GetQualityAgentDecisionRequestRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentDecisionRequestRequest.
+ * Use `create(GetQualityAgentDecisionRequestRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentDecisionRequestRequestSchema: GenMessage<GetQualityAgentDecisionRequestRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentAsksRequest
+ */
+export declare type ListQualityAgentAsksRequest = Message<"metaxisdata.v1.ListQualityAgentAsksRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * UNSPECIFIED lists open and answered asks.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentAskStatus status = 2;
+   */
+  status: QualityAgentAskStatus;
+
+  /**
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentAsksRequest.
+ * Use `create(ListQualityAgentAsksRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentAsksRequestSchema: GenMessage<ListQualityAgentAsksRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentAsksResponse
+ */
+export declare type ListQualityAgentAsksResponse = Message<"metaxisdata.v1.ListQualityAgentAsksResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentAsk quality_agent_asks = 1;
+   */
+  qualityAgentAsks: QualityAgentAsk[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentAsksResponse.
+ * Use `create(ListQualityAgentAsksResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentAsksResponseSchema: GenMessage<ListQualityAgentAsksResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentAskRequest
+ */
+export declare type GetQualityAgentAskRequest = Message<"metaxisdata.v1.GetQualityAgentAskRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentAskRequest.
+ * Use `create(GetQualityAgentAskRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentAskRequestSchema: GenMessage<GetQualityAgentAskRequest>;
+
+/**
  * @generated from message metaxisdata.v1.QualityAgentAttention
  */
 export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgentAttention"> & {
@@ -10116,6 +10488,27 @@ export declare type QualityAgentSession = Message<"metaxisdata.v1.QualityAgentSe
    * @generated from field: metaxisdata.v1.QualityAgentSessionContextUsage context_usage = 23;
    */
   contextUsage?: QualityAgentSessionContextUsage;
+
+  /**
+   * The session's place in the agent tree.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionRole role = 24;
+   */
+  role: QualityAgentSessionRole;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}; empty for the lead.
+   *
+   * @generated from field: string parent = 25;
+   */
+  parent: string;
+
+  /**
+   * The model-facing name of a subagent ("orders"); empty for the lead.
+   *
+   * @generated from field: string subagent_name = 26;
+   */
+  subagentName: string;
 };
 
 /**
@@ -10225,6 +10618,37 @@ export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.Quality
    * @generated from field: string reasoning = 16;
    */
   reasoning: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}; empty for the owner.
+   *
+   * @generated from field: string sender = 17;
+   */
+  sender: string;
+
+  /**
+   * "lead", a target's subagent name, or empty for the owner.
+   *
+   * @generated from field: string sender_name = 18;
+   */
+  senderName: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentMessageIntent intent = 19;
+   */
+  intent: QualityAgentMessageIntent;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentMessageAudience audience = 20;
+   */
+  audience: QualityAgentMessageAudience;
+
+  /**
+   * The ask or request this message answers; empty otherwise.
+   *
+   * @generated from field: string reply_to = 21;
+   */
+  replyTo: string;
 };
 
 /**
@@ -10303,6 +10727,28 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
    * @generated from field: string agent = 9;
    */
   agent: string;
+
+  /**
+   * UNSPECIFIED keeps the target work sessions (the subagent roster).
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionRole role = 10;
+   */
+  role: QualityAgentSessionRole;
+
+  /**
+   * Keep only the subagents of this lead. Format:
+   * workspaces/{workspace}/qualityAgentSessions/{session}.
+   *
+   * @generated from field: string parent_session = 11;
+   */
+  parentSession: string;
+
+  /**
+   * Keep only the subagent with this model-facing name.
+   *
+   * @generated from field: string subagent_name = 12;
+   */
+  subagentName: string;
 };
 
 /**
@@ -12190,6 +12636,165 @@ export enum QualityAgentAttentionStatus {
 export declare const QualityAgentAttentionStatusSchema: GenEnum<QualityAgentAttentionStatus>;
 
 /**
+ * QualityAgentAttention is one owner escalation inside an agent.
+ * QualityAgentRequestKind is why a subagent needs the lead.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentRequestKind
+ */
+export enum QualityAgentRequestKind {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_DECISION = 1;
+   */
+  DECISION = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_PROPOSAL = 2;
+   */
+  PROPOSAL = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_BLOCKED = 3;
+   */
+  BLOCKED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_FROZEN = 4;
+   */
+  FROZEN = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_ANOMALY = 5;
+   */
+  ANOMALY = 5,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_KIND_QUESTION = 6;
+   */
+  QUESTION = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentRequestKind.
+ */
+export declare const QualityAgentRequestKindSchema: GenEnum<QualityAgentRequestKind>;
+
+/**
+ * QualityAgentRequestStatus is the request's lifecycle.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentRequestStatus
+ */
+export enum QualityAgentRequestStatus {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_OPEN = 1;
+   */
+  OPEN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_FORWARDED = 2;
+   */
+  FORWARDED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_ANSWERED = 3;
+   */
+  ANSWERED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_RESOLVED = 4;
+   */
+  RESOLVED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REQUEST_STATUS_DISMISSED = 5;
+   */
+  DISMISSED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentRequestStatus.
+ */
+export declare const QualityAgentRequestStatusSchema: GenEnum<QualityAgentRequestStatus>;
+
+/**
+ * QualityAgentAskKind is what the lead is telling the owner.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentAskKind
+ */
+export enum QualityAgentAskKind {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_KIND_QUESTION = 1;
+   */
+  QUESTION = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_KIND_ANOMALY = 2;
+   */
+  ANOMALY = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_KIND_APPROVAL = 3;
+   */
+  APPROVAL = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentAskKind.
+ */
+export declare const QualityAgentAskKindSchema: GenEnum<QualityAgentAskKind>;
+
+/**
+ * QualityAgentAskStatus is the ask's lifecycle.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentAskStatus
+ */
+export enum QualityAgentAskStatus {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_OPEN = 1;
+   */
+  OPEN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_ANSWERED = 2;
+   */
+  ANSWERED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_RESOLVED = 3;
+   */
+  RESOLVED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_DISMISSED = 4;
+   */
+  DISMISSED = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentAskStatus.
+ */
+export declare const QualityAgentAskStatusSchema: GenEnum<QualityAgentAskStatus>;
+
+/**
  * QualityAgentCaseState is where one work item stands. The last three are terminal and release
  * the case's subject, so a later occurrence opens a new case instead of staying invisible.
  *
@@ -12380,6 +12985,108 @@ export enum QualityAgentSessionMode {
  * Describes the enum metaxisdata.v1.QualityAgentSessionMode.
  */
 export declare const QualityAgentSessionModeSchema: GenEnum<QualityAgentSessionMode>;
+
+/**
+ * QualityAgentSessionRole is the session's place in the agent tree. LEAD is the
+ * owner-facing coordinator; SUBAGENT owns exactly one target.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentSessionRole
+ */
+export enum QualityAgentSessionRole {
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_ROLE_LEAD = 1;
+   */
+  LEAD = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_ROLE_SUBAGENT = 2;
+   */
+  SUBAGENT = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentSessionRole.
+ */
+export declare const QualityAgentSessionRoleSchema: GenEnum<QualityAgentSessionRole>;
+
+/**
+ * QualityAgentMessageAudience says who may read a message.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentMessageAudience
+ */
+export enum QualityAgentMessageAudience {
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER = 1;
+   */
+  OWNER = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL = 2;
+   */
+  INTERNAL = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentMessageAudience.
+ */
+export declare const QualityAgentMessageAudienceSchema: GenEnum<QualityAgentMessageAudience>;
+
+/**
+ * QualityAgentMessageIntent classifies an agent-to-agent message.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentMessageIntent
+ */
+export enum QualityAgentMessageIntent {
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_MESSAGE = 1;
+   */
+  MESSAGE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_REPORT = 2;
+   */
+  REPORT = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_QUESTION = 3;
+   */
+  QUESTION = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_ANSWER = 4;
+   */
+  ANSWER = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_ASSIGN = 5;
+   */
+  ASSIGN = 5,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
+   */
+  NOTICE = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentMessageIntent.
+ */
+export declare const QualityAgentMessageIntentSchema: GenEnum<QualityAgentMessageIntent>;
 
 /**
  * QualityAgentMessageRole is one entry in a session's conversation.
@@ -13285,6 +13992,47 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof DismissQualityAgentAttentionRequestSchema;
     output: typeof QualityAgentAttentionSchema;
+  },
+  /**
+   * List one agent's decision requests. The owner and administrators may read; the
+   * requests are written by the agent's own tools.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentRequests
+   */
+  listQualityAgentRequests: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentRequestsRequestSchema;
+    output: typeof ListQualityAgentRequestsResponseSchema;
+  },
+  /**
+   * Read one decision request.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentDecisionRequest
+   */
+  getQualityAgentDecisionRequest: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentDecisionRequestRequestSchema;
+    output: typeof QualityAgentRequestSchema;
+  },
+  /**
+   * List one agent's owner-facing questions. The owner and administrators may read.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentAsks
+   */
+  listQualityAgentAsks: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentAsksRequestSchema;
+    output: typeof ListQualityAgentAsksResponseSchema;
+  },
+  /**
+   * Read one owner-facing question.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentAsk
+   */
+  getQualityAgentAsk: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentAskRequestSchema;
+    output: typeof QualityAgentAskSchema;
   },
   /**
    * Let the owner turn automatic adoption off or back to paused; administrators may

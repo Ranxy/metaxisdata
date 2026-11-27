@@ -86,6 +86,10 @@ const (
 	DataQualityService_ListQualityAgentCaseActions_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityAgentCaseActions"
 	DataQualityService_ReplyQualityAgentAttention_FullMethodName           = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
 	DataQualityService_DismissQualityAgentAttention_FullMethodName         = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
+	DataQualityService_ListQualityAgentRequests_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityAgentRequests"
+	DataQualityService_GetQualityAgentDecisionRequest_FullMethodName       = "/metaxisdata.v1.DataQualityService/GetQualityAgentDecisionRequest"
+	DataQualityService_ListQualityAgentAsks_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityAgentAsks"
+	DataQualityService_GetQualityAgentAsk_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityAgentAsk"
 	DataQualityService_SetQualityAgentAdoption_FullMethodName              = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
 	DataQualityService_AdoptQualityAgentPendingSuggestions_FullMethodName  = "/metaxisdata.v1.DataQualityService/AdoptQualityAgentPendingSuggestions"
 	DataQualityService_UpdateQualityAgent_FullMethodName                   = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
@@ -381,6 +385,15 @@ type DataQualityServiceClient interface {
 	ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
+	// List one agent's decision requests. The owner and administrators may read; the
+	// requests are written by the agent's own tools.
+	ListQualityAgentRequests(ctx context.Context, in *ListQualityAgentRequestsRequest, opts ...grpc.CallOption) (*ListQualityAgentRequestsResponse, error)
+	// Read one decision request.
+	GetQualityAgentDecisionRequest(ctx context.Context, in *GetQualityAgentDecisionRequestRequest, opts ...grpc.CallOption) (*QualityAgentRequest, error)
+	// List one agent's owner-facing questions. The owner and administrators may read.
+	ListQualityAgentAsks(ctx context.Context, in *ListQualityAgentAsksRequest, opts ...grpc.CallOption) (*ListQualityAgentAsksResponse, error)
+	// Read one owner-facing question.
+	GetQualityAgentAsk(ctx context.Context, in *GetQualityAgentAskRequest, opts ...grpc.CallOption) (*QualityAgentAsk, error)
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error)
@@ -1135,6 +1148,46 @@ func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Cont
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ListQualityAgentRequests(ctx context.Context, in *ListQualityAgentRequestsRequest, opts ...grpc.CallOption) (*ListQualityAgentRequestsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentRequestsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentRequests_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentDecisionRequest(ctx context.Context, in *GetQualityAgentDecisionRequestRequest, opts ...grpc.CallOption) (*QualityAgentRequest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentRequest)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentDecisionRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentAsks(ctx context.Context, in *ListQualityAgentAsksRequest, opts ...grpc.CallOption) (*ListQualityAgentAsksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentAsksResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentAsks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentAsk(ctx context.Context, in *GetQualityAgentAskRequest, opts ...grpc.CallOption) (*QualityAgentAsk, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentAsk)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentAsk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, in *SetQualityAgentAdoptionRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgent)
@@ -1554,6 +1607,15 @@ type DataQualityServiceServer interface {
 	ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error)
+	// List one agent's decision requests. The owner and administrators may read; the
+	// requests are written by the agent's own tools.
+	ListQualityAgentRequests(context.Context, *ListQualityAgentRequestsRequest) (*ListQualityAgentRequestsResponse, error)
+	// Read one decision request.
+	GetQualityAgentDecisionRequest(context.Context, *GetQualityAgentDecisionRequestRequest) (*QualityAgentRequest, error)
+	// List one agent's owner-facing questions. The owner and administrators may read.
+	ListQualityAgentAsks(context.Context, *ListQualityAgentAsksRequest) (*ListQualityAgentAsksResponse, error)
+	// Read one owner-facing question.
+	GetQualityAgentAsk(context.Context, *GetQualityAgentAskRequest) (*QualityAgentAsk, error)
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error)
@@ -1809,6 +1871,18 @@ func (UnimplementedDataQualityServiceServer) ReplyQualityAgentAttention(context.
 }
 func (UnimplementedDataQualityServiceServer) DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
 	return nil, status.Error(codes.Unimplemented, "method DismissQualityAgentAttention not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentRequests(context.Context, *ListQualityAgentRequestsRequest) (*ListQualityAgentRequestsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentRequests not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentDecisionRequest(context.Context, *GetQualityAgentDecisionRequestRequest) (*QualityAgentRequest, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentDecisionRequest not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentAsks(context.Context, *ListQualityAgentAsksRequest) (*ListQualityAgentAsksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentAsks not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentAsk(context.Context, *GetQualityAgentAskRequest) (*QualityAgentAsk, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentAsk not implemented")
 }
 func (UnimplementedDataQualityServiceServer) SetQualityAgentAdoption(context.Context, *SetQualityAgentAdoptionRequest) (*QualityAgent, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetQualityAgentAdoption not implemented")
@@ -3033,6 +3107,78 @@ func _DataQualityService_DismissQualityAgentAttention_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ListQualityAgentRequests_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentRequestsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentRequests(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentRequests_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentRequests(ctx, req.(*ListQualityAgentRequestsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentDecisionRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentDecisionRequestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentDecisionRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentDecisionRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentDecisionRequest(ctx, req.(*GetQualityAgentDecisionRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentAsks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentAsksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentAsks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentAsks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentAsks(ctx, req.(*ListQualityAgentAsksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentAsk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentAskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentAsk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentAsk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentAsk(ctx, req.(*GetQualityAgentAskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_SetQualityAgentAdoption_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetQualityAgentAdoptionRequest)
 	if err := dec(in); err != nil {
@@ -3539,6 +3685,22 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DismissQualityAgentAttention",
 			Handler:    _DataQualityService_DismissQualityAgentAttention_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentRequests",
+			Handler:    _DataQualityService_ListQualityAgentRequests_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentDecisionRequest",
+			Handler:    _DataQualityService_GetQualityAgentDecisionRequest_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentAsks",
+			Handler:    _DataQualityService_ListQualityAgentAsks_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentAsk",
+			Handler:    _DataQualityService_GetQualityAgentAsk_Handler,
 		},
 		{
 			MethodName: "SetQualityAgentAdoption",

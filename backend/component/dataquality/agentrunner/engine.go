@@ -149,6 +149,27 @@ type Engine struct {
 	maxParallelReads int
 	// auditSink records side-effecting tool calls in the deployment ledger.
 	auditSink tool.AuditSink
+	// askNotifier rings the owner's inbox when the lead asks a question. It is a
+	// setter because the service that owns notifications is built after the engine.
+	askNotifier AskNotifier
+}
+
+// AskNotice is one owner-facing question the lead just asked. RequestCount and
+// Targets let the notification name what the answer will unblock.
+type AskNotice struct {
+	AgentID      int64
+	Ask          *store.QualityAgentAskMessage
+	RequestCount int
+	Targets      []string
+}
+
+// AskNotifier delivers the doorbell behind an ask. A failed delivery must never fail
+// the wake: the ask row is the durable to-do.
+type AskNotifier func(ctx context.Context, notice AskNotice)
+
+// SetAskNotifier wires the owner notification after the service exists.
+func (e *Engine) SetAskNotifier(notifier AskNotifier) {
+	e.askNotifier = notifier
 }
 
 // SetAdoption wires the auto-adoption pass after the API service exists. The

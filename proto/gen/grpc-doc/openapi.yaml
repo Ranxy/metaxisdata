@@ -5209,6 +5209,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentAsks/{qualityAgentAsk}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one owner-facing question.
+            operationId: DataQualityService_GetQualityAgentAsk
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentAsk
+                  in: path
+                  description: The qualityAgentAsk id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentAsk'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:dismiss:
         post:
             tags:
@@ -5288,6 +5320,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentRequests/{qualityAgentRequest}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one decision request.
+            operationId: DataQualityService_GetQualityAgentDecisionRequest
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentRequest
+                  in: path
+                  description: The qualityAgentRequest id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentRequest'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentSessions:
         get:
             tags:
@@ -5346,6 +5410,28 @@ paths:
                   description: |-
                     Keep only this agent's sessions. An administrator may omit it to read every
                      session in the workspace; an owner must set it to an agent they own.
+                  schema:
+                    type: string
+                - name: role
+                  in: query
+                  description: UNSPECIFIED keeps the target work sessions (the subagent roster).
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_ROLE_LEAD
+                        - QUALITY_AGENT_SESSION_ROLE_SUBAGENT
+                    type: string
+                    format: enum
+                - name: parentSession
+                  in: query
+                  description: |-
+                    Keep only the subagents of this lead. Format:
+                     workspaces/{workspace}/qualityAgentSessions/{session}.
+                  schema:
+                    type: string
+                - name: subagentName
+                  in: query
+                  description: Keep only the subagent with this model-facing name.
                   schema:
                     type: string
             responses:
@@ -5617,6 +5703,59 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/asks:
+        get:
+            tags:
+                - DataQualityService
+            description: List one agent's owner-facing questions. The owner and administrators may read.
+            operationId: DataQualityService_ListQualityAgentAsks
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: UNSPECIFIED lists open and answered asks.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_ASK_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_ASK_STATUS_OPEN
+                        - QUALITY_AGENT_ASK_STATUS_ANSWERED
+                        - QUALITY_AGENT_ASK_STATUS_RESOLVED
+                        - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentAsksResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/attentions:
         get:
             tags:
@@ -5869,6 +6008,66 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualityAgentReportsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/requests:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List one agent's decision requests. The owner and administrators may read; the
+                 requests are written by the agent's own tools.
+            operationId: DataQualityService_ListQualityAgentRequests
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: UNSPECIFIED lists open and forwarded requests.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_REQUEST_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_REQUEST_STATUS_OPEN
+                        - QUALITY_AGENT_REQUEST_STATUS_FORWARDED
+                        - QUALITY_AGENT_REQUEST_STATUS_ANSWERED
+                        - QUALITY_AGENT_REQUEST_STATUS_RESOLVED
+                        - QUALITY_AGENT_REQUEST_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentRequestsResponse'
                 default:
                     description: Default error response
                     content:
@@ -12531,6 +12730,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityAgentAsksResponse:
+            type: object
+            properties:
+                qualityAgentAsks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentAsk'
+                nextPageToken:
+                    type: string
         ListQualityAgentAttentionsResponse:
             type: object
             properties:
@@ -12575,6 +12783,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityAgentReport'
+                nextPageToken:
+                    type: string
+        ListQualityAgentRequestsResponse:
+            type: object
+            properties:
+                qualityAgentRequests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentRequest'
                 nextPageToken:
                     type: string
         ListQualityAgentSessionMessagesResponse:
@@ -13339,6 +13556,8 @@ components:
                     $ref: '#/components/schemas/DataQualityDetail'
                 qualityAgentAttention:
                     $ref: '#/components/schemas/QualityAgentAttentionDetail'
+                qualityAgentAsk:
+                    $ref: '#/components/schemas/QualityAgentAskDetail'
             description: |-
                 Notification is one in-app message for one recipient: the outcome of a sync
                  operation the recipient asked for, or an ingestion failure the workspace
@@ -14376,6 +14595,97 @@ components:
             description: |-
                 QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
                  so an owner can tell "nothing was eligible" from "the write kept failing".
+        QualityAgentAsk:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                kind:
+                    enum:
+                        - QUALITY_AGENT_ASK_KIND_UNSPECIFIED
+                        - QUALITY_AGENT_ASK_KIND_QUESTION
+                        - QUALITY_AGENT_ASK_KIND_ANOMALY
+                        - QUALITY_AGENT_ASK_KIND_APPROVAL
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_AGENT_ASK_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_ASK_STATUS_OPEN
+                        - QUALITY_AGENT_ASK_STATUS_ANSWERED
+                        - QUALITY_AGENT_ASK_STATUS_RESOLVED
+                        - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                title:
+                    type: string
+                question:
+                    type: string
+                conversation:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentSessions/{session}; the lead conversation
+                         the question was written into.
+                messageSeq:
+                    type: string
+                    description: The transcript seq of the question.
+                answeredBy:
+                    type: string
+                    description: 'Format: users/{user}; empty until the owner answers.'
+                answerTime:
+                    type: string
+                    format: date-time
+                answerMessageSeq:
+                    type: string
+                    description: The transcript seq of the owner's answer.
+                resolveTime:
+                    type: string
+                    format: date-time
+                createTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentAsk is one owner-facing question from the lead. It can cover several
+                 requests through their ask link.
+        QualityAgentAskDetail:
+            type: object
+            properties:
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                ask:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}'
+                kind:
+                    type: integer
+                    description: 1 QUESTION, 2 ANOMALY, 3 APPROVAL (QualityAgentAskKind).
+                    format: int32
+                title:
+                    type: string
+                question:
+                    type: string
+                requestCount:
+                    type: integer
+                    description: How many subagent requests this question covers.
+                    format: int32
+                targets:
+                    type: array
+                    items:
+                        type: string
+                    description: Display paths of the affected targets, bounded by the server.
+            description: |-
+                QualityAgentAttentionDetail reports one agent escalation in the inbox. The
+                 client renders the prose; the server stores only identities and the bounded
+                 question text.
+                 QualityAgentAskDetail reports one owner-facing question from the lead. The client
+                 renders the prose; the server stores only identities and the bounded text.
         QualityAgentAttention:
             type: object
             properties:
@@ -14443,7 +14753,6 @@ components:
                         The concrete change the agent asks for, when the escalation is a proposal. The owner
                          reviews a field, a value and a reason instead of a paragraph; empty when the escalation
                          asks for a decision that has no single change behind it.
-            description: QualityAgentAttention is one owner escalation inside an agent.
         QualityAgentAttentionDetail:
             type: object
             properties:
@@ -14461,10 +14770,6 @@ components:
                     type: string
                 question:
                     type: string
-            description: |-
-                QualityAgentAttentionDetail reports one agent escalation in the inbox. The
-                 client renders the prose; the server stores only identities and the bounded
-                 question text.
         QualityAgentBudget:
             type: object
             properties:
@@ -14496,6 +14801,14 @@ components:
                     description: |-
                         How many immediate runs the agent may request per check per rolling day. A run is its
                          diagnostic, so the ceiling is per check rather than per agent.
+                    format: int32
+                maxTriageSessions:
+                    type: integer
+                    description: How many uncovered targets may be triaged at once. Zero uses the server default.
+                    format: int32
+                maxNewTriageSessionsPerHour:
+                    type: integer
+                    description: How many uncovered targets may enter triage per hour. Zero uses the server default.
                     format: int32
             description: |-
                 QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
@@ -14761,6 +15074,73 @@ components:
                     type: string
                     format: enum
             description: QualityAgentReportSchedule is the agent's patrol report cadence.
+        QualityAgentRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                kind:
+                    enum:
+                        - QUALITY_AGENT_REQUEST_KIND_UNSPECIFIED
+                        - QUALITY_AGENT_REQUEST_KIND_DECISION
+                        - QUALITY_AGENT_REQUEST_KIND_PROPOSAL
+                        - QUALITY_AGENT_REQUEST_KIND_BLOCKED
+                        - QUALITY_AGENT_REQUEST_KIND_FROZEN
+                        - QUALITY_AGENT_REQUEST_KIND_ANOMALY
+                        - QUALITY_AGENT_REQUEST_KIND_QUESTION
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_AGENT_REQUEST_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_REQUEST_STATUS_OPEN
+                        - QUALITY_AGENT_REQUEST_STATUS_FORWARDED
+                        - QUALITY_AGENT_REQUEST_STATUS_ANSWERED
+                        - QUALITY_AGENT_REQUEST_STATUS_RESOLVED
+                        - QUALITY_AGENT_REQUEST_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                title:
+                    type: string
+                question:
+                    type: string
+                case:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when
+                         the request is not about one work item.
+                suggestedPatch:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityAgentFieldPatch'
+                    description: The concrete change a proposal asks for; empty for other kinds.
+                originSession:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentSessions/{session}; the subagent that
+                         raised it.
+                ask:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}; empty until
+                         the lead forwards it.
+                resolution:
+                    type: string
+                    description: The lead's or owner's answer, once answered.
+                createTime:
+                    type: string
+                    format: date-time
+                updateTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentRequest is one subagent's decision request to the lead. It is the
+                 coordination record behind an ask; the owner sees the ask, not this row.
         QualityAgentSession:
             type: object
             properties:
@@ -14979,6 +15359,33 @@ components:
                     description: |-
                         Display-only model reasoning for this assistant turn. Empty when the provider
                          returned none; never sent back to the provider.
+                sender:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentSessions/{session}; empty for the owner.'
+                senderName:
+                    type: string
+                    description: '"lead", a target''s subagent name, or empty for the owner.'
+                intent:
+                    enum:
+                        - QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED
+                        - QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
+                        - QUALITY_AGENT_MESSAGE_INTENT_REPORT
+                        - QUALITY_AGENT_MESSAGE_INTENT_QUESTION
+                        - QUALITY_AGENT_MESSAGE_INTENT_ANSWER
+                        - QUALITY_AGENT_MESSAGE_INTENT_ASSIGN
+                        - QUALITY_AGENT_MESSAGE_INTENT_NOTICE
+                    type: string
+                    format: enum
+                audience:
+                    enum:
+                        - QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED
+                        - QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
+                        - QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL
+                    type: string
+                    format: enum
+                replyTo:
+                    type: string
+                    description: The ask or request this message answers; empty otherwise.
             description: |-
                 QualityAgentSessionMessage is one append-only transcript entry of a session. (The
                  internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
@@ -18033,6 +18440,12 @@ components:
                 requestId:
                     type: string
                     description: A client-generated idempotency id; repeating it returns the existing message.
+                replyTo:
+                    type: string
+                    description: |-
+                        The ask this message answers, when it is a reply to a question. Format:
+                         workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
+                         is marked answered and the lead routes the answer.
             description: SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
         SendTestEmailRequest:
             type: object
