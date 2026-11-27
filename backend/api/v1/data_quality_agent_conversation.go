@@ -63,6 +63,10 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		key = "ask:" + random
 	}
 	replyTo := strings.TrimSpace(req.Msg.GetReplyTo())
+	dismiss := req.Msg.GetIntent() == v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS
+	if dismiss && replyTo == "" {
+		return nil, connectErrorInvalid("a dismissal needs the ask it closes")
+	}
 	var ask *store.QualityAgentAskMessage
 	if replyTo != "" {
 		stored, askErr := s.qualityAgentAskForReply(ctx, workspaceID, agent.ID, replyTo)
@@ -91,6 +95,9 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		if ask != nil {
 			intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER
 			replyToName = common.FormatWorkspace(workspaceID) + "/" + qualityAgentAskPrefix + ask.ResourceID
+		}
+		if dismiss {
+			intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS
 		}
 		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
 			SessionID:      conversation.ID,
@@ -123,7 +130,11 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 	// fails the message: the lead still reads it and can route it.
 	var applied bool
 	var markErr error
-	if ask != nil {
+	if dismiss {
+		if ask != nil {
+			applied, markErr = s.store.DismissQualityAgentAsk(ctx, ask.ID, time.Now().UTC())
+		}
+	} else if ask != nil {
 		if ask.Status == store.QualityAgentAskStatusOpen {
 			_, applied, markErr = s.store.MarkQualityAgentAskAnswered(ctx, ask.ResourceID,
 				int32(currentUserID(ctx)), message.Seq, time.Now().UTC())

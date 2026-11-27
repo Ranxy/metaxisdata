@@ -4407,10 +4407,19 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	answeredAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
 	require.NoError(t, err)
 	require.Equal(t, store.QualityAgentAskStatusAnswered, answeredAsk.Status)
-	resolved, err := fixture.env.Store.ResolveQualityAgentAsk(fixture.ctx, anomalyAsk.ResourceID,
-		store.QualityAgentAskStatusDismissed, time.Now().UTC())
+
+	// A dismissal carries intent=DISMISS: it closes the ask without writing an answer.
+	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "Dismiss this request.",
+			ReplyTo:     askName,
+			Intent:      v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		}))
 	require.NoError(t, err)
-	require.True(t, resolved)
+	dismissedAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusDismissed, dismissedAsk.Status)
 }
 
 // createQualityAgentTestMember creates an ordinary workspace member and returns its

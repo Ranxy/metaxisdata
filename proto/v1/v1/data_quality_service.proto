@@ -4011,6 +4011,9 @@ message SendQualityAgentMessageRequest {
   // workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
   // is marked answered and the lead routes the answer.
   string reply_to = 4 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentAsk"}];
+  // MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
+  // answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
+  QualityAgentMessageIntent intent = 5;
 }
 
 // ListQualityAgentConversationMessagesRequest reads the agent's conversation.
@@ -5107,6 +5110,8 @@ enum QualityAgentMessageIntent {
   QUALITY_AGENT_MESSAGE_INTENT_ANSWER = 4;
   QUALITY_AGENT_MESSAGE_INTENT_ASSIGN = 5;
   QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
+  // The owner is dismissing the ask, not answering it.
+  QUALITY_AGENT_MESSAGE_INTENT_DISMISS = 7;
 }
 
 // QualityAgentMessageRole is one entry in a session's conversation.
@@ -5275,6 +5280,8 @@ message ListQualityAgentSessionsRequest {
   string parent_session = 11 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentSession"}];
   // Keep only the subagent with this model-facing name.
   string subagent_name = 12;
+  // Case-insensitive match against the subagent name or target GUID.
+  string query = 13;
 }
 
 message ListQualityAgentSessionsResponse {

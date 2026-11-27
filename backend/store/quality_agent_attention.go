@@ -376,31 +376,35 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
 		WHERE agent_id = $1 AND role = 1 AND archived_at IS NULL
 		ORDER BY id DESC LIMIT 1 FOR UPDATE`, attention.AgentID))
-	if leadErr != nil && !errors.Is(leadErr, sql.ErrNoRows) {
+	if errors.Is(leadErr, sql.ErrNoRows) {
+		// Resolving without a recipient would lose the owner's reply silently; keep the
+		// attention open so the RPC fails and can be retried after the lead exists.
+		return nil, nil, false, common.Errorf(common.Internal,
+			"the agent has no lead conversation to receive the reply")
+	}
+	if leadErr != nil {
 		return nil, nil, false, errors.Wrap(leadErr, "failed to read the attention's lead")
 	}
-	if leadErr == nil {
-		answered, err = s.appendQualityAgentTranscriptTx(ctx, tx, &QualityAgentTranscriptMessage{
-			SessionID:      lead.ID,
-			WorkspaceID:    workspaceID,
-			Wake:           lead.WakeCount + 1,
-			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
-			Content:        content,
-			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
-			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
-			IdempotencyKey: idempotencyKey,
-		})
-		if err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to append the owner's reply")
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE quality_agent_session
-			SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2),
-				revision = revision + 1, updated_at = NOW()
-			WHERE id = $1`, lead.ID, now); err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to wake the lead after the owner replied")
-		}
+	answered, err = s.appendQualityAgentTranscriptTx(ctx, tx, &QualityAgentTranscriptMessage{
+		SessionID:      lead.ID,
+		WorkspaceID:    workspaceID,
+		Wake:           lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        content,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to append the owner's reply")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2),
+			revision = revision + 1, updated_at = NOW()
+		WHERE id = $1`, lead.ID, now); err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to wake the lead after the owner replied")
 	}
 	resolved, err := scanQualityAgentAttention(tx.QueryRowContext(ctx, `
 		UPDATE quality_agent_attention

@@ -55,8 +55,9 @@ const (
 	initialWakeWindow = 20 * time.Second
 	// priorityLookback bounds the failure and schema-change signals.
 	priorityLookback = 7 * 24 * time.Hour
-	// maxPriorityRowsPerDatabase bounds one database's priority recomputation.
-	maxPriorityRowsPerDatabase = 5000
+	// priorityBatchSize is one page of a database's priority recomputation. The pass
+	// walks every page; the old single capped read silently skipped the tail.
+	priorityBatchSize = 2000
 )
 
 // Store is the slice of *store.Store the enrollment runner needs.
@@ -71,7 +72,7 @@ type Store interface {
 	AttachQualityAgentEnrollmentSession(ctx context.Context, resourceID string, sessionID int64, mode storepb.QualityAgentSessionMode) (*store.QualityAgentEnrollmentMessage, bool, error)
 	ListPendingTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	CountActiveTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error)
-	CountQualityAgentTriageReviewsSince(ctx context.Context, agentID int64, since time.Time) (int, error)
+	CountQualityAgentTriageStartsSince(ctx context.Context, agentID int64, since time.Time) (int, error)
 	ListDueDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, now time.Time, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
 	ListRecoverableQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*store.QualityAgentEnrollmentMessage, error)
@@ -455,26 +456,6 @@ func (r *Runner) scanDatabase(ctx context.Context, workspaceID string, agentID i
 // query per database, one contracts read, and the rest are key-set batch reads, so the
 // pass is proportional to the number of targets and not to their execution history.
 func (r *Runner) recomputePriorities(ctx context.Context, workspaceID string, agentID int64, databaseRef, instance, database string, now time.Time) {
-	enrollments, err := r.store.ListQualityAgentEnrollments(ctx, &store.FindQualityAgentEnrollmentMessage{
-		WorkspaceID: workspaceID,
-		AgentID:     agentID,
-		DatabaseRef: &databaseRef,
-		Limit:       intPointer(maxPriorityRowsPerDatabase),
-	})
-	if err != nil {
-		slog.Warn("failed to read a database's enrollments for prioritization",
-			slog.String("database", databaseRef), log.WithError(err))
-		return
-	}
-	if len(enrollments) == 0 {
-		return
-	}
-	keys := make([]store.MetaGUIDKey, 0, len(enrollments))
-	guids := make([]string, 0, len(enrollments))
-	for _, enrollment := range enrollments {
-		keys = append(keys, store.MetaGUIDKey{GUID: enrollment.TargetGUID, ObjectType: enrollment.TargetType})
-		guids = append(guids, enrollment.TargetGUID)
-	}
 	rules, err := r.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{
 		Instance: instance,
 		Database: database,
@@ -499,6 +480,47 @@ func (r *Runner) recomputePriorities(ctx context.Context, workspaceID string, ag
 		plan := dataquality.DerivePlan(true,
 			dataquality.ActiveIntent(contract.Settings.GetIntent(), now), nil)
 		criticality[store.MetaGUIDKey{GUID: contract.TargetGUID, ObjectType: contract.TargetType}] = plan.Criticality
+		// A published contract is coverage just like an enabled rule: the target has a
+		// declared plan, so it belongs in MONITOR and must not spend a triage call.
+		if contract.PublishedVersion > 0 {
+			monitored[contract.TargetGUID] = true
+		}
+	}
+	// Walk every row. A single capped read left rows past the cap with their insertion
+	// default (MONITOR), so a large database silently skipped triage for its tail.
+	for offset := 0; ; {
+		enrollments, err := r.store.ListQualityAgentEnrollments(ctx, &store.FindQualityAgentEnrollmentMessage{
+			WorkspaceID:   workspaceID,
+			AgentID:       agentID,
+			DatabaseRef:   &databaseRef,
+			OrderByTarget: true,
+			Limit:         intPointer(priorityBatchSize),
+			Offset:        intPointer(offset),
+		})
+		if err != nil {
+			slog.Warn("failed to read a database's enrollments for prioritization",
+				slog.String("database", databaseRef), log.WithError(err))
+			return
+		}
+		if len(enrollments) == 0 {
+			return
+		}
+		r.recomputePriorityBatch(ctx, enrollments, monitored, criticality, now)
+		if len(enrollments) < priorityBatchSize {
+			return
+		}
+		offset += len(enrollments)
+	}
+}
+
+// recomputePriorityBatch ranks one page of a database's queue. The evidence reads are
+// keyed by the page, so the pass is proportional to the targets, not to their history.
+func (r *Runner) recomputePriorityBatch(ctx context.Context, enrollments []*store.QualityAgentEnrollmentMessage, monitored map[string]bool, criticality map[store.MetaGUIDKey]dataquality.AssetCriticality, now time.Time) {
+	keys := make([]store.MetaGUIDKey, 0, len(enrollments))
+	guids := make([]string, 0, len(enrollments))
+	for _, enrollment := range enrollments {
+		keys = append(keys, store.MetaGUIDKey{GUID: enrollment.TargetGUID, ObjectType: enrollment.TargetType})
+		guids = append(guids, enrollment.TargetGUID)
 	}
 	failures, err := r.store.ListQualityTargetFailureEvidence(ctx, keys, now.Add(-priorityLookback), now, 1)
 	if err != nil {
@@ -716,7 +738,7 @@ func (r *Runner) admitTriage(ctx context.Context, workspaceID string, current *a
 		slog.Error("failed to count the active triage targets", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return
 	}
-	reviewed, err := r.store.CountQualityAgentTriageReviewsSince(ctx, current.agent.ID, now.Add(-time.Hour))
+	reviewed, err := r.store.CountQualityAgentTriageStartsSince(ctx, current.agent.ID, now.Add(-time.Hour))
 	if err != nil {
 		slog.Error("failed to count the triage reviews", slog.Int64("agent", current.agent.ID), log.WithError(err))
 		return

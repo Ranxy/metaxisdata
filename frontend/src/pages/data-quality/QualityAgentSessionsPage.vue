@@ -92,6 +92,19 @@
             </SelectContent>
           </Select>
         </div>
+        <div class="flex min-w-52 flex-1 flex-col gap-1.5">
+          <Label
+            for="quality-agent-session-query"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("qualityAgent.filterSearch") }}
+          </Label>
+          <Input
+            id="quality-agent-session-query"
+            v-model="queryFilter"
+            :placeholder="t('qualityAgent.filterSearchPlaceholder')"
+          />
+        </div>
         <div class="flex min-w-44 flex-col gap-1.5 sm:w-56">
           <Label
             for="quality-agent-session-database"
@@ -264,7 +277,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle, RefreshCcw } from "lucide-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -279,6 +292,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -337,6 +351,7 @@ const initialized = ref(false);
 const stateFilter = ref(String(QualityAgentSessionState.UNSPECIFIED));
 const modeFilter = ref(String(QualityAgentSessionMode.UNSPECIFIED));
 const databaseFilter = ref("-");
+const queryFilter = ref("");
 
 const databaseOptions = computed(() => {
   const seen = new Set<string>();
@@ -406,6 +421,7 @@ const {
       state: Number(stateFilter.value) as QualityAgentSessionState,
       mode: Number(modeFilter.value) as QualityAgentSessionMode,
       database: databaseFilter.value === "-" ? "" : databaseFilter.value,
+      query: queryFilter.value.trim(),
       pageSize: 50,
       pageToken,
       signal,
@@ -453,6 +469,16 @@ watch([stateFilter, modeFilter, databaseFilter], () => {
   error.value = "";
   void reset();
 });
+
+let searchTimer: number | undefined;
+watch(queryFilter, () => {
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    error.value = "";
+    void reset();
+  }, 300);
+});
+onBeforeUnmount(() => window.clearTimeout(searchTimer));
 
 watch(agentName, async () => {
   agent.value = undefined;

@@ -523,14 +523,6 @@
                 <Input v-model.number="form.budgetMaxConcurrentSessions" inputmode="numeric" />
               </div>
               <div class="space-y-1">
-                <Label>{{ t("qualityAgents.budgetNewSessions") }}</Label>
-                <Input v-model.number="form.budgetMaxNewSessionsPerHour" inputmode="numeric" />
-              </div>
-              <div class="space-y-1">
-                <Label>{{ t("qualityAgents.budgetActiveSessions") }}</Label>
-                <Input v-model.number="form.budgetMaxActiveSessions" inputmode="numeric" />
-              </div>
-              <div class="space-y-1">
                 <Label>{{ t("qualityAgents.budgetTriageSessions") }}</Label>
                 <Input v-model.number="form.budgetMaxTriageSessions" inputmode="numeric" />
               </div>

@@ -88,6 +88,7 @@ type Store interface {
 	AnswerQualityAgentRequestAtomic(ctx context.Context, resourceID string, fromStatus store.QualityAgentRequestStatus, answer string, subagent *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, at time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error)
 	GetQualityAgentRequestByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentRequestMessage, error)
 	ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []store.QualityAgentRequestStatus, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
+	ListQualityAgentRequestsByAskIDs(ctx context.Context, askIDs []int64) (map[int64][]*store.QualityAgentRequestMessage, error)
 	UpdateQualityAgentRequestStatus(ctx context.Context, resourceID string, from, to store.QualityAgentRequestStatus, askID *int64, resolution string, resolvedBy *int32, at time.Time) (*store.QualityAgentRequestMessage, bool, error)
 	ResolveQualityAgentRequestsForCase(ctx context.Context, agentID int64, caseResourceID string, at time.Time) (int64, error)
 
@@ -649,9 +650,12 @@ func (e *Engine) modelWake(
 			summary = "the model call failed: " + truncateRunes(failure.Error.Error(), 200)
 		}
 		e.recordEngine(ctx, session, wake, turn, summary)
+		// Do not advance the watermark on a failed model call: the pending request or
+		// event was never actually read by a model, and marking it consumed would leave
+		// it waiting until some unrelated message wakes the session again.
 		return Outcome{
 			NextWakeAt:   ptrTime(e.now().Add(retryWake)),
-			ProcessedSeq: consumed,
+			ProcessedSeq: session.ProcessedSeq,
 			EngineState:  state,
 			Summary:      summary,
 		}, nil

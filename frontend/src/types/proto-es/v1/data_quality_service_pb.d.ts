@@ -7534,6 +7534,14 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
    * @generated from field: string reply_to = 4;
    */
   replyTo: string;
+
+  /**
+   * MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
+   * answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentMessageIntent intent = 5;
+   */
+  intent: QualityAgentMessageIntent;
 };
 
 /**
@@ -10763,6 +10771,13 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
    * @generated from field: string subagent_name = 12;
    */
   subagentName: string;
+
+  /**
+   * Case-insensitive match against the subagent name or target GUID.
+   *
+   * @generated from field: string query = 13;
+   */
+  query: string;
 };
 
 /**
@@ -13095,6 +13110,13 @@ export enum QualityAgentMessageIntent {
    * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
    */
   NOTICE = 6,
+
+  /**
+   * The owner is dismissing the ask, not answering it.
+   *
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_DISMISS = 7;
+   */
+  DISMISS = 7,
 }
 
 /**

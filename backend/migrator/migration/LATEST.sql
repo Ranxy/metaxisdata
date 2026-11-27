@@ -1694,6 +1694,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_enrollment (
     last_triaged_at TIMESTAMPTZ,
     -- When a dormant row is due for another look; NULL while pending or active.
     next_review_at TIMESTAMPTZ,
+    -- When this target last entered triage; the hourly triage rate's counter.
+    triage_started_at TIMESTAMPTZ,
     discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     revision INT4 NOT NULL DEFAULT 1,
@@ -1984,7 +1986,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_agent_status
     ON quality_agent_ask(agent_id, status, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_ask_dedupe
     ON quality_agent_ask(agent_id, dedupe_key)
-    WHERE dedupe_key <> '' AND status IN (1, 2);
+    WHERE dedupe_key <> '' AND status = 1;
 CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_target
     ON quality_agent_ask(agent_id, target_guid);
 COMMENT ON TABLE quality_agent_ask IS 'One owner-facing question from the lead; it can cover several subagent requests';

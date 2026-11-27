@@ -70,7 +70,7 @@
         class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         :placeholder="t('qualityAgent.askReplyPlaceholder')"
         :disabled="busy"
-        @keydown.enter.exact.prevent="send"
+        @keydown.enter.exact.prevent="onEnter"
       />
       <div class="flex justify-end gap-2">
         <Button
@@ -130,6 +130,14 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const reply = ref("");
+
+function onEnter(event: KeyboardEvent) {
+  // An IME uses Enter to confirm a candidate; sending then would submit half a word.
+  if (event.isComposing) {
+    return;
+  }
+  send();
+}
 
 function send() {
   const text = reply.value.trim();

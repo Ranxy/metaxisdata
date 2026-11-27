@@ -247,7 +247,7 @@ func (s *Store) ListQualityAgentRequests(ctx context.Context, agentID int64, sta
 
 // ListQualityAgentRequestsPage lists one page of an agent's requests, newest first.
 func (s *Store) ListQualityAgentRequestsPage(ctx context.Context, agentID int64, statuses []QualityAgentRequestStatus, targetGUID string, limit, offset int) ([]*QualityAgentRequestMessage, error) {
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 1001 {
 		limit = 50
 	}
 	if offset < 0 {
@@ -348,9 +348,10 @@ func (s *Store) ResolveQualityAgentRequestsForCase(ctx context.Context, agentID 
 	result, err := s.GetDB().ExecContext(ctx, `
 		UPDATE quality_agent_request
 		SET status = $3, resolved_at = $4, updated_at = $4
-		WHERE agent_id = $1 AND case_resource_id = $2 AND status IN ($5, $6)`,
+		WHERE agent_id = $1 AND case_resource_id = $2 AND status IN ($5, $6, $7)`,
 		agentID, caseResourceID, int16(QualityAgentRequestStatusResolved), at.UTC(),
-		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded),
+		int16(QualityAgentRequestStatusAnswered))
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to resolve the case requests")
 	}

@@ -185,6 +185,7 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	message.AgentID = session.AgentID
 	message.OriginSessionID = &session.ID
 	message.TargetGUID = session.TargetGUID
+	message.CaseResourceID = normalizeCaseResourceID(message.CaseResourceID)
 	message.TargetType = storepb.MetaType(session.TargetType)
 	if message.DedupeKey == "" {
 		message.DedupeKey = fmt.Sprintf("target:%s:kind:%d", session.TargetGUID, message.Kind)
@@ -631,6 +632,20 @@ func askDedupeKey(question string, requests []*store.QualityAgentRequestMessage)
 	}
 	slices.Sort(ids)
 	return fmt.Sprintf("%x", contentHash(question+"|"+strings.Join(ids, ",")))
+}
+
+// normalizeCaseResourceID reduces the three names the model may use — a bare id, a
+// relative qualityAgentCases/<id>, or a full workspace resource name — to the id the
+// request table stores. Without it a request never matches its case at close time.
+func normalizeCaseResourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.LastIndex(value, "qualityAgentCases/"); index >= 0 {
+		value = value[index+len("qualityAgentCases/"):]
+	}
+	if index := strings.Index(value, "/"); index >= 0 {
+		value = value[:index]
+	}
+	return value
 }
 
 func requestName(resourceID string) string { return "qualityAgentRequests/" + resourceID }

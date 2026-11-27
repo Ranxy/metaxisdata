@@ -34,6 +34,29 @@ func TestComputePriorityOrdersByValue(t *testing.T) {
 	require.Equal(t, int32(1000), capped, "the score is capped")
 }
 
+// A published contract is coverage: the target starts in MONITOR instead of spending
+// a triage call and waiting weeks to be promoted.
+func TestPublishedContractIsCoverageForPriority(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeStore()
+	fake.agent = testAgent()
+	fake.enrollments = []*store.QualityAgentEnrollmentMessage{{
+		ResourceID: "enr-1", TargetGUID: "i;d;public;t", TargetType: storepb.MetaType_TABLE,
+		DatabaseRef: "instances/i/databases/d",
+	}}
+	fake.contracts = []*store.QualityContractMessage{{
+		TargetGUID: "i;d;public;t", TargetType: storepb.MetaType_TABLE, PublishedVersion: 1,
+	}}
+	runner := testRunner(fake)
+
+	runner.recomputePriorities(context.Background(), "ws", 7,
+		"instances/i/databases/d", "i", "d", time.Unix(10_000, 0).UTC())
+
+	require.Len(t, fake.priorityUpdates, 1)
+	require.Equal(t, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, fake.priorityUpdates[0].Mode)
+}
+
 // Materialization creates a subagent for every pending target, without an existence
 // budget: a covered target becomes an active monitor, an uncovered one waits in the
 // triage queue with its session already created.
@@ -113,7 +136,7 @@ func TestAdmitTriageRespectsItsOwnBudget(t *testing.T) {
 		{
 			name: "at the hourly triage rate",
 			setup: func(fake *fakeStore, _ *Runner) {
-				fake.triageReviewsLastHour = dataquality.DefaultAgentRunnerMaxNewTriageSessionsPerHour
+				fake.triageStartsLastHour = dataquality.DefaultAgentRunnerMaxNewTriageSessionsPerHour
 			},
 			wantReason: "triage-limit",
 		},
@@ -312,18 +335,19 @@ type fakeStore struct {
 	recoverable        []*store.QualityAgentEnrollmentMessage
 	enrollmentByTarget map[string]*store.QualityAgentEnrollmentMessage
 
-	sessionsByTarget      map[string]*store.QualityAgentSessionMessage
-	created               []*store.CreateQualityAgentSessionInput
-	activeTriage          int
-	triageReviewsLastHour int
-	wakesLastHour         int64
-	databaseTime          time.Time
-	contracts             []*store.QualityContractMessage
-	rules                 []*store.QualityRuleMessage
+	sessionsByTarget     map[string]*store.QualityAgentSessionMessage
+	created              []*store.CreateQualityAgentSessionInput
+	activeTriage         int
+	triageStartsLastHour int
+	wakesLastHour        int64
+	databaseTime         time.Time
+	contracts            []*store.QualityContractMessage
+	rules                []*store.QualityRuleMessage
 
 	upserted            []*store.QualityAgentEnrollmentUpsert
 	markedGone          []string
 	prioritiesUpdated   bool
+	priorityUpdates     []*store.QualityAgentEnrollmentPriorityUpdate
 	reconcileCalls      int
 	requeued            []string
 	attached            []string
@@ -373,8 +397,8 @@ func (f *fakeStore) ListPendingTriageQualityAgentEnrollments(context.Context, st
 func (f *fakeStore) CountActiveTriageQualityAgentEnrollments(context.Context, string, int64) (int, error) {
 	return f.activeTriage, nil
 }
-func (f *fakeStore) CountQualityAgentTriageReviewsSince(context.Context, int64, time.Time) (int, error) {
-	return f.triageReviewsLastHour, nil
+func (f *fakeStore) CountQualityAgentTriageStartsSince(context.Context, int64, time.Time) (int, error) {
+	return f.triageStartsLastHour, nil
 }
 func (f *fakeStore) ListDueDormantQualityAgentEnrollments(context.Context, string, int64, time.Time, int) ([]*store.QualityAgentEnrollmentMessage, error) {
 	return f.dueDormant, nil
@@ -410,8 +434,9 @@ func (f *fakeStore) SetQualityAgentEnrollmentBlockedReason(_ context.Context, _ 
 	f.blockedReasonValues = append(f.blockedReasonValues, reason)
 	return nil
 }
-func (f *fakeStore) UpdateQualityAgentEnrollmentPriority(context.Context, []*store.QualityAgentEnrollmentPriorityUpdate) error {
+func (f *fakeStore) UpdateQualityAgentEnrollmentPriority(_ context.Context, updates []*store.QualityAgentEnrollmentPriorityUpdate) error {
 	f.prioritiesUpdated = true
+	f.priorityUpdates = append(f.priorityUpdates, updates...)
 	return nil
 }
 func (f *fakeStore) GetQualityAgentSessionByTarget(_ context.Context, _ string, _ int64, targetGUID string) (*store.QualityAgentSessionMessage, error) {

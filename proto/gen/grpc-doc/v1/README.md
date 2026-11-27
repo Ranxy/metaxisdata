@@ -6553,6 +6553,7 @@ ListQualityAgentConversationMessagesResponse is one chronological page.
 | role | [QualityAgentSessionRole](#metaxisdata-v1-QualityAgentSessionRole) |  | UNSPECIFIED keeps the target work sessions (the subagent roster). |
 | parent_session | [string](#string) |  | Keep only the subagents of this lead. Format: workspaces/{workspace}/qualityAgentSessions/{session}. |
 | subagent_name | [string](#string) |  | Keep only the subagent with this model-facing name. |
+| query | [string](#string) |  | Case-insensitive match against the subagent name or target GUID. |
 
 
 
@@ -9184,6 +9185,7 @@ SendQualityAgentMessageRequest appends the owner&#39;s message and wakes the age
 | message_body | [string](#string) |  | The owner&#39;s message. The field name is deliberately not `content`: the audit redaction list matches field names and this body must not enter the ledger. |
 | request_id | [string](#string) |  | A client-generated idempotency id; repeating it returns the existing message. |
 | reply_to | [string](#string) |  | The ask this message answers, when it is a reply to a question. Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask is marked answered and the lead routes the answer. |
+| intent | [QualityAgentMessageIntent](#metaxisdata-v1-QualityAgentMessageIntent) |  | MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to. |
 
 
 
@@ -9700,6 +9702,7 @@ QualityAgentMessageIntent classifies an agent-to-agent message.
 | QUALITY_AGENT_MESSAGE_INTENT_ANSWER | 4 |  |
 | QUALITY_AGENT_MESSAGE_INTENT_ASSIGN | 5 |  |
 | QUALITY_AGENT_MESSAGE_INTENT_NOTICE | 6 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_DISMISS | 7 | The owner is dismissing the ask, not answering it. |
 
 
 

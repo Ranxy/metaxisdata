@@ -279,6 +279,19 @@
           @dismiss="dismissAsk"
           @approve="approveAsk"
         />
+        <div
+          v-if="asksNextToken !== ''"
+          class="flex justify-center pt-2"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="asksLoadingMore"
+            @click="loadMoreAsks"
+          >
+            {{ asksLoadingMore ? t("common.loading") : t("common.loadMore") }}
+          </Button>
+        </div>
         <p
           v-if="!canChat && asks.length > 0"
           class="text-xs text-muted-foreground"
@@ -480,7 +493,7 @@ import { useRoute } from "vue-router";
 import {
   adoptQualityAgentPendingSuggestions,
   getQualityAgent,
-  listQualityAgentAsks,
+  listQualityAgentAsksPage,
   listQualityAgentCases,
   listQualityAgentConversationMessages,
   listQualityAgentReports,
@@ -524,6 +537,7 @@ import {
   type QualityAgentAsk,
   type QualityAgentCase,
   QualityAgentCaseState,
+  QualityAgentMessageIntent,
   QualityAgentMessageRole,
   type QualityAgentReport,
   type QualityAgentSession,
@@ -554,6 +568,8 @@ const error = ref("");
 const busy = ref(false);
 
 const asks = ref<QualityAgentAsk[]>([]);
+const asksNextToken = ref("");
+const asksLoadingMore = ref(false);
 const cases = ref<QualityAgentCase[]>([]);
 const caseHistoryOpen = ref(false);
 const caseHistoryCase = ref<QualityAgentCase>();
@@ -721,10 +737,40 @@ async function loadSessions() {
 
 async function loadAsks() {
   try {
-    const page = await listQualityAgentAsks(agentName.value);
-    asks.value = page.filter(qualityAgentAskIsActive);
+    const page = await listQualityAgentAsksPage(agentName.value, {
+      pageSize: 50,
+    });
+    asks.value = page.asks.filter(qualityAgentAskIsActive);
+    asksNextToken.value = page.nextPageToken;
   } catch {
     asks.value = [];
+    asksNextToken.value = "";
+  }
+}
+
+/** Append the next ask page without losing the cards already answered this session. */
+async function loadMoreAsks() {
+  if (asksNextToken.value === "" || asksLoadingMore.value) {
+    return;
+  }
+  asksLoadingMore.value = true;
+  try {
+    const page = await listQualityAgentAsksPage(agentName.value, {
+      pageSize: 50,
+      pageToken: asksNextToken.value,
+    });
+    const known = new Set(asks.value.map((ask) => ask.name));
+    asks.value = [
+      ...asks.value,
+      ...page.asks.filter(
+        (ask) => qualityAgentAskIsActive(ask) && !known.has(ask.name)
+      ),
+    ];
+    asksNextToken.value = page.nextPageToken;
+  } catch (err) {
+    chatError.value = formatError(err);
+  } finally {
+    asksLoadingMore.value = false;
   }
 }
 
@@ -795,9 +841,30 @@ async function replyToAsk(ask: QualityAgentAsk, text: string) {
   }
 }
 
-/** Dismissal is an owner message, not a separate RPC: the lead closes the ask. */
+/** A dismissal is an owner message with intent=DISMISS: it closes the ask without
+ * pretending the owner answered it. */
 async function dismissAsk(ask: QualityAgentAsk) {
-  await replyToAsk(ask, t("qualityAgent.askDismissMessage"));
+  if (busy.value) {
+    return;
+  }
+  busy.value = true;
+  try {
+    await sendQualityAgentMessage(
+      agentName.value,
+      t("qualityAgent.askDismissMessage"),
+      {
+        replyTo: ask.name,
+        intent: QualityAgentMessageIntent.DISMISS,
+        requestId: `dismiss-${ask.name.split("/").pop()}-${Date.now().toString(36)}`,
+      }
+    );
+    await Promise.all([loadAsks(), loadConversation()]);
+    notify.success(t("qualityAgent.askDismissed"));
+  } catch (err) {
+    notify.error(formatError(err));
+  } finally {
+    busy.value = false;
+  }
 }
 
 /** An approval ask covers exactly one target; never widen it to the whole agent. */

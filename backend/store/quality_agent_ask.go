@@ -127,7 +127,7 @@ func (s *Store) ListQualityAgentAsks(ctx context.Context, agentID int64, statuse
 
 // ListQualityAgentAsksPage lists one page of an agent's asks, newest first.
 func (s *Store) ListQualityAgentAsksPage(ctx context.Context, agentID int64, statuses []QualityAgentAskStatus, limit, offset int) ([]*QualityAgentAskMessage, error) {
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 1001 {
 		limit = 50
 	}
 	if offset < 0 {
@@ -239,6 +239,29 @@ func (s *Store) MarkLatestOpenQualityAgentAskAnswered(ctx context.Context, agent
 	return message, true, nil
 }
 
+// RefreshQualityAgentAskByDedupe rewrites an open ask's wording without notifying again.
+// The approval queue changes as drafts are added or decided, and a stale "3 pending"
+// would mislead the owner.
+func (s *Store) RefreshQualityAgentAskByDedupe(ctx context.Context, agentID int64, dedupeKey, title, question string, at time.Time) (bool, error) {
+	if agentID <= 0 || dedupeKey == "" {
+		return false, nil
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_ask
+		SET title = $3, question = $4, updated_at = $5
+		WHERE agent_id = $1 AND dedupe_key = $2 AND status = $6`,
+		agentID, dedupeKey, title, question, at.UTC(),
+		int16(QualityAgentAskStatusOpen))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to refresh the open ask")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the refreshed asks")
+	}
+	return affected > 0, nil
+}
+
 // ProposalAskDedupeKey is the one key a target's approval ask uses. Creating and
 // draining it must use the same value, or the ask can never close.
 func ProposalAskDedupeKey(targetGUID string) string {
@@ -273,6 +296,46 @@ func (s *Store) ResolveProposalAskIfDrained(ctx context.Context, agentID int64, 
 		return false, errors.Wrap(err, "failed to count the resolved proposal asks")
 	}
 	return affected > 0, nil
+}
+
+// DismissQualityAgentAsk closes an ask the owner explicitly dismissed, together with
+// the requests it covers. It is not an answer: no request becomes ANSWERED and no
+// subagent receives a decision it never got.
+func (s *Store) DismissQualityAgentAsk(ctx context.Context, askID int64, at time.Time) (bool, error) {
+	if askID <= 0 {
+		return false, nil
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to begin the ask dismissal")
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_ask SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE id = $1 AND status IN ($4, $5)`,
+		askID, int16(QualityAgentAskStatusDismissed), at.UTC(),
+		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to dismiss the ask")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the dismissed ask")
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_request SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE ask_id = $1 AND status IN ($4, $5)`,
+		askID, int16(QualityAgentRequestStatusDismissed), at.UTC(),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded)); err != nil {
+		return false, errors.Wrap(err, "failed to dismiss the ask's requests")
+	}
+	if err := tx.Commit(); err != nil {
+		return false, errors.Wrap(err, "failed to commit the ask dismissal")
+	}
+	return true, nil
 }
 
 // ResolveQualityAgentAsk closes an ask once every request under it settled.
@@ -387,10 +450,9 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 		}
 		existing, findErr := scanQualityAgentAsk(tx.QueryRowContext(ctx,
 			`SELECT `+qualityAgentAskColumns+` FROM quality_agent_ask
-			 WHERE agent_id = $1 AND dedupe_key = $2 AND status IN ($3, $4)
+			 WHERE agent_id = $1 AND dedupe_key = $2 AND status = $3
 			 ORDER BY id DESC LIMIT 1`,
-			ask.AgentID, ask.DedupeKey,
-			int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered)))
+			ask.AgentID, ask.DedupeKey, int16(QualityAgentAskStatusOpen)))
 		if findErr == nil {
 			if commitErr := tx.Commit(); commitErr != nil {
 				return nil, false, errors.Wrap(commitErr, "failed to commit the duplicate ask")
@@ -399,6 +461,16 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 		}
 		if !errors.Is(findErr, sql.ErrNoRows) {
 			return nil, false, errors.Wrap(findErr, "failed to read the existing ask")
+		}
+		// An answered ask no longer owns the key. Close it before inserting the new
+		// question so the owner does not see two cards for the same target.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE quality_agent_ask
+			SET status = $3, resolved_at = $4, updated_at = $4
+			WHERE agent_id = $1 AND dedupe_key = $2 AND status = $5`,
+			ask.AgentID, ask.DedupeKey, int16(QualityAgentAskStatusResolved), at.UTC(),
+			int16(QualityAgentAskStatusAnswered)); err != nil {
+			return nil, false, errors.Wrap(err, "failed to close the answered ask")
 		}
 	}
 	message.SessionID = lead.ID

@@ -75,6 +75,48 @@ func TestReviewIsDeterministicAndWritesNothing(t *testing.T) {
 	require.Empty(t, stores.messages, "a no-op review must not append a transcript row")
 }
 
+// A gap review records its done-set once. The second daily review must not write the
+// same asset fact and ENGINE row again.
+func TestReviewPersistsTheSurveyDoneSet(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.contract = &store.QualityContractMessage{
+		TargetGUID: "1;shop;;orders", PublishedVersion: 1,
+		Settings: &storepb.QualityContractSettings{
+			Intent: &storepb.QualityContractIntent{
+				Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL,
+			},
+		},
+	}
+	engine := NewEngine(stores)
+	session := reviewSession()
+	first := engine.Review(context.Background(), session)
+	require.NotNil(t, first.EngineState)
+	require.NotEmpty(t, first.EngineState.Done)
+	require.NotEmpty(t, stores.messages, "the first survey records the coverage gap")
+
+	session.EngineState = first.EngineState
+	before := len(stores.messages)
+	engine.Review(context.Background(), session)
+	require.Len(t, stores.messages, before, "the second review sees the done-set and writes nothing")
+}
+
+func TestNeedsModelIsTrueForAnOpenRequestOnTheLead(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.requests = []*store.QualityAgentRequestMessage{{Status: store.QualityAgentRequestStatusOpen}}
+	lead := &store.QualityAgentSessionMessage{
+		ID: 2, ResourceID: "lead", AgentID: 1,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+	}
+	engine := NewEngine(stores)
+	needs, err := engine.NeedsModel(context.Background(), lead)
+	require.NoError(t, err)
+	require.True(t, needs, "an unrouted request is lead work even without a pending message")
+}
+
 func TestNeedsModelIgnoresACaseThatIsNotDue(t *testing.T) {
 	t.Parallel()
 

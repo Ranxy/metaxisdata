@@ -397,6 +397,12 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		return result
 	}
 	if !createdAsk {
+		// The owner already has an open question for this target. Keep its wording
+		// truthful as later passes change the queue; a refresh is not a second ask.
+		if _, refreshErr := s.store.RefreshQualityAgentAskByDedupe(ctx, session.AgentID, dedupeKey,
+			ask.Title, question, time.Now().UTC()); refreshErr != nil {
+			slog.Warn("failed to refresh a proposal ask", log.WithError(refreshErr))
+		}
 		return result
 	}
 	if s.notifier == nil {

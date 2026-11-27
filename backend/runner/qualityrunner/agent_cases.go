@@ -99,6 +99,12 @@ func (r *Runner) intakeAgentCases(ctx context.Context, workspaceID string, asses
 						// that from the table, so it has to reach the owner.
 						r.escalateFrozenCase(ctx, openCase, assessment.Rule)
 					}
+					if state == store.QualityAgentCaseStateEscalated {
+						// A deterministic verifier can escalate when a repair's check was paused.
+						// The case is still a decision a person owes, so it needs the same lead
+						// request a model escalation would raise.
+						r.escalatePausedCase(ctx, openCase, assessment.Rule)
+					}
 					if state.Terminal() {
 						r.closeCaseRequests(ctx, agent.ID, openCase.ResourceID)
 					}

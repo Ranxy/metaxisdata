@@ -18732,6 +18732,13 @@ workspaces/{workspace}/qualityAgentSessions/{session}. </p></td>
                   <td><p>Keep only the subagent with this model-facing name. </p></td>
                 </tr>
               
+                <tr>
+                  <td>query</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Case-insensitive match against the subagent name or target GUID. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -26885,6 +26892,14 @@ workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
 is marked answered and the lead routes the answer. </p></td>
                 </tr>
               
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentMessageIntent">QualityAgentMessageIntent</a></td>
+                  <td></td>
+                  <td><p>MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
+answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -28171,6 +28186,12 @@ resolved zone is what the target stores and what reads return. </p></td>
                 <td>QUALITY_AGENT_MESSAGE_INTENT_NOTICE</td>
                 <td>6</td>
                 <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_INTENT_DISMISS</td>
+                <td>7</td>
+                <td><p>The owner is dismissing the ask, not answering it.</p></td>
               </tr>
             
           </tbody>
