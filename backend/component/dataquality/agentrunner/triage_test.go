@@ -69,6 +69,8 @@ func TestDraftChecksToolBoundsColumnsAndNamesItsDrafts(t *testing.T) {
 	require.Equal(t, "watch order integrity", gotIntent)
 	require.Contains(t, result, `"queued":2`)
 	require.Contains(t, result, `"id":"qualitySuggestions/draft-1"`, "the model must be able to withdraw what it just queued")
+	require.Contains(t, result, `"ruleType":"NULL_RATE"`)
+	require.Contains(t, result, `"confidence":0.8`)
 	require.Contains(t, result, "orders id unique")
 	require.Contains(t, result, "withdraw_draft")
 	require.NotContains(t, result, `"rejected"`)

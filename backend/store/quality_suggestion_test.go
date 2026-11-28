@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -471,4 +472,23 @@ func TestQualitySuggestionWhereFiltersByScopes(t *testing.T) {
 	where, _, err = qualitySuggestionWhere(&FindQualitySuggestionMessage{Scopes: []resource.Scope{}})
 	require.NoError(t, err)
 	require.Contains(t, where, "FALSE")
+}
+
+// A withdrawal is the author's retraction, so its statement is the guard: the
+// agent_id predicate is what keeps one agent from taking back another's draft, and
+// the status predicate is what makes a reviewer's decision win. `decided_by` must
+// stay out of the SET list because a withdrawal is not a decision.
+func TestWithdrawQualitySuggestionQueryGuardsAuthorAndPendingState(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, withdrawQualitySuggestionQuery, "UPDATE quality_suggestion")
+	require.Contains(t, withdrawQualitySuggestionQuery, "WHERE resource_id = $1 AND agent_id = $5 AND status = $6")
+	require.Contains(t, withdrawQualitySuggestionQuery, "decision_note = $4")
+	require.Contains(t, withdrawQualitySuggestionQuery, "refreshed_at = NULL")
+	// The SET list must not touch the decider; only the RETURNING projection reads it.
+	setClause, _, found := strings.Cut(withdrawQualitySuggestionQuery, "WHERE")
+	require.True(t, found)
+	require.NotContains(t, setClause, "decided_by")
+	requirePlaceholdersMatchArgs(t, withdrawQualitySuggestionQuery,
+		[]any{"suggestions/abc", int32(5), time.Now(), "note", int64(7), int32(1)})
 }

@@ -277,3 +277,23 @@ func TestValidateToolPermission(t *testing.T) {
 	require.ErrorContains(t, err, "a_tool")
 	require.ErrorContains(t, err, "notAThing")
 }
+
+// Withdrawal placement is a contract: a target wake must still be able to retract a
+// draft after the suggest capability was removed (the role permission stays), while a
+// lead without suggest neither holds the tool nor is promised it by the prompt.
+func TestWithdrawDraftPlacementFollowsTheProduct(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range []*Spec{monitorSpec(), triageSpec()} {
+		names := toolSpecNames(toolsFor(spec, capabilityTestAgent()))
+		require.Contains(t, names, "withdraw_draft", "the target base set carries the retraction")
+	}
+
+	leadBare := capabilityTestAgent()
+	require.NotContains(t, toolSpecNames(toolsFor(conversationProduct, leadBare)), "withdraw_draft")
+	require.NotContains(t, renderSystemPrompt(conversationProduct, leadBare, "en-US"), "withdraw_draft")
+
+	leadWithSuggest := capabilityTestAgent(agentcapability.Suggest)
+	require.Contains(t, toolSpecNames(toolsFor(conversationProduct, leadWithSuggest)), "withdraw_draft")
+	require.Contains(t, renderSystemPrompt(conversationProduct, leadWithSuggest, "en-US"), "withdraw_draft")
+}
