@@ -54,9 +54,11 @@ func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "run_check",
 		"repair_check", "propose_revision", "flag_proposal", "escalate_case", "get_memory",
-		"record_asset_fact", "block_session", "schedule_wake",
+		"record_asset_fact", "block_session", "schedule_wake", "send_lead_message",
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
+		"list_subagents", "get_subagent", "send_subagent_message", "list_requests",
+		"answer_request", "forward_request", "reply_owner", "ask_owner",
 		"adopt_pending_drafts":
 		return true
 	default:
@@ -77,6 +79,24 @@ func (e *Engine) executeTool(
 	agentSession := agentSessionOf(session)
 	tools := e.agentTools()
 	switch name {
+	case "send_lead_message":
+		return e.sendLeadMessage(ctx, session, arguments)
+	case "list_subagents":
+		return e.listSubagents(ctx, session, arguments)
+	case "get_subagent":
+		return e.getSubagent(ctx, session, arguments)
+	case "send_subagent_message":
+		return e.sendSubagentMessage(ctx, session, arguments)
+	case "list_requests":
+		return e.listRequests(ctx, session, arguments)
+	case "answer_request":
+		return e.answerRequest(ctx, session, arguments)
+	case "forward_request":
+		return e.forwardRequest(ctx, session, arguments, control)
+	case "reply_owner":
+		return e.replyOwner(ctx, session, arguments, control)
+	case "ask_owner":
+		return e.askOwner(ctx, session, arguments, control)
 	case "get_target_summary":
 		return tools.GetTargetSummary(ctx, agentSession)
 	case "list_recent_executions":
@@ -90,11 +110,50 @@ func (e *Engine) executeTool(
 	case "repair_check":
 		return tools.RepairCheck(ctx, agentSession, arguments)
 	case "propose_revision":
-		return tools.ProposeRevision(ctx, agentSession, arguments)
+		result, err := tools.ProposeRevision(ctx, agentSession, arguments)
+		if err != nil {
+			return "", err
+		}
+		var input struct {
+			Case      string `json:"case"`
+			Field     string `json:"field"`
+			Value     string `json:"value"`
+			Rationale string `json:"rationale"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &input)
+		question := fmt.Sprintf("propose %s = %s: %s", input.Field, input.Value, input.Rationale)
+		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+			Kind:           store.QualityAgentRequestKindProposal,
+			CaseResourceID: input.Case,
+			Title:          "A check change needs approval",
+			Question:       question,
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:proposal", session.TargetGUID, input.Case),
+		}); reqErr != nil {
+			return "", reqErr
+		}
+		return result, nil
 	case "flag_proposal":
 		return tools.FlagProposal(ctx, agentSession, arguments)
 	case "escalate_case":
-		return tools.EscalateCase(ctx, agentSession, arguments)
+		result, err := tools.EscalateCase(ctx, agentSession, arguments)
+		if err != nil {
+			return "", err
+		}
+		var input struct {
+			Case   string `json:"case"`
+			Reason string `json:"reason"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &input)
+		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+			Kind:           store.QualityAgentRequestKindDecision,
+			CaseResourceID: input.Case,
+			Title:          "A work item needs a decision",
+			Question:       input.Reason,
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:decision", session.TargetGUID, input.Case),
+		}); reqErr != nil {
+			return "", reqErr
+		}
+		return result, nil
 	case "get_memory":
 		return tools.GetMemory(ctx, agentSession)
 	case "record_asset_fact":
@@ -126,6 +185,13 @@ func (e *Engine) executeTool(
 		control.blocked = true
 		control.blockedCode = input.Code
 		control.blockedWhy = input.Reason
+		if isSubagentSession(session) {
+			if lead, leadErr := e.leadFor(ctx, session); leadErr == nil {
+				_, _ = e.deliverAgentMessage(ctx, session, session.SubagentName, lead,
+					fmt.Sprintf("[notice] blocked: %s: %s", input.Code, input.Reason),
+					storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE, "")
+			}
+		}
 		return marshalJSON(map[string]any{"blocked": true, "threshold": blockedThreshold})
 	case "schedule_wake":
 		var input struct {
@@ -188,7 +254,7 @@ func (e *Engine) executeAdoptPendingDrafts(
 		return "", errors.Errorf("at most %d drafts can be adopted in one call", maxAdoptionDraftIDs)
 	}
 	target := strings.TrimSpace(input.Target)
-	if session.Kind == 1 && target != "" && target != session.TargetGUID {
+	if isSubagentSession(session) && target != "" && target != session.TargetGUID {
 		return "", errors.New("a target session can adopt only drafts of its own target")
 	}
 	report, err := e.ownerAdoption(ctx, dataquality.AgentAdoptionRequest{

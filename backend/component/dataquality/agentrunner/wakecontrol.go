@@ -20,4 +20,9 @@ type wakeControl struct {
 	// adoptionUsed reports that the adoption tool ran, so the automatic pass is
 	// suppressed for this wake.
 	adoptionUsed bool
+	// ownerFacing reports that this wake wrote or may write owner-visible prose.
+	ownerFacing bool
+	// ownerMessageWritten reports that ask_owner or reply_owner already wrote the
+	// OWNER row, so the final assistant text must stay INTERNAL.
+	ownerMessageWritten bool
 }

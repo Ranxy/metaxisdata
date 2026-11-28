@@ -73,6 +73,26 @@ type Store interface {
 	GetQualityAgentAdoptionStatus(ctx context.Context, agentID int64, now time.Time) (*store.QualityAgentAdoptionStatusMessage, error)
 	ListOpenQualityAgentCasesByTarget(ctx context.Context, agentID int64, targetGUID string, limit int) ([]*store.QualityAgentCaseMessage, error)
 	GetQualityAgentParticipation(ctx context.Context, agentID int64, databaseRef, targetGUID string) (*store.QualityAgentParticipationLevels, error)
+
+	GetQualityAgentConversation(ctx context.Context, agentID int64) (*store.QualityAgentSessionMessage, error)
+	GetQualityAgentSessionByID(ctx context.Context, id int64) (*store.QualityAgentSessionMessage, error)
+	GetQualityAgentSubagentByAddress(ctx context.Context, agentID int64, address string) (*store.QualityAgentSessionMessage, error)
+	ListQualityAgentSessions(ctx context.Context, find *store.FindQualityAgentSessionMessage) ([]*store.QualityAgentSessionMessage, error)
+	DeliverQualityAgentMessage(ctx context.Context, session *store.QualityAgentSessionMessage, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
+	AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error)
+	HasActionableQualityExecutionsSince(ctx context.Context, targetGUID string, since time.Time) (bool, error)
+
+	CreateQualityAgentRequest(ctx context.Context, message *store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, bool, error)
+	GetQualityAgentRequestByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentRequestMessage, error)
+	ListQualityAgentRequests(ctx context.Context, agentID int64, statuses []store.QualityAgentRequestStatus, targetGUID string, limit int) ([]*store.QualityAgentRequestMessage, error)
+	UpdateQualityAgentRequestStatus(ctx context.Context, resourceID string, from, to store.QualityAgentRequestStatus, askID *int64, resolution string, resolvedBy *int32, at time.Time) (*store.QualityAgentRequestMessage, bool, error)
+	ResolveQualityAgentRequestsForCase(ctx context.Context, agentID int64, caseResourceID string, at time.Time) (int64, error)
+
+	CreateQualityAgentAsk(ctx context.Context, message *store.QualityAgentAskMessage) (*store.QualityAgentAskMessage, error)
+	GetQualityAgentAskByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentAskMessage, error)
+	ListQualityAgentAsks(ctx context.Context, agentID int64, statuses []store.QualityAgentAskStatus, limit int) ([]*store.QualityAgentAskMessage, error)
+	MarkQualityAgentAskAnswered(ctx context.Context, resourceID string, answeredBy int32, answerSeq int64, at time.Time) (*store.QualityAgentAskMessage, bool, error)
+	ResolveQualityAgentAsk(ctx context.Context, resourceID string, status store.QualityAgentAskStatus, at time.Time) (bool, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -308,7 +328,7 @@ const caseWakeFloor = time.Minute
 func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessionMessage) []*store.QualityAgentCaseMessage {
 	// Kind 2 is the owner conversation, which has no target; any other kind is a target
 	// session (Kind 1 in the database, unset in a focused test).
-	if session == nil || session.Kind == 2 || session.AgentID == 0 || session.TargetGUID == "" {
+	if session == nil || isLeadSession(session) || session.AgentID == 0 || session.TargetGUID == "" {
 		return nil
 	}
 	cases, err := e.store.ListOpenQualityAgentCasesByTarget(ctx, session.AgentID, session.TargetGUID, 3)
@@ -324,7 +344,7 @@ func (e *Engine) openCases(ctx context.Context, session *store.QualityAgentSessi
 // the delegation default rather than failing the wake: the prompt is a view of the policy, and
 // the verbs re-read it when one is requested.
 func (e *Engine) participation(ctx context.Context, session *store.QualityAgentSessionMessage) agentpolicy.Participation {
-	if session == nil || session.Kind == 2 || session.AgentID == 0 {
+	if session == nil || isLeadSession(session) || session.AgentID == 0 {
 		return agentpolicy.DefaultParticipation
 	}
 	levels, err := e.store.GetQualityAgentParticipation(ctx, session.AgentID, session.DatabaseRef, session.TargetGUID)
@@ -386,7 +406,7 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 			// the same guardrails (mode, confidence, allowlist, critical switch, scope, daily
 			// ceiling) decide whether the replacement is created. The pass filters by the wake's
 			// start, so a wake that queued nothing adopts nothing.
-			if wakeErr == nil && !outcome.adoptionUsed && session.Kind != 2 && e.adoption != nil {
+			if wakeErr == nil && !outcome.adoptionUsed && isSubagentSession(session) && e.adoption != nil {
 				e.adoption(ctx, session, wakeStartedAt)
 			}
 			return outcome, wakeErr
@@ -394,7 +414,7 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 	}
 	// The front office must stay usable without a model: answer with a deterministic
 	// scope summary instead of parking the conversation.
-	if session.Kind == 2 {
+	if isLeadSession(session) {
 		return e.conversationWake(ctx, session, wake, pending)
 	}
 	// Triage is an analysis, not a bookkeeping survey: without a model there is nothing
@@ -466,7 +486,8 @@ func (e *Engine) modelWake(
 		turnUsage      = map[int32]*llm.Usage{}
 	)
 	// The control tools write this state; the wake applies it once, after the loop.
-	control := &wakeControl{wake: wake, ownerAsked: ownerAsked(pending)}
+	askedByOwner := ownerAsked(pending)
+	control := &wakeControl{wake: wake, ownerAsked: askedByOwner}
 	set, err := e.toolSet(session, sessionAgent, control)
 	if err != nil {
 		return Outcome{}, err
@@ -516,6 +537,10 @@ func (e *Engine) modelWake(
 					continue
 				}
 				usage := turnUsage[int32(event.Turn)]
+				audience := storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL
+				if len(event.Assistant.ToolCalls) == 0 && !control.ownerMessageWritten && (control.ownerFacing || askedByOwner) {
+					audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
+				}
 				e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 					Wake:           wake,
 					Turn:           int32(event.Turn),
@@ -525,6 +550,7 @@ func (e *Engine) modelWake(
 					Reasoning:      truncateRunes(event.Assistant.Reasoning, maxReasoningRunes),
 					ToolCalls:      toolCallsToStore(event.Assistant.ToolCalls),
 					Tokens:         usageTokens(usage),
+					Audience:       audience,
 					IdempotencyKey: assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
 				})
 			case agent.EventToolEnd:

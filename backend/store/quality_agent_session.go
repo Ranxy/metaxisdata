@@ -663,6 +663,22 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	if input.ToolCalls == nil {
 		input.ToolCalls = &storepb.QualityToolCallList{}
 	}
+	if input.Intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED {
+		input.Intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
+	}
+	if input.Audience == storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED {
+		switch {
+		case input.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
+			input.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK:
+			input.Audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
+		case input.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
+			// Runner-written report-ready notes are owner-facing; model wakes set their
+			// own audience explicitly so internal turns stay internal.
+			input.Audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER
+		default:
+			input.Audience = storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL
+		}
+	}
 	toolCalls, err := protojson.Marshal(input.ToolCalls)
 	if err != nil {
 		return nil, err
@@ -1175,6 +1191,63 @@ func subagentNameBase(targetGUID string) string {
 		return "target"
 	}
 	return name
+}
+
+// GetQualityAgentSubagentByAddress resolves a model-facing name, target GUID or
+// session resource name to one live subagent of the agent.
+func (s *Store) GetQualityAgentSubagentByAddress(ctx context.Context, agentID int64, address string) (*QualityAgentSessionMessage, error) {
+	if agentID <= 0 || address == "" {
+		return nil, nil
+	}
+	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
+		 WHERE agent_id = $1 AND role = 2 AND archived_at IS NULL
+		   AND (subagent_name = $2 OR target_guid = $2 OR resource_id = $2)
+		 ORDER BY id DESC LIMIT 1`, agentID, address))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to resolve the subagent address")
+	}
+	return message, nil
+}
+
+// DeliverQualityAgentMessage appends one agent-to-agent message and makes the
+// recipient due now. It is the only cross-session delivery path.
+func (s *Store) DeliverQualityAgentMessage(ctx context.Context, session *QualityAgentSessionMessage, input *QualityAgentTranscriptMessage) (*QualityAgentTranscriptMessage, error) {
+	if session == nil || input == nil || input.SessionID == 0 {
+		return nil, common.Errorf(common.Invalid, "a message needs a session")
+	}
+	message, err := s.AppendQualityAgentTranscriptMessage(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	return message, nil
+}
+
+// HasActionableQualityExecutionsSince reports whether a target produced a failure,
+// error or not-evaluated verdict after the last deterministic review.
+func (s *Store) HasActionableQualityExecutionsSince(ctx context.Context, targetGUID string, since time.Time) (bool, error) {
+	if targetGUID == "" {
+		return false, nil
+	}
+	var exists bool
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM quality_execution
+			WHERE target_guid = $1 AND started_at > $2
+			  AND status IN ($3, $4, $5)
+		)`, targetGUID, since,
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int16(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		int16(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED)).Scan(&exists); err != nil {
+		return false, errors.Wrap(err, "failed to read the actionable executions")
+	}
+	return exists, nil
 }
 
 // GetQualityAgentConversation reads the agent's front-office conversation; nil when

@@ -100,6 +100,16 @@ func internalMeta() tool.Meta {
 func targetToolSpecs() []toolSpec {
 	specs := []toolSpec{
 		{
+			name:        "send_lead_message",
+			description: "Send a self-contained report or question to the lead. Use it when you need a decision, a repair failed, a check cannot run, a proposal needs a person, a task the lead assigned is done, or your target changed in a way the lead must know. Do not send routine all-good reports.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"message": map[string]any{"type": "string", "description": "the report or question; the lead does not see your transcript"},
+				"intent":  map[string]any{"type": "string", "enum": []string{"REPORT", "QUESTION", "ANSWER"}, "description": "what the message is"},
+				"case":    map[string]any{"type": "string", "description": "optional qualityAgentCases id the message is about"},
+			}, "required": []string{"message"}},
+			meta: internalMeta(),
+		},
+		{
 			name:        "get_target_summary",
 			description: "Read the target's plan state, criticality, rule count, adoption status, pending drafts and uncovered declared properties.",
 			parameters:  emptyParameters(),
@@ -272,6 +282,79 @@ func targetToolSpecs() []toolSpec {
 			meta: internalMeta(),
 		},
 		{
+			name:        "list_subagents",
+			description: "List the fixed subagents this lead coordinates. Each row carries the name, target, state, mode, next wake and last deterministic review.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "optional name or target GUID substring"},
+				"state": map[string]any{"type": "string", "description": "optional state filter"},
+				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+			}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "get_subagent",
+			description: "Read one subagent's status and up to five open work items.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"agent": map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+			}, "required": []string{"agent"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "send_subagent_message",
+			description: "Send an instruction, assignment or answer to one subagent. Delivery is accepted into its inbox; the answer arrives later as a message, not as this result.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"agent":   map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+				"message": map[string]any{"type": "string"},
+				"intent":  map[string]any{"type": "string", "enum": []string{"MESSAGE", "ASSIGN", "ANSWER", "QUESTION"}},
+			}, "required": []string{"agent", "message"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "list_requests",
+			description: "List the subagent requests waiting for the lead. Default is OPEN and FORWARDED.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"status": map[string]any{"type": "string", "enum": []string{"OPEN", "FORWARDED", "CLOSED"}},
+				"target": map[string]any{"type": "string"},
+				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+			}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "answer_request",
+			description: "Answer one subagent request yourself. The answer is delivered to the origin subagent and the request becomes ANSWERED.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"request": map[string]any{"type": "string", "description": "qualityAgentRequests/... id from list_requests"},
+				"answer":  map[string]any{"type": "string"},
+			}, "required": []string{"request", "answer"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "forward_request",
+			description: "Forward one or more subagent requests to the owner as one question. The owner's answer comes back as a message.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"question": map[string]any{"type": "string"},
+			}, "required": []string{"requests", "question"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "reply_owner",
+			description: "Tell the owner something on a wake that was not an owner question (a follow-up or a result). Do not use it for routine chatter.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"message": map[string]any{"type": "string"},
+			}, "required": []string{"message"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "ask_owner",
+			description: "Ask the owner a concrete question, optionally covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"question": map[string]any{"type": "string"},
+				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			}, "required": []string{"question"}},
+			meta: internalMeta(),
+		},
+		{
 			name:        "schedule_wake",
 			description: "Ask for an earlier wake when there is concrete unfinished work.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
@@ -302,21 +385,85 @@ func conversationToolSpecs() []toolSpec {
 			meta:        readMeta(),
 		},
 		{
+			name:        "list_subagents",
+			description: "List the fixed subagents this lead coordinates. Each row carries the name, target, state, mode, next wake and last deterministic review.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "optional name or target GUID substring"},
+				"state": map[string]any{"type": "string", "description": "optional state filter"},
+				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+			}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "get_subagent",
+			description: "Read one subagent's status and up to five open work items.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"agent": map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+			}, "required": []string{"agent"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "send_subagent_message",
+			description: "Send an instruction, assignment or answer to one subagent. Delivery is accepted into its inbox; the answer arrives later as a message, not as this result.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"agent":   map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+				"message": map[string]any{"type": "string"},
+				"intent":  map[string]any{"type": "string", "enum": []string{"MESSAGE", "ASSIGN", "ANSWER", "QUESTION"}},
+			}, "required": []string{"agent", "message"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "list_requests",
+			description: "List the subagent requests waiting for the lead. Default is OPEN and FORWARDED.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"status": map[string]any{"type": "string", "enum": []string{"OPEN", "FORWARDED", "CLOSED"}},
+				"target": map[string]any{"type": "string"},
+				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+			}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "answer_request",
+			description: "Answer one subagent request yourself. The answer is delivered to the origin subagent and the request becomes ANSWERED.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"request": map[string]any{"type": "string", "description": "qualityAgentRequests/... id from list_requests"},
+				"answer":  map[string]any{"type": "string"},
+			}, "required": []string{"request", "answer"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "forward_request",
+			description: "Forward one or more subagent requests to the owner as one question. The owner's answer comes back as a message.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"question": map[string]any{"type": "string"},
+			}, "required": []string{"requests", "question"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "reply_owner",
+			description: "Tell the owner something on a wake that was not an owner question (a follow-up or a result). Do not use it for routine chatter.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"message": map[string]any{"type": "string"},
+			}, "required": []string{"message"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "ask_owner",
+			description: "Ask the owner a concrete question, optionally covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"question": map[string]any{"type": "string"},
+				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			}, "required": []string{"question"}},
+			meta: internalMeta(),
+		},
+		{
 			name:        "schedule_wake",
 			description: "Ask for an earlier wake when there is concrete unfinished work.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"after_minutes": map[string]any{"type": "integer", "minimum": 1, "maximum": 10080},
 				"reason":        map[string]any{"type": "string"},
 			}, "required": []string{"after_minutes"}},
-			meta: internalMeta(),
-		},
-		{
-			name:        "block_session",
-			description: "Report a blocker that needs the owner.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"code":   map[string]any{"type": "string"},
-				"reason": map[string]any{"type": "string"},
-			}, "required": []string{"code", "reason"}},
 			meta: internalMeta(),
 		},
 	}
@@ -349,7 +496,7 @@ var (
 		Feature:  "dq_agent",
 		Prompt:   conversationPrompt(),
 		Tools:    conversationToolSpecs(),
-		MaxTurns: modelMaxTurns,
+		MaxTurns: 16,
 	}
 	// monitorProduct is the long-lived monitoring product: one target, woken by
 	// events, questions and a daily cadence.
@@ -380,7 +527,7 @@ func triageSpec() *Spec { return triageProduct }
 // specForSession selects the product a session runs. A conversation session has no
 // target; target sessions pick monitor or triage from their mode.
 func specForSession(session *store.QualityAgentSessionMessage) *Spec {
-	if session != nil && session.Kind == 2 {
+	if isLeadSession(session) {
 		return conversationProduct
 	}
 	return specFor(session.Mode)

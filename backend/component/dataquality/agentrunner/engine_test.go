@@ -35,6 +35,10 @@ type fakeStore struct {
 	agent         *store.QualityAgentMessage
 	openCases     []*store.QualityAgentCaseMessage
 	participation *store.QualityAgentParticipationLevels
+	actionable    bool
+	lead          *store.QualityAgentSessionMessage
+	subagents     map[string]*store.QualityAgentSessionMessage
+	sessionsByID  map[int64]*store.QualityAgentSessionMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -165,7 +169,9 @@ func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *
 			isUser := message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER
 			isEvent := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT
 			isAsk := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK
-			if !isUser || (!isEvent && !isAsk) {
+			isAgent := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT
+			isNotice := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_NOTICE
+			if !isUser || (!isEvent && !isAsk && !isAgent && !isNotice) {
 				continue
 			}
 		}
@@ -199,6 +205,74 @@ func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *
 
 func (*fakeStore) UpdateQualityAgentSessionCompaction(context.Context, string, string, int64) (bool, error) {
 	return true, nil
+}
+
+func (f *fakeStore) GetQualityAgentConversation(context.Context, int64) (*store.QualityAgentSessionMessage, error) {
+	return f.lead, nil
+}
+
+func (f *fakeStore) GetQualityAgentSessionByID(_ context.Context, id int64) (*store.QualityAgentSessionMessage, error) {
+	return f.sessionsByID[id], nil
+}
+
+func (f *fakeStore) GetQualityAgentSubagentByAddress(_ context.Context, _ int64, address string) (*store.QualityAgentSessionMessage, error) {
+	return f.subagents[address], nil
+}
+
+func (*fakeStore) ListQualityAgentSessions(context.Context, *store.FindQualityAgentSessionMessage) ([]*store.QualityAgentSessionMessage, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) DeliverQualityAgentMessage(_ context.Context, _ *store.QualityAgentSessionMessage, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error) {
+	return f.AppendQualityAgentTranscriptMessage(context.Background(), input)
+}
+
+func (*fakeStore) AdvanceQualityAgentSessionWake(context.Context, string, time.Time) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeStore) HasActionableQualityExecutionsSince(context.Context, string, time.Time) (bool, error) {
+	return f.actionable, nil
+}
+
+func (*fakeStore) CreateQualityAgentRequest(_ context.Context, message *store.QualityAgentRequestMessage) (*store.QualityAgentRequestMessage, bool, error) {
+	return message, true, nil
+}
+
+func (*fakeStore) GetQualityAgentRequestByResourceID(context.Context, string) (*store.QualityAgentRequestMessage, error) {
+	return nil, nil
+}
+
+func (*fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
+	return nil, nil
+}
+
+func (*fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
+	return &store.QualityAgentRequestMessage{Status: to}, true, nil
+}
+
+func (*fakeStore) ResolveQualityAgentRequestsForCase(context.Context, int64, string, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (*fakeStore) CreateQualityAgentAsk(_ context.Context, message *store.QualityAgentAskMessage) (*store.QualityAgentAskMessage, error) {
+	return message, nil
+}
+
+func (*fakeStore) GetQualityAgentAskByResourceID(context.Context, string) (*store.QualityAgentAskMessage, error) {
+	return nil, nil
+}
+
+func (*fakeStore) ListQualityAgentAsks(context.Context, int64, []store.QualityAgentAskStatus, int) ([]*store.QualityAgentAskMessage, error) {
+	return nil, nil
+}
+
+func (*fakeStore) MarkQualityAgentAskAnswered(context.Context, string, int32, int64, time.Time) (*store.QualityAgentAskMessage, bool, error) {
+	return nil, false, nil
+}
+
+func (*fakeStore) ResolveQualityAgentAsk(context.Context, string, store.QualityAgentAskStatus, time.Time) (bool, error) {
+	return false, nil
 }
 
 func toolCall(id, name, arguments string) llm.ToolCall {
