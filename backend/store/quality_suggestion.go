@@ -750,7 +750,7 @@ func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID
 	return states, nil
 }
 
-// DeleteExpiredQualitySuggestions removes the decided suggestions older than
+// DeleteExpiredQualitySuggestions removes the closed suggestions older than
 // cutoff. A pending suggestion is never pruned: it is still waiting for a
 // reviewer.
 func (s *Store) DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error) {

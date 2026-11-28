@@ -65,7 +65,7 @@ func (s *DataQualityService) WithdrawAgentDraft(ctx context.Context, agentPrinci
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("draft %q not found", resourceID))
 	}
 	suggestion := suggestions[0]
-	if err := requireAgentDraftOwnership(agent, suggestion); err != nil {
+	if err := requireWithdrawableDraft(agent, suggestion); err != nil {
 		return nil, err
 	}
 	if err := s.checkAgentTargetPermission(ctx, agent, suggestion.TargetGUID, permission.DataQualitySuggest); err != nil {
@@ -117,12 +117,15 @@ func (s *DataQualityService) withdrawNotApplied(ctx context.Context, resourceID 
 		resourceID, strings.TrimPrefix(current.Status.String(), "QUALITY_SUGGESTION_STATUS_")))
 }
 
-// requireAgentDraftOwnership proves the draft belongs to the agent the write is
-// attributed to. A nil agent_id is a human or external proposal, which no agent may
-// take back.
-func requireAgentDraftOwnership(agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage) error {
+// requireWithdrawableDraft proves the proposal is the agent's own check draft. A nil
+// agent_id is a human or external proposal, which no agent may take back; a label
+// suggestion is not a check draft and has no approval ask behind it.
+func requireWithdrawableDraft(agent *store.QualityAgentMessage, suggestion *store.QualitySuggestionMessage) error {
 	if agent == nil || suggestion == nil || suggestion.AgentID == nil || *suggestion.AgentID != agent.ID {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("the draft belongs to another principal"))
+	}
+	if suggestion.Kind != storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("only a check draft can be withdrawn"))
 	}
 	return nil
 }

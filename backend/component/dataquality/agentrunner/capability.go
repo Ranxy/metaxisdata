@@ -148,7 +148,7 @@ func suggestProfile() capabilityProfile {
 					"- Use list_pending_proposals to read this agent's pending check drafts with their ids, check types and confidence.",
 					"- Never invent counts or titles; answer from the tool result.",
 					"- A draft is created only when a person or the Adoption policy accepts it.",
-					"- Withdraw a draft you judge wrong with withdraw_draft and a reason. A person never decided it, so this is not a rejection.",
+					"- Withdraw a draft a subagent queued and you judge wrong with withdraw_draft and a reason. A person never decided it, so this is not a rejection.",
 				}, "\n")}}
 			default:
 				return nil

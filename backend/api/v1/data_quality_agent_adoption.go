@@ -297,6 +297,13 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		}
 		created, state, err := s.createRuleFromAdoptionDraft(agentCtx, session.WorkspaceID, agent, suggestion, *ownerID)
 		if err != nil {
+			if adoptionClaimLost(err) {
+				reason := "the draft was closed before adoption"
+				s.recordAdoption(ctx, session, suggestion, origin, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+				result.recordItem(suggestion, "skipped", reason)
+				result.Skipped++
+				continue
+			}
 			reason := adoptionFailureReason(err)
 			if lastFailure == "" {
 				lastFailure = reason
@@ -568,7 +575,7 @@ func (s *DataQualityService) resolveProposalAskIfDrained(ctx context.Context, ke
 	}
 }
 
-// resolveProposalAskForSuggestion resolves the one target a just-decided
+// resolveProposalAskForSuggestion resolves the one target a just-closed
 // draft drained. The single-item decision and create paths use it; their batch
 // variants collect keys and resolve once per target instead.
 func (s *DataQualityService) resolveProposalAskForSuggestion(ctx context.Context, suggestion *store.QualitySuggestionMessage) {
@@ -663,6 +670,13 @@ func (s *DataQualityService) adoptQualitySuggestionsExplicitly(ctx context.Conte
 		}
 		created, state, createErr := s.createRuleFromAdoptionDraft(agentCtx, req.Session.WorkspaceID, agent, suggestion, ownerID)
 		if createErr != nil {
+			if adoptionClaimLost(createErr) {
+				reason := "the draft was closed before adoption"
+				s.recordAdoption(ctx, req.Session, suggestion, store.QualityAgentAdoptionOriginTool, store.QualityAgentAdoptionOutcomeSkipped, "", reason)
+				result.recordItem(suggestion, "skipped", reason)
+				result.Skipped++
+				continue
+			}
 			reason := adoptionFailureReason(createErr)
 			slog.Warn("failed to adopt an owner-requested quality draft",
 				slog.String("suggestion", suggestion.ResourceID),
@@ -873,6 +887,12 @@ func (s *DataQualityService) AdoptQualityAgentPendingSuggestions(ctx context.Con
 		slog.Warn("failed to count the remaining drafts after an approval", log.WithError(err))
 	} else {
 		response.RemainingPending = int32(remaining)
+		// An approval that adopts nothing because the queue is already empty must still
+		// close the target's proposal item: a withdrawal may have drained it after the
+		// card was written.
+		if remaining == 0 && targetGUID != "" {
+			s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: agent.ID, targetGUID: targetGUID})
+		}
 	}
 	return connect.NewResponse(response), nil
 }
@@ -908,6 +928,14 @@ func (s *DataQualityService) ownerAdoptionSession(ctx context.Context, session *
 		TargetType:  targetType,
 		Kind:        1,
 	}, nil
+}
+
+// adoptionClaimLost reports whether a draft write lost the PENDING claim to another
+// writer. A withdrawal is such a writer: the draft left the queue, so the adoption did
+// not fail to write a rule, and recording it as a failure would tell the owner a change
+// failed that nobody attempted.
+func adoptionClaimLost(err error) bool {
+	return connect.CodeOf(err) == connect.CodeAborted
 }
 
 // adoptionFailureReason keeps the real cause in the durable ledger. The generic
