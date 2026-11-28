@@ -171,6 +171,12 @@
           {{ t("qualityAgent.askDismissed") }}
         </p>
         <p
+          v-else-if="ask.status === QualityAgentAskStatus.CANCELLED"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("qualityAgent.askCancelled") }}
+        </p>
+        <p
           v-else-if="!isSkipped(question) && ask.answerMessageSeq > 0n"
           class="text-xs text-muted-foreground"
         >

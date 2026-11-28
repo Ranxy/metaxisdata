@@ -127,6 +127,9 @@ describe("quality agent ask helpers", () => {
     expect(qualityAgentAskStatusKey(QualityAgentAskStatus.DISMISSED)).toBe(
       "qualityAgent.askStatusDismissed"
     );
+    expect(qualityAgentAskStatusKey(QualityAgentAskStatus.CANCELLED)).toBe(
+      "qualityAgent.askStatusCancelled"
+    );
     expect(qualityAgentAskKindKey(QualityAgentAskKind.UNSPECIFIED)).toBe(
       "qualityAgent.askKindUnspecified"
     );
