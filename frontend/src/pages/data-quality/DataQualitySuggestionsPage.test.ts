@@ -334,6 +334,41 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
+  it("shows a withdrawn proposal as the agent's retraction, not a decision", async () => {
+    const withdrawn = draftSuggestion(DRAFT_ONE, "Orders should have rows");
+    withdrawn.status = QualitySuggestionStatus.WITHDRAWN;
+    withdrawn.decisionNote = "the target is emptied by the ETL every night";
+    mocks.listQualitySuggestions.mockResolvedValue({
+      items: [withdrawn],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    const row = [
+      ...document.body.querySelectorAll<HTMLElement>("tbody tr"),
+    ].find((candidate) =>
+      candidate.textContent?.includes("Orders should have rows")
+    );
+    expect(row).toBeDefined();
+    expect(row?.textContent).toContain(
+      label("dataQuality.suggestionStatus.withdrawn")
+    );
+    expect(row?.textContent).not.toContain(
+      label("dataQuality.suggestionStatus.accepted")
+    );
+    expect(row?.textContent).not.toContain(
+      label("dataQuality.suggestionStatus.rejected")
+    );
+    // The reason is the agent's, attached to the status badge; nobody can act on it.
+    expect(
+      row?.querySelector(
+        '[title="the target is emptied by the ETL every night"]'
+      )
+    ).not.toBeNull();
+    expect(row?.querySelector('[role="checkbox"]')).toBeNull();
+    wrapper.unmount();
+  });
+
   it("marks a pending proposal that a later pass refreshed in place", async () => {
     const refreshed = draftSuggestion(DRAFT_ONE, "Orders should have rows");
     refreshed.refreshTime = timestampFromDate(
@@ -697,6 +732,21 @@ describe("DataQualitySuggestionsPage", () => {
     );
     // Applying writes the URL without triggering a second request.
     expect(mocks.listQualitySuggestions).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it("reads a withdrawn status filter from the URL on entry", async () => {
+    const { wrapper } = await mountPage("/data-quality/suggestions?status=5");
+
+    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: QualitySuggestionStatus.WITHDRAWN,
+      })
+    );
+    const selects = wrapper.findAllComponents(Select);
+    expect(selects[0]?.props("modelValue")).toBe(
+      String(QualitySuggestionStatus.WITHDRAWN)
+    );
     wrapper.unmount();
   });
 

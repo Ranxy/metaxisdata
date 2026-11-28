@@ -27,7 +27,14 @@ const dialogStubs = {
   DialogFooter: { template: "<div><slot /></div>" },
 };
 
-function mountDrawer(status: QualitySuggestionStatus) {
+function mountDrawer(
+  status: QualitySuggestionStatus,
+  options: {
+    canDecide?: boolean;
+    canCreateRule?: boolean;
+    decisionNote?: string;
+  } = {}
+) {
   const suggestion = create(QualitySuggestionSchema, {
     name: "workspaces/ws/qualitySuggestions/s-1",
     kind: QualitySuggestionKind.LABEL,
@@ -46,14 +53,15 @@ function mountDrawer(status: QualitySuggestionStatus) {
     },
     status,
     decideTime: timestampFromDate(new Date("2026-10-22T09:00:00Z")),
-    decisionNote: "the column already has a semantic label",
+    decisionNote:
+      options.decisionNote ?? "the column already has a semantic label",
   });
   return mount(SuggestionDetailDrawer, {
     props: {
       open: true,
       suggestion,
-      canDecide: false,
-      canCreateRule: false,
+      canDecide: options.canDecide ?? false,
+      canCreateRule: options.canCreateRule ?? false,
       deciding: false,
       error: "",
       targetLabel: "users",
@@ -75,12 +83,22 @@ describe("SuggestionDetailDrawer superseded proposals", () => {
   });
 
   it("shows the proposing agent's retraction with its reason instead of a decision", () => {
-    const wrapper = mountDrawer(QualitySuggestionStatus.WITHDRAWN);
+    const wrapper = mountDrawer(QualitySuggestionStatus.WITHDRAWN, {
+      // A reviewer holding both permissions still sees no action: the proposal is
+      // closed, and only a person deciding a pending one may act on it.
+      canDecide: true,
+      canCreateRule: true,
+      decisionNote: "the target is emptied by the ETL every night",
+    });
 
     expect(wrapper.text()).toContain("Withdrawn by the agent");
-    expect(wrapper.text()).toContain("the column already has a semantic label");
+    expect(wrapper.text()).toContain("the target is emptied by the ETL every night");
     expect(wrapper.text()).not.toContain("Decided by");
     expect(wrapper.text()).not.toContain("Closed by the server");
+    const actions = wrapper.findAll("button").map((button) => button.text());
+    expect(actions).not.toContain("Accept");
+    expect(actions).not.toContain("Reject");
+    expect(wrapper.find("textarea").exists()).toBe(false);
   });
 
   it("keeps the decision wording for a rejected proposal", () => {
