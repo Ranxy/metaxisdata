@@ -351,6 +351,57 @@ func TestQualityAgentAskDismissalClosesAndNotifies(t *testing.T) {
 	require.Error(t, err, "a closed ask refuses a second dismissal")
 }
 
+func TestQualityAgentAskCancellationReleasesItsRequests(t *testing.T) {
+	t.Parallel()
+
+	f := newDraftAgent(t)
+	request, _ := f.create(t, raiseOptions{dedupeKey: "it-cancel-r", question: "Still needed?"})
+	askMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Still needed?",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-cancel-question",
+	}
+	ask := &store.QualityAgentAskMessage{
+		WorkspaceID: f.env.workspaceID, AgentID: f.agent.ID, Kind: store.QualityAgentAskKindQuestion,
+		Title: "Cancel", Question: "Still needed?", TargetGUID: f.targetGUID,
+		TargetType: storepb.MetaType_TABLE, DedupeKey: "it-cancel-ask",
+	}
+	created, _, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead, askMessage,
+		[]*store.QualityAgentRequestMessage{request}, time.Now().UTC())
+	require.NoError(t, err)
+
+	notice := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:        "This question no longer applies.",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		ReplyTo:        dataquality.AskName(created),
+		IdempotencyKey: "it-cancel-lead",
+	}
+	cancelled, message, released, err := f.env.store.CancelQualityAgentAskAtomic(f.ctx,
+		created.ResourceID, notice, time.Now().UTC())
+	require.NoError(t, err)
+	require.NotNil(t, message)
+	require.Equal(t, int64(1), released)
+	require.Equal(t, store.QualityAgentAskStatusCancelled, cancelled.Status)
+	require.NotNil(t, cancelled.ResolvedAt)
+
+	releasedRequest := f.getRequest(t, request.ResourceID)
+	require.Equal(t, store.QualityAgentRequestStatusOpen, releasedRequest.Status)
+	require.Nil(t, releasedRequest.AskID, "the request no longer belongs to the withdrawn ask")
+	require.Nil(t, releasedRequest.ForwardedAt)
+
+	second := *notice
+	second.IdempotencyKey = "it-cancel-lead-2"
+	_, _, _, err = f.env.store.CancelQualityAgentAskAtomic(f.ctx, created.ResourceID, &second, time.Now().UTC())
+	require.Error(t, err, "a cancelled ask refuses a second cancellation")
+}
+
 // A case's terminal transition closes its requests and a request-backed ask, but an
 // agent-level ask with no requests is not drained by an unrelated case ending.
 func TestQualityAgentCaseSettlementClosesOnlyRequestBackedAsks(t *testing.T) {

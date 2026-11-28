@@ -34,6 +34,7 @@ const (
 	QualityAgentAskStatusAnswered  QualityAgentAskStatus = 2
 	QualityAgentAskStatusResolved  QualityAgentAskStatus = 3
 	QualityAgentAskStatusDismissed QualityAgentAskStatus = 4
+	QualityAgentAskStatusCancelled QualityAgentAskStatus = 5
 )
 
 // QualityAgentAskMessage is one owner-facing question from the lead. It can cover
@@ -421,6 +422,77 @@ func (s *Store) DismissQualityAgentAskAtomic(ctx context.Context, resourceID str
 		return nil, nil, nil, errors.Wrap(err, "failed to commit the ask dismissal")
 	}
 	return dismissedAsk, createdMessage, closed, nil
+}
+
+// CancelQualityAgentAskAtomic withdraws an open question the lead no longer needs
+// answered. The requests behind it are released back to OPEN for the lead to answer or
+// forward into a new ask; they are not dismissed and no subagent notice is written,
+// because the lead still owns the decision. The ask row is the concurrency guard: a
+// question the owner already answered cannot be withdrawn.
+func (s *Store) CancelQualityAgentAskAtomic(ctx context.Context, resourceID string, leadMessage *QualityAgentTranscriptMessage, at time.Time) (*QualityAgentAskMessage, *QualityAgentTranscriptMessage, int64, error) {
+	if resourceID == "" || leadMessage == nil {
+		return nil, nil, 0, common.Errorf(common.Invalid, "a cancellation needs an ask and a message")
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, 0, errors.Wrap(err, "failed to begin the ask cancellation")
+	}
+	defer func() { _ = tx.Rollback() }()
+	locked, err := scanQualityAgentAsk(tx.QueryRowContext(ctx,
+		`SELECT `+qualityAgentAskColumns+` FROM quality_agent_ask WHERE resource_id = $1 FOR UPDATE`,
+		resourceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, 0, common.Errorf(common.NotFound, "the ask was not found")
+		}
+		return nil, nil, 0, errors.Wrap(err, "failed to lock the ask")
+	}
+	if locked.Status != QualityAgentAskStatusOpen {
+		return nil, nil, 0, common.Errorf(common.Conflict, "the ask is no longer open")
+	}
+	if locked.ConversationSessionID == nil {
+		return nil, nil, 0, common.Errorf(common.Invalid, "the ask has no conversation")
+	}
+	leadMessage.SessionID = *locked.ConversationSessionID
+	leadMessage.WorkspaceID = locked.WorkspaceID
+	createdMessage, err := s.appendQualityAgentTranscriptTx(ctx, tx, leadMessage)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	cancelled, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
+		UPDATE quality_agent_ask
+		SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE id = $1 AND status = $4
+		RETURNING `+qualityAgentAskColumns,
+		locked.ID, int16(QualityAgentAskStatusCancelled), at.UTC(),
+		int16(QualityAgentAskStatusOpen)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, 0, common.Errorf(common.Conflict, "the ask is no longer open")
+		}
+		return nil, nil, 0, errors.Wrap(err, "failed to cancel the ask")
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_request
+		SET status = $2, ask_id = NULL, forwarded_at = NULL, resolved_at = NULL,
+			resolution = '', resolved_by = NULL, updated_at = $3
+		WHERE ask_id = $1 AND status IN ($4, $5)`,
+		locked.ID, int16(QualityAgentRequestStatusOpen), at.UTC(),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+	if err != nil {
+		return nil, nil, 0, errors.Wrap(err, "failed to release the ask's requests")
+	}
+	released, err := result.RowsAffected()
+	if err != nil {
+		return nil, nil, 0, errors.Wrap(err, "failed to count the released requests")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, 0, errors.Wrap(err, "failed to commit the ask cancellation")
+	}
+	return cancelled, createdMessage, released, nil
 }
 
 // ResolveQualityAgentAsk closes an ask once every request under it settled.

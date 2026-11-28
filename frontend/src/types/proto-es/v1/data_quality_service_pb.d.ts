@@ -12716,6 +12716,13 @@ export enum QualityAgentAskStatus {
    * @generated from enum value: QUALITY_AGENT_ASK_STATUS_DISMISSED = 4;
    */
   DISMISSED = 4,
+
+  /**
+   * The lead withdrew the question; the requests behind it returned to the lead.
+   *
+   * @generated from enum value: QUALITY_AGENT_ASK_STATUS_CANCELLED = 5;
+   */
+  CANCELLED = 5,
 }
 
 /**

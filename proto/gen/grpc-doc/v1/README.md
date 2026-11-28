@@ -9575,6 +9575,7 @@ QualityAgentAskStatus is the ask&#39;s lifecycle.
 | QUALITY_AGENT_ASK_STATUS_ANSWERED | 2 |  |
 | QUALITY_AGENT_ASK_STATUS_RESOLVED | 3 |  |
 | QUALITY_AGENT_ASK_STATUS_DISMISSED | 4 |  |
+| QUALITY_AGENT_ASK_STATUS_CANCELLED | 5 | The lead withdrew the question; the requests behind it returned to the lead. |
 
 
 

@@ -5658,6 +5658,7 @@ paths:
                         - QUALITY_AGENT_ASK_STATUS_ANSWERED
                         - QUALITY_AGENT_ASK_STATUS_RESOLVED
                         - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                        - QUALITY_AGENT_ASK_STATUS_CANCELLED
                     type: string
                     format: enum
                 - name: pageSize
@@ -5683,6 +5684,7 @@ paths:
                             - QUALITY_AGENT_ASK_STATUS_ANSWERED
                             - QUALITY_AGENT_ASK_STATUS_RESOLVED
                             - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                            - QUALITY_AGENT_ASK_STATUS_CANCELLED
                         type: string
                         format: enum
             responses:
@@ -14508,6 +14510,7 @@ components:
                         - QUALITY_AGENT_ASK_STATUS_ANSWERED
                         - QUALITY_AGENT_ASK_STATUS_RESOLVED
                         - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                        - QUALITY_AGENT_ASK_STATUS_CANCELLED
                     type: string
                     format: enum
                 title:

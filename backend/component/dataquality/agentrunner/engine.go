@@ -101,6 +101,7 @@ type Store interface {
 	ListQualityAgentAsks(ctx context.Context, agentID int64, statuses []store.QualityAgentAskStatus, limit int) ([]*store.QualityAgentAskMessage, error)
 	ListQualityAgentAsksByIDs(ctx context.Context, ids []int64) (map[int64]*store.QualityAgentAskMessage, error)
 	ResolveQualityAgentAsk(ctx context.Context, resourceID string, status store.QualityAgentAskStatus, at time.Time) (bool, error)
+	CancelQualityAgentAskAtomic(ctx context.Context, resourceID string, message *store.QualityAgentTranscriptMessage, at time.Time) (*store.QualityAgentAskMessage, *store.QualityAgentTranscriptMessage, int64, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the

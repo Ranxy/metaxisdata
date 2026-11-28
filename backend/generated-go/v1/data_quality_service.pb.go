@@ -2530,6 +2530,8 @@ const (
 	QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_ANSWERED    QualityAgentAskStatus = 2
 	QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_RESOLVED    QualityAgentAskStatus = 3
 	QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_DISMISSED   QualityAgentAskStatus = 4
+	// The lead withdrew the question; the requests behind it returned to the lead.
+	QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_CANCELLED QualityAgentAskStatus = 5
 )
 
 // Enum value maps for QualityAgentAskStatus.
@@ -2540,6 +2542,7 @@ var (
 		2: "QUALITY_AGENT_ASK_STATUS_ANSWERED",
 		3: "QUALITY_AGENT_ASK_STATUS_RESOLVED",
 		4: "QUALITY_AGENT_ASK_STATUS_DISMISSED",
+		5: "QUALITY_AGENT_ASK_STATUS_CANCELLED",
 	}
 	QualityAgentAskStatus_value = map[string]int32{
 		"QUALITY_AGENT_ASK_STATUS_UNSPECIFIED": 0,
@@ -2547,6 +2550,7 @@ var (
 		"QUALITY_AGENT_ASK_STATUS_ANSWERED":    2,
 		"QUALITY_AGENT_ASK_STATUS_RESOLVED":    3,
 		"QUALITY_AGENT_ASK_STATUS_DISMISSED":   4,
+		"QUALITY_AGENT_ASK_STATUS_CANCELLED":   5,
 	}
 )
 
@@ -25058,13 +25062,14 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\"QUALITY_AGENT_ASK_KIND_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fQUALITY_AGENT_ASK_KIND_QUESTION\x10\x01\x12\"\n" +
 	"\x1eQUALITY_AGENT_ASK_KIND_ANOMALY\x10\x02\x12#\n" +
-	"\x1fQUALITY_AGENT_ASK_KIND_APPROVAL\x10\x03*\xda\x01\n" +
+	"\x1fQUALITY_AGENT_ASK_KIND_APPROVAL\x10\x03*\x82\x02\n" +
 	"\x15QualityAgentAskStatus\x12(\n" +
 	"$QUALITY_AGENT_ASK_STATUS_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dQUALITY_AGENT_ASK_STATUS_OPEN\x10\x01\x12%\n" +
 	"!QUALITY_AGENT_ASK_STATUS_ANSWERED\x10\x02\x12%\n" +
 	"!QUALITY_AGENT_ASK_STATUS_RESOLVED\x10\x03\x12&\n" +
-	"\"QUALITY_AGENT_ASK_STATUS_DISMISSED\x10\x04*\xd8\x02\n" +
+	"\"QUALITY_AGENT_ASK_STATUS_DISMISSED\x10\x04\x12&\n" +
+	"\"QUALITY_AGENT_ASK_STATUS_CANCELLED\x10\x05*\xd8\x02\n" +
 	"\x15QualityAgentCaseState\x12(\n" +
 	"$QUALITY_AGENT_CASE_STATE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dQUALITY_AGENT_CASE_STATE_OPEN\x10\x01\x12&\n" +
