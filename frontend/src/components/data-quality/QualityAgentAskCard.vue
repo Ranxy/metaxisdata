@@ -1,10 +1,10 @@
 <template>
-  <div class="rounded-md border px-3 py-3 text-sm">
+  <div class="rounded-lg border bg-card px-3 py-3 text-sm">
     <div class="flex flex-wrap items-center gap-2">
-      <Badge variant="warning">
+      <Badge variant="secondary">
         {{ t(qualityAgentAskKindKey(ask.kind)) }}
       </Badge>
-      <Badge variant="secondary">
+      <Badge :variant="isOpen ? 'warning' : 'neutral'">
         {{ t(qualityAgentAskStatusKey(ask.status)) }}
       </Badge>
       <span
@@ -18,9 +18,31 @@
     <p class="mt-2 font-medium">
       {{ ask.title || t(qualityAgentAskKindKey(ask.kind)) }}
     </p>
-    <p class="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
-      {{ ask.question }}
-    </p>
+    <div class="mt-1.5">
+      <div
+        class="relative"
+        :class="isLong && !expanded ? 'max-h-40 overflow-hidden' : ''"
+      >
+        <AsyncMarkdown
+          mode="chat"
+          :content="ask.question"
+          :final="true"
+        />
+        <div
+          v-if="isLong && !expanded"
+          class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
+        />
+      </div>
+      <Button
+        v-if="isLong"
+        variant="link"
+        size="xs"
+        class="mt-1 h-auto p-0 text-xs"
+        @click="expanded = !expanded"
+      >
+        {{ expanded ? t("qualityAgent.askShowLess") : t("qualityAgent.askShowFull") }}
+      </Button>
+    </div>
     <div
       v-if="ask.targets.length > 0 || ask.requestCount > 0"
       class="mt-2 flex flex-wrap items-center gap-1"
@@ -48,7 +70,7 @@
 
     <div
       v-if="canApprove && qualityAgentAskIsApproval(ask)"
-      class="mt-3 flex justify-end"
+      class="mt-2 flex justify-end"
     >
       <Button
         size="sm"
@@ -61,7 +83,7 @@
     </div>
 
     <div
-      v-if="canReply && ask.status === QualityAgentAskStatus.OPEN"
+      v-if="canReply && isOpen"
       class="mt-3 space-y-2 border-t pt-3"
     >
       <textarea
@@ -92,7 +114,7 @@
     </div>
     <p
       v-else-if="ask.status === QualityAgentAskStatus.ANSWERED"
-      class="mt-3 border-t pt-3 text-xs text-muted-foreground"
+      class="mt-2 border-t pt-2 text-xs text-muted-foreground"
     >
       {{ t("qualityAgent.askAwaitingLead") }}
     </p>
@@ -100,8 +122,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -130,6 +153,18 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const reply = ref("");
+const expanded = ref(false);
+
+const isOpen = computed(() => props.ask.status === QualityAgentAskStatus.OPEN);
+
+// A question is prose, often a screenful of Markdown. It stays clamped so the
+// answer box is reachable without scrolling the whole question first; the
+// length test is a heuristic because the Markdown renderer is async and
+// measuring it would make the first paint jump.
+const isLong = computed(() => {
+  const question = props.ask.question;
+  return question.length > 180 || question.split("\n").length > 6;
+});
 
 function onEnter(event: KeyboardEvent) {
   // An IME uses Enter to confirm a candidate; sending then would submit half a word.
