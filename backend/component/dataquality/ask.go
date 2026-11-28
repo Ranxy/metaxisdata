@@ -112,11 +112,11 @@ func AskOptionLabels(ask *store.QualityAgentAskMessage) []string {
 			if label == "" || seen[label] {
 				continue
 			}
+			if len(labels) == MaxAskNotificationOptions {
+				return append(labels, "…")
+			}
 			seen[label] = true
 			labels = append(labels, label)
-			if len(labels) == MaxAskNotificationOptions {
-				return labels
-			}
 		}
 	}
 	return labels
@@ -193,7 +193,12 @@ func ValidateAskQuestions(questions []*storepb.QualityAgentAskQuestion) error {
 			}
 			seenRequests[name] = true
 		}
-		for _, value := range append(append([]string{question.Header, question.Detail, question.Question}, labelsOf(question)...), question.Requests...) {
+		values := []string{question.Header, question.Detail, question.Question}
+		for _, option := range question.Options {
+			values = append(values, option.Label, option.Description)
+		}
+		values = append(values, question.Requests...)
+		for _, value := range values {
 			if containsNUL(value) {
 				return common.Errorf(common.Invalid, "question %q contains a NUL character", id)
 			}
@@ -244,14 +249,6 @@ func ValidateAskQuestionCoverage(questions []*storepb.QualityAgentAskQuestion, r
 		}
 	}
 	return nil
-}
-
-func labelsOf(question *storepb.QualityAgentAskQuestion) []string {
-	labels := make([]string, 0, len(question.Options))
-	for _, option := range question.Options {
-		labels = append(labels, option.Label)
-	}
-	return labels
 }
 
 // NormalizeAnswers trims the answer's text and applies the single-select rule:

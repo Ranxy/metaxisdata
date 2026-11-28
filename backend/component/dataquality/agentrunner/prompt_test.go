@@ -1,6 +1,7 @@
 package agentrunner
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -166,6 +167,30 @@ func TestPendingOwnerAnswerBlockNamesTheAskAndQuestion(t *testing.T) {
 	require.Contains(t, block, "Keep it")
 	require.Contains(t, block, "requests: workspaces/ws/qualityAgentRequests/r1")
 	require.Contains(t, block, "delivered to: workspaces/ws/qualityAgentRequests/r1")
+}
+
+func TestPendingOwnerAnswerBlockTruncatesALongCustomAnswer(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Questions:   []*storepb.QualityAgentAskQuestion{{Id: "q1", Question: "Explain?"}},
+	}
+	custom := strings.Repeat("x", 1000)
+	content, err := dataquality.BuildAnswerEnvelope(ask, []*storepb.QualityAgentAskAnswer{
+		{Id: "q1", Custom: custom},
+	}, nil)
+	require.NoError(t, err)
+
+	block := pendingOwnerAnswerBlock([]*store.QualityAgentTranscriptMessage{{
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Intent:  storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		ReplyTo: "workspaces/ws/qualityAgentAsks/a1",
+		Content: content,
+	}}, 5)
+	require.Contains(t, block, strings.Repeat("x", 300))
+	require.NotContains(t, block, strings.Repeat("x", 301))
 }
 
 // A subagent's answer must name the request it settles; otherwise two open questions

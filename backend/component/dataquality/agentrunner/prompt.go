@@ -355,7 +355,7 @@ func pendingOwnerAnswerBlock(pending []*store.QualityAgentTranscriptMessage, lim
 				}
 			}
 			for _, answer := range envelope.Answers {
-				fmt.Fprintf(&builder, "\n  answer %s: %s", answer.ID, answerValue(answer))
+				fmt.Fprintf(&builder, "\n  answer %s: %s", answer.ID, truncateRunes(answerValue(answer), 300))
 			}
 			if len(envelope.Requests) > 0 {
 				fmt.Fprintf(&builder, "\n  delivered to: %s", strings.Join(envelope.Requests, ", "))

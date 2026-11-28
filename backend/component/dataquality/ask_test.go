@@ -157,9 +157,16 @@ func TestAskOptionLabelsDedupesAndBounds(t *testing.T) {
 	for index := 0; index < MaxAskNotificationOptions+1; index++ {
 		many = append(many, &storepb.QualityAgentAskQuestionOption{Label: fmt.Sprintf("option-%d", index)})
 	}
+	exact := many[:MaxAskNotificationOptions]
 	require.Len(t, AskOptionLabels(&store.QualityAgentAskMessage{Questions: []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "Which?", Options: exact},
+	}}), MaxAskNotificationOptions, "an exact fit is not marked as truncated")
+
+	truncated := AskOptionLabels(&store.QualityAgentAskMessage{Questions: []*storepb.QualityAgentAskQuestion{
 		{Id: "q1", Question: "Which?", Options: many},
-	}}), MaxAskNotificationOptions)
+	}})
+	require.Len(t, truncated, MaxAskNotificationOptions+1)
+	require.Equal(t, "…", truncated[MaxAskNotificationOptions])
 }
 
 func TestBuildRequestDismissedEnvelopeNamesTheRequest(t *testing.T) {
@@ -220,6 +227,19 @@ func TestValidateAskQuestionsRejectsDuplicateIDsAndLabels(t *testing.T) {
 		},
 	}}
 	require.ErrorContains(t, ValidateAskQuestions(duplicateLabels), "repeats option")
+}
+
+func TestValidateAskQuestionsRejectsNULInAnOptionDescription(t *testing.T) {
+	t.Parallel()
+
+	questions := []*storepb.QualityAgentAskQuestion{{
+		Id:       "q1",
+		Question: "Keep?",
+		Options: []*storepb.QualityAgentAskQuestionOption{
+			{Label: "Keep", Description: "a\x00b"},
+		},
+	}}
+	require.ErrorContains(t, ValidateAskQuestions(questions), "NUL")
 }
 
 func TestValidateAskQuestionCoverage(t *testing.T) {
