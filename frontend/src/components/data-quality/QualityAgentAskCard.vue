@@ -60,9 +60,36 @@
         >
           {{ question.detail }}
         </p>
+        <p
+          v-if="question.requests.length > 0"
+          class="text-xs text-muted-foreground"
+        >
+          {{ questionScope(question) }}
+        </p>
 
         <div
-          v-if="question.options.length > 0"
+          v-if="questions.length > 1 && isOpen && canReply"
+          class="flex items-center justify-end gap-2"
+        >
+          <span
+            v-if="isSkipped(question)"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("qualityAgent.answerSkippedHint") }}
+          </span>
+          <Button
+            variant="link"
+            size="xs"
+            class="h-auto p-0 text-xs"
+            :disabled="busy"
+            @click="toggleSkip(question)"
+          >
+            {{ isSkipped(question) ? t("qualityAgent.answerUnskip") : t("qualityAgent.answerSkip") }}
+          </Button>
+        </div>
+
+        <div
+          v-if="question.options.length > 0 && !isSkipped(question)"
           class="space-y-1.5"
         >
           <p class="text-xs text-muted-foreground">
@@ -91,7 +118,7 @@
         </div>
 
         <div
-          v-if="isOpen && canReply"
+          v-if="isOpen && canReply && !isSkipped(question)"
           class="space-y-1"
         >
           <textarea
@@ -105,7 +132,7 @@
           />
         </div>
         <p
-          v-else-if="isOpen"
+          v-else-if="isOpen && !isSkipped(question)"
           class="text-xs text-muted-foreground"
         >
           {{ t("qualityAgent.asksReadOnly") }}
@@ -143,7 +170,7 @@
           {{ t("qualityAgent.askDismissed") }}
         </p>
         <p
-          v-else
+          v-else-if="!isSkipped(question)"
           class="text-xs text-muted-foreground"
         >
           {{ t("qualityAgent.answerDelivered") }}
@@ -259,6 +286,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const selected = reactive<Record<string, string[]>>({});
 const custom = reactive<Record<string, string>>({});
+const skipped = reactive<Record<string, boolean>>({});
 const expanded = reactive<Record<string, boolean>>({});
 
 const isOpen = computed(() => props.ask.status === QualityAgentAskStatus.OPEN);
@@ -304,8 +332,26 @@ function onCustomInput(question: QualityAgentQuestion) {
   }
 }
 
+function isSkipped(question: QualityAgentQuestion): boolean {
+  return skipped[question.id] === true;
+}
+
+// A batch may leave a question unanswered on purpose. Only a batch shows this: a
+// single-question ask is dismissed instead, so "send an empty answer" stays
+// unambiguous.
+function toggleSkip(question: QualityAgentQuestion) {
+  if (isSkipped(question)) {
+    skipped[question.id] = false;
+    return;
+  }
+  skipped[question.id] = true;
+  selected[question.id] = [];
+  custom[question.id] = "";
+}
+
 function answerComplete(question: QualityAgentQuestion): boolean {
   return (
+    isSkipped(question) ||
     (selected[question.id]?.length ?? 0) > 0 ||
     (custom[question.id] ?? "").trim() !== ""
   );
@@ -321,6 +367,7 @@ watch(
     for (const question of list) {
       selected[question.id] ??= [];
       custom[question.id] ??= "";
+      skipped[question.id] ??= false;
     }
   },
   { immediate: true }
@@ -339,6 +386,18 @@ function isLong(question: QualityAgentQuestion): boolean {
   return (
     question.question.length > 180 || question.question.split("\n").length > 6
   );
+}
+
+function questionScope(question: QualityAgentQuestion): string {
+  const count = question.requests.length;
+  const target = props.ask.targets[0];
+  if (props.ask.targets.length === 1 && target) {
+    return t("qualityAgent.askQuestionTarget", {
+      target: target.path?.object || target.metaGuid,
+      count,
+    });
+  }
+  return t("qualityAgent.askQuestionRequestCount", { count });
 }
 
 function answerFor(question: QualityAgentQuestion) {
@@ -370,9 +429,9 @@ function send() {
     return;
   }
   const answers = questions.value.map((question) => {
-    const text = (custom[question.id] ?? "").trim();
+    const text = isSkipped(question) ? "" : (custom[question.id] ?? "").trim();
     const picks =
-      text !== "" && !question.multiSelect
+      isSkipped(question) || (text !== "" && !question.multiSelect)
         ? []
         : [...(selected[question.id] ?? [])];
     return create(QualityAgentAnswerSchema, {
@@ -385,6 +444,7 @@ function send() {
   for (const question of questions.value) {
     custom[question.id] = "";
     selected[question.id] = [];
+    skipped[question.id] = false;
   }
 }
 </script>

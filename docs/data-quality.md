@@ -571,12 +571,12 @@ issues). Reports are generated from records, do not call a model, and have no on
 - **Escalates.** A subagent that cannot settle a work item asks its lead; the lead either answers it or forwards it to you as an **ask**
 in **Needs you**. An ask can cover several targets and names the requests behind it. It may put several questions, each naming its own
 requests; a question may offer choices, including ones the target's agent proposed. The validated answer goes straight to the requests
-that question decides, so the target's agent acts on it without guessing, and an answered question refuses a second answer. A pending proposal still names the
+that question decides, so the target's agent acts on it without guessing, and an answered question refuses a second answer. In a batch
+you may skip an individual question; the target's agent is told it was skipped rather than answered. A pending proposal still names the
 check, the config field, the value, the kind of change and the agent's reason, and the value already passed the validation a save runs,
 so nothing has changed until you edit the check yourself. A report that finds new failures is an agent-level ask; a target holding no
 rows is a fact the report names rather than a question. Work items dedupe **per target**, and a case's terminal state closes the
-requests it raised. The owner answers or dismisses from the agent's home; answering resumes the
-target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
+requests it raised. The owner answers or dismisses from the agent's home; answering resumes the target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
 agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them or a person created or
 rejected the last one, and the owner also gets an in-app notification.
 - **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the
