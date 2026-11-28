@@ -517,9 +517,10 @@ func TestQualityAgentHTTPServerBatchAnswer(t *testing.T) {
 	require.Len(t, read.Msg.GetQuestions(), 2)
 	require.Equal(t, []string{dataquality.RequestName(first)}, read.Msg.GetQuestions()[0].GetRequests())
 
-	_, err = f.dataQuality.SendQualityAgentMessage(f.ctx, withToken(f.ownerToken, &v1pb.SendQualityAgentMessageRequest{
-		Name:    f.agentName,
-		ReplyTo: dataquality.AskName(created),
+	firstAnswer, err := f.dataQuality.SendQualityAgentMessage(f.ctx, withToken(f.ownerToken, &v1pb.SendQualityAgentMessageRequest{
+		Name:      f.agentName,
+		ReplyTo:   dataquality.AskName(created),
+		RequestId: "it-batch-http-answer",
 		Answers: []*v1pb.QualityAgentAnswer{
 			{Id: "first", Custom: "one day"},
 			{Id: "second", Custom: "seven days"},
@@ -530,6 +531,20 @@ func TestQualityAgentHTTPServerBatchAnswer(t *testing.T) {
 	require.Equal(t, "one day", f.getHTTPRequest(t, first.ResourceID).Resolution)
 	require.Equal(t, "seven days", f.getHTTPRequest(t, second.ResourceID).Resolution,
 		"each question's answer reaches its own request")
+
+	// The response may be lost after the commit. The same request_id must return the
+	// message that already landed, not "the question is no longer open".
+	replayed, err := f.dataQuality.SendQualityAgentMessage(f.ctx, withToken(f.ownerToken, &v1pb.SendQualityAgentMessageRequest{
+		Name:      f.agentName,
+		ReplyTo:   dataquality.AskName(created),
+		RequestId: "it-batch-http-answer",
+		Answers: []*v1pb.QualityAgentAnswer{
+			{Id: "first", Custom: "one day"},
+			{Id: "second", Custom: "seven days"},
+		},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, firstAnswer.Msg.GetSeq(), replayed.Msg.GetSeq(), "the retry returns the original answer")
 
 	require.Eventually(t, func() bool {
 		messages, err := f.env.Store.ListQualityAgentTranscriptMessages(f.ctx,

@@ -8666,7 +8666,9 @@ type QualityAgentAskQuestion struct {
 	Detail      string                           `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
 	Options     []*QualityAgentAskQuestionOption `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
 	MultiSelect bool                             `protobuf:"varint,6,opt,name=multi_select,json=multiSelect,proto3" json:"multi_select,omitempty"`
-	// Request resource names this question decides. Empty means the ask's request set.
+	// Request resource names this question decides. The engine fills the ask's
+	// request set for a single-question ask; empty is the legacy synthesized
+	// question, which covers every active request at answer time.
 	Requests      []string `protobuf:"bytes,7,rep,name=requests,proto3" json:"requests,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

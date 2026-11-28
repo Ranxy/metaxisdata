@@ -257,8 +257,9 @@ func IsSensitiveAuditField(key string) bool {
 		// The owner's conversation message. The ledger is permanent; the transcript
 		// table is the only place the text belongs. The field is deliberately named
 		// message_body rather than content so this does not redact the LLM/explain
-		// content fields of unrelated messages.
-		"messagebody", "message_body":
+		// content fields of unrelated messages. The structured answers to an ask are
+		// the same product prose and the same permanent-ledger problem.
+		"messagebody", "message_body", "answers":
 		return true
 	}
 	// A numeric output budget is not a credential. The generic "token" marker

@@ -41,6 +41,31 @@ func TestTargetProductsShareOneBasePrompt(t *testing.T) {
 	require.True(t, strings.HasSuffix(rendered, languageSection("en-US")), "the language contract closes the prompt")
 }
 
+// Every required field must also be declared, or a schema-obedient model is forced to
+// send a property the schema does not define. The ask tools are the ones this can
+// silently break: a batch ask used to be unreachable behind a required legacy question.
+func TestToolRequiredFieldsAreDeclared(t *testing.T) {
+	t.Parallel()
+
+	for _, spec := range append(targetToolSpecs(), conversationToolSpecs()...) {
+		parameters, ok := spec.parameters.(map[string]any)
+		if !ok {
+			continue
+		}
+		properties, ok := parameters["properties"].(map[string]any)
+		if !ok {
+			continue
+		}
+		required, ok := parameters["required"].([]string)
+		if !ok {
+			continue
+		}
+		for _, name := range required {
+			require.Contains(t, properties, name, "tool %q requires an undeclared field", spec.name)
+		}
+	}
+}
+
 func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	t.Parallel()
 

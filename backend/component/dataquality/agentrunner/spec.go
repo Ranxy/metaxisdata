@@ -147,9 +147,19 @@ func askQuestionParameters() map[string]any {
 }
 
 // askOwnerParameters is askQuestionParameters plus the optional requests the ask covers.
+// The legacy single-question fields stay declared for an in-flight transcript, but the
+// batch form is what the schema requires so a schema-obedient model can reach it.
 func askOwnerParameters() map[string]any {
 	parameters := askQuestionParameters()
-	parameters["requests"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+	legacy := askQuestionItemParameters()
+	for _, name := range []string{"question", "header", "detail", "options", "multi_select"} {
+		parameters[name] = legacy[name]
+	}
+	parameters["requests"] = map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": "request names this ask covers. Each question in a batch still names the subset it decides.",
+	}
 	return parameters
 }
 
@@ -479,8 +489,8 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "forward_request",
-			description: "Forward one or more subagent requests to the owner as one ask with one or more questions. A question may offer clickable options, and each question names the requests it decides. The owner's answer comes back as a delivered message.",
-			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"requests", "question"}},
+			description: "Forward one or more subagent requests to the owner as one ask with one or more questions. Use questions for the batch form; the legacy question form is still accepted for a single decision. A question may offer clickable options, and each question names the requests it decides. The owner's answer comes back as a delivered message.",
+			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"requests", "questions"}},
 			meta:        internalMeta(),
 		},
 		{
@@ -493,8 +503,8 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "ask_owner",
-			description: "Ask the owner one or more questions, optionally with clickable options and covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
-			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"question"}},
+			description: "Ask the owner one or more questions, optionally with clickable options and covering several requests. Use questions for the batch form; the legacy question form is still accepted for a single decision. This writes an owner-visible message and rings the doorbell; end the wake after it.",
+			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"questions"}},
 			meta:        internalMeta(),
 		},
 		{

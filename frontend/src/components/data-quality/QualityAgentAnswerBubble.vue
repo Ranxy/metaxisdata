@@ -65,7 +65,8 @@ interface AnswerQuestion {
 
 interface AnswerItem {
   id: string;
-  selected: string[];
+  // Older envelopes encoded a skipped question as null instead of [].
+  selected?: string[] | null;
   custom?: string;
 }
 
@@ -117,7 +118,7 @@ const envelope = computed<AnswerEnvelope | null>(() => {
     if (
       !answer ||
       typeof answer.id !== "string" ||
-      !Array.isArray(answer.selected)
+      (answer.selected != null && !Array.isArray(answer.selected))
     ) {
       return null;
     }
@@ -137,7 +138,7 @@ function valuesFor(id: string): string[] {
   if (!answer) {
     return [];
   }
-  const values = [...answer.selected];
+  const values = [...(answer.selected ?? [])];
   if ((answer.custom ?? "").trim() !== "") {
     values.push((answer.custom ?? "").trim());
   }

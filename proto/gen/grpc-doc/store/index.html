@@ -2807,7 +2807,9 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
                   <td>requests</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>Request resource names this question decides. Empty means the ask&#39;s request set. </p></td>
+                  <td><p>Request resource names this question decides. The engine fills the ask&#39;s
+request set for a single-question ask; empty is the legacy synthesized
+question, which covers every active request at answer time. </p></td>
                 </tr>
               
             </tbody>

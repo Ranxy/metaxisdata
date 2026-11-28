@@ -85,6 +85,11 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			return nil, askErr
 		}
 		ask = stored
+		// A successful answer or dismissal closes the ask. Resolve the same request_id
+		// first so a lost response can be retried without a false "no longer open".
+		if replay, found, replayErr := s.replayedAskMessage(ctx, workspaceID, ask, key); replayErr != nil || found {
+			return replay, replayErr
+		}
 		if ask.Status != store.QualityAgentAskStatusOpen {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
 				errors.New("the question is no longer open"))
@@ -148,6 +153,34 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		return nil, lockErr
 	}
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
+}
+
+// replayedAskMessage returns the response a retried request_id already produced. A
+// key that belongs to another ask is not a replay, so a copied request_id cannot read
+// an unrelated message.
+func (s *DataQualityService) replayedAskMessage(ctx context.Context, workspaceID string, ask *store.QualityAgentAskMessage, key string) (*connect.Response[v1pb.QualityAgentSessionMessage], bool, error) {
+	if ask == nil || ask.ConversationSessionID == nil || key == "" {
+		return nil, false, nil
+	}
+	message, err := s.store.GetQualityAgentTranscriptMessageByKey(ctx, *ask.ConversationSessionID, key)
+	if err != nil {
+		return nil, false, err
+	}
+	if message == nil {
+		return nil, false, nil
+	}
+	if message.ReplyTo != dataquality.AskName(ask) {
+		return nil, false, connect.NewError(connect.CodeAlreadyExists,
+			errors.New("request_id was already used by another message"))
+	}
+	conversation, err := s.store.GetQualityAgentSessionByID(ctx, *ask.ConversationSessionID)
+	if err != nil {
+		return nil, false, err
+	}
+	if conversation == nil {
+		return nil, false, nil
+	}
+	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), true, nil
 }
 
 // answerQualityAgentAsk validates one owner answer, builds the lead and per-request
@@ -350,6 +383,10 @@ func storepbRequestDismissedMessage(subagent *store.QualityAgentSessionMessage, 
 // owner's message, the ask/request states and the subagent notices share one
 // transaction, so a dismissal can never tell only half the story.
 func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, ask *store.QualityAgentAskMessage, content, key string, limit int) (*connect.Response[v1pb.QualityAgentSessionMessage], error) {
+	dismissContent, err := dataquality.BuildDismissEnvelope(ask, content)
+	if err != nil {
+		return nil, err
+	}
 	requestsByAsk, err := s.store.ListQualityAgentRequestsByAskIDs(ctx, []int64{ask.ID})
 	if err != nil {
 		return nil, err
@@ -404,7 +441,7 @@ func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspa
 			Wake:           conversation.WakeCount + 1,
 			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
-			Content:        content,
+			Content:        dismissContent,
 			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
 			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
 			ReplyTo:        dataquality.AskName(ask),

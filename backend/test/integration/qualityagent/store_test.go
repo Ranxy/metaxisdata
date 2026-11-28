@@ -582,3 +582,80 @@ func TestQualityAgentAskAnswerDeliversEachQuestionToItsRequest(t *testing.T) {
 	require.True(t, firstAnswer, "the first request's answer reached the subagent")
 	require.True(t, secondAnswer, "the second request's answer reached the subagent")
 }
+
+// A batch may leave one question unanswered on purpose. The empty answer is still
+// delivered to that question's request as the literal "skipped", not as a resolution
+// the agent could mistake for a decision.
+func TestQualityAgentAskEmptyAnswerIsDeliveredAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	f := newDraftAgent(t)
+	request, _ := f.create(t, raiseOptions{dedupeKey: "it-skip-r", question: "Optional?"})
+	askMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Optional?",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-skip-question",
+	}
+	ask := &store.QualityAgentAskMessage{
+		WorkspaceID: f.env.workspaceID, AgentID: f.agent.ID, Kind: store.QualityAgentAskKindQuestion,
+		Title: "Optional", Question: "Optional?",
+		Questions: []*storepb.QualityAgentAskQuestion{{
+			Id: "q1", Question: "Optional?", Requests: []string{dataquality.RequestName(request)},
+		}},
+		TargetGUID: f.targetGUID, TargetType: storepb.MetaType_TABLE, DedupeKey: "it-skip-ask",
+	}
+	created, _, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead, askMessage,
+		[]*store.QualityAgentRequestMessage{request}, time.Now().UTC())
+	require.NoError(t, err)
+
+	answers := []*storepb.QualityAgentAskAnswer{{Id: "q1"}}
+	content, text, err := dataquality.BuildRequestAnswerEnvelope(created, request, created.Questions[0], answers[0])
+	require.NoError(t, err)
+	require.Equal(t, "skipped", text)
+	leadMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		Content:        `{"kind":"answer_to_ask"}`,
+		ReplyTo:        dataquality.AskName(created),
+		IdempotencyKey: "it-skip-lead",
+	}
+	delivery := &store.QualityAgentRequestDelivery{
+		Request:  request,
+		Subagent: f.session,
+		Message: &store.QualityAgentTranscriptMessage{
+			Wake:           f.session.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+			Content:        content,
+			ReplyTo:        dataquality.RequestName(request),
+			IdempotencyKey: "it-skip-sub",
+		},
+		Resolution: text,
+	}
+	_, _, delivered, err := f.env.store.AnswerQualityAgentAskAtomic(f.ctx, created.ResourceID, answers,
+		int32(f.agent.PrincipalID), leadMessage, []*store.QualityAgentRequestDelivery{delivery}, time.Now().UTC())
+	require.NoError(t, err)
+	require.Len(t, delivered, 1)
+	require.Equal(t, "skipped", f.getRequest(t, request.ResourceID).Resolution)
+
+	messages, err := f.env.store.ListQualityAgentTranscriptMessages(f.ctx, &store.FindQualityAgentTranscriptMessage{
+		SessionID: f.session.ID, Limit: 100,
+	})
+	require.NoError(t, err)
+	var skipped bool
+	for _, message := range messages {
+		envelope, ok := dataquality.ParseRequestAnswerEnvelope(message.Content)
+		if ok && envelope.Request == dataquality.RequestName(request) && envelope.Text == "skipped" {
+			skipped = true
+		}
+	}
+	require.True(t, skipped, "the subagent sees the skip as skipped, not as an unreadable answer")
+}

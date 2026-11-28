@@ -46,6 +46,18 @@ describe("QualityAgentAnswerBubble", () => {
     expect(wrapper.text()).toContain("Skipped");
   });
 
+  it("renders a skipped answer encoded as a null selection", () => {
+    const content = JSON.stringify({
+      kind: "answer_to_ask",
+      ask: "workspaces/ws/qualityAgentAsks/a1",
+      questions: [{ id: "q1", question: "Keep the check?" }],
+      answers: [{ id: "q1", selected: null }],
+    });
+    const wrapper = mountBubble(content);
+    expect(wrapper.text()).not.toContain(content);
+    expect(wrapper.text()).toContain("Skipped");
+  });
+
   it("renders every question and answer of a batch in order", () => {
     const wrapper = mountBubble(
       JSON.stringify({

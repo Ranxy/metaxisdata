@@ -171,6 +171,18 @@ describe("QualityAgentPage", () => {
     });
 
     const wrapper = await mountPage();
+    expect(mocks.listQualityAgentAsksPage).toHaveBeenCalledWith(AGENT, {
+      status: QualityAgentAskStatus.OPEN,
+      pageSize: 50,
+    });
+    expect(mocks.listQualityAgentAsksPage).toHaveBeenCalledWith(AGENT, {
+      statuses: [
+        QualityAgentAskStatus.ANSWERED,
+        QualityAgentAskStatus.RESOLVED,
+        QualityAgentAskStatus.DISMISSED,
+      ],
+      pageSize: 20,
+    });
     expect(wrapper.text()).toContain("Keep the check?");
     expect(wrapper.text()).not.toContain("The sparse batch is expected?");
 
@@ -320,6 +332,56 @@ describe("QualityAgentPage", () => {
     expect(options.replyTo).toBe(ask.name);
     expect(options.answers[0].id).toBe("q1");
     expect(options.answers[0].custom).toBe("Keep it for now");
+    wrapper.unmount();
+  });
+
+  it("does not offer a batch ask in the composer selector", async () => {
+    const ask = create(QualityAgentAskSchema, {
+      name: "workspaces/ws/qualityAgentAsks/a-batch",
+      kind: QualityAgentAskKind.QUESTION,
+      status: QualityAgentAskStatus.OPEN,
+      title: "Two decisions",
+      question: "First? Second?",
+      questions: [
+        create(QualityAgentQuestionSchema, { id: "first", question: "First?" }),
+        create(QualityAgentQuestionSchema, {
+          id: "second",
+          question: "Second?",
+        }),
+      ],
+    });
+    mocks.listQualityAgentAsksPage.mockResolvedValue({
+      asks: [ask],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.findComponent(Select).exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("renders a dismissal as a decision, not ordinary chat", async () => {
+    const envelope = JSON.stringify({
+      kind: "dismiss_ask",
+      ask: "workspaces/ws/qualityAgentAsks/a-dismissed",
+      questions: [{ id: "q1", question: "Which mail rule should apply?" }],
+    });
+    mocks.listQualityAgentConversationMessages.mockResolvedValue({
+      qualityAgentConversationMessages: [
+        create(QualityAgentSessionMessageSchema, {
+          name: "workspaces/ws/qualityAgentSessions/s1/messages/10",
+          seq: 10n,
+          role: QualityAgentMessageRole.USER,
+          intent: QualityAgentMessageIntent.DISMISS,
+          content: envelope,
+          replyTo: "workspaces/ws/qualityAgentAsks/a-dismissed",
+        }),
+      ],
+    });
+
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain("Ask dismissed");
+    expect(wrapper.text()).toContain("Which mail rule should apply?");
+    expect(wrapper.text()).not.toContain(envelope);
     wrapper.unmount();
   });
 

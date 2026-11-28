@@ -115,6 +115,10 @@
                         v-if="isAskAnswer(message)"
                         :content="message.content"
                       />
+                      <QualityAgentDismissBubble
+                        v-else-if="isAskDismissal(message)"
+                        :content="message.content"
+                      />
                       <p
                         v-else
                         class="whitespace-pre-wrap break-words rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
@@ -196,7 +200,10 @@
                     :model-value="replyAskName || 'none'"
                     @update:model-value="setReplyAsk"
                   >
-                    <SelectTrigger class="h-7 w-auto min-w-52 text-xs">
+                    <SelectTrigger
+                      class="h-7 w-auto min-w-52 text-xs"
+                      :aria-label="t('qualityAgent.replyingTo')"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -674,6 +681,7 @@ import QualityAgentAnswerBubble from "@/components/data-quality/QualityAgentAnsw
 import QualityAgentAskCard from "@/components/data-quality/QualityAgentAskCard.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
 import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
+import QualityAgentDismissBubble from "@/components/data-quality/QualityAgentDismissBubble.vue";
 import QualityAgentSubagentList from "@/components/data-quality/QualityAgentSubagentList.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -1131,6 +1139,15 @@ function isAskAnswer(message: QualityAgentSessionMessage): boolean {
   );
 }
 
+/** Whether a message closes an ask; it must not render as ordinary chat. */
+function isAskDismissal(message: QualityAgentSessionMessage): boolean {
+  return (
+    message.role === QualityAgentMessageRole.USER &&
+    message.intent === QualityAgentMessageIntent.DISMISS &&
+    message.replyTo.includes("/qualityAgentAsks/")
+  );
+}
+
 /** Answer one ask through the one owner channel; the ask link is what marks it. */
 async function replyToAsk(
   ask: QualityAgentAsk,
@@ -1152,6 +1169,7 @@ async function replyToAsk(
     return true;
   } catch (err) {
     notify.error(formatError(err));
+    await Promise.all([loadAsks(), loadConversation()]);
     return false;
   } finally {
     busy.value = false;
@@ -1179,6 +1197,7 @@ async function dismissAsk(ask: QualityAgentAsk) {
     notify.success(t("qualityAgent.askDismissed"));
   } catch (err) {
     notify.error(formatError(err));
+    await Promise.all([loadAsks(), loadConversation()]);
   } finally {
     busy.value = false;
   }

@@ -112,11 +112,11 @@ func AskOptionLabels(ask *store.QualityAgentAskMessage) []string {
 			if label == "" || seen[label] {
 				continue
 			}
+			if len(labels) == MaxAskNotificationOptions {
+				return append(labels, "…")
+			}
 			seen[label] = true
 			labels = append(labels, label)
-			if len(labels) == MaxAskNotificationOptions {
-				return labels
-			}
 		}
 	}
 	return labels
@@ -193,7 +193,12 @@ func ValidateAskQuestions(questions []*storepb.QualityAgentAskQuestion) error {
 			}
 			seenRequests[name] = true
 		}
-		for _, value := range append(append([]string{question.Header, question.Detail, question.Question}, labelsOf(question)...), question.Requests...) {
+		values := []string{question.Header, question.Detail, question.Question}
+		for _, option := range question.Options {
+			values = append(values, option.Label, option.Description)
+		}
+		values = append(values, question.Requests...)
+		for _, value := range values {
 			if containsNUL(value) {
 				return common.Errorf(common.Invalid, "question %q contains a NUL character", id)
 			}
@@ -244,14 +249,6 @@ func ValidateAskQuestionCoverage(questions []*storepb.QualityAgentAskQuestion, r
 		}
 	}
 	return nil
-}
-
-func labelsOf(question *storepb.QualityAgentAskQuestion) []string {
-	labels := make([]string, 0, len(question.Options))
-	for _, option := range question.Options {
-		labels = append(labels, option.Label)
-	}
-	return labels
 }
 
 // NormalizeAnswers trims the answer's text and applies the single-select rule:
@@ -404,6 +401,47 @@ func BuildRequestDismissedEnvelope(ask *store.QualityAgentAskMessage, request *s
 	return string(encoded), nil
 }
 
+// DismissEnvelope is the owner-facing content of a dismissed ask. It keeps the
+// question that was closed, so the transcript reads as a decision instead of an
+// ordinary chat line.
+type DismissEnvelope struct {
+	Kind      string           `json:"kind"`
+	Ask       string           `json:"ask"`
+	Questions []AnswerQuestion `json:"questions,omitempty"`
+	Text      string           `json:"text,omitempty"`
+}
+
+// BuildDismissEnvelope renders the content written when the owner dismisses an ask.
+func BuildDismissEnvelope(ask *store.QualityAgentAskMessage, text string) (string, error) {
+	if ask == nil {
+		return "", common.Errorf(common.Invalid, "a dismissal needs an ask")
+	}
+	envelope := DismissEnvelope{
+		Kind:      "dismiss_ask",
+		Ask:       AskName(ask),
+		Questions: answerQuestions(QuestionsOf(ask)),
+		Text:      strings.TrimSpace(text),
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return "", common.Errorf(common.Internal, "failed to encode the dismissal: %v", err)
+	}
+	return string(encoded), nil
+}
+
+// ParseDismissEnvelope reads a dismissal envelope. An unreadable message is not a
+// dismissal.
+func ParseDismissEnvelope(content string) (*DismissEnvelope, bool) {
+	var envelope DismissEnvelope
+	if err := json.Unmarshal([]byte(content), &envelope); err != nil {
+		return nil, false
+	}
+	if envelope.Kind != "dismiss_ask" || envelope.Ask == "" {
+		return nil, false
+	}
+	return &envelope, true
+}
+
 // BuildDecisionAnswerEnvelope is the envelope for a decision the lead made itself
 // rather than relaying an owner answer. The request id is still the pairing key, so
 // the subagent can tell which question this answers.
@@ -425,7 +463,7 @@ func BuildDecisionAnswerEnvelope(request *store.QualityAgentRequestMessage, answ
 		}},
 		Answers: []AnswerItem{{
 			ID:       "request",
-			Selected: append([]string(nil), selected...),
+			Selected: append([]string{}, selected...),
 			Custom:   strings.TrimSpace(custom),
 		}},
 		Text: text,
@@ -517,7 +555,7 @@ func answerItems(answers []*storepb.QualityAgentAskAnswer) []AnswerItem {
 		}
 		converted = append(converted, AnswerItem{
 			ID:       answer.Id,
-			Selected: append([]string(nil), answer.Selected...),
+			Selected: append([]string{}, answer.Selected...),
 			Custom:   answer.Custom,
 		})
 	}

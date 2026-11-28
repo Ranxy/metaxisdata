@@ -760,6 +760,25 @@ func (s *Store) ResetStaleQualityAgentSessionLeases(ctx context.Context, now tim
 	return affected, nil
 }
 
+// GetQualityAgentTranscriptMessageByKey returns the row a retried write already
+// appended. The API uses it to make an answer or dismissal idempotent before the
+// ask's status guard would reject the retry. nil means the key has not been used.
+func (s *Store) GetQualityAgentTranscriptMessageByKey(ctx context.Context, sessionID int64, idempotencyKey string) (*QualityAgentTranscriptMessage, error) {
+	if sessionID == 0 || idempotencyKey == "" {
+		return nil, nil
+	}
+	message, err := scanQualityAgentTranscript(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityAgentTranscriptColumns+` FROM quality_agent_message
+		 WHERE session_id = $1 AND idempotency_key = $2`, sessionID, idempotencyKey))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the idempotent session message")
+	}
+	return message, nil
+}
+
 // AppendQualityAgentTranscriptMessage appends one transcript entry. Appends to one
 // session are serialized with the session row lock, so the runner and an API/event
 // writer can race without allocating the same seq or losing a row to a unique
