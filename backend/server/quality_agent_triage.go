@@ -203,8 +203,14 @@ func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string,
 		}
 		return nil, nil, nil, err
 	}
-	// The drafting result names each draft, not only its title: the model must be able
-	// to flag or withdraw a proposal it just created without a second read of the queue.
+	return draftedChecks(queued), rejections, summary, nil
+}
+
+// draftedChecks names each draft a drafting call queued, not only its title: the model
+// must be able to flag or withdraw a proposal it just created without a second read of
+// the queue. A config this build cannot map keeps an empty ruleType instead of failing
+// the whole result.
+func draftedChecks(queued []*store.QualitySuggestionMessage) []agentrunner.DraftedCheck {
 	drafts := make([]agentrunner.DraftedCheck, 0, len(queued))
 	for _, suggestion := range queued {
 		draft := agentrunner.DraftedCheck{
@@ -217,7 +223,7 @@ func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string,
 		}
 		drafts = append(drafts, draft)
 	}
-	return drafts, rejections, summary, nil
+	return drafts
 }
 
 // triageAllowedRuleTypes renders the check types draft_checks can propose on a

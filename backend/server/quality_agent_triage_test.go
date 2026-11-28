@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func TestTriageEnumValuesBoundsTheList(t *testing.T) {
@@ -51,4 +52,43 @@ func TestTriageAllowedRuleTypesMatchesTheDraftVocabulary(t *testing.T) {
 	require.Contains(t, table, "RANGE")
 	require.Contains(t, table, "UNIQUE")
 	require.NotContains(t, table, "CUSTOM_SQL", "custom SQL runs on a table but is never drafted")
+}
+
+// The drafting result is how the model learns which proposals it just created; losing
+// the id, the rule type or the confidence would force a second read of the queue and
+// make same-wake self-correction impossible. A config this build cannot map must keep
+// the draft listed instead of failing the result.
+func TestDraftedChecksNamesWhatTheModelMustActOn(t *testing.T) {
+	t.Parallel()
+
+	minRows := int64(1)
+	drafts := draftedChecks([]*store.QualitySuggestionMessage{
+		{
+			ResourceID: "draft-1",
+			Confidence: 0.8,
+			Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+				Rule: &storepb.QualityRuleDraftConfig{
+					Title: "orders row count",
+					Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+						RowCount: &storepb.RowCountConfig{MinRows: &minRows},
+					}},
+				},
+			}},
+		},
+		{
+			ResourceID: "draft-2",
+			Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+				Rule: &storepb.QualityRuleDraftConfig{Title: "unknown config"},
+			}},
+		},
+	})
+	require.Len(t, drafts, 2)
+	require.Equal(t, "qualitySuggestions/draft-1", drafts[0].ID)
+	require.Equal(t, "orders row count", drafts[0].Title)
+	require.Equal(t, "ROW_COUNT", drafts[0].RuleType)
+	require.Equal(t, 0.8, drafts[0].Confidence)
+	require.Equal(t, "qualitySuggestions/draft-2", drafts[1].ID)
+	require.Empty(t, drafts[1].RuleType, "an unmapped config stays nameless rather than failing the result")
+
+	require.Empty(t, draftedChecks(nil), "an empty drafting pass names no drafts")
 }
