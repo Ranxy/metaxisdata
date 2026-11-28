@@ -8660,12 +8660,14 @@ func (x *QualityAgentAskQuestionOption) GetDescription() string {
 type QualityAgentAskQuestion struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Stable within the ask; echoed by the answer.
-	Id            string                           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Header        string                           `protobuf:"bytes,2,opt,name=header,proto3" json:"header,omitempty"`
-	Question      string                           `protobuf:"bytes,3,opt,name=question,proto3" json:"question,omitempty"`
-	Detail        string                           `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
-	Options       []*QualityAgentAskQuestionOption `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
-	MultiSelect   bool                             `protobuf:"varint,6,opt,name=multi_select,json=multiSelect,proto3" json:"multi_select,omitempty"`
+	Id          string                           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Header      string                           `protobuf:"bytes,2,opt,name=header,proto3" json:"header,omitempty"`
+	Question    string                           `protobuf:"bytes,3,opt,name=question,proto3" json:"question,omitempty"`
+	Detail      string                           `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	Options     []*QualityAgentAskQuestionOption `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
+	MultiSelect bool                             `protobuf:"varint,6,opt,name=multi_select,json=multiSelect,proto3" json:"multi_select,omitempty"`
+	// Request resource names this question decides. Empty means the ask's request set.
+	Requests      []string `protobuf:"bytes,7,rep,name=requests,proto3" json:"requests,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8740,6 +8742,13 @@ func (x *QualityAgentAskQuestion) GetMultiSelect() bool {
 		return x.MultiSelect
 	}
 	return false
+}
+
+func (x *QualityAgentAskQuestion) GetRequests() []string {
+	if x != nil {
+		return x.Requests
+	}
+	return nil
 }
 
 // QualityAgentAskQuestionList is the JSONB payload of
@@ -8892,6 +8901,60 @@ func (x *QualityAgentAskAnswerList) GetAnswers() []*QualityAgentAskAnswer {
 		return x.Answers
 	}
 	return nil
+}
+
+// QualityAgentRequestChoice is the JSONB payload of quality_agent_request.options:
+// the choices a subagent offered with a QUESTION, for the lead to forward.
+type QualityAgentRequestChoice struct {
+	state         protoimpl.MessageState           `protogen:"open.v1"`
+	Options       []*QualityAgentAskQuestionOption `protobuf:"bytes,1,rep,name=options,proto3" json:"options,omitempty"`
+	MultiSelect   bool                             `protobuf:"varint,2,opt,name=multi_select,json=multiSelect,proto3" json:"multi_select,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityAgentRequestChoice) Reset() {
+	*x = QualityAgentRequestChoice{}
+	mi := &file_store_data_quality_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityAgentRequestChoice) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityAgentRequestChoice) ProtoMessage() {}
+
+func (x *QualityAgentRequestChoice) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityAgentRequestChoice.ProtoReflect.Descriptor instead.
+func (*QualityAgentRequestChoice) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *QualityAgentRequestChoice) GetOptions() []*QualityAgentAskQuestionOption {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+func (x *QualityAgentRequestChoice) GetMultiSelect() bool {
+	if x != nil {
+		return x.MultiSelect
+	}
+	return false
 }
 
 var File_store_data_quality_proto protoreflect.FileDescriptor
@@ -9513,14 +9576,15 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\trationale\x18\x05 \x01(\tR\trationale\"W\n" +
 	"\x1dQualityAgentAskQuestionOption\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\"\xe4\x01\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"\x80\x02\n" +
 	"\x17QualityAgentAskQuestion\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06header\x18\x02 \x01(\tR\x06header\x12\x1a\n" +
 	"\bquestion\x18\x03 \x01(\tR\bquestion\x12\x16\n" +
 	"\x06detail\x18\x04 \x01(\tR\x06detail\x12J\n" +
 	"\aoptions\x18\x05 \x03(\v20.metaxisdata.store.QualityAgentAskQuestionOptionR\aoptions\x12!\n" +
-	"\fmulti_select\x18\x06 \x01(\bR\vmultiSelect\"g\n" +
+	"\fmulti_select\x18\x06 \x01(\bR\vmultiSelect\x12\x1a\n" +
+	"\brequests\x18\a \x03(\tR\brequests\"g\n" +
 	"\x1bQualityAgentAskQuestionList\x12H\n" +
 	"\tquestions\x18\x01 \x03(\v2*.metaxisdata.store.QualityAgentAskQuestionR\tquestions\"[\n" +
 	"\x15QualityAgentAskAnswer\x12\x0e\n" +
@@ -9528,7 +9592,10 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\bselected\x18\x02 \x03(\tR\bselected\x12\x16\n" +
 	"\x06custom\x18\x03 \x01(\tR\x06custom\"_\n" +
 	"\x19QualityAgentAskAnswerList\x12B\n" +
-	"\aanswers\x18\x01 \x03(\v2(.metaxisdata.store.QualityAgentAskAnswerR\aanswers*\xfe\x05\n" +
+	"\aanswers\x18\x01 \x03(\v2(.metaxisdata.store.QualityAgentAskAnswerR\aanswers\"\x8a\x01\n" +
+	"\x19QualityAgentRequestChoice\x12J\n" +
+	"\aoptions\x18\x01 \x03(\v20.metaxisdata.store.QualityAgentAskQuestionOptionR\aoptions\x12!\n" +
+	"\fmulti_select\x18\x02 \x01(\bR\vmultiSelect*\xfe\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +
@@ -9820,7 +9887,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 40)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 72)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                    // 0: metaxisdata.store.QualityRuleType
 	(QualityStandardCode)(0),                // 1: metaxisdata.store.QualityStandardCode
@@ -9934,8 +10001,9 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*QualityAgentAskQuestionList)(nil),     // 109: metaxisdata.store.QualityAgentAskQuestionList
 	(*QualityAgentAskAnswer)(nil),           // 110: metaxisdata.store.QualityAgentAskAnswer
 	(*QualityAgentAskAnswerList)(nil),       // 111: metaxisdata.store.QualityAgentAskAnswerList
-	(*timestamppb.Timestamp)(nil),           // 112: google.protobuf.Timestamp
-	(MetaType)(0),                           // 113: metaxisdata.store.MetaType
+	(*QualityAgentRequestChoice)(nil),       // 112: metaxisdata.store.QualityAgentRequestChoice
+	(*timestamppb.Timestamp)(nil),           // 113: google.protobuf.Timestamp
+	(MetaType)(0),                           // 114: metaxisdata.store.MetaType
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	42,  // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -9948,7 +10016,7 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	47,  // 7: metaxisdata.store.SegmentObservation.observed:type_name -> metaxisdata.store.SegmentRecord
 	47,  // 8: metaxisdata.store.SegmentObservation.new_segments:type_name -> metaxisdata.store.SegmentRecord
 	47,  // 9: metaxisdata.store.SegmentObservation.disappeared:type_name -> metaxisdata.store.SegmentRecord
-	112, // 10: metaxisdata.store.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
+	113, // 10: metaxisdata.store.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
 	49,  // 11: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
 	51,  // 12: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
 	55,  // 13: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
@@ -9991,7 +10059,7 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	1,   // 50: metaxisdata.store.StandardCodeConfig.standard:type_name -> metaxisdata.store.QualityStandardCode
 	81,  // 51: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
 	23,  // 52: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
-	113, // 53: metaxisdata.store.CrossTableReference.meta_type:type_name -> metaxisdata.store.MetaType
+	114, // 53: metaxisdata.store.CrossTableReference.meta_type:type_name -> metaxisdata.store.MetaType
 	40,  // 54: metaxisdata.store.CrossTableReference.path:type_name -> metaxisdata.store.QualityTargetPath
 	23,  // 55: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
 	23,  // 56: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
@@ -10008,31 +10076,31 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	90,  // 67: metaxisdata.store.QualityContractSettings.intent:type_name -> metaxisdata.store.QualityContractIntent
 	25,  // 68: metaxisdata.store.QualityContractPlanCoverage.property:type_name -> metaxisdata.store.QualityCoverageProperty
 	27,  // 69: metaxisdata.store.QualityContractPlanCoverage.source:type_name -> metaxisdata.store.QualityCoverageSource
-	112, // 70: metaxisdata.store.QualityAgentSessionContextUsage.measured_at:type_name -> google.protobuf.Timestamp
+	113, // 70: metaxisdata.store.QualityAgentSessionContextUsage.measured_at:type_name -> google.protobuf.Timestamp
 	28,  // 71: metaxisdata.store.QualityAgentSession.state:type_name -> metaxisdata.store.QualityAgentSessionState
 	94,  // 72: metaxisdata.store.QualityAgentSession.engine_state:type_name -> metaxisdata.store.QualityAgentSessionEngineState
-	112, // 73: metaxisdata.store.QualityAgentSession.next_wake_at:type_name -> google.protobuf.Timestamp
-	112, // 74: metaxisdata.store.QualityAgentSession.lease_until:type_name -> google.protobuf.Timestamp
-	112, // 75: metaxisdata.store.QualityAgentSession.created_at:type_name -> google.protobuf.Timestamp
-	112, // 76: metaxisdata.store.QualityAgentSession.updated_at:type_name -> google.protobuf.Timestamp
-	112, // 77: metaxisdata.store.QualityAgentSession.archived_at:type_name -> google.protobuf.Timestamp
+	113, // 73: metaxisdata.store.QualityAgentSession.next_wake_at:type_name -> google.protobuf.Timestamp
+	113, // 74: metaxisdata.store.QualityAgentSession.lease_until:type_name -> google.protobuf.Timestamp
+	113, // 75: metaxisdata.store.QualityAgentSession.created_at:type_name -> google.protobuf.Timestamp
+	113, // 76: metaxisdata.store.QualityAgentSession.updated_at:type_name -> google.protobuf.Timestamp
+	113, // 77: metaxisdata.store.QualityAgentSession.archived_at:type_name -> google.protobuf.Timestamp
 	29,  // 78: metaxisdata.store.QualityAgentSession.mode:type_name -> metaxisdata.store.QualityAgentSessionMode
 	95,  // 79: metaxisdata.store.QualityAgentSession.context_usage:type_name -> metaxisdata.store.QualityAgentSessionContextUsage
 	30,  // 80: metaxisdata.store.QualityAgentSession.role:type_name -> metaxisdata.store.QualityAgentSessionRole
-	112, // 81: metaxisdata.store.QualityAgentSession.last_reviewed_at:type_name -> google.protobuf.Timestamp
+	113, // 81: metaxisdata.store.QualityAgentSession.last_reviewed_at:type_name -> google.protobuf.Timestamp
 	31,  // 82: metaxisdata.store.QualityAgentEnrollment.state:type_name -> metaxisdata.store.QualityAgentEnrollmentState
 	29,  // 83: metaxisdata.store.QualityAgentEnrollment.mode:type_name -> metaxisdata.store.QualityAgentSessionMode
-	112, // 84: metaxisdata.store.QualityAgentEnrollment.last_triaged_at:type_name -> google.protobuf.Timestamp
-	112, // 85: metaxisdata.store.QualityAgentEnrollment.next_review_at:type_name -> google.protobuf.Timestamp
-	112, // 86: metaxisdata.store.QualityAgentEnrollment.discovered_at:type_name -> google.protobuf.Timestamp
-	112, // 87: metaxisdata.store.QualityAgentEnrollment.last_seen_at:type_name -> google.protobuf.Timestamp
-	112, // 88: metaxisdata.store.QualityAgentEnrollment.created_at:type_name -> google.protobuf.Timestamp
-	112, // 89: metaxisdata.store.QualityAgentEnrollment.updated_at:type_name -> google.protobuf.Timestamp
+	113, // 84: metaxisdata.store.QualityAgentEnrollment.last_triaged_at:type_name -> google.protobuf.Timestamp
+	113, // 85: metaxisdata.store.QualityAgentEnrollment.next_review_at:type_name -> google.protobuf.Timestamp
+	113, // 86: metaxisdata.store.QualityAgentEnrollment.discovered_at:type_name -> google.protobuf.Timestamp
+	113, // 87: metaxisdata.store.QualityAgentEnrollment.last_seen_at:type_name -> google.protobuf.Timestamp
+	113, // 88: metaxisdata.store.QualityAgentEnrollment.created_at:type_name -> google.protobuf.Timestamp
+	113, // 89: metaxisdata.store.QualityAgentEnrollment.updated_at:type_name -> google.protobuf.Timestamp
 	98,  // 90: metaxisdata.store.QualityToolCallList.tool_calls:type_name -> metaxisdata.store.QualityToolCall
 	32,  // 91: metaxisdata.store.QualityAgentMessage.role:type_name -> metaxisdata.store.QualityAgentMessageRole
 	35,  // 92: metaxisdata.store.QualityAgentMessage.origin:type_name -> metaxisdata.store.QualityAgentMessageOrigin
 	99,  // 93: metaxisdata.store.QualityAgentMessage.tool_calls:type_name -> metaxisdata.store.QualityToolCallList
-	112, // 94: metaxisdata.store.QualityAgentMessage.created_at:type_name -> google.protobuf.Timestamp
+	113, // 94: metaxisdata.store.QualityAgentMessage.created_at:type_name -> google.protobuf.Timestamp
 	34,  // 95: metaxisdata.store.QualityAgentMessage.intent:type_name -> metaxisdata.store.QualityAgentMessageIntent
 	33,  // 96: metaxisdata.store.QualityAgentMessage.audience:type_name -> metaxisdata.store.QualityAgentMessageAudience
 	101, // 97: metaxisdata.store.QualityMemoryEvidenceList.evidence:type_name -> metaxisdata.store.QualityMemoryEvidence
@@ -10046,11 +10114,12 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	107, // 105: metaxisdata.store.QualityAgentAskQuestion.options:type_name -> metaxisdata.store.QualityAgentAskQuestionOption
 	108, // 106: metaxisdata.store.QualityAgentAskQuestionList.questions:type_name -> metaxisdata.store.QualityAgentAskQuestion
 	110, // 107: metaxisdata.store.QualityAgentAskAnswerList.answers:type_name -> metaxisdata.store.QualityAgentAskAnswer
-	108, // [108:108] is the sub-list for method output_type
-	108, // [108:108] is the sub-list for method input_type
-	108, // [108:108] is the sub-list for extension type_name
-	108, // [108:108] is the sub-list for extension extendee
-	0,   // [0:108] is the sub-list for field type_name
+	107, // 108: metaxisdata.store.QualityAgentRequestChoice.options:type_name -> metaxisdata.store.QualityAgentAskQuestionOption
+	109, // [109:109] is the sub-list for method output_type
+	109, // [109:109] is the sub-list for method input_type
+	109, // [109:109] is the sub-list for extension type_name
+	109, // [109:109] is the sub-list for extension extendee
+	0,   // [0:109] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -10123,7 +10192,7 @@ func file_store_data_quality_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      40,
-			NumMessages:   72,
+			NumMessages:   73,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

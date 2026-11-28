@@ -116,10 +116,12 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		return "", errors.New("only a subagent can message its lead")
 	}
 	var input struct {
-		Message     string `json:"message"`
-		Intent      string `json:"intent"`
-		Case        string `json:"case"`
-		QuestionKey string `json:"question_key"`
+		Message     string           `json:"message"`
+		Intent      string           `json:"intent"`
+		Case        string           `json:"case"`
+		QuestionKey string           `json:"question_key"`
+		Options     []askOptionInput `json:"options"`
+		MultiSelect bool             `json:"multi_select"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid send_lead_message arguments")
@@ -138,11 +140,28 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 			return "", errors.New("question_key must be a short lowercase slug such as timeout or pause-check: 2-41 characters, starting with a letter, then letters, digits and hyphens")
 		}
 		dedupe := questionDedupeKey(session.TargetGUID, caseID, questionKey, input.Message)
+		options := make([]*storepb.QualityAgentAskQuestionOption, 0, len(input.Options))
+		for _, option := range input.Options {
+			options = append(options, &storepb.QualityAgentAskQuestionOption{
+				Label:       option.Label,
+				Description: option.Description,
+			})
+		}
+		if err := dataquality.ValidateAskQuestions([]*storepb.QualityAgentAskQuestion{{
+			Id:          "q1",
+			Question:    input.Message,
+			Options:     options,
+			MultiSelect: input.MultiSelect,
+		}}); err != nil {
+			return "", err
+		}
 		request, created, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:                        store.QualityAgentRequestKindQuestion,
 			CaseResourceID:              input.Case,
 			Title:                       "Subagent question",
 			Question:                    input.Message,
+			Options:                     options,
+			MultiSelect:                 input.MultiSelect,
 			DedupeKey:                   dedupe,
 			QuestionKey:                 questionKey,
 			ConflictOnDifferentQuestion: true,
@@ -410,16 +429,30 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 	rows := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
 		rows = append(rows, map[string]any{
-			"request":  requestName(request.ResourceID),
-			"target":   request.TargetGUID,
-			"kind":     int(request.Kind),
-			"status":   int(request.Status),
-			"title":    request.Title,
-			"question": request.Question,
-			"case":     request.CaseResourceID,
+			"request":      requestName(request.ResourceID),
+			"target":       request.TargetGUID,
+			"kind":         int(request.Kind),
+			"status":       int(request.Status),
+			"title":        request.Title,
+			"question":     request.Question,
+			"case":         request.CaseResourceID,
+			"options":      requestOptionsView(request.Options),
+			"multi_select": request.MultiSelect,
 		})
 	}
 	return marshalJSON(map[string]any{"requests": rows, "count": len(rows)})
+}
+
+// requestOptionsView renders a subagent's offered choices for list_requests.
+func requestOptionsView(options []*storepb.QualityAgentAskQuestionOption) []map[string]string {
+	view := make([]map[string]string, 0, len(options))
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		view = append(view, map[string]string{"label": option.Label, "description": option.Description})
+	}
+	return view
 }
 
 // askOptionInput is one selectable answer in the ask_owner/forward_request
@@ -431,15 +464,18 @@ type askOptionInput struct {
 
 // askQuestionInput is the model-facing shape of one owner decision.
 type askQuestionInput struct {
+	ID          string           `json:"id"`
 	Question    string           `json:"question"`
 	Header      string           `json:"header"`
 	Detail      string           `json:"detail"`
 	Options     []askOptionInput `json:"options"`
 	MultiSelect bool             `json:"multi_select"`
+	// Requests are the request names this question decides. A single-question ask
+	// may leave it empty to cover all of the ask's requests.
+	Requests []string `json:"requests"`
 }
 
-// toStore converts one model argument into the stored question. The first version
-// puts one question in an ask, so the id is fixed; the answer echoes it.
+// toStore converts one model argument into the stored question.
 func (input askQuestionInput) toStore(id string) *storepb.QualityAgentAskQuestion {
 	options := make([]*storepb.QualityAgentAskQuestionOption, 0, len(input.Options))
 	for _, option := range input.Options {
@@ -455,7 +491,62 @@ func (input askQuestionInput) toStore(id string) *storepb.QualityAgentAskQuestio
 		Detail:      input.Detail,
 		Options:     options,
 		MultiSelect: input.MultiSelect,
+		Requests:    append([]string(nil), input.Requests...),
 	}
+}
+
+// askRequestInput is the model-facing shape of an ask_owner/forward_request call:
+// either a questions batch or the legacy single question.
+type askRequestInput struct {
+	Requests  []string           `json:"requests"`
+	Questions []askQuestionInput `json:"questions"`
+	// The legacy single-question form, still accepted for an in-flight transcript.
+	Question    string           `json:"question"`
+	Header      string           `json:"header"`
+	Detail      string           `json:"detail"`
+	Options     []askOptionInput `json:"options"`
+	MultiSelect bool             `json:"multi_select"`
+}
+
+// questionInputs returns the questions the call asked for. A call may use either
+// the batch form or the legacy single form, never both.
+func (input askRequestInput) questionInputs() ([]askQuestionInput, error) {
+	if len(input.Questions) > 0 && strings.TrimSpace(input.Question) != "" {
+		return nil, errors.New("use questions or question, not both")
+	}
+	if len(input.Questions) > 0 {
+		return input.Questions, nil
+	}
+	if strings.TrimSpace(input.Question) == "" {
+		return nil, errors.New("an ask needs a question")
+	}
+	return []askQuestionInput{{
+		Question:    input.Question,
+		Header:      input.Header,
+		Detail:      input.Detail,
+		Options:     input.Options,
+		MultiSelect: input.MultiSelect,
+	}}, nil
+}
+
+// storeQuestions assigns the stable question ids and converts them to the store
+// shape. The answer echoes these ids.
+func (input askRequestInput) storeQuestions() ([]*storepb.QualityAgentAskQuestion, []string, error) {
+	inputs, err := input.questionInputs()
+	if err != nil {
+		return nil, nil, err
+	}
+	questions := make([]*storepb.QualityAgentAskQuestion, 0, len(inputs))
+	ids := make([]string, 0, len(inputs))
+	for index, question := range inputs {
+		id := strings.TrimSpace(question.ID)
+		if id == "" {
+			id = fmt.Sprintf("q%d", index+1)
+		}
+		questions = append(questions, question.toStore(id))
+		ids = append(ids, id)
+	}
+	return questions, ids, nil
 }
 
 func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (string, error) {
@@ -517,15 +608,13 @@ func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentS
 }
 
 func (e *Engine) forwardRequest(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string, control *wakeControl) (string, error) {
-	var input struct {
-		Requests []string `json:"requests"`
-		askQuestionInput
-	}
+	var input askRequestInput
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid forward_request arguments")
 	}
-	if strings.TrimSpace(input.Question) == "" {
-		return "", errors.New("a forward_request needs a question for the owner")
+	questions, ids, err := input.storeQuestions()
+	if err != nil {
+		return "", err
 	}
 	requests := make([]*store.QualityAgentRequestMessage, 0, len(input.Requests))
 	for _, name := range input.Requests {
@@ -535,23 +624,27 @@ func (e *Engine) forwardRequest(ctx context.Context, session *store.QualityAgent
 		}
 		requests = append(requests, request)
 	}
-	ask, err := e.createOwnerAsk(ctx, session, []*storepb.QualityAgentAskQuestion{input.toStore("q1")}, requests, control)
+	// A single forwarded request can hand its own choices to the owner. With more
+	// than one request the choices may conflict, so the lead authors the batch.
+	if len(requests) == 1 && len(questions) == 1 && len(questions[0].Options) == 0 && len(requests[0].Options) > 0 {
+		questions[0].Options = cloneAskOptions(requests[0].Options)
+		questions[0].MultiSelect = requests[0].MultiSelect
+	}
+	ask, err := e.createOwnerAsk(ctx, session, questions, requests, control)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"ask": askName(ask.ResourceID), "questions": []string{"q1"}, "requests": len(requests)})
+	return marshalJSON(map[string]any{"ask": askName(ask.ResourceID), "questions": ids, "requests": len(requests)})
 }
 
 func (e *Engine) askOwner(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string, control *wakeControl) (string, error) {
-	var input struct {
-		Requests []string `json:"requests"`
-		askQuestionInput
-	}
+	var input askRequestInput
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid ask_owner arguments")
 	}
-	if strings.TrimSpace(input.Question) == "" {
-		return "", errors.New("ask_owner needs a question")
+	questions, ids, err := input.storeQuestions()
+	if err != nil {
+		return "", err
 	}
 	requests := make([]*store.QualityAgentRequestMessage, 0, len(input.Requests))
 	for _, name := range input.Requests {
@@ -561,11 +654,25 @@ func (e *Engine) askOwner(ctx context.Context, session *store.QualityAgentSessio
 		}
 		requests = append(requests, request)
 	}
-	ask, err := e.createOwnerAsk(ctx, session, []*storepb.QualityAgentAskQuestion{input.toStore("q1")}, requests, control)
+	ask, err := e.createOwnerAsk(ctx, session, questions, requests, control)
 	if err != nil {
 		return "", err
 	}
-	return marshalJSON(map[string]any{"ask": askName(ask.ResourceID), "questions": []string{"q1"}, "requests": len(requests)})
+	return marshalJSON(map[string]any{"ask": askName(ask.ResourceID), "questions": ids, "requests": len(requests)})
+}
+
+func cloneAskOptions(options []*storepb.QualityAgentAskQuestionOption) []*storepb.QualityAgentAskQuestionOption {
+	cloned := make([]*storepb.QualityAgentAskQuestionOption, 0, len(options))
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		cloned = append(cloned, &storepb.QualityAgentAskQuestionOption{
+			Label:       option.Label,
+			Description: option.Description,
+		})
+	}
+	return cloned
 }
 
 func (e *Engine) replyOwner(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string, control *wakeControl) (string, error) {
@@ -585,11 +692,22 @@ func (e *Engine) replyOwner(ctx context.Context, session *store.QualityAgentSess
 }
 
 func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgentSessionMessage, questions []*storepb.QualityAgentAskQuestion, requests []*store.QualityAgentRequestMessage, control *wakeControl) (*store.QualityAgentAskMessage, error) {
-	if err := dataquality.ValidateAskQuestions(questions); err != nil {
+	resolved, err := resolveAskQuestionRequestMessages(questions, requests)
+	if err != nil {
 		return nil, err
 	}
-	summary := askSummary(questions)
-	dedupeKey := "lead:" + askDedupeKey(questions, requests)
+	if err := dataquality.ValidateAskQuestions(resolved); err != nil {
+		return nil, err
+	}
+	requestNames := make([]string, 0, len(requests))
+	for _, request := range requests {
+		requestNames = append(requestNames, dataquality.RequestName(request))
+	}
+	if err := dataquality.ValidateAskQuestionCoverage(resolved, requestNames); err != nil {
+		return nil, err
+	}
+	summary := askSummary(resolved)
+	dedupeKey := "lead:" + askDedupeKey(resolved, requests)
 	now := e.now()
 	ask, err := e.store.CreateQualityAgentAskAtomic(ctx, &store.QualityAgentAskMessage{
 		WorkspaceID: session.WorkspaceID,
@@ -597,7 +715,7 @@ func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgent
 		Kind:        store.QualityAgentAskKindQuestion,
 		Title:       "The quality agent needs a decision",
 		Question:    summary,
-		Questions:   questions,
+		Questions:   resolved,
 		DedupeKey:   dedupeKey,
 	}, session, &store.QualityAgentTranscriptMessage{
 		Wake:           session.WakeCount + 1,
@@ -637,6 +755,64 @@ func askSummary(questions []*storepb.QualityAgentAskQuestion) string {
 		parts = append(parts, question.Question)
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+func resolveAskQuestionRequestMessages(questions []*storepb.QualityAgentAskQuestion, requests []*store.QualityAgentRequestMessage) ([]*storepb.QualityAgentAskQuestion, error) {
+	byID := make(map[string]*store.QualityAgentRequestMessage, len(requests))
+	askNames := make([]string, 0, len(requests))
+	for _, request := range requests {
+		byID[request.ResourceID] = request
+		askNames = append(askNames, dataquality.RequestName(request))
+	}
+	resolved := make([]*storepb.QualityAgentAskQuestion, 0, len(questions))
+	for _, question := range questions {
+		if question == nil {
+			continue
+		}
+		next := &storepb.QualityAgentAskQuestion{
+			Id:          question.Id,
+			Header:      question.Header,
+			Question:    question.Question,
+			Detail:      question.Detail,
+			Options:     question.Options,
+			MultiSelect: question.MultiSelect,
+		}
+		seen := make(map[string]bool, len(question.Requests))
+		for _, address := range question.Requests {
+			request := byID[normalizeRequestResourceID(address)]
+			if request == nil {
+				return nil, common.Errorf(common.Invalid, "question %q names request %q, which this ask does not forward", question.Id, address)
+			}
+			name := dataquality.RequestName(request)
+			if seen[name] {
+				return nil, common.Errorf(common.Invalid, "question %q repeats request %q", question.Id, name)
+			}
+			seen[name] = true
+			next.Requests = append(next.Requests, name)
+		}
+		if len(next.Requests) == 0 && len(askNames) > 0 {
+			if len(questions) > 1 {
+				return nil, common.Errorf(common.Invalid, "question %q must name the requests it decides when the ask has several questions", question.Id)
+			}
+			next.Requests = askNames
+		}
+		resolved = append(resolved, next)
+	}
+	return resolved, nil
+}
+
+// normalizeRequestResourceID reduces the names the model may use — a bare id, a
+// relative qualityAgentRequests/<id>, or a full resource name — to the id the store
+// row carries.
+func normalizeRequestResourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.LastIndex(value, "qualityAgentRequests/"); index >= 0 {
+		value = value[index+len("qualityAgentRequests/"):]
+	}
+	if index := strings.Index(value, "/"); index >= 0 {
+		value = value[:index]
+	}
+	return value
 }
 
 func (e *Engine) appendOwnerMessage(ctx context.Context, session *store.QualityAgentSessionMessage, content, replyTo string, intent storepb.QualityAgentMessageIntent, control *wakeControl) (*store.QualityAgentTranscriptMessage, error) {
@@ -737,6 +913,9 @@ func askDedupeKey(questions []*storepb.QualityAgentAskQuestion, requests []*stor
 		for _, option := range question.Options {
 			parts = append(parts, option.Label, option.Description)
 		}
+		questionRequests := append([]string(nil), question.Requests...)
+		slices.Sort(questionRequests)
+		parts = append(parts, questionRequests...)
 	}
 	ids := make([]string, 0, len(requests))
 	for _, request := range requests {

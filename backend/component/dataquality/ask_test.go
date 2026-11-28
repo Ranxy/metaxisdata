@@ -150,9 +150,8 @@ func TestBuildRequestAnswerEnvelopeNamesTheRequest(t *testing.T) {
 		WorkspaceID: "ws",
 		Question:    "Keep the check?",
 	}
-	content, text, err := BuildRequestAnswerEnvelope(ask, request, []*storepb.QualityAgentAskAnswer{
-		{Id: "q1", Selected: []string{"Keep it"}},
-	})
+	content, text, err := BuildRequestAnswerEnvelope(ask, request, ask.Questions[0],
+		&storepb.QualityAgentAskAnswer{Id: "q1", Selected: []string{"Keep it"}})
 	require.NoError(t, err)
 	require.Equal(t, "Keep it", text)
 
@@ -180,4 +179,85 @@ func TestValidateAskQuestionsRejectsDuplicateIDsAndLabels(t *testing.T) {
 		},
 	}}
 	require.ErrorContains(t, ValidateAskQuestions(duplicateLabels), "repeats option")
+}
+
+func TestValidateAskQuestionCoverage(t *testing.T) {
+	t.Parallel()
+
+	requests := []string{"r1", "r2"}
+	matching := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Requests: []string{"r1"}},
+		{Id: "q2", Question: "Second?", Requests: []string{"r2"}},
+	}
+	require.NoError(t, ValidateAskQuestionCoverage(matching, requests))
+
+	missing := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Requests: []string{"r1"}},
+	}
+	require.ErrorContains(t, ValidateAskQuestionCoverage(missing, requests), "not decided")
+
+	overlap := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Requests: []string{"r1"}},
+		{Id: "q2", Question: "Second?", Requests: []string{"r1", "r2"}},
+	}
+	require.ErrorContains(t, ValidateAskQuestionCoverage(overlap, requests), "decided by both")
+
+	outside := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Requests: []string{"r1"}},
+		{Id: "q2", Question: "Second?", Requests: []string{"r3"}},
+	}
+	require.ErrorContains(t, ValidateAskQuestionCoverage(outside, requests), "does not cover")
+
+	general := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?"},
+		{Id: "q2", Question: "Second?"},
+	}
+	require.NoError(t, ValidateAskQuestionCoverage(general, nil))
+	require.ErrorContains(t, ValidateAskQuestionCoverage([]*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Requests: []string{"r1"}},
+	}, nil), "covers none")
+}
+
+func TestBuildAnswerEnvelopeCarriesQuestionRequests(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Question:    "First?",
+		Questions: []*storepb.QualityAgentAskQuestion{
+			{Id: "q1", Question: "First?", Requests: []string{"workspaces/ws/qualityAgentRequests/r1"}},
+			{Id: "q2", Question: "Second?", Requests: []string{"workspaces/ws/qualityAgentRequests/r2"}},
+		},
+	}
+	content, err := BuildAnswerEnvelope(ask, []*storepb.QualityAgentAskAnswer{
+		{Id: "q1", Custom: "one"},
+		{Id: "q2", Custom: "two"},
+	}, []string{"workspaces/ws/qualityAgentRequests/r1", "workspaces/ws/qualityAgentRequests/r2"})
+	require.NoError(t, err)
+	envelope, ok := ParseAnswerEnvelope(content)
+	require.True(t, ok)
+	require.Len(t, envelope.Questions, 2)
+	require.Equal(t, []string{"workspaces/ws/qualityAgentRequests/r1"}, envelope.Questions[0].Requests)
+}
+
+func TestBuildRequestAnswerEnvelopeOnlyTheMatchingQuestion(t *testing.T) {
+	t.Parallel()
+
+	questions := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?"},
+		{Id: "q2", Question: "Second?"},
+	}
+	ask := &store.QualityAgentAskMessage{ResourceID: "a1", WorkspaceID: "ws", Questions: questions}
+	request := &store.QualityAgentRequestMessage{ResourceID: "r1", WorkspaceID: "ws", Question: "First?"}
+	content, text, err := BuildRequestAnswerEnvelope(ask, request, questions[0],
+		&storepb.QualityAgentAskAnswer{Id: "q1", Custom: "one"})
+	require.NoError(t, err)
+	require.Equal(t, "one", text)
+	envelope, ok := ParseRequestAnswerEnvelope(content)
+	require.True(t, ok)
+	require.Len(t, envelope.Questions, 1)
+	require.Equal(t, "q1", envelope.Questions[0].ID)
+	require.Len(t, envelope.Answers, 1)
+	require.Equal(t, "q1", envelope.Answers[0].ID)
 }

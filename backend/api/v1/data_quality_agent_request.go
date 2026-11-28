@@ -306,23 +306,28 @@ func convertQualityAgentQuestionsToV1(questions []*storepb.QualityAgentAskQuesti
 		if question == nil {
 			continue
 		}
-		options := make([]*v1pb.QualityAgentQuestionOption, 0, len(question.Options))
-		for _, option := range question.Options {
-			if option == nil {
-				continue
-			}
-			options = append(options, &v1pb.QualityAgentQuestionOption{
-				Label:       option.Label,
-				Description: option.Description,
-			})
-		}
 		converted = append(converted, &v1pb.QualityAgentQuestion{
 			Id:          question.Id,
 			Header:      question.Header,
 			Question:    question.Question,
 			Detail:      question.Detail,
-			Options:     options,
+			Options:     convertQualityAgentOptionsToV1(question.Options),
 			MultiSelect: question.MultiSelect,
+			Requests:    append([]string(nil), question.Requests...),
+		})
+	}
+	return converted
+}
+
+func convertQualityAgentOptionsToV1(options []*storepb.QualityAgentAskQuestionOption) []*v1pb.QualityAgentQuestionOption {
+	converted := make([]*v1pb.QualityAgentQuestionOption, 0, len(options))
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		converted = append(converted, &v1pb.QualityAgentQuestionOption{
+			Label:       option.Label,
+			Description: option.Description,
 		})
 	}
 	return converted
@@ -358,6 +363,8 @@ func convertQualityAgentRequestToV1(workspaceID, agentResourceID string, request
 		Case:           qualityAgentCaseName(workspaceID, request.CaseResourceID),
 		SuggestedPatch: convertQualityAgentFieldPatchToV1(request.SuggestedPatch),
 		Resolution:     request.Resolution,
+		Options:        convertQualityAgentOptionsToV1(request.Options),
+		MultiSelect:    request.MultiSelect,
 		CreateTime:     timestamppb.New(request.CreatedAt),
 		UpdateTime:     timestamppb.New(request.UpdatedAt),
 	}

@@ -495,8 +495,8 @@ schedule, reacts to failed checks, drafts checks into the review queue and escal
 ones they own.
 - **An agent's home** is its working page: the conversation with its owner, its **Team**, its **Patrol reports**, its **Needs you**
 ask list, its auto-adoption setting, and its scope and state. A breadcrumb and the **Conversation / Team** tabs keep the agent and its
-two views visible. An ask names the target and its choices; a choice is a button, any answer can be typed, and the answered card and
-conversation show the question with what you chose. Answered and closed questions move to **History**; only an ask card answers one.
+two views visible. An ask may put several related questions, each with its own choices; a choice is a button, the answered card and
+conversation show each question with what you chose, and answered/closed questions move to **History**; only an ask card answers one.
 - **Team** (`/data-quality/agents/{workspace}/{id}/subagents`) lists the agent's fixed subagents, one per target it watches.
 Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
 its arguments and result, and the runner's notes. The transcript opens on the newest message and keeps up with a running session while you
@@ -569,9 +569,9 @@ closing sections answer what the owner asks: what the agent fixed by itself this
 failure class) and what is waiting for a person (work items it escalated or froze, work still in progress, pending proposals, open
 issues). Reports are generated from records, do not call a model, and have no on-demand variant.
 - **Escalates.** A subagent that cannot settle a work item asks its lead; the lead either answers it or forwards it to you as an **ask**
-in **Needs you**. An ask can cover several targets and names the requests behind it. A question may offer choices; the validated answer
-is delivered straight to the requests behind that ask, so the target's agent acts on it without the lead guessing which question it
-belongs to. Dismissing closes the question without pretending it was answered, and an answered question refuses a second answer. A pending proposal still names the
+in **Needs you**. An ask can cover several targets and names the requests behind it. It may put several questions, each naming its own
+requests; a question may offer choices, including ones the target's agent proposed. The validated answer goes straight to the requests
+that question decides, so the target's agent acts on it without guessing, and an answered question refuses a second answer. A pending proposal still names the
 check, the config field, the value, the kind of change and the agent's reason, and the value already passed the validation a save runs,
 so nothing has changed until you edit the check yourself. A report that finds new failures is an agent-level ask; a target holding no
 rows is a fact the report names rather than a question. Work items dedupe **per target**, and a case's terminal state closes the

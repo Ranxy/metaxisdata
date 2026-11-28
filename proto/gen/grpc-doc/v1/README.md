@@ -7392,6 +7392,7 @@ and is echoed by the answer, so several questions in one ask stay routable.
 | detail | [string](#string) |  | Supporting detail rendered with the question but kept out of option labels. |
 | options | [QualityAgentQuestionOption](#metaxisdata-v1-QualityAgentQuestionOption) | repeated | Choices a UI can render as buttons. Empty means a free-text answer. |
 | multi_select | [bool](#bool) |  | Whether more than one option may be selected. Defaults to single-select. |
+| requests | [string](#string) | repeated | Request resource names this question decides. In a multi-question ask every question names a non-empty subset and the subsets are disjoint and cover the ask&#39;s requests; one question may leave it empty to cover them all. |
 
 
 
@@ -7495,6 +7496,8 @@ coordination record behind an ask; the owner sees the ask, not this row.
 | resolution | [string](#string) |  | The lead&#39;s or owner&#39;s answer, once answered. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| options | [QualityAgentQuestionOption](#metaxisdata-v1-QualityAgentQuestionOption) | repeated | Choices the subagent offered for this question. The lead may forward them unchanged when it forwards the request as the owner&#39;s ask. |
+| multi_select | [bool](#bool) |  |  |
 
 
 

@@ -40,6 +40,8 @@ type AnswerQuestion struct {
 	Detail      string         `json:"detail,omitempty"`
 	Options     []AnswerOption `json:"options,omitempty"`
 	MultiSelect bool           `json:"multiSelect,omitempty"`
+	// Requests are the request resource names this question decides.
+	Requests []string `json:"requests,omitempty"`
 }
 
 // AnswerItem is the owner's answer to one question.
@@ -152,10 +154,65 @@ func ValidateAskQuestions(questions []*storepb.QualityAgentAskQuestion) error {
 			}
 			labels[label] = true
 		}
-		for _, value := range append([]string{question.Header, question.Detail, question.Question}, labelsOf(question)...) {
+		seenRequests := make(map[string]bool, len(question.Requests))
+		for _, request := range question.Requests {
+			name := strings.TrimSpace(request)
+			if name == "" {
+				return common.Errorf(common.Invalid, "question %q names an empty request", id)
+			}
+			if seenRequests[name] {
+				return common.Errorf(common.Invalid, "question %q repeats request %q", id, name)
+			}
+			seenRequests[name] = true
+		}
+		for _, value := range append(append([]string{question.Header, question.Detail, question.Question}, labelsOf(question)...), question.Requests...) {
 			if containsNUL(value) {
 				return common.Errorf(common.Invalid, "question %q contains a NUL character", id)
 			}
+		}
+	}
+	return nil
+}
+
+// ValidateAskQuestionCoverage checks the per-question request subsets of a batch:
+// every ask request is decided by exactly one question, and a question never ranges
+// outside the ask's request set. A single question with no requests means "all",
+// which the caller resolves before calling; a legacy ask is not checked here.
+func ValidateAskQuestionCoverage(questions []*storepb.QualityAgentAskQuestion, requestNames []string) error {
+	ask := make(map[string]bool, len(requestNames))
+	for _, name := range requestNames {
+		trimmed := strings.TrimSpace(name)
+		if trimmed != "" {
+			ask[trimmed] = true
+		}
+	}
+	if len(ask) == 0 {
+		for _, question := range questions {
+			if len(question.GetRequests()) > 0 {
+				return common.Errorf(common.Invalid, "question %q names a request, but the ask covers none", question.GetId())
+			}
+		}
+		return nil
+	}
+	owners := make(map[string]string, len(ask))
+	for _, question := range questions {
+		if len(question.GetRequests()) == 0 {
+			return common.Errorf(common.Invalid, "question %q must name the requests it decides", question.GetId())
+		}
+		for _, name := range question.GetRequests() {
+			trimmed := strings.TrimSpace(name)
+			if !ask[trimmed] {
+				return common.Errorf(common.Invalid, "question %q names request %q, which the ask does not cover", question.GetId(), trimmed)
+			}
+			if owner, ok := owners[trimmed]; ok {
+				return common.Errorf(common.Invalid, "request %q is decided by both question %q and question %q", trimmed, owner, question.GetId())
+			}
+			owners[trimmed] = question.GetId()
+		}
+	}
+	for name := range ask {
+		if _, ok := owners[name]; !ok {
+			return common.Errorf(common.Invalid, "request %q is not decided by any question", name)
 		}
 	}
 	return nil
@@ -271,17 +328,17 @@ func BuildAnswerEnvelope(ask *store.QualityAgentAskMessage, answers []*storepb.Q
 
 // BuildRequestAnswerEnvelope renders the content delivered to the subagent whose
 // request the owner answered. The request id is the subagent's pairing key.
-func BuildRequestAnswerEnvelope(ask *store.QualityAgentAskMessage, request *store.QualityAgentRequestMessage, answers []*storepb.QualityAgentAskAnswer) (string, string, error) {
-	if ask == nil || request == nil {
-		return "", "", common.Errorf(common.Invalid, "a request answer needs an ask and a request")
+func BuildRequestAnswerEnvelope(ask *store.QualityAgentAskMessage, request *store.QualityAgentRequestMessage, question *storepb.QualityAgentAskQuestion, answer *storepb.QualityAgentAskAnswer) (string, string, error) {
+	if ask == nil || request == nil || question == nil || answer == nil {
+		return "", "", common.Errorf(common.Invalid, "a request answer needs an ask, a request, a question and an answer")
 	}
 	envelope := RequestAnswerEnvelope{
 		Kind:      "answer_to_request",
 		Ask:       AskName(ask),
 		Request:   RequestName(request),
-		Questions: answerQuestions(QuestionsOf(ask)),
-		Answers:   answerItems(answers),
-		Text:      AnswerText(QuestionsOf(ask), answers),
+		Questions: answerQuestions([]*storepb.QualityAgentAskQuestion{question}),
+		Answers:   answerItems([]*storepb.QualityAgentAskAnswer{answer}),
+		Text:      AnswerTextFor(question, answer),
 	}
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
@@ -321,6 +378,22 @@ func BuildDecisionAnswerEnvelope(request *store.QualityAgentRequestMessage, answ
 		return text
 	}
 	return string(encoded)
+}
+
+// AnswerTextFor renders one question's answer as the human-readable sentence used
+// as the request's resolution.
+func AnswerTextFor(question *storepb.QualityAgentAskQuestion, answer *storepb.QualityAgentAskAnswer) string {
+	if question == nil || answer == nil {
+		return ""
+	}
+	values := append([]string(nil), answer.Selected...)
+	if answer.Custom != "" {
+		values = append(values, answer.Custom)
+	}
+	if len(values) == 0 {
+		return "skipped"
+	}
+	return strings.Join(values, ", ")
 }
 
 // AnswerText renders the owner's choices as one human-readable sentence, used as
@@ -373,6 +446,7 @@ func answerQuestions(questions []*storepb.QualityAgentAskQuestion) []AnswerQuest
 			Detail:      question.Detail,
 			Options:     options,
 			MultiSelect: question.MultiSelect,
+			Requests:    append([]string(nil), question.Requests...),
 		})
 	}
 	return converted

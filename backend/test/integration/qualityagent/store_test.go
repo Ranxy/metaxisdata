@@ -4,12 +4,14 @@ package qualityagent
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -437,4 +439,93 @@ func TestQualityAgentAskAnswerIsAtomicAndDelivered(t *testing.T) {
 	_, _, _, err = f.env.store.AnswerQualityAgentAskAtomic(f.ctx, created.ResourceID,
 		answers, answeredBy, &second, nil, time.Now().UTC())
 	require.Error(t, err, "a closed ask refuses a second answer")
+}
+
+// A batch ask delivers each question's answer only to the requests that question
+// names, even when those requests share one subagent session.
+func TestQualityAgentAskAnswerDeliversEachQuestionToItsRequest(t *testing.T) {
+	t.Parallel()
+
+	f := newDraftAgent(t)
+	first, _ := f.create(t, raiseOptions{dedupeKey: "it-batch-r1", question: "First?"})
+	second, _ := f.create(t, raiseOptions{dedupeKey: "it-batch-r2", question: "Second?"})
+	askMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "First?\n\nSecond?",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-batch-question",
+	}
+	ask := &store.QualityAgentAskMessage{
+		WorkspaceID: f.env.workspaceID, AgentID: f.agent.ID, Kind: store.QualityAgentAskKindQuestion,
+		Title: "Two decisions", Question: "First?\n\nSecond?",
+		Questions: []*storepb.QualityAgentAskQuestion{
+			{Id: "first", Question: "First?", Requests: []string{dataquality.RequestName(first)}},
+			{Id: "second", Question: "Second?", Requests: []string{dataquality.RequestName(second)}},
+		},
+		TargetGUID: f.targetGUID, TargetType: storepb.MetaType_TABLE, DedupeKey: "it-batch-ask",
+	}
+	created, isNew, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead, askMessage,
+		[]*store.QualityAgentRequestMessage{first, second}, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, isNew)
+
+	answers := []*storepb.QualityAgentAskAnswer{
+		{Id: "first", Custom: "answer one"},
+		{Id: "second", Custom: "answer two"},
+	}
+	leadMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		Content:        `{"kind":"answer_to_ask"}`,
+		ReplyTo:        dataquality.AskName(created),
+		IdempotencyKey: "it-batch-lead",
+	}
+	delivery := func(request *store.QualityAgentRequestMessage, content, key string) *store.QualityAgentRequestDelivery {
+		return &store.QualityAgentRequestDelivery{
+			Request:  request,
+			Subagent: f.session,
+			Message: &store.QualityAgentTranscriptMessage{
+				Wake:           f.session.WakeCount + 1,
+				Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+				Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+				Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+				Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+				Content:        content,
+				ReplyTo:        dataquality.RequestName(request),
+				IdempotencyKey: key,
+			},
+			Resolution: content,
+		}
+	}
+	updated, _, delivered, err := f.env.store.AnswerQualityAgentAskAtomic(f.ctx, created.ResourceID, answers,
+		int32(f.agent.PrincipalID), leadMessage, []*store.QualityAgentRequestDelivery{
+			delivery(first, "answer one", "it-batch-sub-1"),
+			delivery(second, "answer two", "it-batch-sub-2"),
+		}, time.Now().UTC())
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Len(t, delivered, 2)
+	require.Equal(t, "answer one", f.getRequest(t, first.ResourceID).Resolution)
+	require.Equal(t, "answer two", f.getRequest(t, second.ResourceID).Resolution)
+
+	messages, err := f.env.store.ListQualityAgentTranscriptMessages(f.ctx, &store.FindQualityAgentTranscriptMessage{
+		SessionID: f.session.ID, Limit: 100,
+	})
+	require.NoError(t, err)
+	var firstAnswer, secondAnswer bool
+	for _, message := range messages {
+		if strings.Contains(message.Content, "answer one") {
+			firstAnswer = true
+		}
+		if strings.Contains(message.Content, "answer two") {
+			secondAnswer = true
+		}
+	}
+	require.True(t, firstAnswer, "the first request's answer reached the subagent")
+	require.True(t, secondAnswer, "the second request's answer reached the subagent")
 }

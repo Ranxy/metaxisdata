@@ -46,6 +46,35 @@ describe("QualityAgentAnswerBubble", () => {
     expect(wrapper.text()).toContain("Skipped");
   });
 
+  it("renders every question and answer of a batch in order", () => {
+    const wrapper = mountBubble(
+      JSON.stringify({
+        kind: "answer_to_ask",
+        ask: "workspaces/ws/qualityAgentAsks/a1",
+        questions: [
+          {
+            id: "first",
+            question: "First?",
+            requests: ["workspaces/ws/qualityAgentRequests/r1"],
+          },
+          {
+            id: "second",
+            question: "Second?",
+            requests: ["workspaces/ws/qualityAgentRequests/r2"],
+          },
+        ],
+        answers: [
+          { id: "first", selected: ["Yes"] },
+          { id: "second", selected: [], custom: "Maybe" },
+        ],
+      })
+    );
+    expect(wrapper.text()).toContain("First?");
+    expect(wrapper.text()).toContain("Yes");
+    expect(wrapper.text()).toContain("Second?");
+    expect(wrapper.text()).toContain("Maybe");
+  });
+
   it("falls back to the raw text when the answer cannot be paired", () => {
     const content = JSON.stringify({
       kind: "answer_to_ask",

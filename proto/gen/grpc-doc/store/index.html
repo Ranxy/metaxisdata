@@ -344,6 +344,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentRequestChoice"><span class="badge">M</span>QualityAgentRequestChoice</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentSession"><span class="badge">M</span>QualityAgentSession</a>
                 </li>
               
@@ -2799,6 +2803,13 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>requests</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Request resource names this question decides. Empty means the ask&#39;s request set. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3241,6 +3252,37 @@ returned none; never sent back to the provider. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The ask or request this message answers, as a resource id. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentRequestChoice">QualityAgentRequestChoice</h3>
+        <p>QualityAgentRequestChoice is the JSONB payload of quality_agent_request.options:</p><p>the choices a subagent offered with a QUESTION, for the lead to forward.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>options</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAskQuestionOption">QualityAgentAskQuestionOption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>multi_select</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>

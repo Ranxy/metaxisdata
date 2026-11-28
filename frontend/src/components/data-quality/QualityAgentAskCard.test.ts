@@ -217,6 +217,42 @@ describe("QualityAgentAskCard", () => {
     expect(wrapper.text()).toContain("Keep it");
   });
 
+  it("collects one answer per question in a batch", async () => {
+    const ask = askFixture();
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "first",
+        question: "First?",
+        options: [create(QualityAgentQuestionOptionSchema, { label: "Yes" })],
+        requests: ["workspaces/ws/qualityAgentRequests/r1"],
+      }),
+      create(QualityAgentQuestionSchema, {
+        id: "second",
+        question: "Second?",
+        options: [create(QualityAgentQuestionOptionSchema, { label: "No" })],
+        requests: ["workspaces/ws/qualityAgentRequests/r2"],
+      }),
+    ];
+    const wrapper = await mountCard(ask);
+    for (const label of ["Yes", "No"]) {
+      const option = wrapper
+        .findAll("button")
+        .find((candidate) => candidate.text().includes(label));
+      await option?.trigger("click");
+    }
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send answer");
+    await send?.trigger("click");
+    const emitted = wrapper.emitted("reply")?.[0] as [
+      QualityAgentAsk,
+      { id: string; selected: string[]; custom: string }[],
+    ];
+    expect(emitted[1].map((answer) => answer.id)).toEqual(["first", "second"]);
+    expect(emitted[1][0].selected).toEqual(["Yes"]);
+    expect(emitted[1][1].selected).toEqual(["No"]);
+  });
+
   it("clamps a long question and expands it on request", async () => {
     const long = askFixture();
     long.question = "A very long question. ".repeat(40);

@@ -52,7 +52,8 @@ func qualityPrompt() *agent.Prompt {
 		"  same question, give a different decision a different key (for example timeout or",
 		"  pause-check), and never invent a random id. A question about one case may omit it",
 		"  when the case id alone identifies the decision. When the decision is a choice,",
-		"  include the concrete options and say which you recommend.",
+		"  pass the concrete options and multi_select to send_lead_message and say which you",
+		"  recommend; do not describe choices only in prose.",
 		"- An answer from the lead names the request it answers; act on that request and do",
 		"  not treat a message without a request id as an answer.",
 	}
@@ -85,9 +86,11 @@ func conversationPrompt() *agent.Prompt {
 		"- When a wake answers the owner's question, the final message is the answer.",
 		"  On any other wake, use reply_owner to tell the owner something; otherwise your",
 		"  text stays internal. Use ask_owner only when a person must decide.",
-		"- One ask is one decision. When the answer is a choice, offer options; put the",
-		"  recommended one first and append (Recommended) to its label. The owner may always",
-		"  type something else.",
+		"- An ask may put one or several related decisions; one decision per question.",
+		"  When the answer is a choice, offer options per question; put the recommended one",
+		"  first and append (Recommended) to its label. The owner may always type something",
+		"  else. When an ask covers requests, each question names the requests it decides;",
+		"  a single question may omit them and cover the whole ask.",
 		"- An owner answer names its ask and questions and is delivered to the requests",
 		"  behind it. Never infer which question a message answers from its order, and do not",
 		"  call answer_request for a request the answer already settled. A message without an",
@@ -346,6 +349,9 @@ func pendingOwnerAnswerBlock(pending []*store.QualityAgentTranscriptMessage, lim
 						labels = append(labels, option.Label)
 					}
 					fmt.Fprintf(&builder, " (options: %s)", strings.Join(labels, ", "))
+				}
+				if len(question.Requests) > 0 {
+					fmt.Fprintf(&builder, " (requests: %s)", strings.Join(question.Requests, ", "))
 				}
 			}
 			for _, answer := range envelope.Answers {

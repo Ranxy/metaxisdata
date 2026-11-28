@@ -182,13 +182,51 @@ func (s *DataQualityService) answerQualityAgentAsk(ctx context.Context, workspac
 	}
 	active := make([]*store.QualityAgentRequestMessage, 0, len(requestsByAsk[ask.ID]))
 	requestNames := make([]string, 0, len(requestsByAsk[ask.ID]))
+	byRequestName := make(map[string]*store.QualityAgentRequestMessage, len(requestsByAsk[ask.ID]))
 	for _, request := range requestsByAsk[ask.ID] {
 		if request.Status != store.QualityAgentRequestStatusOpen &&
 			request.Status != store.QualityAgentRequestStatusForwarded {
 			continue
 		}
+		name := dataquality.RequestName(request)
 		active = append(active, request)
-		requestNames = append(requestNames, dataquality.RequestName(request))
+		requestNames = append(requestNames, name)
+		byRequestName[name] = request
+	}
+	// A question's requests decide which answer reaches which subagent. A legacy
+	// single question has no subset and covers every active request.
+	answersByID := make(map[string]*storepb.QualityAgentAskAnswer, len(validated))
+	for _, answer := range validated {
+		answersByID[answer.GetId()] = answer
+	}
+	questionForRequest := make(map[string]*storepb.QualityAgentAskQuestion, len(requestNames))
+	answerForRequest := make(map[string]*storepb.QualityAgentAskAnswer, len(requestNames))
+	for _, question := range questions {
+		answer := answersByID[question.GetId()]
+		if answer == nil {
+			continue
+		}
+		names := question.GetRequests()
+		if len(names) == 0 {
+			names = requestNames
+		}
+		for _, name := range names {
+			if byRequestName[name] == nil {
+				// A request that settled between the ask's creation and this answer
+				// no longer needs a delivery; the ask's other requests still do.
+				continue
+			}
+			if existing := questionForRequest[name]; existing != nil {
+				return nil, connectErrorInvalid("request %q is decided by both question %q and question %q", name, existing.GetId(), question.GetId())
+			}
+			questionForRequest[name] = question
+			answerForRequest[name] = answer
+		}
+	}
+	for _, name := range requestNames {
+		if questionForRequest[name] == nil {
+			return nil, connectErrorInvalid("no question in the answer decides request %q", name)
+		}
 	}
 	envelope, err := dataquality.BuildAnswerEnvelope(ask, validated, requestNames)
 	if err != nil {
@@ -196,7 +234,10 @@ func (s *DataQualityService) answerQualityAgentAsk(ctx context.Context, workspac
 	}
 	deliveries := make([]*store.QualityAgentRequestDelivery, 0, len(active))
 	for _, request := range active {
-		requestEnvelope, text, buildErr := dataquality.BuildRequestAnswerEnvelope(ask, request, validated)
+		name := dataquality.RequestName(request)
+		question := questionForRequest[name]
+		answer := answerForRequest[name]
+		requestEnvelope, text, buildErr := dataquality.BuildRequestAnswerEnvelope(ask, request, question, answer)
 		if buildErr != nil {
 			return nil, buildErr
 		}

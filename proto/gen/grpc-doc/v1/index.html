@@ -21234,6 +21234,15 @@ failure the case diagnosed, never sent by the agent. </p></td>
                   <td><p>Whether more than one option may be selected. Defaults to single-select. </p></td>
                 </tr>
               
+                <tr>
+                  <td>requests</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Request resource names this question decides. In a multi-question ask every
+question names a non-empty subset and the subsets are disjoint and cover the
+ask&#39;s requests; one question may leave it empty to cover them all. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -21611,6 +21620,21 @@ the lead forwards it. </p></td>
                 <tr>
                   <td>update_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>options</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentQuestionOption">QualityAgentQuestionOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Choices the subagent offered for this question. The lead may forward them
+unchanged when it forwards the request as the owner&#39;s ask. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>multi_select</td>
+                  <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
