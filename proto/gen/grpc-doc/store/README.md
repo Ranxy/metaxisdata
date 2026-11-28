@@ -45,6 +45,7 @@
     - [QualityAgentEnrollment](#metaxisdata-store-QualityAgentEnrollment)
     - [QualityAgentFieldPatch](#metaxisdata-store-QualityAgentFieldPatch)
     - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
+    - [QualityAgentRequestChoice](#metaxisdata-store-QualityAgentRequestChoice)
     - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
     - [QualityAgentSessionContextUsage](#metaxisdata-store-QualityAgentSessionContextUsage)
     - [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState)
@@ -883,6 +884,7 @@ QualityAgentAskQuestion is one decision an ask puts to the owner.
 | detail | [string](#string) |  |  |
 | options | [QualityAgentAskQuestionOption](#metaxisdata-store-QualityAgentAskQuestionOption) | repeated |  |
 | multi_select | [bool](#bool) |  |  |
+| requests | [string](#string) | repeated | Request resource names this question decides. Empty means the ask&#39;s request set. |
 
 
 
@@ -1017,6 +1019,23 @@ QualityAgentMessage is one append-only transcript entry of a session.
 | intent | [QualityAgentMessageIntent](#metaxisdata-store-QualityAgentMessageIntent) |  |  |
 | audience | [QualityAgentMessageAudience](#metaxisdata-store-QualityAgentMessageAudience) |  |  |
 | reply_to | [string](#string) |  | The ask or request this message answers, as a resource id. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentRequestChoice"></a>
+
+### QualityAgentRequestChoice
+QualityAgentRequestChoice is the JSONB payload of quality_agent_request.options:
+the choices a subagent offered with a QUESTION, for the lead to forward.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| options | [QualityAgentAskQuestionOption](#metaxisdata-store-QualityAgentAskQuestionOption) | repeated |  |
+| multi_select | [bool](#bool) |  |  |
 
 
 

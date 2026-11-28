@@ -4155,6 +4155,10 @@ message QualityAgentRequest {
   string resolution = 12;
   google.protobuf.Timestamp create_time = 13;
   google.protobuf.Timestamp update_time = 14;
+  // Choices the subagent offered for this question. The lead may forward them
+  // unchanged when it forwards the request as the owner's ask.
+  repeated QualityAgentQuestionOption options = 15;
+  bool multi_select = 16;
 }
 
 // QualityAgentQuestionOption is one selectable answer offered to the owner. The
@@ -4180,6 +4184,10 @@ message QualityAgentQuestion {
   repeated QualityAgentQuestionOption options = 5;
   // Whether more than one option may be selected. Defaults to single-select.
   bool multi_select = 6;
+  // Request resource names this question decides. In a multi-question ask every
+  // question names a non-empty subset and the subsets are disjoint and cover the
+  // ask's requests; one question may leave it empty to cover them all.
+  repeated string requests = 7;
 }
 
 // QualityAgentAnswer is the owner's answer to one QualityAgentQuestion. Selected

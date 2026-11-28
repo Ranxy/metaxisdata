@@ -147,6 +147,7 @@ func TestPendingOwnerAnswerBlockNamesTheAskAndQuestion(t *testing.T) {
 			Id:       "q1",
 			Question: "Keep the check?",
 			Options:  []*storepb.QualityAgentAskQuestionOption{{Label: "Keep it"}},
+			Requests: []string{"workspaces/ws/qualityAgentRequests/r1"},
 		}},
 	}
 	content, err := dataquality.BuildAnswerEnvelope(ask, []*storepb.QualityAgentAskAnswer{
@@ -163,6 +164,7 @@ func TestPendingOwnerAnswerBlockNamesTheAskAndQuestion(t *testing.T) {
 	require.Contains(t, block, "ask workspaces/ws/qualityAgentAsks/a1")
 	require.Contains(t, block, "question q1")
 	require.Contains(t, block, "Keep it")
+	require.Contains(t, block, "requests: workspaces/ws/qualityAgentRequests/r1")
 	require.Contains(t, block, "delivered to: workspaces/ws/qualityAgentRequests/r1")
 }
 
@@ -186,9 +188,8 @@ func TestPendingAgentMessagesBlockRendersTheRequestAnswer(t *testing.T) {
 		WorkspaceID: "ws",
 		Question:    "Keep the check?",
 	}
-	content, _, err := dataquality.BuildRequestAnswerEnvelope(ask, request, []*storepb.QualityAgentAskAnswer{
-		{Id: "q1", Selected: []string{"Keep it"}},
-	})
+	content, _, err := dataquality.BuildRequestAnswerEnvelope(ask, request, ask.Questions[0],
+		&storepb.QualityAgentAskAnswer{Id: "q1", Selected: []string{"Keep it"}})
 	require.NoError(t, err)
 
 	block := pendingAgentMessagesBlock([]*store.QualityAgentTranscriptMessage{{

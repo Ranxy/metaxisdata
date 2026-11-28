@@ -94,14 +94,10 @@ func internalMeta() tool.Meta {
 	}
 }
 
-// askQuestionParameters is the schema shared by ask_owner and forward_request.
-// One ask puts one decision to the owner; options are answer values, not labels the
-// server has to parse back out of prose.
-func askQuestionParameters() map[string]any {
+// askOptionParameters is the selectable-choice schema shared by an owner ask and a
+// subagent's QUESTION.
+func askOptionParameters() map[string]any {
 	return map[string]any{
-		"question": map[string]any{"type": "string", "description": "the one decision to put to the owner"},
-		"header":   map[string]any{"type": "string", "description": "optional short heading, such as Timeout or Confirm"},
-		"detail":   map[string]any{"type": "string", "description": "optional supporting evidence rendered with the question, not in the option labels"},
 		"options": map[string]any{
 			"type":        "array",
 			"description": "choices the owner can click. Put a recommended choice first and append (Recommended) to its label. Leave empty for a free-text question.",
@@ -115,6 +111,38 @@ func askQuestionParameters() map[string]any {
 			},
 		},
 		"multi_select": map[string]any{"type": "boolean", "description": "whether the owner may select more than one option; defaults to false"},
+	}
+}
+
+// askQuestionItemParameters is one question in an ask batch.
+func askQuestionItemParameters() map[string]any {
+	parameters := askOptionParameters()
+	parameters["id"] = map[string]any{"type": "string", "description": "stable short slug for this question, such as timeout; defaults to q1, q2... and is echoed by the answer"}
+	parameters["question"] = map[string]any{"type": "string", "description": "the one decision this question puts to the owner"}
+	parameters["header"] = map[string]any{"type": "string", "description": "optional short heading, such as Timeout or Confirm"}
+	parameters["detail"] = map[string]any{"type": "string", "description": "optional supporting evidence rendered with the question, not in the option labels"}
+	parameters["requests"] = map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": "request names this question decides. A single-question ask may omit it to cover all of the ask's requests; in a batch every question must name a non-empty, disjoint subset covering the ask's requests.",
+	}
+	return parameters
+}
+
+// askQuestionParameters is the questions array shared by ask_owner and forward_request.
+func askQuestionParameters() map[string]any {
+	return map[string]any{
+		"questions": map[string]any{
+			"type":        "array",
+			"minItems":    1,
+			"maxItems":    5,
+			"description": "the decisions to put to the owner. Related decisions may share one ask; each question names its own requests when it decides a subset.",
+			"items": map[string]any{
+				"type":       "object",
+				"properties": askQuestionItemParameters(),
+				"required":   []string{"question"},
+			},
+		},
 	}
 }
 
@@ -146,16 +174,18 @@ func targetToolSpecs() []toolSpec {
 	specs := []toolSpec{
 		{
 			name:        "send_lead_message",
-			description: "Send a self-contained report or question to the lead. Use it when you need a decision, a repair failed, a check cannot run, a proposal needs a person, a task the lead assigned is done, or your target changed in a way the lead must know. Do not send routine all-good reports.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"message": map[string]any{"type": "string", "description": "the report or question; the lead does not see your transcript"},
-				"intent":  map[string]any{"type": "string", "enum": []string{"REPORT", "QUESTION", "ANSWER"}, "description": "what the message is"},
-				"case":    map[string]any{"type": "string", "description": "optional qualityAgentCases id the message is about"},
-				"question_key": map[string]any{
+			description: "Send a self-contained report or question to the lead. Use it when you need a decision, a repair failed, a check cannot run, a proposal needs a person, a task the lead assigned is done, or your target changed in a way the lead must know. A QUESTION may offer clickable options with multi_select. Do not send routine all-good reports.",
+			parameters: map[string]any{"type": "object", "properties": func() map[string]any {
+				parameters := askOptionParameters()
+				parameters["message"] = map[string]any{"type": "string", "description": "the report or question; the lead does not see your transcript"}
+				parameters["intent"] = map[string]any{"type": "string", "enum": []string{"REPORT", "QUESTION", "ANSWER"}, "description": "what the message is"}
+				parameters["case"] = map[string]any{"type": "string", "description": "optional qualityAgentCases id the message is about"}
+				parameters["question_key"] = map[string]any{
 					"type":        "string",
 					"description": "stable short slug for one QUESTION, e.g. timeout or pause-check. Reuse it only when retrying the same question; a different decision needs a different key. Omit when the question is about one case and the case id is enough.",
-				},
-			}, "required": []string{"message"}},
+				}
+				return parameters
+			}(), "required": []string{"message"}},
 			meta: internalMeta(),
 		},
 		{
@@ -449,7 +479,7 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "forward_request",
-			description: "Forward one or more subagent requests to the owner as one question, optionally with clickable options. The owner's answer comes back as a delivered message.",
+			description: "Forward one or more subagent requests to the owner as one ask with one or more questions. A question may offer clickable options, and each question names the requests it decides. The owner's answer comes back as a delivered message.",
 			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"requests", "question"}},
 			meta:        internalMeta(),
 		},
@@ -463,7 +493,7 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "ask_owner",
-			description: "Ask the owner a concrete question, optionally with clickable options and covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
+			description: "Ask the owner one or more questions, optionally with clickable options and covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
 			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"question"}},
 			meta:        internalMeta(),
 		},

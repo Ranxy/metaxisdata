@@ -50,7 +50,9 @@ A subagent that cannot settle a work item raises a **request** to its lead. The 
 active request exists per `(agent, dedupe key)`: a repeated escalation refreshes an OPEN request's wording and does not notify twice.
 A request is `OPEN` until the lead either answers it or forwards it to the owner.
 
-A subagent's QUESTION carries a stable `question_key`. The key is a short lowercase slug, not an opaque id: a case-scoped
+A subagent's QUESTION carries a stable `question_key` and may carry the options it wants decided; the options and `multi_select`
+are stored on the request, listed to the lead, and forwarded unchanged when the lead forwards that one request as an ask. The key is
+a short lowercase slug, not an opaque id: a case-scoped
 question can omit it and is scoped by the case, while a second decision on the same case names a suffix such as `timeout`.
 A case-scoped question must name a case belonging to the same target; a subagent cannot address another target's case. Reusing a key for a
 different question is a conflict, not an overwrite; the lead is never shown a silently replaced question.
@@ -59,13 +61,15 @@ whitespace-insensitive for the same reason. The key is stored on the request, so
 questions as `question_key=...` and marks a case-only or wording-only question as having no key to reuse.
 
 The owner never talks to a subagent. When the lead needs the owner, it raises an **ask** and writes the question into the lead
-conversation; an ask can cover several requests through their `ask_id`. An ask carries one structured question with a stable id
-(`q1` in the first version), optional selectable options and a `multi_select` flag; the prose `question` column stays as the
-notification and legacy fallback. The owner answers with `SendQualityAgentMessage(reply_to = ask, answers = ...)` (or dismisses
+conversation; an ask can cover several requests through their `ask_id`. An ask carries one or more structured questions, each with
+a stable id, optional selectable options and a `multi_select` flag; the prose `question` column stays as the notification and legacy
+fallback. A question names the requests it decides: a single-question ask may omit them and cover the whole ask, while a batch names a
+non-empty, disjoint subset per question and the subsets cover the ask, so each answer reaches only the requests that question decides. The owner answers with `SendQualityAgentMessage(reply_to = ask, answers = ...)` (or dismisses
 with `intent = DISMISS`). The answer is validated against the offered labels and written in one transaction with the ask, its
 requests and the subagent messages: the server delivers the answer to every active request behind the ask and wakes those
 subagents, so no model has to infer which question a sentence belongs to. The lead sees an `answer_to_ask` envelope naming the ask,
-the questions, the selected labels and the requests; the subagent sees an `answer_to_request` envelope naming its request. An ask
+the questions, the selected labels and the requests; the subagent sees an `answer_to_request` envelope naming its request and carrying only the question that request decided; a batch
+delivers one such envelope per request, not the whole batch. An ask
 resolves when no request under it is still OPEN or FORWARDED; a dismissal closes the ask and its requests as `DISMISSED`, and a
 request with no ask can still be answered by the lead directly. Case settlement closes the requests attached to the case and then
 any ask they drain.
@@ -171,7 +175,7 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 | Every model path of an agent — wake, compaction, triage drafts — and its enrollment admission use that agent's pair through one resolver; the workspace analysis pair never applies to an agent | engine/enrollment/draft tests + wiring review |
 | Model reasoning is display-only: it is persisted on the assistant transcript row when the provider returns it, never sent back to the provider, and never counted in the model context | loop/engine tests + conversion test |
 | The agent language is one config value used by the system prompt, the wake reminder and server prose; a language change updates the stored SYSTEM row in place on the next wake, and the prompt instructs the model not to translate identifiers | prompt/language tests + agentlang tests + engine test |
-| An ask answer is linked by `reply_to` and question ids, validated against the offered option labels, written atomically with the ask/request/subagent states, and delivered directly to the requests behind the ask; a message without `reply_to` answers no ask, a closed ask refuses a second answer, and an answer payload that cannot be paired is rendered as text rather than guessed | `dataquality/ask.go` tests + store integration + API/HTTP tests + UI card/bubble tests |
+| An ask answer is linked by `reply_to` and question ids, validated against the offered option labels, written atomically with the ask/request/subagent states, and delivered directly to the requests behind the ask; a batch question names a non-empty disjoint request subset and its answer reaches only those requests, while a message without `reply_to` answers no ask, a closed ask refuses a second answer, and an answer payload that cannot be paired is rendered as text rather than guessed | `dataquality/ask.go` tests + store integration + API/HTTP tests + UI card/bubble tests |
 | A wake continues the same conversation; the tool whitelist is read, propose (including `propose_revision`, which validates a value, records it on the case's escalation and escalates the case, and never writes a check), wake-control and exactly four publish-class writes: `repair_check` (applies a diagnosis's deterministic repair with a value the registry owns — or, at `tune` level only, a criterion that the replay proves leaves every failing run failing — validated, compiled, probed when the statement changed, written as one compare-and-set with the target fingerprint, case `ACTED` behind a planned verification run), `adopt_pending_drafts` (owner-question wake only, active agent with adoption ready, scoped, capped, audited, refused without the question), `run_check` (executes one check now as a diagnostic, authorized with `rules.run` on the target) and `control_check` (pauses a check that cannot produce a verdict, re-checking the case, participation, pins and diagnosis server-side, writing with an optimistic revision and escalating the case). There is no publish, edit, archive, resume, settings or reject tool; failure events are idempotent and capped | engine/context/owner-adoption/control tests |
 | Compaction trims old tool results first, then summarizes balanced tool pairs, never compacts the system prompt and never deletes the transcript; its threshold is derived from the pinned model's context window and output budget and its pressure from a per-script text estimate, and a model too small to compact cannot be pinned to an agent at selection time; memory holds only confirmed asset facts with automatic supersede and `get_memory` is read-only | compaction/engine tests + integration |
 

@@ -14802,6 +14802,14 @@ components:
                 multiSelect:
                     type: boolean
                     description: Whether more than one option may be selected. Defaults to single-select.
+                requests:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Request resource names this question decides. In a multi-question ask every
+                         question names a non-empty subset and the subsets are disjoint and cover the
+                         ask's requests; one question may leave it empty to cover them all.
             description: |-
                 QualityAgentQuestion is one decision in an ask. The id is stable within the ask
                  and is echoed by the answer, so several questions in one ask stay routable.
@@ -14996,6 +15004,15 @@ components:
                 updateTime:
                     type: string
                     format: date-time
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentQuestionOption'
+                    description: |-
+                        Choices the subagent offered for this question. The lead may forward them
+                         unchanged when it forwards the request as the owner's ask.
+                multiSelect:
+                    type: boolean
             description: |-
                 QualityAgentRequest is one subagent's decision request to the lead. It is the
                  coordination record behind an ask; the owner sees the ask, not this row.

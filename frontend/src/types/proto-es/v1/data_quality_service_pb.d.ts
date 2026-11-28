@@ -7910,6 +7910,19 @@ export declare type QualityAgentRequest = Message<"metaxisdata.v1.QualityAgentRe
    * @generated from field: google.protobuf.Timestamp update_time = 14;
    */
   updateTime?: Timestamp;
+
+  /**
+   * Choices the subagent offered for this question. The lead may forward them
+   * unchanged when it forwards the request as the owner's ask.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentQuestionOption options = 15;
+   */
+  options: QualityAgentQuestionOption[];
+
+  /**
+   * @generated from field: bool multi_select = 16;
+   */
+  multiSelect: boolean;
 };
 
 /**
@@ -7991,6 +8004,15 @@ export declare type QualityAgentQuestion = Message<"metaxisdata.v1.QualityAgentQ
    * @generated from field: bool multi_select = 6;
    */
   multiSelect: boolean;
+
+  /**
+   * Request resource names this question decides. In a multi-question ask every
+   * question names a non-empty subset and the subsets are disjoint and cover the
+   * ask's requests; one question may leave it empty to cover them all.
+   *
+   * @generated from field: repeated string requests = 7;
+   */
+  requests: string[];
 };
 
 /**

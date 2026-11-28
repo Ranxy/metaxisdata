@@ -19,7 +19,7 @@ func TestScanQualityAgentRequest(t *testing.T) {
 	values := []any{
 		int64(1), "req", "ws", int64(3), sql.NullInt64{Int64: origin, Valid: true},
 		"1;shop;;orders", int16(storepb.MetaType_TABLE), int16(QualityAgentRequestKindDecision),
-		int16(QualityAgentRequestStatusForwarded), "title", "question", "case-1", nil,
+		int16(QualityAgentRequestStatusForwarded), "title", "question", []byte("{}"), "case-1", nil,
 		"target:1;shop;;orders:case:case-1:decision", "timeout", "fingerprint",
 		sql.NullInt64{Int64: ask, Valid: true},
 		"", sql.NullInt32{}, sql.NullTime{Time: now, Valid: true}, sql.NullTime{}, now, now,

@@ -53,9 +53,12 @@ type QualityAgentRequestMessage struct {
 	Status          QualityAgentRequestStatus
 	Title           string
 	Question        string
-	CaseResourceID  string
-	SuggestedPatch  *storepb.QualityAgentFieldPatch
-	DedupeKey       string
+	// Options is the choice set a QUESTION offered; empty for other kinds.
+	Options        []*storepb.QualityAgentAskQuestionOption
+	MultiSelect    bool
+	CaseResourceID string
+	SuggestedPatch *storepb.QualityAgentFieldPatch
+	DedupeKey      string
 	// QuestionKey is the subagent-chosen slug for a QUESTION. It is empty when the
 	// case or the wording alone identifies the question.
 	QuestionKey string
@@ -75,7 +78,7 @@ type QualityAgentRequestMessage struct {
 }
 
 const qualityAgentRequestColumns = `id, resource_id, workspace_id, agent_id,
-	origin_session_id, target_guid, target_type, kind, status, title, question,
+	origin_session_id, target_guid, target_type, kind, status, title, question, options,
 	case_resource_id, suggested_patch, dedupe_key, question_key, question_fingerprint,
 	ask_id, resolution, resolved_by, forwarded_at, resolved_at, created_at, updated_at`
 
@@ -181,12 +184,16 @@ func prepareQualityAgentRequest(message *QualityAgentRequestMessage) (string, []
 }
 
 func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *QualityAgentRequestMessage, resourceID string, patchJSON []byte) (*QualityAgentRequestMessage, bool, error) {
+	optionsJSON, err := encodeQualityAgentRequestOptions(message)
+	if err != nil {
+		return nil, false, err
+	}
 	row := tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_request
 			(resource_id, workspace_id, agent_id, origin_session_id, target_guid, target_type,
-			 kind, status, title, question, case_resource_id, suggested_patch, dedupe_key,
+			 kind, status, title, question, options, case_resource_id, suggested_patch, dedupe_key,
 			 question_key, question_fingerprint, ask_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		-- The insert has two active unique identities (dedupe key and fingerprint), so the
 		-- conflict target is deliberately omitted. The fallback below resolves a conflict on
 		-- either; a conflict on another unique index leaves no matching row and is reported.
@@ -194,9 +201,9 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		RETURNING `+qualityAgentRequestColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.OriginSessionID,
 		message.TargetGUID, int16(message.TargetType), int16(message.Kind), int16(message.Status),
-		message.Title, message.Question, message.CaseResourceID, patchJSON, message.DedupeKey,
-		message.QuestionKey, message.QuestionFingerprint, message.AskID, message.CreatedAt,
-		message.UpdatedAt)
+		message.Title, message.Question, optionsJSON, message.CaseResourceID, patchJSON,
+		message.DedupeKey, message.QuestionKey, message.QuestionFingerprint, message.AskID,
+		message.CreatedAt, message.UpdatedAt)
 	created, err := scanQualityAgentRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		existing, readErr := getActiveQualityAgentRequestTx(ctx, tx, message.AgentID, message.DedupeKey)
@@ -234,11 +241,12 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 			}
 			refreshed, refreshErr := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
 				UPDATE quality_agent_request
-				SET title = $2, question = $3, suggested_patch = COALESCE($4, suggested_patch),
-					question_fingerprint = $5, updated_at = $6
-				WHERE id = $1 AND status = $7
+				SET title = $2, question = $3, options = $4,
+					suggested_patch = COALESCE($5, suggested_patch),
+					question_fingerprint = $6, updated_at = $7
+				WHERE id = $1 AND status = $8
 				RETURNING `+qualityAgentRequestColumns,
-				existing.ID, message.Title, message.Question, patchJSON,
+				existing.ID, message.Title, message.Question, optionsJSON, patchJSON,
 				message.QuestionFingerprint, message.UpdatedAt, int16(QualityAgentRequestStatusOpen)))
 			if refreshErr != nil {
 				// A concurrent request may have taken the new fingerprint between the
@@ -493,11 +501,12 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 		forwarded  sql.NullTime
 		resolved   sql.NullTime
 		patch      []byte
+		options    []byte
 	)
 	err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&originID, &message.TargetGUID, &targetType, &kind, &status, &message.Title,
-		&message.Question, &message.CaseResourceID, &patch, &message.DedupeKey,
+		&message.Question, &options, &message.CaseResourceID, &patch, &message.DedupeKey,
 		&message.QuestionKey, &message.QuestionFingerprint, &askID, &message.Resolution,
 		&resolvedBy, &forwarded, &resolved, &message.CreatedAt, &message.UpdatedAt,
 	)
@@ -527,6 +536,14 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 		value := resolved.Time
 		message.ResolvedAt = &value
 	}
+	if len(options) > 0 {
+		decoded := &storepb.QualityAgentRequestChoice{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(options, decoded); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal request options")
+		}
+		message.Options = decoded.Options
+		message.MultiSelect = decoded.MultiSelect
+	}
 	if len(patch) > 0 {
 		decoded := &storepb.QualityAgentFieldPatch{}
 		if err := common.ProtojsonUnmarshaler.Unmarshal(patch, decoded); err != nil {
@@ -535,6 +552,20 @@ func scanQualityAgentRequest(scanner interface{ Scan(dest ...any) error }) (*Qua
 		message.SuggestedPatch = decoded
 	}
 	return &message, nil
+}
+
+func encodeQualityAgentRequestOptions(message *QualityAgentRequestMessage) ([]byte, error) {
+	if message == nil {
+		return nil, common.Errorf(common.Invalid, "a request is required")
+	}
+	encoded, err := protojson.Marshal(&storepb.QualityAgentRequestChoice{
+		Options:     message.Options,
+		MultiSelect: message.MultiSelect,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode request options")
+	}
+	return encoded, nil
 }
 
 // AnswerQualityAgentRequestAtomic changes the request to ANSWERED and delivers the

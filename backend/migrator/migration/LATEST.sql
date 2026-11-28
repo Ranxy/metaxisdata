@@ -1986,6 +1986,9 @@ CREATE TABLE IF NOT EXISTS quality_agent_request (
     status INT2 NOT NULL DEFAULT 1,
     title TEXT NOT NULL DEFAULT '',
     question TEXT NOT NULL DEFAULT '',
+    -- Stored as QualityAgentRequestChoice (proto/store/store/data_quality.proto).
+    -- The choices a subagent offered with a QUESTION, empty for other kinds.
+    options JSONB NOT NULL DEFAULT '{}',
     case_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '',
     -- Stored as QualityAgentFieldPatch (proto/store/store/data_quality.proto)
     suggested_patch JSONB,
@@ -2018,6 +2021,7 @@ COMMENT ON TABLE quality_agent_request IS 'One subagent decision request to the 
 COMMENT ON COLUMN quality_agent_request.status IS '1 OPEN, 2 FORWARDED, 3 ANSWERED, 4 RESOLVED, 5 DISMISSED';
 COMMENT ON COLUMN quality_agent_request.suggested_patch IS 'protojson of store.QualityAgentFieldPatch; NULL when the request carries no single change';
 COMMENT ON COLUMN quality_agent_request.question_key IS 'The subagent-chosen question_key slug; empty when the case or wording identifies the question';
+COMMENT ON COLUMN quality_agent_request.options IS 'Stored as QualityAgentRequestChoice (proto/store/store/data_quality.proto); the choices a subagent offered with a QUESTION';
 COMMENT ON COLUMN quality_agent_request.question_fingerprint IS 'Hash of target, case, kind and normalized question; catches a retry with a drifted dedupe key';
 
 -- The manual AI drafting job is retired: drafting is now the agent's triage work and
