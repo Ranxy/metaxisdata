@@ -6,8 +6,7 @@ regex, string length, referential integrity, cross-column relations, freshness, 
 drift, cross-table reconciliation, custom SQL, CEL expressions and standard codes. A scheduler runs the checks, and each execution
 records a status, the observed value, the thresholds it was judged against, and (optionally) failed and passing rows.
 
-Everything is in **Data Quality** in the sidebar. The check engine is fully offline; model assistance and the built-in quality agent
-runtime are opt-in.
+Everything is in **Data Quality** in the sidebar. The check engine is fully offline; model assistance and quality agents are opt-in.
 
 ## Before the first check
 
@@ -442,7 +441,8 @@ The **Suggestions** page is the review center. Suggestions arrive from three pla
 
 - **Quality agents.** An active agent's triage pass drafts checks for uncovered targets in its database scope, and an agent with *Adopt*
 can accept low-risk drafts on its owner's behalf under its guardrails (see [Quality agents](#quality-agents)). Agent drafts are
-ordinary proposals; an automatic adoption is recorded on the agent.
+ordinary proposals; an automatic adoption is recorded on the agent. The agent may retract its own pending draft as *Withdrawn*,
+which is not a rejection.
 - **Recommend checks** on a table's Data Quality tab: profile the
 columns first, then derive checks and starting thresholds. It uses no model, so it works with model analysis off, and it is the only
 pass that proposes an observed threshold. Re-running it refreshes its pending drafts.
@@ -577,8 +577,8 @@ check, the config field, the value, the kind of change and the agent's reason, a
 so nothing has changed until you edit the check yourself. A report that finds new failures is an agent-level ask; a target holding no
 rows is a fact the report names rather than a question. Work items dedupe **per target**, and a case's terminal state closes the
 requests it raised. The owner answers or dismisses from the agent's home, or answers a single question from the composer after selecting it; the agent can also withdraw a question that a later answer made obsolete, returning its requests to the agent to answer or re-ask; answering resumes the target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
-agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them or a person created or
-rejected the last one, and the owner also gets an in-app notification.
+agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them, the agent withdrew
+the last one, or a person created or rejected it, and the owner also gets an in-app notification.
 - **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the
   failure class, the repair attempts spent and where it stands; the ones that need a person also appear above as a proposal to apply
   or a decision to make, and the rest answer "what is the agent stuck on" without reading a transcript.
@@ -595,8 +595,8 @@ named the agent applies its guardrails to the target the conversation names, whi
 explicit decision — bypassing the allow-list, confidence and critical-asset switch, but never the database scope, the daily
 ceiling or rule validation. The daily ceiling therefore bounds what the agent adopts on its own or through that conversation
 tool; a person's approval is recorded under its own origin but never spends it.
-- **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
-  that is usually empty — is flagged with its reason, and a flagged draft waits for a person; the objection shows in the review queue.
+- **Can object to or retract its own drafts.** A draft it distrusts is flagged and waits. A draft it judges wrong — a check the target
+  cannot run, a misread intent — is withdrawn with its reason: no decider, no rejection, and a corrected draft may be proposed again.
 - **Runs on a write budget.** Each agent has two daily ceilings: writes to checks per day across its scope, and runs of one check
   per day; zero means the server default (ten writes, three runs per check). At a ceiling the agent does not stall: proposing,
   recording a fact and escalating still work, and the budgets reset the next day. Every write is recorded, so "what changed" is answerable.
@@ -620,7 +620,7 @@ tool; a person's approval is recorded under its own origin but never spends it.
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the
 person's own decision: it turns the agent's queued drafts into checks without the guardrails or the ceiling, but with rule
-validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only; the agent's route to a definition it may not change is `propose_revision`, which asks the owner for one value and escalates the work item. The one exception is an agent delegated at **tune** level on that target: it may change a threshold or a bound itself, but only when re-judging the check's recent runs under the new value leaves every failing run failing — a change that would turn a red run green is refused and has to be proposed. Two things it may do without a person: a check whose own definition cannot run (an unsupported column, a refused bound, a moved structure) may be paused — the case is escalated, and a person still decides whether to resume, archive or replace it — and one kind of failure it may repair outright: a check that reports its target's structure changed gets its saved column snapshot aligned with what the registry says now, its fingerprint updated with it and the run that proves the repair planned immediately, so the work item closes on a real verdict instead of waiting for the next scheduled slot. That repair writes a value the registry owns, never a threshold or a bound. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
+validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft a person is reviewing and changing settings remain human-only — the proposing agent may still withdraw its own undecided draft, which is a retraction rather than a decision; the agent's route to a definition it may not change is `propose_revision`, which asks the owner for one value and escalates the work item. The one exception is an agent delegated at **tune** level on that target: it may change a threshold or a bound itself, but only when re-judging the check's recent runs under the new value leaves every failing run failing — a change that would turn a red run green is refused and has to be proposed. Two things it may do without a person: a check whose own definition cannot run (an unsupported column, a refused bound, a moved structure) may be paused — the case is escalated, and a person still decides whether to resume, archive or replace it — and one kind of failure it may repair outright: a check that reports its target's structure changed gets its saved column snapshot aligned with what the registry says now, its fingerprint updated with it and the run that proves the repair planned immediately, so the work item closes on a real verdict instead of waiting for the next scheduled slot. That repair writes a value the registry owns, never a threshold or a bound. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
 the agent's owner (or by the approver when there is none), and MCP stays read-only.
 
 ### Budgets, blocks and work sessions

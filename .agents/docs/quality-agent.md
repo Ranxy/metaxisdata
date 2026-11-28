@@ -48,7 +48,9 @@ server-side before writing; `control_check` and `repair_check` also re-read part
 re-reads the rule and the run budget. `adopt_pending_drafts` is not case-scoped: it runs on an owner-question wake under the adoption
 gate. A repair is written as one compare-and-set and is only a repair once a run proves it. A criterion change is a proposal at
 `repair` level; at `tune` level it must survive a replay that leaves every failing run failing. `propose_revision` records a field
-and value for a person and never writes a check. No tool publishes, edits, archives, resumes, changes settings or rejects.
+and value for a person and never writes a check. `withdraw_draft` is the author's exit from the review queue: it retracts one of
+the agent's own pending drafts, records no decider, and leaves the identity proposable again. No tool publishes, edits, archives,
+resumes, changes settings or rejects a draft a person is reviewing.
 
 ### The replay
 
@@ -213,7 +215,7 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 | Model reasoning is display-only: it is persisted on the assistant transcript row when the provider returns it, never sent back to the provider, and never counted in the model context | loop/engine tests + conversion test |
 | The agent language is one config value used by the system prompt, the wake reminder and server prose; a language change updates the stored SYSTEM row in place on the next wake, and the prompt instructs the model not to translate identifiers | prompt/language tests + agentlang tests + engine test |
 | An ask answer is linked by `reply_to` and question ids, validated against the offered option labels, written atomically with the ask/request/subagent states, and delivered directly to the requests behind the ask; a batch question names a non-empty disjoint request subset and its answer reaches only those requests, while a message without `reply_to` answers no ask, a closed ask refuses a second answer, and an answer payload that cannot be paired is rendered as text rather than guessed | `dataquality/ask.go` tests + store integration + API/HTTP tests + UI card/bubble tests |
-| A wake's writes are reads, proposals (`propose_revision`, `flag_proposal`), asset facts, lead messages/asks, wake-control and exactly four publish-class verbs: adopt a draft, run a check, pause a check whose own definition cannot run, apply a deterministic repair. The publish-class verbs are server-gated and audited; the three case verbs are case-scoped. No publish, edit, archive, resume, settings or reject tool exists; failure events are idempotent and capped | engine/control/owner-adoption tests |
+| A wake's writes are reads, proposals (`propose_revision`, `flag_proposal`, `withdraw_draft`), asset facts, lead messages/asks, wake-control and exactly four publish-class verbs: adopt a draft, run a check, pause a check whose own definition cannot run, apply a deterministic repair. The publish-class verbs are server-gated and audited; the three case verbs are case-scoped. `withdraw_draft` is a retraction of the agent's own undecided draft, not a rejection: it records no decider and does not suppress the identity. No publish, edit, archive, resume, settings or reject tool exists; failure events are idempotent and capped | engine/control/owner-adoption tests |
 | Compaction trims old tool results first, then summarizes balanced tool pairs, never compacts the system prompt and never deletes the transcript; its threshold is derived from the pinned model's context window and output budget and its pressure from a per-script text estimate, and a model too small to compact cannot be pinned to an agent at selection time; memory holds only confirmed asset facts with automatic supersede and `get_memory` is read-only | compaction/engine tests + integration |
 
 ## Failure modes
@@ -241,6 +243,13 @@ the objection, and the concern is stored beside the payload (head-only metadata,
 the review queue. A flagged draft is never adopted automatically — the concern outranks the allowlist, because the doubt is about
 something the gate cannot see — but it can still be adopted deliberately by the owner, because a flag is a doubt and not a refusal.
 The skip is recorded in the adoption ledger with the concern quoted, so the reason a draft stayed pending is answerable later.
+
+A flag is a doubt, not an exit: the draft stays in the queue, so the target's approval ask stays open. When the agent concludes the
+proposal itself should not exist — the target cannot run the check, the intent was read wrongly, a saved check already covers it — it
+retracts the draft with `withdraw_draft` and a reason. A withdrawal removes the draft from the queue, is not a rejection (no decider
+is recorded, and the identity stays proposable so a corrected threshold can replace it), and resolves the approval ask once the
+target has no pending draft left. Correcting a threshold is the other path: the drafting call refreshes the proposal with the same
+identity rather than creating a second copy.
 
 ## Budgets and the ledger
 
