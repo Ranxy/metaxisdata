@@ -58,7 +58,7 @@ func handlesTool(name string) bool {
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
 		"list_subagents", "get_subagent", "send_subagent_message", "list_requests",
-		"answer_request", "forward_request", "reply_owner", "ask_owner", "cancel_ask", "list_open_cases",
+		"answer_request", "forward_request", "reply_owner", "ask_owner", "cancel_ask", "list_asks", "list_open_cases",
 		"adopt_pending_drafts":
 		return true
 	default:
@@ -99,6 +99,8 @@ func (e *Engine) executeTool(
 		return e.askOwner(ctx, session, arguments, control)
 	case "cancel_ask":
 		return e.cancelAsk(ctx, session, arguments, control)
+	case "list_asks":
+		return e.listAsks(ctx, session, arguments)
 	case "get_target_summary":
 		if isLeadSession(session) {
 			target, err := e.leadTargetSession(ctx, session, arguments)

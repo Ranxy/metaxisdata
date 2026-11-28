@@ -482,6 +482,15 @@ func conversationToolSpecs() []toolSpec {
 			meta: internalMeta(),
 		},
 		{
+			name:        "list_asks",
+			description: "List the questions this agent has put to the owner. Default OPEN; use it to find a stale question before cancel_ask. CLOSED means resolved, dismissed or cancelled; ALL includes the live ones.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"status": map[string]any{"type": "string", "enum": []string{"OPEN", "ANSWERED", "CLOSED", "CANCELLED", "ALL"}},
+				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+			}},
+			meta: internalMeta(),
+		},
+		{
 			name:        "answer_request",
 			description: "Answer one subagent request yourself. The answer is delivered to the origin subagent and the request becomes ANSWERED.",
 			parameters:  map[string]any{"type": "object", "properties": answerRequestParameters(), "required": []string{"request"}},

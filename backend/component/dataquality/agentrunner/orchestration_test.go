@@ -215,6 +215,34 @@ func TestAskOwnerBatchNamesDisjointRequestSubsets(t *testing.T) {
 	require.Equal(t, []string{"workspaces/ws/qualityAgentRequests/r2"}, questions[1].Requests)
 }
 
+func TestListAsksShowsTheOpenQuestion(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, _ := orchestrationStore()
+	ask := &store.QualityAgentAskMessage{
+		ID: 21, ResourceID: "a1", WorkspaceID: "ws", AgentID: 7,
+		Kind: store.QualityAgentAskKindQuestion, Status: store.QualityAgentAskStatusOpen,
+		Title: "A decision", Question: "Keep the check?", MessageSeq: 9,
+		Questions: []*storepb.QualityAgentAskQuestion{{
+			Id: "q1", Header: "Timeout", Question: "Keep the check?",
+			Requests: []string{"workspaces/ws/qualityAgentRequests/r1"},
+		}},
+	}
+	stores.asks = []*store.QualityAgentAskMessage{ask}
+	engine := NewEngine(stores)
+	result, err := engine.listAsks(context.Background(), lead, `{}`)
+	require.NoError(t, err)
+	require.Contains(t, result, `"ask":"workspaces/ws/qualityAgentAsks/a1"`)
+	require.Contains(t, result, `"kind":"QUESTION"`)
+	require.Contains(t, result, `"status":"OPEN"`)
+	require.Contains(t, result, `"question":"Keep the check?"`)
+	require.Contains(t, result, `"message_seq":9`)
+	require.Contains(t, result, `"requests":["workspaces/ws/qualityAgentRequests/r1"]`)
+
+	_, err = engine.listAsks(context.Background(), lead, `{"status":"NOPE"}`)
+	require.ErrorContains(t, err, "unknown ask status")
+}
+
 func TestCancelAskReleasesItsForwardedRequests(t *testing.T) {
 	t.Parallel()
 
