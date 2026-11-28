@@ -347,51 +347,74 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		Failed:    result.Failed,
 		Failure:   lastFailure,
 	})
-	// Link the target session: the attention read resolves the target and the draft
-	// titles through it, and a targetless proposal would make the card's per-target
-	// approval widen to the whole agent. A synthetic session (id 0) stays unlinked.
-	var sessionID *int64
-	if session.ID > 0 {
-		sessionID = &session.ID
+	// Name a few drafts: the owner is being asked to approve this target's queue, and
+	// "one draft" without a title is not enough to decide.
+	titles := make([]string, 0, 5)
+	for _, suggestion := range remaining {
+		if len(titles) >= 5 {
+			break
+		}
+		if title := strings.TrimSpace(suggestion.Payload.GetRule().GetTitle()); title != "" {
+			titles = append(titles, title)
+		}
 	}
-	attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID: session.WorkspaceID,
-		AgentID:     session.AgentID,
-		Kind:        store.QualityAgentAttentionKindProposalPending,
-		SessionID:   sessionID,
-		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
-		Question:    question,
-		DedupeKey:   store.ProposalAttentionDedupeKey(targetGUID),
-		CreatedAt:   time.Now().UTC(),
-	})
-	if err != nil {
+	if len(titles) > 0 {
+		question += "\n\nPending drafts: " + strings.Join(titles, ", ")
+	}
+	// The pending drafts are an approval ask, not an attention row: the owner reads
+	// them in the lead conversation and one answer covers the target. The dedupe key
+	// keeps a second adoption pass from asking the same question twice.
+	lead, leadErr := s.store.EnsureQualityAgentConversation(ctx, session.WorkspaceID, session.AgentID)
+	if leadErr != nil || lead == nil {
 		return result
 	}
-	if !created {
-		// The owner already has one open item for this target. Keep its wording
-		// truthful as later passes change the counts; only a new item notifies.
-		if updateErr := s.store.RefreshOpenQualityAgentAttention(ctx, session.AgentID, "proposal:"+targetGUID, question, ""); updateErr != nil {
-			slog.Warn("failed to refresh a proposal attention", log.WithError(updateErr))
-		}
+	dedupeKey := "proposal:" + targetGUID
+	askResourceID, idErr := common.RandomString(12)
+	if idErr != nil {
+		return result
+	}
+	ask, createdAsk, err := s.store.CreateQualityAgentAskDeduped(ctx, &store.QualityAgentAskMessage{
+		ResourceID:  askResourceID,
+		WorkspaceID: session.WorkspaceID,
+		AgentID:     session.AgentID,
+		Kind:        store.QualityAgentAskKindApproval,
+		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
+		Question:    question,
+		DedupeKey:   dedupeKey,
+	}, lead, &store.QualityAgentTranscriptMessage{
+		Wake:           lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
+		Content:        question,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "proposal-ask:" + askResourceID,
+	}, nil, time.Now().UTC())
+	if err != nil {
+		slog.Warn("failed to record a proposal ask", log.WithError(err))
+		return result
+	}
+	if !createdAsk {
 		return result
 	}
 	if s.notifier == nil {
 		return result
 	}
-	detail := &storepb.QualityAgentAttentionDetail{
-		Agent:     common.FormatWorkspace(session.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
-		Attention: common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
-		Kind:      int32(store.QualityAgentAttentionKindProposalPending),
-		Title:     attention.Title,
-		Question:  attention.Question,
+	detail := &storepb.QualityAgentAskDetail{
+		Agent:    common.FormatWorkspace(session.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
+		Ask:      common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentAsks/" + ask.ResourceID,
+		Kind:     int32(store.QualityAgentAskKindApproval),
+		Title:    ask.Title,
+		Question: ask.Question,
+		Targets:  []string{targetGUID},
 	}
-	dedupeKey := "dqagent:" + attention.ResourceID
+	notificationKey := "dqagent:ask:" + ask.ResourceID
 	if ownerID != nil {
-		if sendErr := s.notifier.SendQualityAgentAttention(ctx, *ownerID, dedupeKey, detail); sendErr != nil {
-			slog.Warn("failed to send a proposal attention notification", log.WithError(sendErr))
+		if sendErr := s.notifier.SendQualityAgentAsk(ctx, *ownerID, notificationKey, detail); sendErr != nil {
+			slog.Warn("failed to send a proposal ask notification", log.WithError(sendErr))
 		}
-	} else if sendErr := s.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
-		slog.Warn("failed to send a proposal attention notification to admins", log.WithError(sendErr))
+	} else if sendErr := s.notifier.SendQualityAgentAskToAdmins(ctx, notificationKey, detail); sendErr != nil {
+		slog.Warn("failed to send a proposal ask notification to admins", log.WithError(sendErr))
 	}
 	return result
 }
@@ -538,7 +561,14 @@ func proposalAttentionKey(suggestion *store.QualitySuggestionMessage) (agentTarg
 // pending draft is left. A pass resolves it after adoption; a person deciding the
 // last draft is the other way the queue empties.
 func (s *DataQualityService) resolveProposalAttentionIfDrained(ctx context.Context, key agentTargetKey, resolvedBy *int32) {
-	if _, err := s.store.ResolveDrainedProposalAttention(ctx, key.agentID, key.targetGUID, resolvedBy, time.Now().UTC()); err != nil {
+	now := time.Now().UTC()
+	if _, err := s.store.ResolveQualityAgentAskByDedupe(ctx, key.agentID, "proposal:"+key.targetGUID,
+		store.QualityAgentAskStatusResolved, now); err != nil {
+		slog.Warn("failed to resolve a drained proposal ask", log.WithError(err))
+	}
+	// The legacy row is still resolved for any attention written before the cutover;
+	// no new one is created.
+	if _, err := s.store.ResolveDrainedProposalAttention(ctx, key.agentID, key.targetGUID, resolvedBy, now); err != nil {
 		slog.Warn("failed to resolve a drained proposal attention", log.WithError(err))
 	}
 }

@@ -394,6 +394,19 @@ func convertToV1Notification(notification *storepb.Notification, workspaceID str
 				Question:  detail.GetQuestion(),
 			},
 		}
+	case notification.GetQualityAgentAsk() != nil:
+		detail := notification.GetQualityAgentAsk()
+		converted.Detail = &v1pb.Notification_QualityAgentAsk{
+			QualityAgentAsk: &v1pb.QualityAgentAskDetail{
+				Agent:        detail.GetAgent(),
+				Ask:          detail.GetAsk(),
+				Kind:         detail.GetKind(),
+				Title:        detail.GetTitle(),
+				Question:     detail.GetQuestion(),
+				RequestCount: detail.GetRequestCount(),
+				Targets:      detail.GetTargets(),
+			},
+		}
 	default:
 		// A detail written by a newer server is not in this build's catalog; the
 		// envelope still renders, and the client falls back to a generic line.

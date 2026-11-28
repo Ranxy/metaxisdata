@@ -232,6 +232,18 @@ const (
 	// DataQualityServiceDismissQualityAgentAttentionProcedure is the fully-qualified name of the
 	// DataQualityService's DismissQualityAgentAttention RPC.
 	DataQualityServiceDismissQualityAgentAttentionProcedure = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
+	// DataQualityServiceListQualityAgentRequestsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentRequests RPC.
+	DataQualityServiceListQualityAgentRequestsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentRequests"
+	// DataQualityServiceGetQualityAgentDecisionRequestProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentDecisionRequest RPC.
+	DataQualityServiceGetQualityAgentDecisionRequestProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentDecisionRequest"
+	// DataQualityServiceListQualityAgentAsksProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentAsks RPC.
+	DataQualityServiceListQualityAgentAsksProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentAsks"
+	// DataQualityServiceGetQualityAgentAskProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentAsk RPC.
+	DataQualityServiceGetQualityAgentAskProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentAsk"
 	// DataQualityServiceSetQualityAgentAdoptionProcedure is the fully-qualified name of the
 	// DataQualityService's SetQualityAgentAdoption RPC.
 	DataQualityServiceSetQualityAgentAdoptionProcedure = "/metaxisdata.v1.DataQualityService/SetQualityAgentAdoption"
@@ -536,12 +548,21 @@ type DataQualityServiceClient interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
-	// Answer an escalation as the owner. The reply is appended to the target session,
-	// the session is resumed, and the attention is resolved; a retry on a closed
-	// attention is a no-op.
+	// Answer a legacy escalation as the owner. The reply is appended to the lead
+	// conversation and the attention is resolved; the lead routes the answer. A retry
+	// on a closed attention is a no-op.
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
+	// List one agent's decision requests. The owner and administrators may read; the
+	// requests are written by the agent's own tools.
+	ListQualityAgentRequests(context.Context, *connect.Request[v1.ListQualityAgentRequestsRequest]) (*connect.Response[v1.ListQualityAgentRequestsResponse], error)
+	// Read one decision request.
+	GetQualityAgentDecisionRequest(context.Context, *connect.Request[v1.GetQualityAgentDecisionRequestRequest]) (*connect.Response[v1.QualityAgentRequest], error)
+	// List one agent's owner-facing questions. The owner and administrators may read.
+	ListQualityAgentAsks(context.Context, *connect.Request[v1.ListQualityAgentAsksRequest]) (*connect.Response[v1.ListQualityAgentAsksResponse], error)
+	// Read one owner-facing question.
+	GetQualityAgentAsk(context.Context, *connect.Request[v1.GetQualityAgentAskRequest]) (*connect.Response[v1.QualityAgentAsk], error)
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
@@ -999,6 +1020,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("DismissQualityAgentAttention")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityAgentRequests: connect.NewClient[v1.ListQualityAgentRequestsRequest, v1.ListQualityAgentRequestsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentRequestsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentRequests")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentDecisionRequest: connect.NewClient[v1.GetQualityAgentDecisionRequestRequest, v1.QualityAgentRequest](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentDecisionRequestProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentDecisionRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityAgentAsks: connect.NewClient[v1.ListQualityAgentAsksRequest, v1.ListQualityAgentAsksResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentAsksProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentAsks")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentAsk: connect.NewClient[v1.GetQualityAgentAskRequest, v1.QualityAgentAsk](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentAskProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentAsk")),
+			connect.WithClientOptions(opts...),
+		),
 		setQualityAgentAdoption: connect.NewClient[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent](
 			httpClient,
 			baseURL+DataQualityServiceSetQualityAgentAdoptionProcedure,
@@ -1154,6 +1199,10 @@ type dataQualityServiceClient struct {
 	listQualityAgentCaseActions          *connect.Client[v1.ListQualityAgentCaseActionsRequest, v1.ListQualityAgentCaseActionsResponse]
 	replyQualityAgentAttention           *connect.Client[v1.ReplyQualityAgentAttentionRequest, v1.QualityAgentAttention]
 	dismissQualityAgentAttention         *connect.Client[v1.DismissQualityAgentAttentionRequest, v1.QualityAgentAttention]
+	listQualityAgentRequests             *connect.Client[v1.ListQualityAgentRequestsRequest, v1.ListQualityAgentRequestsResponse]
+	getQualityAgentDecisionRequest       *connect.Client[v1.GetQualityAgentDecisionRequestRequest, v1.QualityAgentRequest]
+	listQualityAgentAsks                 *connect.Client[v1.ListQualityAgentAsksRequest, v1.ListQualityAgentAsksResponse]
+	getQualityAgentAsk                   *connect.Client[v1.GetQualityAgentAskRequest, v1.QualityAgentAsk]
 	setQualityAgentAdoption              *connect.Client[v1.SetQualityAgentAdoptionRequest, v1.QualityAgent]
 	adoptQualityAgentPendingSuggestions  *connect.Client[v1.AdoptQualityAgentPendingSuggestionsRequest, v1.AdoptQualityAgentPendingSuggestionsResponse]
 	updateQualityAgent                   *connect.Client[v1.UpdateQualityAgentRequest, v1.QualityAgent]
@@ -1505,6 +1554,27 @@ func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Cont
 	return c.dismissQualityAgentAttention.CallUnary(ctx, req)
 }
 
+// ListQualityAgentRequests calls metaxisdata.v1.DataQualityService.ListQualityAgentRequests.
+func (c *dataQualityServiceClient) ListQualityAgentRequests(ctx context.Context, req *connect.Request[v1.ListQualityAgentRequestsRequest]) (*connect.Response[v1.ListQualityAgentRequestsResponse], error) {
+	return c.listQualityAgentRequests.CallUnary(ctx, req)
+}
+
+// GetQualityAgentDecisionRequest calls
+// metaxisdata.v1.DataQualityService.GetQualityAgentDecisionRequest.
+func (c *dataQualityServiceClient) GetQualityAgentDecisionRequest(ctx context.Context, req *connect.Request[v1.GetQualityAgentDecisionRequestRequest]) (*connect.Response[v1.QualityAgentRequest], error) {
+	return c.getQualityAgentDecisionRequest.CallUnary(ctx, req)
+}
+
+// ListQualityAgentAsks calls metaxisdata.v1.DataQualityService.ListQualityAgentAsks.
+func (c *dataQualityServiceClient) ListQualityAgentAsks(ctx context.Context, req *connect.Request[v1.ListQualityAgentAsksRequest]) (*connect.Response[v1.ListQualityAgentAsksResponse], error) {
+	return c.listQualityAgentAsks.CallUnary(ctx, req)
+}
+
+// GetQualityAgentAsk calls metaxisdata.v1.DataQualityService.GetQualityAgentAsk.
+func (c *dataQualityServiceClient) GetQualityAgentAsk(ctx context.Context, req *connect.Request[v1.GetQualityAgentAskRequest]) (*connect.Response[v1.QualityAgentAsk], error) {
+	return c.getQualityAgentAsk.CallUnary(ctx, req)
+}
+
 // SetQualityAgentAdoption calls metaxisdata.v1.DataQualityService.SetQualityAgentAdoption.
 func (c *dataQualityServiceClient) SetQualityAgentAdoption(ctx context.Context, req *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error) {
 	return c.setQualityAgentAdoption.CallUnary(ctx, req)
@@ -1838,12 +1908,21 @@ type DataQualityServiceHandler interface {
 	// List the writes one agent made to checks, newest first: the ledger behind the write budget
 	// and the answer to "what has it changed". A case narrows it to one work item's history.
 	ListQualityAgentCaseActions(context.Context, *connect.Request[v1.ListQualityAgentCaseActionsRequest]) (*connect.Response[v1.ListQualityAgentCaseActionsResponse], error)
-	// Answer an escalation as the owner. The reply is appended to the target session,
-	// the session is resumed, and the attention is resolved; a retry on a closed
-	// attention is a no-op.
+	// Answer a legacy escalation as the owner. The reply is appended to the lead
+	// conversation and the attention is resolved; the lead routes the answer. A retry
+	// on a closed attention is a no-op.
 	ReplyQualityAgentAttention(context.Context, *connect.Request[v1.ReplyQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
 	// Dismiss an escalation without resuming the session. Owner only.
 	DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error)
+	// List one agent's decision requests. The owner and administrators may read; the
+	// requests are written by the agent's own tools.
+	ListQualityAgentRequests(context.Context, *connect.Request[v1.ListQualityAgentRequestsRequest]) (*connect.Response[v1.ListQualityAgentRequestsResponse], error)
+	// Read one decision request.
+	GetQualityAgentDecisionRequest(context.Context, *connect.Request[v1.GetQualityAgentDecisionRequestRequest]) (*connect.Response[v1.QualityAgentRequest], error)
+	// List one agent's owner-facing questions. The owner and administrators may read.
+	ListQualityAgentAsks(context.Context, *connect.Request[v1.ListQualityAgentAsksRequest]) (*connect.Response[v1.ListQualityAgentAsksResponse], error)
+	// Read one owner-facing question.
+	GetQualityAgentAsk(context.Context, *connect.Request[v1.GetQualityAgentAskRequest]) (*connect.Response[v1.QualityAgentAsk], error)
 	// Let the owner turn automatic adoption off or back to paused; administrators may
 	// also set ACTIVE. The rest of the configuration stays administrator-managed.
 	SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error)
@@ -2297,6 +2376,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("DismissQualityAgentAttention")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityAgentRequestsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentRequestsProcedure,
+		svc.ListQualityAgentRequests,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentRequests")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentDecisionRequestHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentDecisionRequestProcedure,
+		svc.GetQualityAgentDecisionRequest,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentDecisionRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityAgentAsksHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentAsksProcedure,
+		svc.ListQualityAgentAsks,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentAsks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentAskHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentAskProcedure,
+		svc.GetQualityAgentAsk,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentAsk")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceSetQualityAgentAdoptionHandler := connect.NewUnaryHandler(
 		DataQualityServiceSetQualityAgentAdoptionProcedure,
 		svc.SetQualityAgentAdoption,
@@ -2515,6 +2618,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceReplyQualityAgentAttentionHandler.ServeHTTP(w, r)
 		case DataQualityServiceDismissQualityAgentAttentionProcedure:
 			dataQualityServiceDismissQualityAgentAttentionHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentRequestsProcedure:
+			dataQualityServiceListQualityAgentRequestsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentDecisionRequestProcedure:
+			dataQualityServiceGetQualityAgentDecisionRequestHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentAsksProcedure:
+			dataQualityServiceListQualityAgentAsksHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentAskProcedure:
+			dataQualityServiceGetQualityAgentAskHandler.ServeHTTP(w, r)
 		case DataQualityServiceSetQualityAgentAdoptionProcedure:
 			dataQualityServiceSetQualityAgentAdoptionHandler.ServeHTTP(w, r)
 		case DataQualityServiceAdoptQualityAgentPendingSuggestionsProcedure:
@@ -2814,6 +2925,22 @@ func (UnimplementedDataQualityServiceHandler) ReplyQualityAgentAttention(context
 
 func (UnimplementedDataQualityServiceHandler) DismissQualityAgentAttention(context.Context, *connect.Request[v1.DismissQualityAgentAttentionRequest]) (*connect.Response[v1.QualityAgentAttention], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DismissQualityAgentAttention is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentRequests(context.Context, *connect.Request[v1.ListQualityAgentRequestsRequest]) (*connect.Response[v1.ListQualityAgentRequestsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentRequests is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentDecisionRequest(context.Context, *connect.Request[v1.GetQualityAgentDecisionRequestRequest]) (*connect.Response[v1.QualityAgentRequest], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentDecisionRequest is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentAsks(context.Context, *connect.Request[v1.ListQualityAgentAsksRequest]) (*connect.Response[v1.ListQualityAgentAsksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentAsks is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentAsk(context.Context, *connect.Request[v1.GetQualityAgentAskRequest]) (*connect.Response[v1.QualityAgentAsk], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentAsk is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) SetQualityAgentAdoption(context.Context, *connect.Request[v1.SetQualityAgentAdoptionRequest]) (*connect.Response[v1.QualityAgent], error) {

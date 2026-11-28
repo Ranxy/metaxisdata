@@ -1041,6 +1041,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentAskDetail"><span class="badge">M</span>QualityAgentAskDetail</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentAttentionDetail"><span class="badge">M</span>QualityAgentAttentionDetail</a>
                 </li>
               
@@ -12015,6 +12019,13 @@ to the event&#39;s suppression window. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>quality_agent_ask</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAskDetail">QualityAgentAskDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -12436,8 +12447,74 @@ an in-app audience; the digest has none and is not routed. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityAgentAskDetail">QualityAgentAskDetail</h3>
+        <p>QualityAgentAttentionDetail reports one agent escalation in the inbox. The</p><p>client renders the prose; the server stores only identities and the bounded</p><p>question text.</p><p>QualityAgentAskDetail reports one owner-facing question from the lead. The client</p><p>renders the prose; the server stores only identities and the bounded text.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>ask</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>1 QUESTION, 2 ANOMALY, 3 APPROVAL (QualityAgentAskKind). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>question</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many subagent requests this question covers. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Display paths of the affected targets, bounded by the server. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityAgentAttentionDetail">QualityAgentAttentionDetail</h3>
-        <p>QualityAgentAttentionDetail reports one agent escalation in the inbox. The</p><p>client renders the prose; the server stores only identities and the bounded</p><p>question text.</p>
+        <p></p>
 
         
           <table class="field-table">

@@ -79,6 +79,12 @@ export declare type Notification = Message<"metaxisdata.v1.Notification"> & {
      */
     value: QualityAgentAttentionDetail;
     case: "qualityAgentAttention";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.QualityAgentAskDetail quality_agent_ask = 10;
+     */
+    value: QualityAgentAskDetail;
+    case: "qualityAgentAsk";
   } | { case: undefined; value?: undefined };
 };
 
@@ -256,7 +262,65 @@ export declare const OpenLineageDetailSchema: GenMessage<OpenLineageDetail>;
 /**
  * QualityAgentAttentionDetail reports one agent escalation. The client renders the
  * message from the structured detail and its own i18n catalog.
+ * QualityAgentAskDetail reports one owner-facing question from the lead. The client
+ * renders the prose; the server stores only identities and the bounded text.
  *
+ * @generated from message metaxisdata.v1.QualityAgentAskDetail
+ */
+export declare type QualityAgentAskDetail = Message<"metaxisdata.v1.QualityAgentAskDetail"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 1;
+   */
+  agent: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}
+   *
+   * @generated from field: string ask = 2;
+   */
+  ask: string;
+
+  /**
+   * 1 QUESTION, 2 ANOMALY, 3 APPROVAL (QualityAgentAskKind).
+   *
+   * @generated from field: int32 kind = 3;
+   */
+  kind: number;
+
+  /**
+   * @generated from field: string title = 4;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string question = 5;
+   */
+  question: string;
+
+  /**
+   * How many subagent requests this question covers.
+   *
+   * @generated from field: int32 request_count = 6;
+   */
+  requestCount: number;
+
+  /**
+   * Display paths of the affected targets, bounded by the server.
+   *
+   * @generated from field: repeated string targets = 7;
+   */
+  targets: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAskDetail.
+ * Use `create(QualityAgentAskDetailSchema)` to create a new message.
+ */
+export declare const QualityAgentAskDetailSchema: GenMessage<QualityAgentAskDetail>;
+
+/**
  * @generated from message metaxisdata.v1.QualityAgentAttentionDetail
  */
 export declare type QualityAgentAttentionDetail = Message<"metaxisdata.v1.QualityAgentAttentionDetail"> & {

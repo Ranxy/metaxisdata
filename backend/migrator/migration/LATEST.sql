@@ -1964,6 +1964,8 @@ CREATE TABLE IF NOT EXISTS quality_agent_ask (
     message_seq INT8 NOT NULL DEFAULT 0,
     title TEXT NOT NULL DEFAULT '',
     question TEXT NOT NULL DEFAULT '',
+    -- One active ask per (agent, dedupe key); empty when the ask is not deduped.
+    dedupe_key TEXT NOT NULL DEFAULT '',
     -- 1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED.
     status INT2 NOT NULL DEFAULT 1,
     answered_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
@@ -1977,6 +1979,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_ask_resource
     ON quality_agent_ask(resource_id);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_agent_status
     ON quality_agent_ask(agent_id, status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_ask_dedupe
+    ON quality_agent_ask(agent_id, dedupe_key)
+    WHERE dedupe_key <> '' AND status IN (1, 2);
 COMMENT ON TABLE quality_agent_ask IS 'One owner-facing question from the lead; it can cover several subagent requests';
 COMMENT ON COLUMN quality_agent_ask.status IS '1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED';
 

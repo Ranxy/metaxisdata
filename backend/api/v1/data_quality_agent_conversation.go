@@ -20,6 +20,7 @@ import (
 const (
 	maxQualityAgentConversationText = 16 << 10
 	defaultConversationMessagesHour = 60
+	qualityAgentAskPrefix           = "qualityAgentAsks/"
 )
 
 // SendQualityAgentMessage appends the owner's message to the agent conversation and
@@ -61,6 +62,15 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		}
 		key = "ask:" + random
 	}
+	replyTo := strings.TrimSpace(req.Msg.GetReplyTo())
+	var ask *store.QualityAgentAskMessage
+	if replyTo != "" {
+		stored, askErr := s.qualityAgentAskForReply(ctx, workspaceID, agent.ID, replyTo)
+		if askErr != nil {
+			return nil, askErr
+		}
+		ask = stored
+	}
 	var conversation *store.QualityAgentSessionMessage
 	var message *store.QualityAgentTranscriptMessage
 	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqchat:%d", agent.ID), func() error {
@@ -76,6 +86,12 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		if err != nil {
 			return err
 		}
+		intent := storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
+		replyToName := ""
+		if ask != nil {
+			intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER
+			replyToName = common.FormatWorkspace(workspaceID) + "/" + qualityAgentAskPrefix + ask.ResourceID
+		}
 		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
 			SessionID:      conversation.ID,
 			WorkspaceID:    workspaceID,
@@ -83,6 +99,9 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			Content:        content,
+			Intent:         intent,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			ReplyTo:        replyToName,
 			IdempotencyKey: key,
 		})
 		if err != nil {
@@ -98,18 +117,53 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		}
 		return nil, lockErr
 	}
-	// The owner's message is the answer when the lead's question was the last thing
-	// it saw. A free-form remark must not close an older ask, so the store compares
-	// the ask's message with the newest owner-visible row. Failing to record the
-	// answer never fails the message: the lead still reads it and can route it.
-	if _, applied, markErr := s.store.MarkLatestOpenQualityAgentAskAnswered(ctx, agent.ID,
-		int32(currentUserID(ctx)), message.Seq, time.Now().UTC()); markErr != nil {
+	// An explicit reply_to answers that ask. Without it, the message answers the
+	// lead's question only when that question was the last thing the owner saw; a
+	// free-form remark must not close an older ask. Failing to record the answer never
+	// fails the message: the lead still reads it and can route it.
+	var applied bool
+	var markErr error
+	if ask != nil {
+		if ask.Status == store.QualityAgentAskStatusOpen {
+			_, applied, markErr = s.store.MarkQualityAgentAskAnswered(ctx, ask.ResourceID,
+				int32(currentUserID(ctx)), message.Seq, time.Now().UTC())
+		}
+	} else {
+		_, applied, markErr = s.store.MarkLatestOpenQualityAgentAskAnswered(ctx, agent.ID,
+			int32(currentUserID(ctx)), message.Seq, time.Now().UTC())
+	}
+	if markErr != nil {
 		slog.Warn("failed to mark the owner's reply against its ask",
 			slog.String("agent", agent.ResourceID), log.WithError(markErr))
 	} else if applied {
 		slog.Debug("the owner's reply answered the lead's ask", slog.String("agent", agent.ResourceID))
 	}
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
+}
+
+// qualityAgentAskForReply resolves the ask an owner's message answers and proves
+// it belongs to the same agent. A stale or foreign ask is refused rather than
+// silently answering a question the owner was not looking at.
+func (s *DataQualityService) qualityAgentAskForReply(ctx context.Context, workspaceID string, agentID int64, name string) (*store.QualityAgentAskMessage, error) {
+	resourceID := strings.TrimPrefix(strings.TrimSpace(name), qualityAgentAskPrefix)
+	if resourceID == "" || strings.Contains(resourceID, "/") {
+		tokens, err := common.GetNameParentTokens(name, common.WorkspacePrefix, qualityAgentAskPrefix)
+		if err != nil {
+			return nil, connectErrorInvalid("invalid quality agent ask name")
+		}
+		if tokens[0] != workspaceID {
+			return nil, connectErrorInvalid("the ask belongs to another workspace")
+		}
+		resourceID = tokens[1]
+	}
+	ask, err := s.store.GetQualityAgentAskByResourceID(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if ask == nil || ask.AgentID != agentID {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the ask was not found"))
+	}
+	return ask, nil
 }
 
 // ListQualityAgentConversationMessages reads the front-office conversation. The

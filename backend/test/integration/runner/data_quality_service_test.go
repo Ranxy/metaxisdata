@@ -3859,6 +3859,7 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		"SetQualityAgentAdoption", "AdoptQualityAgentPendingSuggestions", "SendQualityAgentMessage",
 		"ListQualityAgentConversationMessages", "ListQualityAgentReports",
 		"ListQualityAgentAttentions", "ReplyQualityAgentAttention", "DismissQualityAgentAttention",
+		"ListQualityAgentRequests", "GetQualityAgentDecisionRequest", "ListQualityAgentAsks", "GetQualityAgentAsk",
 		"GetQualityAgentSession", "ListQualityAgentSessions", "ListQualityAgentSessionMessages",
 		"ResumeQualityAgentSession",
 	} {
@@ -4369,6 +4370,35 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	}, 30*time.Second, 250*time.Millisecond,
 		"the report runner never recorded the failing period's anomaly: %s", fixture.env.ServerLogs())
 	require.NotEmpty(t, anomalyAsk.Question)
+	// The new coordination reads expose the ask and its request set to the owner.
+	askName := common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + anomalyAsk.ResourceID
+	openAsks, err := fixture.dataQuality.ListQualityAgentAsks(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentAsksRequest{
+			Parent: agent.GetName(),
+			Status: v1pb.QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_OPEN,
+		}))
+	require.NoError(t, err)
+	require.Contains(t, qualityAgentAskNames(openAsks.Msg.GetQualityAgentAsks()), askName)
+	readAsk, err := fixture.dataQuality.GetQualityAgentAsk(fixture.ctx,
+		withToken(ownerToken, &v1pb.GetQualityAgentAskRequest{Name: askName}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentAskKind_QUALITY_AGENT_ASK_KIND_ANOMALY, readAsk.Msg.GetKind())
+	require.Equal(t, askName, readAsk.Msg.GetName())
+	_, err = fixture.dataQuality.ListQualityAgentRequests(fixture.ctx,
+		withToken(ownerToken, &v1pb.ListQualityAgentRequestsRequest{Parent: agent.GetName()}))
+	require.NoError(t, err, "the owner reads the agent's request list")
+
+	// An explicit reply_to is what marks the ask answered; the lead then routes it.
+	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "The failing period is expected; leave it alone.",
+			ReplyTo:     askName,
+		}))
+	require.NoError(t, err)
+	answeredAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusAnswered, answeredAsk.Status)
 	resolved, err := fixture.env.Store.ResolveQualityAgentAsk(fixture.ctx, anomalyAsk.ResourceID,
 		store.QualityAgentAskStatusDismissed, time.Now().UTC())
 	require.NoError(t, err)
@@ -4459,6 +4489,15 @@ func qualityAgentNames(agents []*v1pb.QualityAgent) []string {
 	names := make([]string, 0, len(agents))
 	for _, agent := range agents {
 		names = append(names, agent.GetName())
+	}
+	return names
+}
+
+// qualityAgentAskNames returns the resource names of the given asks.
+func qualityAgentAskNames(asks []*v1pb.QualityAgentAsk) []string {
+	names := make([]string, 0, len(asks))
+	for _, ask := range asks {
+		names = append(names, ask.GetName())
 	}
 	return names
 }
@@ -4753,26 +4792,22 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedBad.Status,
 		"a failed write returns the draft to the queue")
 
-	// The proposal item the pass raised carries the session, so the agent page can
-	// show the target and its drafts. A targetless item would make the card's
-	// per-target approval widen to the whole agent queue.
-	attentions, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
-		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
-			Parent: agent.GetName(),
-			Status: v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
-		}))
+	// The pending drafts are one approval ask for the target. The dedupe key is what
+	// keeps a second pass from asking the same question, and the lead conversation is
+	// where the owner reads it.
+	asks, err := fixture.env.Store.ListQualityAgentAsks(fixture.ctx, storedAgent.ID,
+		[]store.QualityAgentAskStatus{store.QualityAgentAskStatusOpen}, 20)
 	require.NoError(t, err)
-	var proposal *v1pb.QualityAgentAttention
-	for _, attention := range attentions.Msg.GetQualityAgentAttentions() {
-		if attention.GetKind() == v1pb.QualityAgentAttentionKind_QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING {
-			proposal = attention
+	var proposalAsk *store.QualityAgentAskMessage
+	for _, ask := range asks {
+		if ask.Kind == store.QualityAgentAskKindApproval && ask.DedupeKey == "proposal:"+fixture.usersGUID {
+			proposalAsk = ask
 			break
 		}
 	}
-	require.NotNil(t, proposal, "the failed draft leaves an open proposal item")
-	require.NotEmpty(t, proposal.GetSession(), "the item links its target session")
-	require.Equal(t, fixture.usersGUID, proposal.GetTarget().GetMetaGuid())
-	require.Contains(t, proposal.GetPendingDraftTitles(), "missing column")
+	require.NotNil(t, proposalAsk, "the failed draft leaves an open approval ask")
+	require.Contains(t, proposalAsk.Question, "missing column")
+	require.NotNil(t, proposalAsk.ConversationSessionID, "the ask is written into the lead conversation")
 
 	// The owner-requested tool is the one adoption path that checks the agent's
 	// current database scope; a draft outside it is skipped and stays pending.

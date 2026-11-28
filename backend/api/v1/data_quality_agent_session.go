@@ -47,7 +47,20 @@ func (s *DataQualityService) GetQualityAgentSession(ctx context.Context, req *co
 		return nil, connect.NewError(connect.CodeNotFound,
 			errors.Errorf("quality agent session %q not found", resourceID))
 	}
-	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, session, time.Now().UTC())), nil
+	return connect.NewResponse(s.convertQualityAgentSession(ctx, workspaceID, session)), nil
+}
+
+// convertQualityAgentSession renders one session with its parent's resource name.
+func (s *DataQualityService) convertQualityAgentSession(ctx context.Context, workspaceID string, session *store.QualityAgentSessionMessage) *v1pb.QualityAgentSession {
+	parents := map[int64]string{}
+	if session != nil && session.ParentSessionID != nil {
+		if stored, err := s.store.ListQualityAgentSessionsByIDs(ctx, workspaceID, []int64{*session.ParentSessionID}); err == nil {
+			for id, parent := range stored {
+				parents[id] = parent.ResourceID
+			}
+		}
+	}
+	return convertQualityAgentSessionToV1(workspaceID, session, time.Now().UTC(), parents)
 }
 
 // ListQualityAgentSessions lists the workspace's target work threads. An
@@ -68,7 +81,16 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 		return nil, err
 	}
 	limit := offset.limit + 1
-	find := &store.FindQualityAgentSessionMessage{WorkspaceID: &workspaceID, Kind: 1, Limit: &limit, Offset: &offset.offset}
+	find := &store.FindQualityAgentSessionMessage{WorkspaceID: &workspaceID, Limit: &limit, Offset: &offset.offset}
+	switch role := req.Msg.GetRole(); role {
+	case v1pb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED:
+		find.Kind = 1
+	case v1pb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+		v1pb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT:
+		find.Role = storepb.QualityAgentSessionRole(role)
+	default:
+		return nil, connectErrorInvalid("unknown session role %d", role)
+	}
 	agentName := strings.TrimSpace(req.Msg.GetAgent())
 	if agentName != "" {
 		_, agentResourceID, err := s.qualityAgentResourceID(ctx, agentName)
@@ -92,6 +114,23 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	if database := strings.TrimSpace(req.Msg.GetDatabase()); database != "" {
 		find.DatabaseRef = &database
 	}
+	if name := strings.TrimSpace(req.Msg.GetSubagentName()); name != "" {
+		find.SubagentName = &name
+	}
+	if parentName := strings.TrimSpace(req.Msg.GetParentSession()); parentName != "" {
+		_, parentID, parentErr := s.qualityAgentSessionResourceID(ctx, parentName)
+		if parentErr != nil {
+			return nil, parentErr
+		}
+		parent, parentErr := s.fetchQualityAgentSession(ctx, parentID)
+		if parentErr != nil {
+			return nil, parentErr
+		}
+		if find.AgentID != nil && parent.AgentID != *find.AgentID {
+			return nil, connectErrorInvalid("the parent session belongs to another agent")
+		}
+		find.ParentSessionID = &parent.ID
+	}
 	find.Mode = storepb.QualityAgentSessionMode(req.Msg.GetMode())
 	switch state := req.Msg.GetState(); state {
 	case v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_UNSPECIFIED:
@@ -114,9 +153,21 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 		return nil, err
 	}
 	now := time.Now().UTC()
+	parentIDs := make([]int64, 0, len(messages))
+	for _, message := range messages {
+		if message.ParentSessionID != nil {
+			parentIDs = append(parentIDs, *message.ParentSessionID)
+		}
+	}
+	parents := map[int64]string{}
+	if stored, err := s.store.ListQualityAgentSessionsByIDs(ctx, workspaceID, parentIDs); err == nil {
+		for id, parent := range stored {
+			parents[id] = parent.ResourceID
+		}
+	}
 	response := &v1pb.ListQualityAgentSessionsResponse{NextPageToken: nextPageToken}
 	for _, message := range messages {
-		response.QualityAgentSessions = append(response.QualityAgentSessions, convertQualityAgentSessionToV1(workspaceID, message, now))
+		response.QualityAgentSessions = append(response.QualityAgentSessions, convertQualityAgentSessionToV1(workspaceID, message, now, parents))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -230,9 +281,10 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 		}
 		response.NextPageToken = nextPageToken
 	}
+	senders := s.qualityAgentMessageSenders(ctx, workspaceID, messages)
 	for _, message := range messages {
 		response.QualityAgentSessionMessages = append(response.QualityAgentSessionMessages,
-			convertQualityAgentMessageToV1(workspaceID, session.ResourceID, message))
+			convertQualityAgentMessageToV1(workspaceID, session.ResourceID, message, senders))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -308,9 +360,19 @@ func (s *DataQualityService) callerCanReadQualityAgent(ctx context.Context, agen
 
 // convertQualityAgentSessionToV1 renders one session. "Running" is derived from the
 // lease, never from the durable state.
-func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAgentSessionMessage, now time.Time) *v1pb.QualityAgentSession {
+func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAgentSessionMessage, now time.Time, parentNames ...map[int64]string) *v1pb.QualityAgentSession {
 	if message == nil {
 		return nil
+	}
+	parent := ""
+	subagentName := ""
+	if message.Role == storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT {
+		subagentName = message.SubagentName
+		if message.ParentSessionID != nil && len(parentNames) > 0 && parentNames[0] != nil {
+			if name, ok := parentNames[0][*message.ParentSessionID]; ok {
+				parent = common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + name
+			}
+		}
 	}
 	return &v1pb.QualityAgentSession{
 		Name:             common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + message.ResourceID,
@@ -329,6 +391,9 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 		Running:          message.LeaseUntil != nil && message.LeaseUntil.After(now),
 		Mode:             v1pb.QualityAgentSessionMode(message.Mode),
 		ContextUsage:     convertQualityAgentSessionContextUsageToV1(message.ContextUsage),
+		Role:             v1pb.QualityAgentSessionRole(message.Role),
+		Parent:           parent,
+		SubagentName:     subagentName,
 		CreateTime:       timestamppb.New(message.CreatedAt),
 		UpdateTime:       timestamppb.New(message.UpdatedAt),
 		ArchiveTime:      timestampOrNil(message.ArchivedAt),
@@ -393,10 +458,34 @@ func convertQualityTargetIdentityToV1(targetGUID string, objectType storepb.Meta
 	return target
 }
 
+// qualityAgentMessageSenders resolves the session resource ids named by a page's
+// messages in one read, so a relay row renders its sender without an N+1.
+func (s *DataQualityService) qualityAgentMessageSenders(ctx context.Context, workspaceID string, messages []*store.QualityAgentTranscriptMessage) map[int64]string {
+	ids := make([]int64, 0, len(messages))
+	for _, message := range messages {
+		if message.SenderSessionID != nil {
+			ids = append(ids, *message.SenderSessionID)
+		}
+	}
+	names := map[int64]string{}
+	if stored, err := s.store.ListQualityAgentSessionsByIDs(ctx, workspaceID, ids); err == nil {
+		for id, session := range stored {
+			names[id] = session.ResourceID
+		}
+	}
+	return names
+}
+
 // convertQualityAgentMessageToV1 renders one transcript entry.
-func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, message *store.QualityAgentTranscriptMessage) *v1pb.QualityAgentSessionMessage {
+func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, message *store.QualityAgentTranscriptMessage, senderNames ...map[int64]string) *v1pb.QualityAgentSessionMessage {
 	if message == nil {
 		return nil
+	}
+	sender := ""
+	if message.SenderSessionID != nil && len(senderNames) > 0 && senderNames[0] != nil {
+		if name, ok := senderNames[0][*message.SenderSessionID]; ok {
+			sender = common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + name
+		}
 	}
 	converted := &v1pb.QualityAgentSessionMessage{
 		Name:       common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + sessionResourceID + "/messages/" + strconv.FormatInt(message.Seq, 10),
@@ -413,6 +502,11 @@ func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, messa
 		Tokens:     message.Tokens,
 		Truncated:  message.Truncated,
 		Error:      message.Error,
+		Sender:     sender,
+		SenderName: message.SenderName,
+		Intent:     v1pb.QualityAgentMessageIntent(message.Intent),
+		Audience:   v1pb.QualityAgentMessageAudience(message.Audience),
+		ReplyTo:    message.ReplyTo,
 		CreateTime: timestamppb.New(message.CreatedAt),
 	}
 	for _, call := range message.ToolCalls.GetToolCalls() {

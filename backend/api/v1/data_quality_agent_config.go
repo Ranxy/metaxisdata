@@ -336,6 +336,8 @@ func parseQualityAgentConfig(agent *v1pb.QualityAgent) (*store.QualityAgentMessa
 		config.ConversationMessagesPerHour = budget.GetConversationMessagesPerHour()
 		config.RepairMaxPerDay = budget.GetRepairMaxPerDay()
 		config.RunMaxPerRulePerDay = budget.GetRunMaxPerRulePerDay()
+		config.MaxTriageSessions = budget.GetMaxTriageSessions()
+		config.MaxNewTriageSessionsPerHour = budget.GetMaxNewTriageSessionsPerHour()
 	}
 	return config, databases, nil
 }
@@ -351,6 +353,12 @@ func validateQualityAgentBudget(budget *v1pb.QualityAgentBudget) error {
 	}
 	if budget.GetMaxConcurrentSessions() < 0 || budget.GetMaxConcurrentSessions() > dataquality.MaxAgentRunnerConcurrentSessions {
 		return connectErrorInvalid("the concurrent session budget must be between 0 and %d", dataquality.MaxAgentRunnerConcurrentSessions)
+	}
+	if budget.GetMaxTriageSessions() < 0 || budget.GetMaxTriageSessions() > dataquality.MaxAgentRunnerMaxTriageSessions {
+		return connectErrorInvalid("the concurrent triage budget must be between 0 and %d", dataquality.MaxAgentRunnerMaxTriageSessions)
+	}
+	if budget.GetMaxNewTriageSessionsPerHour() < 0 || budget.GetMaxNewTriageSessionsPerHour() > dataquality.MaxAgentRunnerMaxNewTriageSessionsPerHour {
+		return connectErrorInvalid("the new triage sessions per hour budget must be between 0 and %d", dataquality.MaxAgentRunnerMaxNewTriageSessionsPerHour)
 	}
 	if budget.GetMaxNewSessionsPerHour() < 0 || budget.GetMaxNewSessionsPerHour() > dataquality.MaxAgentRunnerNewSessionsPerHour {
 		return connectErrorInvalid("the new sessions per hour budget must be between 0 and %d", dataquality.MaxAgentRunnerNewSessionsPerHour)
@@ -413,10 +421,6 @@ func applyQualityAgentUpdate(patch *v1pb.QualityAgent, current *store.QualityAge
 		return nil, nil, err
 	}
 	config.ID = current.ID
-	// The v1 budget has no triage fields yet. Preserve the stored values instead of
-	// letting every unrelated save reset them to "server default".
-	config.MaxTriageSessions = current.MaxTriageSessions
-	config.MaxNewTriageSessionsPerHour = current.MaxNewTriageSessionsPerHour
 	return config, nextDatabases, nil
 }
 
@@ -492,6 +496,8 @@ func qualityAgentConfigFields(agent *store.QualityAgentMessage, databases []stri
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
 			RepairMaxPerDay:             agent.RepairMaxPerDay,
 			RunMaxPerRulePerDay:         agent.RunMaxPerRulePerDay,
+			MaxTriageSessions:           agent.MaxTriageSessions,
+			MaxNewTriageSessionsPerHour: agent.MaxNewTriageSessionsPerHour,
 		},
 	}
 }
@@ -703,6 +709,8 @@ func convertQualityAgentToV1(workspaceID string, agent *store.QualityAgentMessag
 			ConversationMessagesPerHour: agent.ConversationMessagesPerHour,
 			RepairMaxPerDay:             agent.RepairMaxPerDay,
 			RunMaxPerRulePerDay:         agent.RunMaxPerRulePerDay,
+			MaxTriageSessions:           agent.MaxTriageSessions,
+			MaxNewTriageSessionsPerHour: agent.MaxNewTriageSessionsPerHour,
 		},
 	}
 }

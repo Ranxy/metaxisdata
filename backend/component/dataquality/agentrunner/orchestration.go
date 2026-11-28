@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -422,7 +423,7 @@ func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentS
 			SenderName:      "lead",
 			Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
 			Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
-			ReplyTo:         request.ResourceID,
+			ReplyTo:         common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentRequests/" + request.ResourceID,
 			IdempotencyKey:  fmt.Sprintf("answer:%s", request.ResourceID),
 		}, e.now())
 	if err != nil {
@@ -510,6 +511,7 @@ func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgent
 		Kind:        store.QualityAgentAskKindQuestion,
 		Title:       "The quality agent needs a decision",
 		Question:    question,
+		DedupeKey:   "lead:" + askDedupeKey(question, requests),
 	}, session, &store.QualityAgentTranscriptMessage{
 		Wake:           session.WakeCount + 1,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
@@ -526,6 +528,13 @@ func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgent
 	if control != nil {
 		control.ownerFacing = true
 		control.ownerMessageWritten = true
+	}
+	if e.askNotifier != nil {
+		targets := make([]string, 0, len(requests))
+		for _, request := range requests {
+			targets = append(targets, request.TargetGUID)
+		}
+		e.askNotifier(ctx, AskNotice{AgentID: session.AgentID, Ask: ask, RequestCount: len(requests), Targets: targets})
 	}
 	return ask, nil
 }
@@ -585,6 +594,18 @@ func parseMessageIntent(value string) storepb.QualityAgentMessageIntent {
 	default:
 		return storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
 	}
+}
+
+// askDedupeKey makes a retried ask_owner reuse the open question instead of writing
+// the same prose twice. The request set is part of the key: the same words about a
+// different decision are a different question.
+func askDedupeKey(question string, requests []*store.QualityAgentRequestMessage) string {
+	ids := make([]string, 0, len(requests))
+	for _, request := range requests {
+		ids = append(ids, request.ResourceID)
+	}
+	slices.Sort(ids)
+	return fmt.Sprintf("%x", contentHash(question+"|"+strings.Join(ids, ",")))
 }
 
 func requestName(resourceID string) string { return "qualityAgentRequests/" + resourceID }

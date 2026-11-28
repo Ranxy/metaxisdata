@@ -220,6 +220,7 @@
     - [NotificationRoute](#metaxisdata-store-NotificationRoute)
     - [NotificationRouteMatch](#metaxisdata-store-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
+    - [QualityAgentAskDetail](#metaxisdata-store-QualityAgentAskDetail)
     - [QualityAgentAttentionDetail](#metaxisdata-store-QualityAgentAttentionDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
@@ -4107,6 +4108,7 @@ columns cannot disagree. The payload holds only the message proper.
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
 | quality_agent_attention | [QualityAgentAttentionDetail](#metaxisdata-store-QualityAgentAttentionDetail) |  |  |
+| quality_agent_ask | [QualityAgentAskDetail](#metaxisdata-store-QualityAgentAskDetail) |  |  |
 
 
 
@@ -4264,12 +4266,35 @@ fell through to an external dataset.
 
 
 
-<a name="metaxisdata-store-QualityAgentAttentionDetail"></a>
+<a name="metaxisdata-store-QualityAgentAskDetail"></a>
 
-### QualityAgentAttentionDetail
+### QualityAgentAskDetail
 QualityAgentAttentionDetail reports one agent escalation in the inbox. The
 client renders the prose; the server stores only identities and the bounded
 question text.
+QualityAgentAskDetail reports one owner-facing question from the lead. The client
+renders the prose; the server stores only identities and the bounded text.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| ask | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask} |
+| kind | [int32](#int32) |  | 1 QUESTION, 2 ANOMALY, 3 APPROVAL (QualityAgentAskKind). |
+| title | [string](#string) |  |  |
+| question | [string](#string) |  |  |
+| request_count | [int32](#int32) |  | How many subagent requests this question covers. |
+| targets | [string](#string) | repeated | Display paths of the affected targets, bounded by the server. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAttentionDetail"></a>
+
+### QualityAgentAttentionDetail
+
 
 
 | Field | Type | Label | Description |

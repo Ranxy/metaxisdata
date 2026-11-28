@@ -666,9 +666,9 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
-  // Answer an escalation as the owner. The reply is appended to the target session,
-  // the session is resumed, and the attention is resolved; a retry on a closed
-  // attention is a no-op.
+  // Answer a legacy escalation as the owner. The reply is appended to the lead
+  // conversation and the attention is resolved; the lead routes the answer. A retry
+  // on a closed attention is a no-op.
   rpc ReplyQualityAgentAttention(ReplyQualityAgentAttentionRequest) returns (QualityAgentAttention) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply"
@@ -685,6 +685,31 @@ service DataQualityService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // List one agent's decision requests. The owner and administrators may read; the
+  // requests are written by the agent's own tools.
+  rpc ListQualityAgentRequests(ListQualityAgentRequestsRequest) returns (ListQualityAgentRequestsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/requests"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Read one decision request.
+  rpc GetQualityAgentDecisionRequest(GetQualityAgentDecisionRequestRequest) returns (QualityAgentRequest) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentRequests/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // List one agent's owner-facing questions. The owner and administrators may read.
+  rpc ListQualityAgentAsks(ListQualityAgentAsksRequest) returns (ListQualityAgentAsksResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/asks"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Read one owner-facing question.
+  rpc GetQualityAgentAsk(GetQualityAgentAskRequest) returns (QualityAgentAsk) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentAsks/*}"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
@@ -3879,6 +3904,10 @@ message QualityAgentBudget {
   // How many immediate runs the agent may request per check per rolling day. A run is its
   // diagnostic, so the ceiling is per check rather than per agent.
   int32 run_max_per_rule_per_day = 8;
+  // How many uncovered targets may be triaged at once. Zero uses the server default.
+  int32 max_triage_sessions = 9;
+  // How many uncovered targets may enter triage per hour. Zero uses the server default.
+  int32 max_new_triage_sessions_per_hour = 10;
 }
 
 // QualityAgent is one built-in quality agent: a service-account identity that exists
@@ -3978,6 +4007,10 @@ message SendQualityAgentMessageRequest {
   string message_body = 2 [(google.api.field_behavior) = REQUIRED];
   // A client-generated idempotency id; repeating it returns the existing message.
   string request_id = 3;
+  // The ask this message answers, when it is a reply to a question. Format:
+  // workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
+  // is marked answered and the lead routes the answer.
+  string reply_to = 4 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentAsk"}];
 }
 
 // ListQualityAgentConversationMessagesRequest reads the agent's conversation.
@@ -4089,6 +4122,158 @@ enum QualityAgentAttentionStatus {
 }
 
 // QualityAgentAttention is one owner escalation inside an agent.
+// QualityAgentRequestKind is why a subagent needs the lead.
+enum QualityAgentRequestKind {
+  QUALITY_AGENT_REQUEST_KIND_UNSPECIFIED = 0;
+  QUALITY_AGENT_REQUEST_KIND_DECISION = 1;
+  QUALITY_AGENT_REQUEST_KIND_PROPOSAL = 2;
+  QUALITY_AGENT_REQUEST_KIND_BLOCKED = 3;
+  QUALITY_AGENT_REQUEST_KIND_FROZEN = 4;
+  QUALITY_AGENT_REQUEST_KIND_ANOMALY = 5;
+  QUALITY_AGENT_REQUEST_KIND_QUESTION = 6;
+}
+
+// QualityAgentRequestStatus is the request's lifecycle.
+enum QualityAgentRequestStatus {
+  QUALITY_AGENT_REQUEST_STATUS_UNSPECIFIED = 0;
+  QUALITY_AGENT_REQUEST_STATUS_OPEN = 1;
+  QUALITY_AGENT_REQUEST_STATUS_FORWARDED = 2;
+  QUALITY_AGENT_REQUEST_STATUS_ANSWERED = 3;
+  QUALITY_AGENT_REQUEST_STATUS_RESOLVED = 4;
+  QUALITY_AGENT_REQUEST_STATUS_DISMISSED = 5;
+}
+
+// QualityAgentAskKind is what the lead is telling the owner.
+enum QualityAgentAskKind {
+  QUALITY_AGENT_ASK_KIND_UNSPECIFIED = 0;
+  QUALITY_AGENT_ASK_KIND_QUESTION = 1;
+  QUALITY_AGENT_ASK_KIND_ANOMALY = 2;
+  QUALITY_AGENT_ASK_KIND_APPROVAL = 3;
+}
+
+// QualityAgentAskStatus is the ask's lifecycle.
+enum QualityAgentAskStatus {
+  QUALITY_AGENT_ASK_STATUS_UNSPECIFIED = 0;
+  QUALITY_AGENT_ASK_STATUS_OPEN = 1;
+  QUALITY_AGENT_ASK_STATUS_ANSWERED = 2;
+  QUALITY_AGENT_ASK_STATUS_RESOLVED = 3;
+  QUALITY_AGENT_ASK_STATUS_DISMISSED = 4;
+}
+
+// QualityAgentRequest is one subagent's decision request to the lead. It is the
+// coordination record behind an ask; the owner sees the ask, not this row.
+message QualityAgentRequest {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentRequest"
+    pattern: "workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}"
+  };
+  // Format: workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityTarget target = 3;
+  QualityAgentRequestKind kind = 4;
+  QualityAgentRequestStatus status = 5;
+  string title = 6;
+  string question = 7;
+  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty when
+  // the request is not about one work item.
+  string case = 8;
+  // The concrete change a proposal asks for; empty for other kinds.
+  QualityAgentFieldPatch suggested_patch = 9;
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}; the subagent that
+  // raised it.
+  string origin_session = 10;
+  // Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}; empty until
+  // the lead forwards it.
+  string ask = 11;
+  // The lead's or owner's answer, once answered.
+  string resolution = 12;
+  google.protobuf.Timestamp create_time = 13;
+  google.protobuf.Timestamp update_time = 14;
+}
+
+// QualityAgentAsk is one owner-facing question from the lead. It can cover several
+// requests through their ask link.
+message QualityAgentAsk {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentAsk"
+    pattern: "workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}"
+  };
+  // Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityAgentAskKind kind = 3;
+  QualityAgentAskStatus status = 4;
+  string title = 5;
+  string question = 6;
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}; the lead conversation
+  // the question was written into.
+  string conversation = 7;
+  // The transcript seq of the question.
+  int64 message_seq = 8;
+  // Format: users/{user}; empty until the owner answers.
+  string answered_by = 9;
+  google.protobuf.Timestamp answer_time = 10;
+  // The transcript seq of the owner's answer.
+  int64 answer_message_seq = 11;
+  google.protobuf.Timestamp resolve_time = 12;
+  google.protobuf.Timestamp create_time = 13;
+  google.protobuf.Timestamp update_time = 14;
+}
+
+message ListQualityAgentRequestsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // UNSPECIFIED lists open and forwarded requests.
+  QualityAgentRequestStatus status = 2;
+  string target_guid = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListQualityAgentRequestsResponse {
+  repeated QualityAgentRequest quality_agent_requests = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityAgentDecisionRequestRequest {
+  // Format: workspaces/{workspace}/qualityAgentRequests/{quality_agent_request}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentRequest"}
+  ];
+}
+
+message ListQualityAgentAsksRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // UNSPECIFIED lists open and answered asks.
+  QualityAgentAskStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentAsksResponse {
+  repeated QualityAgentAsk quality_agent_asks = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityAgentAskRequest {
+  // Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAsk"}
+  ];
+}
+
 message QualityAgentAttention {
   option (google.api.resource) = {
     type: "metaxisdata/QualityAgentAttention"
@@ -4894,6 +5079,32 @@ enum QualityAgentSessionMode {
   QUALITY_AGENT_SESSION_MODE_TRIAGE = 2;
 }
 
+// QualityAgentSessionRole is the session's place in the agent tree. LEAD is the
+// owner-facing coordinator; SUBAGENT owns exactly one target.
+enum QualityAgentSessionRole {
+  QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_ROLE_LEAD = 1;
+  QUALITY_AGENT_SESSION_ROLE_SUBAGENT = 2;
+}
+
+// QualityAgentMessageAudience says who may read a message.
+enum QualityAgentMessageAudience {
+  QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER = 1;
+  QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL = 2;
+}
+
+// QualityAgentMessageIntent classifies an agent-to-agent message.
+enum QualityAgentMessageIntent {
+  QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_INTENT_MESSAGE = 1;
+  QUALITY_AGENT_MESSAGE_INTENT_REPORT = 2;
+  QUALITY_AGENT_MESSAGE_INTENT_QUESTION = 3;
+  QUALITY_AGENT_MESSAGE_INTENT_ANSWER = 4;
+  QUALITY_AGENT_MESSAGE_INTENT_ASSIGN = 5;
+  QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
+}
+
 // QualityAgentMessageRole is one entry in a session's conversation.
 enum QualityAgentMessageRole {
   QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
@@ -4986,6 +5197,12 @@ message QualityAgentSession {
   QualityAgentSessionMode mode = 22;
   // The last model input the engine measured; empty until the first model wake.
   QualityAgentSessionContextUsage context_usage = 23;
+  // The session's place in the agent tree.
+  QualityAgentSessionRole role = 24;
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}; empty for the lead.
+  string parent = 25 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentSession"}];
+  // The model-facing name of a subagent ("orders"); empty for the lead.
+  string subagent_name = 26;
 }
 
 // QualityAgentSessionMessage is one append-only transcript entry of a session. (The
@@ -5016,6 +5233,14 @@ message QualityAgentSessionMessage {
   // Display-only model reasoning for this assistant turn. Empty when the provider
   // returned none; never sent back to the provider.
   string reasoning = 16;
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}; empty for the owner.
+  string sender = 17 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentSession"}];
+  // "lead", a target's subagent name, or empty for the owner.
+  string sender_name = 18;
+  QualityAgentMessageIntent intent = 19;
+  QualityAgentMessageAudience audience = 20;
+  // The ask or request this message answers; empty otherwise.
+  string reply_to = 21;
 }
 
 message GetQualityAgentSessionRequest {
@@ -5039,6 +5264,13 @@ message ListQualityAgentSessionsRequest {
   // Keep only this agent's sessions. An administrator may omit it to read every
   // session in the workspace; an owner must set it to an agent they own.
   string agent = 9 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}];
+  // UNSPECIFIED keeps the target work sessions (the subagent roster).
+  QualityAgentSessionRole role = 10;
+  // Keep only the subagents of this lead. Format:
+  // workspaces/{workspace}/qualityAgentSessions/{session}.
+  string parent_session = 11 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentSession"}];
+  // Keep only the subagent with this model-facing name.
+  string subagent_name = 12;
 }
 
 message ListQualityAgentSessionsResponse {

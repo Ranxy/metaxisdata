@@ -9,6 +9,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -170,6 +171,62 @@ func TestConvertQualityAgentMessageRendersTheToolCalls(t *testing.T) {
 	require.Equal(t, "qualityExecutions/123", message.GetReference())
 	require.Equal(t, "checking the plan", message.GetReasoning())
 	require.Equal(t, int64(7), message.GetSeq())
+}
+
+// The session read exposes the agent tree: a subagent carries its lead's resource name
+// and its model-facing name, and the lead carries neither.
+func TestConvertQualityAgentSessionExposesTheAgentTree(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(10_000, 0).UTC()
+	parentID := int64(9)
+	subagent := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID:      "s1",
+		Role:            storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT,
+		ParentSessionID: &parentID,
+		SubagentName:    "orders",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}, now, map[int64]string{parentID: "lead1"})
+	require.Equal(t, v1pb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT, subagent.GetRole())
+	require.Equal(t, "workspaces/ws/qualityAgentSessions/lead1", subagent.GetParent())
+	require.Equal(t, "orders", subagent.GetSubagentName())
+
+	lead := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID:   "lead1",
+		Role:         storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD,
+		SubagentName: "ignored",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}, now)
+	require.Equal(t, v1pb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD, lead.GetRole())
+	require.Empty(t, lead.GetParent())
+	require.Empty(t, lead.GetSubagentName())
+}
+
+// A transcript entry exposes who wrote it and to whom: the sender's resource name,
+// its display name, the intent, the audience and the ask/request it answers.
+func TestConvertQualityAgentMessageExposesSenderIntentAndAudience(t *testing.T) {
+	t.Parallel()
+
+	senderID := int64(5)
+	message := convertQualityAgentMessageToV1("ws", "s1", &store.QualityAgentTranscriptMessage{
+		Seq:             8,
+		Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:          storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Content:         "orders is done",
+		SenderSessionID: &senderID,
+		SenderName:      "orders",
+		Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT,
+		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		ReplyTo:         "qualityAgentRequests/r1",
+		CreatedAt:       time.Unix(10_000, 0).UTC(),
+	}, map[int64]string{senderID: "sub5"})
+	require.Equal(t, "workspaces/ws/qualityAgentSessions/sub5", message.GetSender())
+	require.Equal(t, "orders", message.GetSenderName())
+	require.Equal(t, v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT, message.GetIntent())
+	require.Equal(t, v1pb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL, message.GetAudience())
+	require.Equal(t, "qualityAgentRequests/r1", message.GetReplyTo())
 }
 
 func TestSlicesReverseKeepsChronologicalOrder(t *testing.T) {

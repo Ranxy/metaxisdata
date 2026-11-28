@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
@@ -312,6 +313,31 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		agentrunner.WithPermissionChecker(agentIAM),
 		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
+	sessionEngine.SetAskNotifier(func(ctx context.Context, notice agentrunner.AskNotice) {
+		agent, err := stores.GetQualityAgentByID(ctx, notice.AgentID)
+		if err != nil || agent == nil || notice.Ask == nil || s.notifier == nil {
+			return
+		}
+		detail := &storepb.QualityAgentAskDetail{
+			Agent:        common.FormatWorkspace(notice.Ask.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
+			Ask:          common.FormatWorkspace(notice.Ask.WorkspaceID) + "/qualityAgentAsks/" + notice.Ask.ResourceID,
+			Kind:         int32(notice.Ask.Kind),
+			Title:        notice.Ask.Title,
+			Question:     notice.Ask.Question,
+			RequestCount: int32(notice.RequestCount),
+			Targets:      notice.Targets,
+		}
+		dedupeKey := "dqagent:ask:" + notice.Ask.ResourceID
+		if agent.OwnerPrincipalID != nil {
+			if sendErr := s.notifier.SendQualityAgentAsk(ctx, *agent.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+				slog.Warn("failed to send a quality agent ask notification", log.WithError(sendErr))
+			}
+			return
+		}
+		if sendErr := s.notifier.SendQualityAgentAskToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+			slog.Warn("failed to send a quality agent ask notification to admins", log.WithError(sendErr))
+		}
+	})
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	s.sessionRunner.SetBlockedSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
 		// A blocked lead has no one above it; the owner sees the conversation stall. A
