@@ -111,9 +111,12 @@ describe("QualityAgentAskCard", () => {
   });
 
   it("marks an answered ask as waiting for the lead, without a composer", async () => {
-    const wrapper = await mountCard(
-      askFixture(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.ANSWERED)
+    const ask = askFixture(
+      QualityAgentAskKind.QUESTION,
+      QualityAgentAskStatus.ANSWERED
     );
+    ask.answerMessageSeq = 1n;
+    const wrapper = await mountCard(ask);
     expect(wrapper.find("textarea").exists()).toBe(false);
     expect(wrapper.text()).toContain("Answer delivered to the target");
   });
@@ -326,6 +329,15 @@ describe("QualityAgentAskCard", () => {
     ];
     const wrapper = await mountCard(ask);
     expect(wrapper.text().match(/Covers orders · 1 request/g)).toHaveLength(2);
+  });
+
+  it("does not claim an answer for a resolved approval with no recorded answer", async () => {
+    const wrapper = await mountCard(
+      askFixture(QualityAgentAskKind.APPROVAL, QualityAgentAskStatus.RESOLVED),
+      false
+    );
+    expect(wrapper.text()).not.toContain("Answer delivered to the target");
+    expect(wrapper.text()).toContain("Resolved");
   });
 
   it("clamps a long question and expands it on request", async () => {

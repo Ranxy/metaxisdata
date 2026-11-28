@@ -125,6 +125,7 @@
             v-model="custom[question.id]"
             rows="2"
             class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            :aria-label="question.header || question.question"
             :placeholder="question.options.length > 0 ? t('qualityAgent.answerOtherPlaceholder') : t('qualityAgent.askReplyPlaceholder')"
             :disabled="busy"
             @input="onCustomInput(question)"
@@ -170,7 +171,7 @@
           {{ t("qualityAgent.askDismissed") }}
         </p>
         <p
-          v-else-if="!isSkipped(question)"
+          v-else-if="!isSkipped(question) && ask.answerMessageSeq > 0n"
           class="text-xs text-muted-foreground"
         >
           {{ t("qualityAgent.answerDelivered") }}

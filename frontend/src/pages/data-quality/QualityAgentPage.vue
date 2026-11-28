@@ -196,7 +196,10 @@
                     :model-value="replyAskName || 'none'"
                     @update:model-value="setReplyAsk"
                   >
-                    <SelectTrigger class="h-7 w-auto min-w-52 text-xs">
+                    <SelectTrigger
+                      class="h-7 w-auto min-w-52 text-xs"
+                      :aria-label="t('qualityAgent.replyingTo')"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1152,6 +1155,7 @@ async function replyToAsk(
     return true;
   } catch (err) {
     notify.error(formatError(err));
+    await Promise.all([loadAsks(), loadConversation()]);
     return false;
   } finally {
     busy.value = false;
@@ -1179,6 +1183,7 @@ async function dismissAsk(ask: QualityAgentAsk) {
     notify.success(t("qualityAgent.askDismissed"));
   } catch (err) {
     notify.error(formatError(err));
+    await Promise.all([loadAsks(), loadConversation()]);
   } finally {
     busy.value = false;
   }
