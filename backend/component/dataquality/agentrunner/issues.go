@@ -35,9 +35,9 @@ type agentIssueRow struct {
 	MutedUntil        string `json:"mutedUntil,omitempty"`
 }
 
-// listIssues is the target session's problem-ledger read. A FAIL is a finding, not a
-// work item; this is the surface that proves it and gives the model the issue id to
-// report instead of asking for a case.
+// listIssues is the problem-ledger read shared by a target session and the lead. A
+// FAIL is a finding, not a work item; this is the surface that proves it and gives the
+// model the issue id to report instead of asking for a case.
 func (e *Engine) listIssues(ctx context.Context, target quality.AgentSession, arguments string) (string, error) {
 	if strings.TrimSpace(target.TargetGUID) == "" {
 		return "", errors.New("a target is required")
@@ -52,8 +52,10 @@ func (e *Engine) listIssues(ctx context.Context, target quality.AgentSession, ar
 		}
 	}
 	limit := input.Limit
-	if limit <= 0 || limit > maxAgentIssues {
+	if limit <= 0 {
 		limit = 10
+	} else if limit > maxAgentIssues {
+		limit = maxAgentIssues
 	}
 	find := &store.FindQualityIssueMessage{TargetGUID: &target.TargetGUID, Limit: &limit}
 	if err := applyIssueStatus(find, input.Status); err != nil {

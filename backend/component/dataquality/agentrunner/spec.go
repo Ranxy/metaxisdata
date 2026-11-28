@@ -244,7 +244,7 @@ func targetToolSpecs() []toolSpec {
 				"status": map[string]any{
 					"type":        "string",
 					"enum":        []string{"OPEN", "ACKNOWLEDGED", "RESOLVED", "ALL"},
-					"description": "optional; defaults to OPEN",
+					"description": "optional; defaults to OPEN (unresolved; acknowledged included)",
 				},
 				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20},
 			}},
@@ -474,7 +474,7 @@ func conversationToolSpecs() []toolSpec {
 				"status": map[string]any{
 					"type":        "string",
 					"enum":        []string{"OPEN", "ACKNOWLEDGED", "RESOLVED", "ALL"},
-					"description": "optional; defaults to OPEN",
+					"description": "optional; defaults to OPEN (unresolved; acknowledged included)",
 				},
 				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20},
 			}, "required": []string{"target"}},

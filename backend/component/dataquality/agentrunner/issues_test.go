@@ -63,6 +63,10 @@ func TestListIssuesFiltersByStatus(t *testing.T) {
 	require.False(t, stores.lastIssueFind.OpenOnly)
 	require.Equal(t, []storepb.QualityIssueStatus{storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED}, stores.lastIssueFind.Statuses)
 	require.Equal(t, 3, *stores.lastIssueFind.Limit)
+
+	_, err = engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, `{"limit":50}`)
+	require.NoError(t, err)
+	require.Equal(t, maxAgentIssues, *stores.lastIssueFind.Limit)
 }
 
 func TestListIssuesRejectsAnUnknownStatus(t *testing.T) {
