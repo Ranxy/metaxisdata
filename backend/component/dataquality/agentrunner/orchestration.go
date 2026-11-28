@@ -136,6 +136,9 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		if strings.TrimSpace(input.Message) == "" {
 			return "", errors.New("a QUESTION needs a message")
 		}
+		if err := caseReferenceProblem(input.Case); err != nil {
+			return "", err
+		}
 		caseID := normalizeCaseResourceID(input.Case)
 		questionKey := strings.TrimSpace(input.QuestionKey)
 		if questionKey != "" && !questionKeyPattern.MatchString(questionKey) {
@@ -234,7 +237,11 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 		if err != nil {
 			return nil, false, err
 		}
-		if openCase == nil || openCase.AgentID != session.AgentID || openCase.TargetGUID != session.TargetGUID {
+		if openCase == nil {
+			return nil, false, common.Errorf(common.NotFound,
+				"case %q not found: these verbs act on a work item (qualityAgentCases/<id>), not a check or an execution; a check that produced a FAIL is tracked by the issue ledger, so read list_issues and report that issue id", message.CaseResourceID)
+		}
+		if openCase.AgentID != session.AgentID || openCase.TargetGUID != session.TargetGUID {
 			return nil, false, common.Errorf(common.Invalid, "case %q does not belong to this target", message.CaseResourceID)
 		}
 	}
@@ -1161,6 +1168,25 @@ func normalizeCaseResourceID(value string) string {
 		value = value[:index]
 	}
 	return value
+}
+
+// caseReferenceProblem names a reference that can never be a work item before the
+// write path turns it into a generic ownership error. "qualityRules/..." normalizes to
+// "qualityRules" and used to read as "case qualityRules does not belong to this
+// target", which hid the real answer: a check or an execution is not a case, and a
+// FAIL is tracked by the issue ledger instead.
+func caseReferenceProblem(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	for _, kind := range []string{"qualityRules", "qualityExecutions", "qualityIssues"} {
+		if trimmed == kind || strings.HasPrefix(trimmed, kind+"/") || strings.Contains(trimmed, "/"+kind+"/") {
+			return common.Errorf(common.Invalid,
+				"%s is not a work item: these verbs act on qualityAgentCases/<id>. A check that produced a FAIL has no work item because the issue ledger already reports it; read list_issues and report the issue id instead", kind)
+		}
+	}
+	return nil
 }
 
 var questionKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)

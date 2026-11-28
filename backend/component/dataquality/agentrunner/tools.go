@@ -160,6 +160,9 @@ func (e *Engine) executeTool(
 		if strings.TrimSpace(input.Case) == "" {
 			return "", errors.New("control_check needs a case")
 		}
+		if err := caseReferenceProblem(input.Case); err != nil {
+			return "", err
+		}
 		// The request is the decision record; the pause is the action. Raise it first
 		// so a pause can never succeed without a lead-visible question, and dismiss it
 		// if the action is refused.
@@ -196,6 +199,9 @@ func (e *Engine) executeTool(
 		if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Field) == "" || input.Value == "" {
 			return "", errors.New("propose_revision needs a case, a field and a value")
 		}
+		if err := caseReferenceProblem(input.Case); err != nil {
+			return "", err
+		}
 		question := fmt.Sprintf("propose %s = %s: %s", input.Field, input.Value, input.Rationale)
 		request, created, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindProposal,
@@ -225,6 +231,9 @@ func (e *Engine) executeTool(
 		}
 		if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Reason) == "" {
 			return "", errors.New("escalate_case needs a case and a reason")
+		}
+		if err := caseReferenceProblem(input.Case); err != nil {
+			return "", err
 		}
 		request, created, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindDecision,

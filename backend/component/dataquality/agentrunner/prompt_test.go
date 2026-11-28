@@ -46,18 +46,32 @@ func TestAdoptionPolicySectionRendersTheConfiguredGate(t *testing.T) {
 
 // A monitoring wake must be told what a blocker is not. It once read "escalate a blocker instead of
 // guessing", judged a persistent FAIL a blocker, and invented a case id out of the execution it had
-// — while the issue ledger had already reported that failure to the owner.
-func TestMonitorPromptSaysAFailingCheckIsNotAWorkItem(t *testing.T) {
+// — while the issue ledger had already reported that failure to the owner. The boundary belongs to
+// the base prompt, not to an optional capability: an agent with only suggest and adopt made the
+// same mistake when the sentence lived in patrol.
+func TestBasePromptSaysAFailingCheckIsNotAWorkItem(t *testing.T) {
 	t.Parallel()
 
-	profile, ok := profileFor(agentcapability.Patrol)
-	require.True(t, ok, "the patrol capability has a profile")
-	sections := profile.Prompt(monitorSpec())
-	require.Len(t, sections, 1)
-	require.Contains(t, sections[0].Text, "A failing check is a finding, not a work item")
-	require.Contains(t, sections[0].Text, "issue ledger")
-	require.NotContains(t, sections[0].Text, "Escalate a blocker that needs a person instead of guessing",
+	base := monitorSpec().Prompt.Render()
+	require.Contains(t, base, "A failing check is a finding, not a work item")
+	require.Contains(t, base, "issue ledger")
+	require.Contains(t, base, "list_issues")
+	require.Contains(t, base, "An empty target is a fact, not a case")
+	require.NotContains(t, base, "Escalate a blocker that needs a person instead of guessing",
 		"an unqualified escalation invitation is what produced a fabricated case id")
+}
+
+// The lead is the only surface the owner talks to, so it must know the same boundary and must not
+// invent a UI action the product does not have.
+func TestLeadPromptStatesTheWorkItemBoundary(t *testing.T) {
+	t.Parallel()
+
+	base := conversationProduct.Prompt.Render()
+	require.Contains(t, base, "A failing check is a finding, not a work item")
+	require.Contains(t, base, "list_issues")
+	require.Contains(t, base, "you cannot create one and neither can")
+	require.Contains(t, base, "issues are opened automatically")
+	require.Contains(t, base, "Offer the owner only an action the product has")
 }
 
 // A fact is durable knowledge, not a wake log. The dev agent stored 188 "facts" averaging 500
