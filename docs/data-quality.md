@@ -598,16 +598,16 @@ tool; a person's approval is recorded under its own origin but never spends it.
 - **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
   that is usually empty — is flagged with its reason, and a flagged draft waits for a person; the objection shows in the review queue.
 - **Runs on a write budget.** Each agent has two daily ceilings: writes to checks per day across its scope, and runs of one check
-  per day. Leave them at zero for the server defaults (ten writes, three runs per check). At a ceiling the agent does not stall:
-  proposing a change, recording a fact and escalating still work, and the budgets reset the next day. Every write is recorded —
-  which check, which field, which revision, which class — so "what has it changed" and "how much this week" never require a transcript.
-- **Tells you about a check once.** A check that runs without concluding is a **work item** the agent keeps across wakes, not a
-  message it reads again every run; the daily "no verdict" event only arrives when no work item already carries that check. A `FAIL`
-  or `WARN` is a finding in the problem ledger, not a work item: the agent reads it with `list_issues` and reports the issue id. An
-  empty target is a fact and cannot be paused; a case is opened only by the server when a check cannot conclude, so no one can create
-  one by hand.
+  per day; zero means the server default (ten writes, three runs per check). At a ceiling the agent does not stall: proposing,
+  recording a fact and escalating still work, and the budgets reset the next day. Every write is recorded, so "what changed" is answerable.
+- **Tells you about a check once.** A check that runs without concluding is a **work item** the agent keeps across wakes — except
+  an empty target, which is a fact and cannot be paused; the daily "no verdict" event only arrives when no work item already carries
+  that check. A `FAIL` is a finding in the problem ledger, not a work item: the agent reads it with `list_issues` and reports the
+  issue id; a `WARN` alone opens no issue but keeps an existing FAIL issue alive. A case is opened only by the server when a check
+  cannot conclude, so no one can create one by hand.
 - **Escalates one question, not a whole target.** When the agent cannot settle a work item it hands that item to you — the case
-  becomes escalated and you get an ask — and keeps working on everything else. A session stops only on the runtime itself.
+  becomes escalated and you get an ask — and keeps working on everything else. A session stops only on the runtime (a spent budget,
+  a transient error, an out-of-scope target or a disabled agent), not on a target's work.
 - **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
   which revision to which, the failure class and when — newest first, and each work item has a **History** dialog with just its own
   writes. An execution the write planned is one click away. This is the record the daily write budget counts, so "what did it change"
