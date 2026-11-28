@@ -10310,7 +10310,9 @@ PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
 final. SUPERSEDED means the server closed the proposal because its fact already
 exists (the column now has a label, or a rule with the same identity exists) or
 the target changed; it was never decided, and the same proposal may be queued
-again later.
+again later. WITHDRAWN means the agent that proposed it took it back before a
+person decided; it is not a reviewer&#39;s decision either, and the same proposal
+may be queued again later.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -10319,6 +10321,7 @@ again later.
 | QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
 | QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
 | QUALITY_SUGGESTION_STATUS_SUPERSEDED | 4 |  |
+| QUALITY_SUGGESTION_STATUS_WITHDRAWN | 5 |  |
 
 
 

@@ -8054,6 +8054,7 @@ paths:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     format: enum
                 - name: kind
@@ -17107,6 +17108,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     format: enum
                 provider:
@@ -19328,6 +19330,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     description: |-
                         The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a

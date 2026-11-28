@@ -1262,7 +1262,9 @@ func (QualitySuggestionKind) EnumDescriptor() ([]byte, []int) {
 // are final. SUPERSEDED means the proposal stopped being relevant before anybody
 // decided it (the fact it proposed already exists, or the target changed); it is
 // closed by the server, never by a reviewer, and its identity may be proposed
-// again later.
+// again later. WITHDRAWN means the proposing agent retracted its own proposal
+// before anybody decided it; it is not a reviewer's decision either, and its
+// identity may be proposed again later.
 type QualitySuggestionStatus int32
 
 const (
@@ -1271,6 +1273,7 @@ const (
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED    QualitySuggestionStatus = 2
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED    QualitySuggestionStatus = 3
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED  QualitySuggestionStatus = 4
+	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN   QualitySuggestionStatus = 5
 )
 
 // Enum value maps for QualitySuggestionStatus.
@@ -1281,6 +1284,7 @@ var (
 		2: "QUALITY_SUGGESTION_STATUS_ACCEPTED",
 		3: "QUALITY_SUGGESTION_STATUS_REJECTED",
 		4: "QUALITY_SUGGESTION_STATUS_SUPERSEDED",
+		5: "QUALITY_SUGGESTION_STATUS_WITHDRAWN",
 	}
 	QualitySuggestionStatus_value = map[string]int32{
 		"QUALITY_SUGGESTION_STATUS_UNSPECIFIED": 0,
@@ -1288,6 +1292,7 @@ var (
 		"QUALITY_SUGGESTION_STATUS_ACCEPTED":    2,
 		"QUALITY_SUGGESTION_STATUS_REJECTED":    3,
 		"QUALITY_SUGGESTION_STATUS_SUPERSEDED":  4,
+		"QUALITY_SUGGESTION_STATUS_WITHDRAWN":   5,
 	}
 )
 
@@ -9753,13 +9758,14 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x15QualitySuggestionKind\x12'\n" +
 	"#QUALITY_SUGGESTION_KIND_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"QUALITY_SUGGESTION_KIND_RULE_DRAFT\x10\x01\x12!\n" +
-	"\x1dQUALITY_SUGGESTION_KIND_LABEL\x10\x02*\xe5\x01\n" +
+	"\x1dQUALITY_SUGGESTION_KIND_LABEL\x10\x02*\x8e\x02\n" +
 	"\x17QualitySuggestionStatus\x12)\n" +
 	"%QUALITY_SUGGESTION_STATUS_UNSPECIFIED\x10\x00\x12%\n" +
 	"!QUALITY_SUGGESTION_STATUS_PENDING\x10\x01\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_ACCEPTED\x10\x02\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_REJECTED\x10\x03\x12(\n" +
-	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\xc9\x01\n" +
+	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04\x12'\n" +
+	"#QUALITY_SUGGESTION_STATUS_WITHDRAWN\x10\x05*\xc9\x01\n" +
 	"\x17QualitySuggestionSource\x12)\n" +
 	"%QUALITY_SUGGESTION_SOURCE_UNSPECIFIED\x10\x00\x12.\n" +
 	"*QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE\x10\x01\x12%\n" +

@@ -130,6 +130,10 @@ func TestSuggestionDecisionSuppressionIsKindAware(t *testing.T) {
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		// A withdrawal is the author retracting this attempt, not a decision about the
+		// identity: a corrected threshold (which the signature does not encode) must be
+		// proposable again.
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN,
 	} {
 		require.False(t, SuggestionDecisionSuppressesRuleDraft(status))
 		require.False(t, SuggestionDecisionSuppressesLabel(status))

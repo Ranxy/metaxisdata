@@ -213,7 +213,10 @@ func RuleSignatures(rules []*store.QualityRuleMessage) map[string]struct{} {
 // SuggestionDecisionSuppressesRuleDraft reports whether a previous decision means a
 // rule draft with the same identity should not be proposed again unless the caller
 // explicitly asks for regeneration. Accepting a draft means the reviewer wants that
-// rule; rejecting it means they do not. Either way, re-proposing it is noise.
+// rule; rejecting it means they do not. Either way, re-proposing it is noise. A
+// withdrawn draft is different: its author retracted this attempt, and the identity
+// (which does not encode thresholds) must stay proposable so a corrected draft can
+// replace it.
 func SuggestionDecisionSuppressesRuleDraft(decision storepb.QualitySuggestionStatus) bool {
 	switch decision {
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
@@ -221,7 +224,8 @@ func SuggestionDecisionSuppressesRuleDraft(decision storepb.QualitySuggestionSta
 		return true
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED:
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN:
 		return false
 	default:
 		return false
@@ -240,7 +244,8 @@ func SuggestionDecisionSuppressesLabel(decision storepb.QualitySuggestionStatus)
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED:
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN:
 		return false
 	default:
 		return false

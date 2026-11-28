@@ -11582,7 +11582,9 @@ export declare const QualitySuggestionKindSchema: GenEnum<QualitySuggestionKind>
  * final. SUPERSEDED means the server closed the proposal because its fact already
  * exists (the column now has a label, or a rule with the same identity exists) or
  * the target changed; it was never decided, and the same proposal may be queued
- * again later.
+ * again later. WITHDRAWN means the agent that proposed it took it back before a
+ * person decided; it is not a reviewer's decision either, and the same proposal
+ * may be queued again later.
  *
  * @generated from enum metaxisdata.v1.QualitySuggestionStatus
  */
@@ -11611,6 +11613,11 @@ export enum QualitySuggestionStatus {
    * @generated from enum value: QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
    */
   SUPERSEDED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_WITHDRAWN = 5;
+   */
+  WITHDRAWN = 5,
 }
 
 /**

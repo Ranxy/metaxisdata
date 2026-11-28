@@ -2456,7 +2456,8 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED:
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN:
 		find.Statuses = []storepb.QualitySuggestionStatus{status}
 	default:
 		return connectErrorInvalid("unknown quality suggestion status %d", status)
