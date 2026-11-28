@@ -43,11 +43,12 @@ The prompt and tool set are composed, not hand-written per product: a product sp
 
 Exactly four publish-class writes exist: adopt a pending draft, run a diagnosed check now, pause a check whose own definition cannot
 run, and apply the deterministic repair a diagnosis names. Their schemas and per-verb gates live in `agentrunner/spec.go` and
-`agentpolicy`; this page states only the constraints that must not break. Every write is case-scoped and re-reads the case,
-participation, pins and diagnosis server-side before writing. A repair is written as one compare-and-set and is only a repair once a
-run proves it. A criterion change is a proposal at `repair` level; at `tune` level it must survive a replay that leaves every failing
-run failing. `propose_revision` records a field and value for a person and never writes a check. `adopt_pending_drafts` runs only on
-an owner-question wake under the adoption gate. No tool publishes, edits, archives, resumes, changes settings or rejects.
+`agentpolicy`; this page states only the constraints that must not break. The three case verbs are case-scoped and re-read the case
+server-side before writing; `control_check` and `repair_check` also re-read participation, pins and the diagnosis, while `run_check`
+re-reads the rule and the run budget. `adopt_pending_drafts` is not case-scoped: it runs on an owner-question wake under the adoption
+gate. A repair is written as one compare-and-set and is only a repair once a run proves it. A criterion change is a proposal at
+`repair` level; at `tune` level it must survive a replay that leaves every failing run failing. `propose_revision` records a field
+and value for a person and never writes a check. No tool publishes, edits, archives, resumes, changes settings or rejects.
 
 ### The replay
 
@@ -212,7 +213,7 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 | Model reasoning is display-only: it is persisted on the assistant transcript row when the provider returns it, never sent back to the provider, and never counted in the model context | loop/engine tests + conversion test |
 | The agent language is one config value used by the system prompt, the wake reminder and server prose; a language change updates the stored SYSTEM row in place on the next wake, and the prompt instructs the model not to translate identifiers | prompt/language tests + agentlang tests + engine test |
 | An ask answer is linked by `reply_to` and question ids, validated against the offered option labels, written atomically with the ask/request/subagent states, and delivered directly to the requests behind the ask; a batch question names a non-empty disjoint request subset and its answer reaches only those requests, while a message without `reply_to` answers no ask, a closed ask refuses a second answer, and an answer payload that cannot be paired is rendered as text rather than guessed | `dataquality/ask.go` tests + store integration + API/HTTP tests + UI card/bubble tests |
-| A wake's writes are the four publish-class verbs only — adopt a draft, run a check, pause a check whose own definition cannot run, apply a deterministic repair — each case-scoped, server-gated and audited; no publish, edit, archive, resume, settings or reject tool exists, and failure events are idempotent and capped | engine/control tests |
+| A wake's writes are reads, proposals (`propose_revision`, `flag_proposal`), asset facts, lead messages/asks, wake-control and exactly four publish-class verbs: adopt a draft, run a check, pause a check whose own definition cannot run, apply a deterministic repair. The publish-class verbs are server-gated and audited; the three case verbs are case-scoped. No publish, edit, archive, resume, settings or reject tool exists; failure events are idempotent and capped | engine/control/owner-adoption tests |
 | Compaction trims old tool results first, then summarizes balanced tool pairs, never compacts the system prompt and never deletes the transcript; its threshold is derived from the pinned model's context window and output budget and its pressure from a per-script text estimate, and a model too small to compact cannot be pinned to an agent at selection time; memory holds only confirmed asset facts with automatic supersede and `get_memory` is read-only | compaction/engine tests + integration |
 
 ## Failure modes
