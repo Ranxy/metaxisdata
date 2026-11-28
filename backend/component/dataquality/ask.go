@@ -422,7 +422,7 @@ func BuildDecisionAnswerEnvelope(request *store.QualityAgentRequestMessage, answ
 		}},
 		Answers: []AnswerItem{{
 			ID:       "request",
-			Selected: append([]string(nil), selected...),
+			Selected: append([]string{}, selected...),
 			Custom:   strings.TrimSpace(custom),
 		}},
 		Text: text,
@@ -514,7 +514,7 @@ func answerItems(answers []*storepb.QualityAgentAskAnswer) []AnswerItem {
 		}
 		converted = append(converted, AnswerItem{
 			ID:       answer.Id,
-			Selected: append([]string(nil), answer.Selected...),
+			Selected: append([]string{}, answer.Selected...),
 			Custom:   answer.Custom,
 		})
 	}

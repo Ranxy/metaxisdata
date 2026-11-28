@@ -184,6 +184,20 @@ func TestBuildRequestDismissedEnvelopeNamesTheRequest(t *testing.T) {
 	require.Contains(t, envelope.Text, "dismissed")
 }
 
+func TestBuildAnswerEnvelopeEncodesASkippedSelectionAsAnEmptyArray(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Questions:   []*storepb.QualityAgentAskQuestion{{Id: "q1", Question: "Keep the check?"}},
+	}
+	content, err := BuildAnswerEnvelope(ask, []*storepb.QualityAgentAskAnswer{{Id: "q1"}}, nil)
+	require.NoError(t, err)
+	require.NotContains(t, content, `"selected":null`)
+	require.Contains(t, content, `"selected":[]`)
+}
+
 func TestBuildRequestAnswerEnvelopeNamesTheRequest(t *testing.T) {
 	t.Parallel()
 
