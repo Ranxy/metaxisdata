@@ -35,6 +35,23 @@ The scenario creates a temporary provider profile and enables the workspace mode
 
 `runner/explain_sql_service_test.go` drives the shipping ExplainSQL loop against the real server with a local OpenAI-compatible `httptest` stub registered as a throwaway provider profile: no real model, no API key. The refusal branch is covered hermetically by `TestExplainSQLToolCallsArePermissionGated` in `backend/api/v1`, because every authenticated principal holds `databases.read` through the workspace-member baseline, so the public API cannot construct a caller who may explain SQL yet fails the tool's permission check.
 
+### Quality agent suite
+
+`qualityagent/` is a dedicated PostgreSQL service environment for the built-in quality agent. It does not need MySQL: the
+store contract cases use the metadata database directly, the engine suite drives the shipping loop with a scripted Chat,
+and the HTTP case points an OpenAI-compatible `httptest` provider at a real server so the enrollment/session runners,
+the lead and the target subagent all use their real paths. It owns the workspace switches (`agent_runner_enabled` and
+`enable_llm_analysis`) so the broad data-quality suite never sees them change.
+
+```bash
+make test-integration-quality-agent        # store contracts + engine loop + HTTP owner path, with -race
+make test-integration-quality-agent-scale  # opt-in ten-thousand-target enrollment queue smoke
+```
+
+The package is also part of `make test-integration`, which runs on merge to main and in the nightly matrix. The
+pull-request gate stays on the migrator target: the agent suite is the expensive tier, so run
+`make test-integration-quality-agent` locally before sending a change that needs it.
+
 ### Docker-less runs
 
 Without external services, the harness probes the container runtime before starting anything. When no Docker-compatible daemon is reachable the suite prints `skipping integration tests: docker is unavailable` and exits 0, so all the make targets below are safe on machines without Docker.

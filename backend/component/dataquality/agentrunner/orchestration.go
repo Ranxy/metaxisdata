@@ -67,7 +67,7 @@ func (e *Engine) deliverAgentMessage(ctx context.Context, sender *store.QualityA
 		Intent:          intent,
 		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
 		ReplyTo:         replyTo,
-		IdempotencyKey:  fmt.Sprintf("agentmsg:%d:%d:%s", sender.ID, recipient.ID, contentHash(content)),
+		IdempotencyKey:  fmt.Sprintf("agentmsg:%d:%d:%x", sender.ID, recipient.ID, contentHash(content)),
 	}
 	return e.store.DeliverQualityAgentMessage(ctx, recipient, input)
 }
@@ -551,7 +551,7 @@ func (e *Engine) createOwnerAsk(ctx context.Context, session *store.QualityAgent
 		SenderName:     "lead",
 		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
 		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
-		IdempotencyKey: fmt.Sprintf("ownerask:%d:%s", session.WakeCount+1, contentHash(question)),
+		IdempotencyKey: fmt.Sprintf("ownerask:%d:%x", session.WakeCount+1, contentHash(question)),
 	}, requests, now)
 	if err != nil {
 		return nil, err
@@ -580,7 +580,7 @@ func (e *Engine) appendOwnerMessage(ctx context.Context, session *store.QualityA
 		Intent:         intent,
 		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
 		ReplyTo:        replyTo,
-		IdempotencyKey: fmt.Sprintf("ownermsg:%d:%s", session.WakeCount+1, contentHash(content)),
+		IdempotencyKey: fmt.Sprintf("ownermsg:%d:%x", session.WakeCount+1, contentHash(content)),
 	})
 	if err != nil {
 		return nil, err

@@ -412,9 +412,10 @@ func (s *Store) ListQualityAgentRequestsPage(ctx context.Context, agentID int64,
 func (s *Store) UpdateQualityAgentRequestStatus(ctx context.Context, resourceID string, from, to QualityAgentRequestStatus, askID *int64, resolution string, resolvedBy *int32, at time.Time) (*QualityAgentRequestMessage, bool, error) {
 	message, err := scanQualityAgentRequest(s.GetDB().QueryRowContext(ctx, `
 		UPDATE quality_agent_request
-		SET status = $3, ask_id = COALESCE($4, ask_id), resolution = $5,
-			resolved_by = $6, forwarded_at = CASE WHEN $3 = $7 THEN COALESCE(forwarded_at, $8) ELSE forwarded_at END,
-			resolved_at = CASE WHEN $3 IN ($9, $10) THEN $8 ELSE resolved_at END,
+		SET status = $3::int2, ask_id = COALESCE($4, ask_id), resolution = $5,
+			resolved_by = $6,
+			forwarded_at = CASE WHEN $3::int2 = $7::int2 THEN COALESCE(forwarded_at, $8) ELSE forwarded_at END,
+			resolved_at = CASE WHEN $3::int2 IN ($9::int2, $10::int2) THEN $8 ELSE resolved_at END,
 			updated_at = $8
 		WHERE resource_id = $1 AND status = $2
 		RETURNING `+qualityAgentRequestColumns,

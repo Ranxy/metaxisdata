@@ -498,7 +498,7 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 			UPDATE quality_agent_request
 			SET status = $2, ask_id = $3, forwarded_at = COALESCE(forwarded_at, $4), updated_at = $4
 			WHERE resource_id = $1 AND status IN ($5, $6)`,
-			request.ResourceID, int16(QualityAgentRequestStatusForwarded), ask.ID, at.UTC(),
+			request.ResourceID, int16(QualityAgentRequestStatusForwarded), created.ID, at.UTC(),
 			int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
 		if updateErr != nil {
 			return nil, false, errors.Wrap(updateErr, "failed to forward a quality agent request")
