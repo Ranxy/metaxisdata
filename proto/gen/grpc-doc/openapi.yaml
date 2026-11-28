@@ -5241,85 +5241,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:dismiss:
-        post:
-            tags:
-                - DataQualityService
-            description: Dismiss an escalation without resuming the session. Owner only.
-            operationId: DataQualityService_DismissQualityAgentAttention
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentAttention
-                  in: path
-                  description: The qualityAgentAttention id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/DismissQualityAgentAttentionRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentAttention'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:reply:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Answer a legacy escalation as the owner. The reply is appended to the lead
-                 conversation and the attention is resolved; the lead routes the answer. A retry
-                 on a closed attention is a no-op.
-            operationId: DataQualityService_ReplyQualityAgentAttention
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentAttention
-                  in: path
-                  description: The qualityAgentAttention id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ReplyQualityAgentAttentionRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentAttention'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentRequests/{qualityAgentRequest}:
         get:
             tags:
@@ -5755,58 +5676,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualityAgentAsksResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/attentions:
-        get:
-            tags:
-                - DataQualityService
-            description: List one agent's escalations. The owner and administrators may read.
-            operationId: DataQualityService_ListQualityAgentAttentions
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgent
-                  in: path
-                  description: The qualityAgent id.
-                  required: true
-                  schema:
-                    type: string
-                - name: status
-                  in: query
-                  description: UNSPECIFIED lists every status.
-                  schema:
-                    enum:
-                        - QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED
-                        - QUALITY_AGENT_ATTENTION_STATUS_OPEN
-                        - QUALITY_AGENT_ATTENTION_STATUS_RESOLVED
-                        - QUALITY_AGENT_ATTENTION_STATUS_DISMISSED
-                    type: string
-                    format: enum
-                - name: pageSize
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityAgentAttentionsResponse'
                 default:
                     description: Default error response
                     content:
@@ -11023,14 +10892,6 @@ components:
                 name:
                     type: string
                     description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
-        DismissQualityAgentAttentionRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
         EmailChannelConfig:
             type: object
             properties:
@@ -12744,15 +12605,6 @@ components:
                         $ref: '#/components/schemas/QualityAgentAsk'
                 nextPageToken:
                     type: string
-        ListQualityAgentAttentionsResponse:
-            type: object
-            properties:
-                qualityAgentAttentions:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentAttention'
-                nextPageToken:
-                    type: string
         ListQualityAgentCaseActionsResponse:
             type: object
             properties:
@@ -13559,8 +13411,6 @@ components:
                     $ref: '#/components/schemas/OpenLineageDetail'
                 dataQuality:
                     $ref: '#/components/schemas/DataQualityDetail'
-                qualityAgentAttention:
-                    $ref: '#/components/schemas/QualityAgentAttentionDetail'
                 qualityAgentAsk:
                     $ref: '#/components/schemas/QualityAgentAskDetail'
             description: |-
@@ -14695,95 +14545,8 @@ components:
                         type: string
                     description: Display paths of the affected targets, bounded by the server.
             description: |-
-                QualityAgentAttentionDetail reports one agent escalation in the inbox. The
-                 client renders the prose; the server stores only identities and the bounded
-                 question text.
-                 QualityAgentAskDetail reports one owner-facing question from the lead. The client
+                QualityAgentAskDetail reports one owner-facing question from the lead. The client
                  renders the prose; the server stores only identities and the bounded text.
-        QualityAgentAttention:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
-                agent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
-                kind:
-                    enum:
-                        - QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED
-                        - QUALITY_AGENT_ATTENTION_KIND_BLOCKED
-                        - QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING
-                        - QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY
-                    type: string
-                    format: enum
-                status:
-                    enum:
-                        - QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED
-                        - QUALITY_AGENT_ATTENTION_STATUS_OPEN
-                        - QUALITY_AGENT_ATTENTION_STATUS_RESOLVED
-                        - QUALITY_AGENT_ATTENTION_STATUS_DISMISSED
-                    type: string
-                    format: enum
-                session:
-                    type: string
-                    description: The target session to resume when the owner answers; empty for an agent event.
-                title:
-                    type: string
-                question:
-                    type: string
-                createTime:
-                    type: string
-                    format: date-time
-                resolveTime:
-                    type: string
-                    format: date-time
-                resolvedBy:
-                    type: string
-                    description: 'Format: users/{user}; empty while open.'
-                target:
-                    allOf:
-                        - $ref: '#/components/schemas/QualityTarget'
-                    description: |-
-                        The target this escalation is about. Empty for an agent-level event such as
-                         a report anomaly.
-                pendingDraftTitles:
-                    type: array
-                    items:
-                        type: string
-                    description: |-
-                        Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
-                         attention. The owner sees what is waiting before replying, without needing
-                         the suggestion queue's own permission.
-                case:
-                    type: string
-                    description: |-
-                        Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
-                         escalation that is not about one agent work item.
-                suggestedPatch:
-                    allOf:
-                        - $ref: '#/components/schemas/QualityAgentFieldPatch'
-                    description: |-
-                        The concrete change the agent asks for, when the escalation is a proposal. The owner
-                         reviews a field, a value and a reason instead of a paragraph; empty when the escalation
-                         asks for a decision that has no single change behind it.
-        QualityAgentAttentionDetail:
-            type: object
-            properties:
-                agent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
-                attention:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
-                kind:
-                    type: integer
-                    description: 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY.
-                    format: int32
-                title:
-                    type: string
-                question:
-                    type: string
         QualityAgentBudget:
             type: object
             properties:
@@ -17868,20 +17631,6 @@ components:
                 RegexConfig counts rows whose column value does not match a regular
                  expression. The pattern is Go RE2 syntax and is also translated for the
                  engine's own regex operator.
-        ReplyQualityAgentAttentionRequest:
-            required:
-                - name
-                - messageBody
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
-                messageBody:
-                    type: string
-                    description: The owner's answer. Named message_body so the audit ledger redacts it.
-                requestId:
-                    type: string
         ResumeQualityAgentSessionRequest:
             required:
                 - name

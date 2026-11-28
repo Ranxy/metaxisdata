@@ -332,8 +332,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 	result.Remaining = len(remaining)
 	result.RemainingKnown = true
 	if len(remaining) == 0 {
-		s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: session.AgentID, targetGUID: targetGUID},
-			adoptionResolvedBy(owner))
+		s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: session.AgentID, targetGUID: targetGUID})
 		return result
 	}
 	if !raiseAttention {
@@ -378,7 +377,7 @@ func (s *DataQualityService) adoptQualitySuggestionsForAgentLocked(ctx context.C
 		WorkspaceID: session.WorkspaceID,
 		AgentID:     session.AgentID,
 		Kind:        store.QualityAgentAskKindApproval,
-		Title:       agentlang.AttentionTitle(language, store.QualityAgentAttentionKindProposalPending),
+		Title:       agentlang.ApprovalTitle(language),
 		Question:    question,
 		TargetGUID:  targetGUID,
 		TargetType:  storepb.MetaType(session.TargetType),
@@ -541,22 +540,15 @@ func scopeCoversTarget(scope []string, targetGUID string) bool {
 }
 
 // adoptionResolvedBy names the agent's owner as the resolver of a drained queue.
-func adoptionResolvedBy(owner *store.UserMessage) *int32 {
-	if owner == nil {
-		return nil
-	}
-	return principalIDPointer(owner.ID)
-}
-
-// agentTargetKey is one agent's target: the unit a proposal attention belongs to.
+// agentTargetKey is one agent's target: the unit a proposal ask belongs to.
 type agentTargetKey struct {
 	agentID    int64
 	targetGUID string
 }
 
-// proposalAttentionKey names the attention a decided suggestion can drain. Only a
+// proposalAskKey names the attention a decided suggestion can drain. Only a
 // rule draft an agent proposed has one; a label suggestion does not.
-func proposalAttentionKey(suggestion *store.QualitySuggestionMessage) (agentTargetKey, bool) {
+func proposalAskKey(suggestion *store.QualitySuggestionMessage) (agentTargetKey, bool) {
 	if suggestion == nil || suggestion.AgentID == nil || *suggestion.AgentID <= 0 ||
 		suggestion.Kind != storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT ||
 		suggestion.TargetGUID == "" {
@@ -565,36 +557,31 @@ func proposalAttentionKey(suggestion *store.QualitySuggestionMessage) (agentTarg
 	return agentTargetKey{agentID: *suggestion.AgentID, targetGUID: suggestion.TargetGUID}, true
 }
 
-// resolveProposalAttentionIfDrained closes one target's proposal attention once no
+// resolveProposalAskIfDrained closes one target's proposal ask once no
 // pending draft is left. A pass resolves it after adoption; a person deciding the
 // last draft is the other way the queue empties.
-func (s *DataQualityService) resolveProposalAttentionIfDrained(ctx context.Context, key agentTargetKey, resolvedBy *int32) {
+func (s *DataQualityService) resolveProposalAskIfDrained(ctx context.Context, key agentTargetKey) {
 	now := time.Now().UTC()
 	dedupeKey := store.ProposalAskDedupeKey(key.targetGUID)
 	if _, err := s.store.ResolveProposalAskIfDrained(ctx, key.agentID, key.targetGUID, dedupeKey, now); err != nil {
 		slog.Warn("failed to resolve a drained proposal ask", log.WithError(err))
 	}
-	// The legacy row is still resolved for any attention written before the cutover;
-	// no new one is created.
-	if _, err := s.store.ResolveDrainedProposalAttention(ctx, key.agentID, key.targetGUID, resolvedBy, now); err != nil {
-		slog.Warn("failed to resolve a drained proposal attention", log.WithError(err))
-	}
 }
 
-// resolveProposalAttentionForSuggestion resolves the one target a just-decided
+// resolveProposalAskForSuggestion resolves the one target a just-decided
 // draft drained. The single-item decision and create paths use it; their batch
 // variants collect keys and resolve once per target instead.
-func (s *DataQualityService) resolveProposalAttentionForSuggestion(ctx context.Context, suggestion *store.QualitySuggestionMessage) {
-	if key, ok := proposalAttentionKey(suggestion); ok {
-		s.resolveProposalAttentionIfDrained(ctx, key, principalIDPointer(currentUserID(ctx)))
+func (s *DataQualityService) resolveProposalAskForSuggestion(ctx context.Context, suggestion *store.QualitySuggestionMessage) {
+	if key, ok := proposalAskKey(suggestion); ok {
+		s.resolveProposalAskIfDrained(ctx, key)
 	}
 }
 
-// resolveDrainedProposalAttentions resolves a batch's attentions after its writes,
+// resolveDrainedProposalAsks resolves a batch's attentions after its writes,
 // one count per touched target instead of one per decided draft.
-func (s *DataQualityService) resolveDrainedProposalAttentions(ctx context.Context, keys map[agentTargetKey]struct{}, resolvedBy *int32) {
+func (s *DataQualityService) resolveDrainedProposalAsks(ctx context.Context, keys map[agentTargetKey]struct{}) {
 	for key := range keys {
-		s.resolveProposalAttentionIfDrained(ctx, key, resolvedBy)
+		s.resolveProposalAskIfDrained(ctx, key)
 	}
 }
 
@@ -700,8 +687,7 @@ func (s *DataQualityService) adoptQualitySuggestionsExplicitly(ctx context.Conte
 		result.Remaining = remaining
 		result.RemainingKnown = true
 		if remaining == 0 {
-			s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: agent.ID, targetGUID: targetGUID},
-				adoptionResolvedBy(owner))
+			s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: agent.ID, targetGUID: targetGUID})
 		}
 	}
 	return result
@@ -881,7 +867,7 @@ func (s *DataQualityService) AdoptQualityAgentPendingSuggestions(ctx context.Con
 		}
 		return nil, lockErr
 	}
-	s.resolveDrainedProposalAttentions(ctx, drained, &callerID)
+	s.resolveDrainedProposalAsks(ctx, drained)
 	remaining, err := s.countPendingDrafts(ctx, agent.ID, targetGUID)
 	if err != nil {
 		slog.Warn("failed to count the remaining drafts after an approval", log.WithError(err))

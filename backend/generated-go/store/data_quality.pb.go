@@ -8513,7 +8513,7 @@ func (x *QualityContractCheck) GetColumn() string {
 
 // QualityAgentFieldPatch is the one change an agent asks a person to make: the config field,
 // the value it would take, and why. It is the payload of
-// quality_agent_attention.suggested_patch, so a proposal reaches the owner as a change to
+// quality_agent_request.suggested_patch, so a proposal reaches the owner as a change to
 // review rather than a paragraph to interpret.
 //
 // Every config field a diagnosis can name holds a string, so the patch carries a string and

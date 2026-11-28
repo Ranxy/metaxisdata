@@ -5,6 +5,7 @@
 package agentlang
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -67,26 +68,36 @@ func ForAgent(agent *store.QualityAgentMessage, owner *store.UserMessage) string
 	return Of(owner)
 }
 
-// AttentionTitle is the localized headline of one owner escalation.
-func AttentionTitle(lang string, kind store.QualityAgentAttentionKind) string {
-	zh := IsChinese(lang)
-	switch kind {
-	case store.QualityAgentAttentionKindProposalPending:
-		if zh {
-			return "有检查草案等待审核"
-		}
-		return "Check drafts are waiting for review"
-	case store.QualityAgentAttentionKindReportAnomaly:
-		if zh {
-			return "巡检报告发现异常"
-		}
-		return "A patrol report found anomalies"
-	default:
-		if zh {
-			return "Agent 需要你处理一个目标会话"
-		}
-		return "The agent needs help with a target session"
+// ApprovalTitle is the localized headline of an approval ask for pending check drafts.
+func ApprovalTitle(lang string) string {
+	if IsChinese(lang) {
+		return "有检查草案等待审核"
 	}
+	return "Check drafts are waiting for review"
+}
+
+// AnomalyTitle is the localized headline of a report-anomaly ask.
+func AnomalyTitle(lang string) string {
+	if IsChinese(lang) {
+		return "巡检报告发现异常"
+	}
+	return "A patrol report found anomalies"
+}
+
+// UserReader is the owner lookup the language decision needs.
+type UserReader interface {
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+}
+
+// OwnerLanguage resolves the language of an agent's server prose for its owner. Runners
+// that render a question before raising it use the same decision as the API, so a
+// notice never mixes languages.
+func OwnerLanguage(ctx context.Context, users UserReader, agent *store.QualityAgentMessage) (string, *store.UserMessage) {
+	var owner *store.UserMessage
+	if users != nil && agent != nil && agent.OwnerPrincipalID != nil {
+		owner, _ = users.GetUserByID(ctx, int(*agent.OwnerPrincipalID))
+	}
+	return ForAgent(agent, owner), owner
 }
 
 // BlockedQuestion is the escalation body for a blocked target session. The reason

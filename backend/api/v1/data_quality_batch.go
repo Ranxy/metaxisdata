@@ -86,13 +86,13 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 			result.Error = err.Error()
 		} else {
 			result.Rule = created
-			if key, ok := proposalAttentionKey(suggestion); ok {
+			if key, ok := proposalAskKey(suggestion); ok {
 				drained[key] = struct{}{}
 			}
 		}
 		results = append(results, result)
 	}
-	s.resolveDrainedProposalAttentions(ctx, drained, principalIDPointer(currentUserID(ctx)))
+	s.resolveDrainedProposalAsks(ctx, drained)
 	return connect.NewResponse(&v1pb.BatchCreateQualityRulesResponse{Results: results}), nil
 }
 
@@ -181,13 +181,13 @@ func (s *DataQualityService) BatchUpdateQualitySuggestions(ctx context.Context, 
 			result.Error = err.Error()
 		} else {
 			result.Suggestion = updated
-			if key, ok := proposalAttentionKey(decided); ok {
+			if key, ok := proposalAskKey(decided); ok {
 				drained[key] = struct{}{}
 			}
 		}
 		result.Name = strings.TrimSpace(item.GetName())
 		results = append(results, result)
 	}
-	s.resolveDrainedProposalAttentions(ctx, drained, principalIDPointer(currentUserID(ctx)))
+	s.resolveDrainedProposalAsks(ctx, drained)
 	return connect.NewResponse(&v1pb.BatchUpdateQualitySuggestionsResponse{Results: results}), nil
 }

@@ -1921,38 +1921,6 @@ COMMENT ON TABLE quality_agent_report IS 'Per-agent deterministic patrol report 
 COMMENT ON COLUMN quality_agent_report.scope IS 'Database resource names the report covers';
 COMMENT ON COLUMN quality_agent_report.body_markdown IS 'Rendered report body; counts are also stored as columns';
 
--- A quality agent's escalation: something needs its owner. The notification is the
--- doorbell; this table is the durable to-do item that survives the notification and can
--- be answered from the agent home.
-CREATE TABLE IF NOT EXISTS quality_agent_attention (
-    id BIGSERIAL PRIMARY KEY,
-    -- workspaces/{workspace}/qualityAgentAttentions/{resource_id}.
-    resource_id TEXT COLLATE "C" NOT NULL,
-    workspace_id TEXT COLLATE "C" NOT NULL,
-    agent_id INT4 NOT NULL REFERENCES quality_agent(id) ON DELETE CASCADE,
-    -- 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (QualityAgentAttentionKind).
-    kind INT2 NOT NULL DEFAULT 1,
-    -- The target session this escalation came from; NULL for agent-level events.
-    session_id INT8 REFERENCES quality_agent_session(id) ON DELETE SET NULL,
-    title TEXT NOT NULL DEFAULT '',
-    question TEXT NOT NULL DEFAULT '',
-    -- 1 OPEN, 2 RESOLVED, 3 DISMISSED (QualityAgentAttentionStatus).
-    status INT2 NOT NULL DEFAULT 1,
-    -- Idempotency: one open escalation per agent/kind. A retried runner pass or a
-    -- re-blocked session cannot page the owner twice.
-    dedupe_key TEXT NOT NULL DEFAULT '',
-    resolved_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    resolved_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_attention_resource
-    ON quality_agent_attention(resource_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_attention_open_dedupe
-    ON quality_agent_attention(agent_id, dedupe_key) WHERE status = 1;
-CREATE INDEX IF NOT EXISTS idx_quality_agent_attention_agent_status
-    ON quality_agent_attention(agent_id, status, created_at DESC);
-COMMENT ON TABLE quality_agent_attention IS 'Per-agent escalation to the owner; the durable to-do behind a notification';
-
 -- One owner-facing question the lead asked. It may cover several requests.
 CREATE TABLE IF NOT EXISTS quality_agent_ask (
     id BIGSERIAL PRIMARY KEY,
@@ -2164,18 +2132,6 @@ ALTER TABLE quality_rule ADD COLUMN IF NOT EXISTS manual_lock BOOLEAN NOT NULL D
 ALTER TABLE quality_rule ADD COLUMN IF NOT EXISTS pinned_fields TEXT[] NOT NULL DEFAULT '{}';
 COMMENT ON COLUMN quality_rule.manual_lock IS 'A person manages this check; the agent may only propose changes to it';
 COMMENT ON COLUMN quality_rule.pinned_fields IS 'Config fields a person pinned, in dotted form (range.min); the agent may not rewrite them';
--- An escalated case is a decision its owner owes, and often the decision is concrete: set this
--- field to this value, for this reason. The patch rides on the escalation so the owner reviews a
--- change instead of a paragraph, and the case link says which work item the decision unblocks.
---
--- The patch is written by the server from the diagnosis, validated with the same rule validation
--- a save runs, and never applied by the agent: an agent that could apply it would be changing
--- what a check considers acceptable, which the delegation withholds by default.
-ALTER TABLE quality_agent_attention
-    ADD COLUMN IF NOT EXISTS case_resource_id TEXT COLLATE "C" NOT NULL DEFAULT '';
-ALTER TABLE quality_agent_attention ADD COLUMN IF NOT EXISTS suggested_patch JSONB;
-COMMENT ON COLUMN quality_agent_attention.case_resource_id IS 'The agent work item the escalation is about, by resource id; empty for an agent-level event. It is a name rather than a foreign key because a case is pruned after its retention window while the inbox item is a record of what the owner was told';
-COMMENT ON COLUMN quality_agent_attention.suggested_patch IS 'protojson of store.QualityAgentFieldPatch; NULL when the escalation carries no single change';
 -- A patrol report answers the two questions a person asks about an agent: what did it fix, and what
 -- is waiting for me. The work-item counts sit beside the execution counts so a later reader can
 -- follow the agent's autonomy without re-reading the rendered body.
@@ -2266,32 +2222,3 @@ WHERE state = 3
 ALTER TABLE quality_agent_session ADD COLUMN IF NOT EXISTS manual_resume_at TIMESTAMPTZ;
 COMMENT ON COLUMN quality_agent_session.manual_resume_at IS 'Set when a person resumed the session; the next wake bypasses the hourly budget once and clears it';
 
--- Two kinds of inbox items outlived the thing they asked about.
---
--- A block notice was written when a session blocked and never closed when the session ran again:
--- a person resumed it, or the budget window reopened, and the card stayed. A case card was keyed by
--- the case, so a case the server settled on its own — an empty target is a fact, not work — left its
--- card open too.
---
--- The write paths now close both (a session write clears its block notices, a settlement clears the
--- cards of the cases it closed). This closes what the old paths left behind. It is idempotent: the
--- predicates are the same ones the new paths use.
-UPDATE quality_agent_attention a
-SET status = 2, resolved_at = NOW()
-WHERE a.status = 1
-    AND a.dedupe_key LIKE 'blocked:%'
-    AND NOT EXISTS (
-        SELECT 1 FROM quality_agent_session s
-        WHERE s.id = a.session_id
-            AND s.state = 3
-            AND a.dedupe_key = 'blocked:' || s.resource_id || ':' || s.blocked_code
-    );
-
-UPDATE quality_agent_attention a
-SET status = 2, resolved_at = NOW()
-WHERE a.status = 1
-    AND a.dedupe_key LIKE 'case:%'
-    AND NOT EXISTS (
-        SELECT 1 FROM quality_agent_case c
-        WHERE c.resource_id = a.case_resource_id AND c.state IN (1, 2, 3, 4, 6, 7)
-    );

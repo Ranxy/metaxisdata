@@ -217,7 +217,7 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, agent 
 		return
 	}
 	language := r.agentLanguage(ctx, agent)
-	title := agentlang.AttentionTitle(language, store.QualityAgentAttentionKindReportAnomaly)
+	title := agentlang.AnomalyTitle(language)
 	question := agentlang.ReportQuestion(language, snapshot.FailedCount, snapshot.NewIssueCount)
 	now := time.Now().UTC()
 	ask, err := r.store.CreateQualityAgentAskAtomic(ctx, &store.QualityAgentAskMessage{

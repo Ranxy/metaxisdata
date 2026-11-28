@@ -3858,7 +3858,6 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 		"StartQualityAgent", "PauseQualityAgent", "DisableQualityAgent",
 		"SetQualityAgentAdoption", "AdoptQualityAgentPendingSuggestions", "SendQualityAgentMessage",
 		"ListQualityAgentConversationMessages", "ListQualityAgentReports",
-		"ListQualityAgentAttentions", "ReplyQualityAgentAttention", "DismissQualityAgentAttention",
 		"ListQualityAgentRequests", "GetQualityAgentDecisionRequest", "ListQualityAgentAsks", "GetQualityAgentAsk",
 		"GetQualityAgentSession", "ListQualityAgentSessions", "ListQualityAgentSessionMessages",
 		"ResumeQualityAgentSession",
@@ -4272,53 +4271,8 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond,
 		"the resumed session never finished its wake: %s", fixture.env.ServerLogs())
 
-	// An owner escalation is answered through the reply RPC: the attention resolves and
-	// the reply lands on the lead conversation, which routes it. The runner writes this
-	// row when a session parks for a person; a model is unavailable here, so the fixture
-	// opens the escalation the runner would have opened.
 	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)
-	parked = parkSession()
-	escalation, createdAttention, err := fixture.env.Store.CreateQualityAgentAttention(fixture.ctx,
-		&store.QualityAgentAttentionMessage{
-			WorkspaceID: workspaceID,
-			AgentID:     storedAgent.ID,
-			Kind:        store.QualityAgentAttentionKindBlocked,
-			SessionID:   &parked.ID,
-			Title:       "The agent needs a decision",
-			Question:    "Should this target stay covered?",
-			DedupeKey:   "blocked:" + sessionResourceID + ":needs-human",
-			CreatedAt:   time.Now().UTC(),
-		})
-	require.NoError(t, err)
-	require.True(t, createdAttention)
-	escalationName := common.FormatWorkspace(workspaceID) + "/qualityAgentAttentions/" + escalation.ResourceID
-	openAttentions, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
-		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
-			Parent:   agent.GetName(),
-			Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
-			PageSize: 50,
-		}))
-	require.NoError(t, err)
-	require.Contains(t, qualityAgentAttentionNames(openAttentions.Msg.GetQualityAgentAttentions()), escalationName,
-		"the owner lists the open escalation")
-	replied, err := fixture.dataQuality.ReplyQualityAgentAttention(fixture.ctx,
-		withToken(ownerToken, &v1pb.ReplyQualityAgentAttentionRequest{
-			Name:        escalationName,
-			MessageBody: "Keep it covered; the sparse batch is expected.",
-		}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_RESOLVED, replied.Msg.GetStatus())
-	require.Equal(t, ownerName, replied.Msg.GetResolvedBy())
-	require.Equal(t, session.GetName(), replied.Msg.GetSession(),
-		"the escalation points at the session the owner's answer resumes")
-	require.Equal(t, session.GetTarget().GetMetaGuid(), replied.Msg.GetTarget().GetMetaGuid(),
-		"the escalation carries the target it is about")
-	answer := waitForQualityAgentConversationMessage(t, fixture, agent.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
-		return message.GetOrigin() == v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK &&
-			message.GetContent() == "Keep it covered; the sparse batch is expected."
-	})
-	require.NotEmpty(t, answer.GetContent(), "the owner's reply reaches the lead, not the target")
 
 	// The patrol report runner generates the daily report on its own tick; the owner may
 	// read it and its anomaly escalation, which they dismiss.
@@ -4519,18 +4473,8 @@ func qualityAgentAskNames(asks []*v1pb.QualityAgentAsk) []string {
 	return names
 }
 
-// qualityAgentAttentionNames returns the resource names of the given attentions.
-func qualityAgentAttentionNames(attentions []*v1pb.QualityAgentAttention) []string {
-	names := make([]string, 0, len(attentions))
-	for _, attention := range attentions {
-		names = append(names, attention.GetName())
-	}
-	return names
-}
-
-// waitForQualityAgentTargetSession waits until the enrollment runner has admitted one
-// target of one agent as a work session and returns it. The wait covers the enrollment
-// runner's 60-second tick plus admission.
+// waitForQualityAgentTargetSession waits until the enrollment runner has materialized
+// the target session and returns it.
 func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, agentName, targetGUID string) *v1pb.QualityAgentSession {
 	t.Helper()
 
@@ -4557,7 +4501,6 @@ func waitForQualityAgentTargetSession(t *testing.T, fixture *qualityFixture, age
 	return session
 }
 
-// qualityAgentSessionNames extracts the resource names from a session list.
 func qualityAgentSessionNames(sessions []*v1pb.QualityAgentSession) []string {
 	names := make([]string, 0, len(sessions))
 	for _, session := range sessions {
@@ -4566,31 +4509,45 @@ func qualityAgentSessionNames(sessions []*v1pb.QualityAgentSession) []string {
 	return names
 }
 
-// waitForQualityAgentConversationMessage waits until the lead's front-office
-// conversation contains an entry matching match.
-func waitForQualityAgentConversationMessage(t *testing.T, fixture *qualityFixture, agentName string, match func(*v1pb.QualityAgentSessionMessage) bool) *v1pb.QualityAgentSessionMessage {
+// seedProposalAsk creates the approval ask the adoption pass would leave for one target.
+func seedProposalAsk(t *testing.T, fixture *qualityFixture, agent *store.QualityAgentMessage, workspaceID, targetGUID, dedupeKey string) *store.QualityAgentAskMessage {
 	t.Helper()
 
-	var found *v1pb.QualityAgentSessionMessage
-	require.Eventually(t, func() bool {
-		response, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
-			withToken(fixture.env.AdminToken(), &v1pb.ListQualityAgentConversationMessagesRequest{
-				Parent:   agentName,
-				PageSize: 200,
-			}))
-		if err != nil {
-			return false
+	lead, err := fixture.env.Store.EnsureQualityAgentConversation(fixture.ctx, workspaceID, agent.ID)
+	require.NoError(t, err)
+	created, _, err := fixture.env.Store.CreateQualityAgentAskDeduped(fixture.ctx, &store.QualityAgentAskMessage{
+		WorkspaceID: workspaceID,
+		AgentID:     agent.ID,
+		Kind:        store.QualityAgentAskKindApproval,
+		Title:       "check drafts",
+		Question:    "one draft needs a decision",
+		TargetGUID:  targetGUID,
+		TargetType:  storepb.MetaType_TABLE,
+		DedupeKey:   dedupeKey,
+	}, lead, &store.QualityAgentTranscriptMessage{
+		Wake:           lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "one draft needs a decision",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "proposal-ask-seed:" + targetGUID,
+	}, nil, time.Now().UTC())
+	require.NoError(t, err)
+	return created
+}
+
+func findOpenProposalAsk(t *testing.T, fixture *qualityFixture, agent *store.QualityAgentMessage, dedupeKey string) *store.QualityAgentAskMessage {
+	t.Helper()
+
+	asks, err := fixture.env.Store.ListQualityAgentAsks(fixture.ctx, agent.ID,
+		[]store.QualityAgentAskStatus{store.QualityAgentAskStatusOpen}, 50)
+	require.NoError(t, err)
+	for _, ask := range asks {
+		if ask.DedupeKey == dedupeKey {
+			return ask
 		}
-		for _, message := range response.Msg.GetQualityAgentConversationMessages() {
-			if match(message) {
-				found = message
-				return true
-			}
-		}
-		return false
-	}, 30*time.Second, 250*time.Millisecond,
-		"the lead conversation never contained the expected entry: %s", fixture.env.ServerLogs())
-	return found
+	}
+	return nil
 }
 
 // waitForQualityAgentSessionMessage waits until one session transcript entry matches
@@ -4740,7 +4697,7 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	// database the server process uses is the only way to exercise the policy write
 	// without a model; it bypasses the server's IAM, audit and notifier wiring, which
 	// is the right boundary for an internal hook. The pass needs a real target session
-	// row so the proposal item it raises carries the session the attention read
+	// row so the approval ask it raises carries the session the owner's read
 	// resolves the target through.
 	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)
@@ -4922,7 +4879,7 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 // path: a member who owns the agent can approve its drafts without holding the
 // rule-write permission the review queue needs, the check is attributed to the
 // person, the autonomous daily ceiling is never charged, and the drained proposal
-// attention closes. It replaces the removed explicit policy pass.
+// ask closes. It replaces the removed explicit policy pass.
 func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -4974,18 +4931,9 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, createdDraft)
 
-	// The adoption pass left the owner an open proposal item for the target.
-	dedupeKey := store.ProposalAttentionDedupeKey(fixture.usersGUID)
-	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID: workspaceID,
-		AgentID:     storedAgent.ID,
-		Kind:        store.QualityAgentAttentionKindProposalPending,
-		Title:       "check drafts",
-		Question:    "one draft needs a decision",
-		DedupeKey:   dedupeKey,
-		CreatedAt:   time.Now().UTC(),
-	})
-	require.NoError(t, err)
+	// The adoption pass left the owner an open approval ask for the target.
+	dedupeKey := store.ProposalAskDedupeKey(fixture.usersGUID)
+	seedProposalAsk(t, fixture, storedAgent, workspaceID, fixture.usersGUID, dedupeKey)
 
 	// A member who is neither the owner nor an administrator cannot approve.
 	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
@@ -5056,10 +5004,9 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, capCount, "a person's approval never spends the autonomous daily ceiling")
 
-	// The drained proposal item leaves the owner's to-do list.
-	attention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, dedupeKey)
-	require.NoError(t, err)
-	require.Nil(t, attention, "approving the last draft resolves the proposal attention")
+	// The drained approval ask leaves the owner's to-do list.
+	require.Nil(t, findOpenProposalAsk(t, fixture, storedAgent, dedupeKey),
+		"approving the last draft resolves the proposal ask")
 
 	// A second target's draft is not touched when the approval names the first
 	// target: the target GUID narrows the pass, and its own proposal item stays open.
@@ -5082,17 +5029,8 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, ordersCreated)
-	ordersDedupe := store.ProposalAttentionDedupeKey(ordersGUID)
-	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID: workspaceID,
-		AgentID:     storedAgent.ID,
-		Kind:        store.QualityAgentAttentionKindProposalPending,
-		Title:       "check drafts",
-		Question:    "one draft needs a decision",
-		DedupeKey:   ordersDedupe,
-		CreatedAt:   time.Now().UTC(),
-	})
-	require.NoError(t, err)
+	ordersDedupe := store.ProposalAskDedupeKey(ordersGUID)
+	seedProposalAsk(t, fixture, storedAgent, workspaceID, ordersGUID, ordersDedupe)
 
 	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
 		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{
@@ -5107,9 +5045,8 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, storedOrders.Status,
 		"the other target's draft is not approved")
-	ordersAttention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, ordersDedupe)
-	require.NoError(t, err)
-	require.NotNil(t, ordersAttention, "the other target's proposal item stays open")
+	require.NotNil(t, findOpenProposalAsk(t, fixture, storedAgent, ordersDedupe),
+		"the other target's proposal ask stays open")
 
 	// Without a target, the approval covers the agent's whole queue.
 	pass, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
@@ -5121,9 +5058,8 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED, storedOrders.Status)
-	ordersAttention, err = fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, storedAgent.ID, ordersDedupe)
-	require.NoError(t, err)
-	require.Nil(t, ordersAttention, "the second target's proposal item closes too")
+	require.Nil(t, findOpenProposalAsk(t, fixture, storedAgent, ordersDedupe),
+		"the second target's proposal ask closes too")
 
 	// A draft the check path cannot write is ledgered as a failure, so the home's
 	// failed count and last failure cover a person's approval too. The draft stays
@@ -5179,358 +5115,6 @@ func TestQualityAgentOwnerApprovalRealServerIntegration(t *testing.T) {
 		"a failed approval returns the draft to the queue")
 }
 
-// TestQualityAgentSupersedeResolvesTheOtherAgentsAttention guards the cross-agent
-// case: approving one agent's draft closes another agent's pending draft with the
-// same identity on the target (the supersede is not agent-scoped), so that agent's
-// proposal item must close too. The create path's own suggestion names only the
-// approving agent, which is why the supersede reports the affected agents.
-func TestQualityAgentSupersedeResolvesTheOtherAgentsAttention(t *testing.T) {
-	t.Parallel()
-
-	fixture := setupQualityMySQLFixture(t, true)
-	adminToken := fixture.env.AdminToken()
-	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "supersede-owner")
-	providerProfile := fixture.createQualityAgentProvider(t, "supersede")
-	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
-	require.NoError(t, err)
-
-	createAgent := func(displayName string) *store.QualityAgentMessage {
-		t.Helper()
-		created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
-			withToken(adminToken, &v1pb.CreateQualityAgentRequest{
-				Parent:          "workspaces/-",
-				DisplayName:     displayName,
-				Owner:           ownerName,
-				ProviderProfile: providerProfile,
-				ProviderModel:   "supersede",
-				Databases:       []string{common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)},
-				Capabilities:    []string{"suggest"},
-				Start:           true,
-			}))
-		require.NoError(t, err)
-		stored, err := fixture.env.Store.GetQualityAgentByResourceID(fixture.ctx, resourceIDFromName(created.Msg.GetAgent().GetName()))
-		require.NoError(t, err)
-		require.NotNil(t, stored)
-		return stored
-	}
-	approvingAgent := createAgent("approving agent")
-	otherAgent := createAgent("other agent")
-
-	payload := qualityDraftSuggestionPayload("superseded row count")
-	signature := dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, payload.GetRule().GetConfig())
-	seedDraft := func(agent *store.QualityAgentMessage, title string) string {
-		t.Helper()
-		resourceID, err := common.RandomString(12)
-		require.NoError(t, err)
-		_, created, err := fixture.env.Store.QueueQualitySuggestion(fixture.ctx, &store.QualitySuggestionMessage{
-			ResourceID: resourceID,
-			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
-			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
-			AgentID:    &agent.ID,
-			TargetGUID: fixture.usersGUID,
-			TargetType: storepb.MetaType_TABLE,
-			Signature:  signature,
-			Payload: &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
-				Rule: &storepb.QualityRuleDraftConfig{
-					Title:      title,
-					Rationale:  "integration fixture draft",
-					Confidence: 0.9,
-					Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-					Config:     payload.GetRule().GetConfig(),
-				},
-			}},
-			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
-			Confidence: 0.9,
-		})
-		require.NoError(t, err)
-		require.True(t, created)
-		return resourceID
-	}
-	seedDraft(approvingAgent, "approving agent draft")
-	otherDraftID := seedDraft(otherAgent, "other agent draft")
-
-	otherDedupe := store.ProposalAttentionDedupeKey(fixture.usersGUID)
-	_, _, err = fixture.env.Store.CreateQualityAgentAttention(fixture.ctx, &store.QualityAgentAttentionMessage{
-		WorkspaceID: workspaceID,
-		AgentID:     otherAgent.ID,
-		Kind:        store.QualityAgentAttentionKindProposalPending,
-		Title:       "check drafts",
-		Question:    "one draft needs a decision",
-		DedupeKey:   otherDedupe,
-		CreatedAt:   time.Now().UTC(),
-	})
-	require.NoError(t, err)
-
-	// Approving the first agent's draft creates the rule; the supersede closes the
-	// second agent's identical draft, and its proposal item must close with it.
-	_, err = fixture.dataQuality.AdoptQualityAgentPendingSuggestions(fixture.ctx,
-		withToken(ownerToken, &v1pb.AdoptQualityAgentPendingSuggestionsRequest{
-			Name:       common.FormatWorkspace(workspaceID) + "/qualityAgents/" + approvingAgent.ResourceID,
-			TargetGuid: fixture.usersGUID,
-		}))
-	require.NoError(t, err)
-	storedOther, err := fixture.env.Store.GetQualitySuggestion(fixture.ctx, &store.FindQualitySuggestionMessage{
-		ResourceID: ptrString(otherDraftID),
-	})
-	require.NoError(t, err)
-	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED, storedOther.Status,
-		"the other agent's identical draft is superseded by the saved rule")
-	attention, err := fixture.env.Store.GetOpenQualityAgentAttentionByDedupe(fixture.ctx, otherAgent.ID, otherDedupe)
-	require.NoError(t, err)
-	require.Nil(t, attention, "the other agent's drained proposal item closes too")
-}
-
-// TestQualityOwnerScopedGrantRealServerIntegration guards the scoped grant: a
-// member with a qualityOwner grant at one database can create, read, update, run
-// and delete checks on that database's tables and is denied on another; a member
-// without a grant is refused before any write. The member baseline keeps reads
-// workspace-wide, so the grant is additive.
-func TestQualityOwnerScopedGrantRealServerIntegration(t *testing.T) {
-	t.Parallel()
-
-	fixture := setupQualityMySQLFixture(t, true)
-	ownerName, ownerToken := createQualityAgentTestMember(t, fixture, "scoped-owner")
-	_, strangerToken := createQualityAgentTestMember(t, fixture, "scoped-stranger")
-
-	httpClient := &http.Client{Timeout: 5 * time.Second}
-	iamClient := v1connect.NewIamServiceClient(httpClient, fixture.env.BaseURL)
-	resource := common.FormatDatabase(fixture.instanceID, fixture.sourceDatabase)
-
-	ruleRequest := func(targetGUID string) *v1pb.CreateQualityRuleRequest {
-		return &v1pb.CreateQualityRuleRequest{
-			Parent: "workspaces/-",
-			Rule: &v1pb.QualityRule{
-				Title:     "scoped row count",
-				Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-				RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-				Target:    &v1pb.QualityTarget{MetaGuid: targetGUID, MetaType: v1pb.MetaType_TABLE},
-				Config:    qualityRowCountConfig(1),
-				Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-			},
-		}
-	}
-
-	// A member without a grant is refused by the interceptor's scoped gate.
-	_, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
-		withToken(strangerToken, ruleRequest(fixture.usersGUID)))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// Before the grant the owner holds no rules.create anywhere; the interceptor
-	// denies, and that empty snapshot is cached in the server process.
-	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
-		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// The administrator adds the grant through the API. The write bumps the
-	// authorization generation, so the cached empty snapshot is rebuilt.
-	_, err = iamClient.CreateIamGrant(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.CreateIamGrantRequest{
-		Grant: &v1pb.IamGrant{Resource: resource, Role: "roles/qualityOwner", Member: ownerName},
-	}))
-	require.NoError(t, err)
-
-	// The granted member can create on a table in the database.
-	created, err := fixture.dataQuality.CreateQualityRule(fixture.ctx,
-		withToken(ownerToken, ruleRequest(fixture.usersGUID)))
-	require.NoError(t, err)
-	require.NotEmpty(t, created.Msg.GetName())
-
-	// The grant does not reach another database.
-	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx,
-		withToken(ownerToken, ruleRequest("another-instance;another_db;;users")))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// The list carries the caller's own target permissions: the scoped owner may
-	// update and run the rule, a stranger may only read it.
-	ownerList, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.ListQualityRulesRequest{
-		Parent:     "workspaces/-",
-		TargetGuid: fixture.usersGUID,
-		PageSize:   100,
-	}))
-	require.NoError(t, err)
-	require.NotEmpty(t, ownerList.Msg.GetQualityRules())
-	require.Contains(t, ownerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
-	require.Contains(t, ownerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.run")
-
-	strangerList, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(strangerToken, &v1pb.ListQualityRulesRequest{
-		Parent:     "workspaces/-",
-		TargetGuid: fixture.usersGUID,
-		PageSize:   100,
-	}))
-	require.NoError(t, err)
-	require.NotEmpty(t, strangerList.Msg.GetQualityRules())
-	require.Contains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.get")
-	require.NotContains(t, strangerList.Msg.GetQualityRules()[0].GetViewerPermissions(), "metaxisdata.dataQuality.rules.update")
-
-	// The queue carries the per-target answer too, so "create rule from draft" is
-	// gated by the draft's target rather than by the page-wide navigation grant.
-	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
-	require.NoError(t, err)
-	seeded := fixture.seedSuggestion(t,
-		storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
-		qualityDraftSuggestionPayload("scoped draft"))
-	ownerSuggestions, err := fixture.dataQuality.ListQualitySuggestions(fixture.ctx, withToken(ownerToken, &v1pb.ListQualitySuggestionsRequest{
-		Parent:     "workspaces/-",
-		TargetGuid: fixture.usersGUID,
-		PageSize:   100,
-	}))
-	require.NoError(t, err)
-	var seededView *v1pb.QualitySuggestion
-	for _, suggestion := range ownerSuggestions.Msg.GetQualitySuggestions() {
-		if suggestion.GetName() == common.FormatWorkspace(workspaceID)+"/qualitySuggestions/"+seeded.ResourceID {
-			seededView = suggestion
-		}
-	}
-	require.NotNil(t, seededView)
-	require.Contains(t, seededView.GetViewerPermissions(), "metaxisdata.dataQuality.rules.create")
-	require.Contains(t, seededView.GetViewerPermissions(), "metaxisdata.dataQuality.suggest")
-
-	// A scoped owner cannot move the rule onto a target outside the grant: the
-	// destination is checked before the store writes, and the schedule must not be
-	// seeded for the foreign target.
-	_, err = fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityRuleRequest{
-		Rule: &v1pb.QualityRule{
-			Name:     created.Msg.GetName(),
-			Target:   &v1pb.QualityTarget{MetaGuid: "another-instance;another_db;;users", MetaType: v1pb.MetaType_TABLE},
-			Revision: created.Msg.GetRevision(),
-		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"target"}},
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// A scoped author cannot define a check that reads outside the target: custom
-	// SQL runs on the target's connection, and a cross-table reference may name
-	// another database or instance.
-	customSQL := &v1pb.CreateQualityRuleRequest{
-		Parent: "workspaces/-",
-		Rule: &v1pb.QualityRule{
-			Title:     "custom sql",
-			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
-			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_CustomSql{
-				CustomSql: &v1pb.CustomSQLConfig{Sql: "SELECT 1"},
-			}},
-			Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		},
-	}
-	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(ownerToken, customSQL))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// The dry run compiles and probes the definition, so it must honor the same
-	// boundary: a scoped owner may preview a check inside its scope...
-	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
-		Parent: "workspaces/-",
-		Rule:   ruleRequest(fixture.usersGUID).GetRule(),
-	}))
-	require.NoError(t, err)
-	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
-		Parent: "workspaces/-",
-		Rule:   customSQL.GetRule(),
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err),
-		"the dry run must not compile a custom SQL definition a scoped grant cannot author")
-
-	crossTable := &v1pb.CreateQualityRuleRequest{
-		Parent: "workspaces/-",
-		Rule: &v1pb.QualityRule{
-			Title:     "cross table",
-			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-			Target:    &v1pb.QualityTarget{MetaGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE},
-			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_CrossTable{
-				CrossTable: &v1pb.CrossTableConfig{
-					Reference: &v1pb.CrossTableReference{MetaGuid: "another-instance;another_db;;users", MetaType: v1pb.MetaType_TABLE},
-				},
-			}},
-			Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		},
-	}
-	_, err = fixture.dataQuality.CreateQualityRule(fixture.ctx, withToken(ownerToken, crossTable))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-	_, err = fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.PreviewQualityRuleRequest{
-		Parent: "workspaces/-",
-		Rule:   crossTable.GetRule(),
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err),
-		"the dry run must not reach a reference outside the scope")
-
-	// The target schedule is writable inside the grant and refused outside it.
-	_, err = fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityTargetScheduleRequest{
-		Parent:           "workspaces/-",
-		TargetGuid:       fixture.usersGUID,
-		MetaType:         v1pb.MetaType_TABLE,
-		ScheduleInterval: durationpb.New(time.Hour),
-	}))
-	require.NoError(t, err)
-	_, err = fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityTargetScheduleRequest{
-		Parent:           "workspaces/-",
-		TargetGuid:       "another-instance;another_db;;users",
-		MetaType:         v1pb.MetaType_TABLE,
-		ScheduleInterval: durationpb.New(time.Hour),
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	// The granted member can read, update, run and archive its rule.
-	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx,
-		withToken(ownerToken, &v1pb.GetQualityRuleRequest{Name: created.Msg.GetName()}))
-	require.NoError(t, err)
-	require.Equal(t, created.Msg.GetName(), read.Msg.GetName())
-
-	updated, err := fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(ownerToken, &v1pb.UpdateQualityRuleRequest{
-		Rule: &v1pb.QualityRule{
-			Name:     created.Msg.GetName(),
-			Title:    "scoped row count updated",
-			Revision: created.Msg.GetRevision(),
-		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"title"}},
-	}))
-	require.NoError(t, err)
-	require.Equal(t, "scoped row count updated", updated.Msg.GetTitle())
-
-	run, err := fixture.dataQuality.RunQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.RunQualityRulesRequest{
-		Parent: "workspaces/-",
-		Rules:  []string{created.Msg.GetName()},
-	}))
-	require.NoError(t, err)
-	require.Len(t, run.Msg.GetExecutions(), 1)
-
-	// The list is not narrowed by an additive grant: the member baseline can read
-	// every rule, and the scope filter still returns the target's rules.
-	list, err := fixture.dataQuality.ListQualityRules(fixture.ctx, withToken(ownerToken, &v1pb.ListQualityRulesRequest{
-		Parent:     "workspaces/-",
-		TargetGuid: fixture.usersGUID,
-		PageSize:   100,
-	}))
-	require.NoError(t, err)
-	require.NotEmpty(t, list.Msg.GetQualityRules())
-
-	// A stranger cannot update or delete the granted member's rule; the scoped
-	// interceptor refuses before the handler.
-	_, err = fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(strangerToken, &v1pb.UpdateQualityRuleRequest{
-		Rule:       &v1pb.QualityRule{Name: created.Msg.GetName(), Title: "stranger", Revision: created.Msg.GetRevision()},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"title"}},
-	}))
-	require.Error(t, err)
-	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
-
-	_, err = fixture.dataQuality.DeleteQualityRule(fixture.ctx,
-		withToken(ownerToken, &v1pb.DeleteQualityRuleRequest{Name: created.Msg.GetName()}))
-	require.NoError(t, err)
-}
-
-// TestQualityAgentOwnerDerivedGrantRealServerIntegration covers the derived
-// ownership source: the owner of a quality agent holds qualityOwner on the
-// agent's databases without an explicit grant, so it can author checks there
-// and nowhere else.
 func TestQualityAgentOwnerDerivedGrantRealServerIntegration(t *testing.T) {
 	t.Parallel()
 

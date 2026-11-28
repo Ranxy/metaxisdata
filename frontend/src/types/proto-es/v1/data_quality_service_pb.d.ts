@@ -8172,109 +8172,6 @@ export declare type GetQualityAgentAskRequest = Message<"metaxisdata.v1.GetQuali
 export declare const GetQualityAgentAskRequestSchema: GenMessage<GetQualityAgentAskRequest>;
 
 /**
- * @generated from message metaxisdata.v1.QualityAgentAttention
- */
-export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgentAttention"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-   *
-   * @generated from field: string agent = 2;
-   */
-  agent: string;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualityAgentAttentionKind kind = 3;
-   */
-  kind: QualityAgentAttentionKind;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualityAgentAttentionStatus status = 4;
-   */
-  status: QualityAgentAttentionStatus;
-
-  /**
-   * The target session to resume when the owner answers; empty for an agent event.
-   *
-   * @generated from field: string session = 5;
-   */
-  session: string;
-
-  /**
-   * @generated from field: string title = 7;
-   */
-  title: string;
-
-  /**
-   * @generated from field: string question = 8;
-   */
-  question: string;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp create_time = 9;
-   */
-  createTime?: Timestamp;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp resolve_time = 10;
-   */
-  resolveTime?: Timestamp;
-
-  /**
-   * Format: users/{user}; empty while open.
-   *
-   * @generated from field: string resolved_by = 11;
-   */
-  resolvedBy: string;
-
-  /**
-   * The target this escalation is about. Empty for an agent-level event such as
-   * a report anomaly.
-   *
-   * @generated from field: metaxisdata.v1.QualityTarget target = 12;
-   */
-  target?: QualityTarget;
-
-  /**
-   * Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
-   * attention. The owner sees what is waiting before replying, without needing
-   * the suggestion queue's own permission.
-   *
-   * @generated from field: repeated string pending_draft_titles = 13;
-   */
-  pendingDraftTitles: string[];
-
-  /**
-   * Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
-   * escalation that is not about one agent work item.
-   *
-   * @generated from field: string case = 14;
-   */
-  case: string;
-
-  /**
-   * The concrete change the agent asks for, when the escalation is a proposal. The owner
-   * reviews a field, a value and a reason instead of a paragraph; empty when the escalation
-   * asks for a decision that has no single change behind it.
-   *
-   * @generated from field: metaxisdata.v1.QualityAgentFieldPatch suggested_patch = 15;
-   */
-  suggestedPatch?: QualityAgentFieldPatch;
-};
-
-/**
- * Describes the message metaxisdata.v1.QualityAgentAttention.
- * Use `create(QualityAgentAttentionSchema)` to create a new message.
- */
-export declare const QualityAgentAttentionSchema: GenMessage<QualityAgentAttention>;
-
-/**
  * QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
  * value it would take, and why. The agent may not apply it, so the patch is what a person
  * reads before editing: the value already passed the same validation a save runs.
@@ -8655,110 +8552,6 @@ export declare type ListQualityAgentCaseActionsResponse = Message<"metaxisdata.v
  * Use `create(ListQualityAgentCaseActionsResponseSchema)` to create a new message.
  */
 export declare const ListQualityAgentCaseActionsResponseSchema: GenMessage<ListQualityAgentCaseActionsResponse>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualityAgentAttentionsRequest
- */
-export declare type ListQualityAgentAttentionsRequest = Message<"metaxisdata.v1.ListQualityAgentAttentionsRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-   *
-   * @generated from field: string parent = 1;
-   */
-  parent: string;
-
-  /**
-   * UNSPECIFIED lists every status.
-   *
-   * @generated from field: metaxisdata.v1.QualityAgentAttentionStatus status = 2;
-   */
-  status: QualityAgentAttentionStatus;
-
-  /**
-   * @generated from field: int32 page_size = 3;
-   */
-  pageSize: number;
-
-  /**
-   * @generated from field: string page_token = 4;
-   */
-  pageToken: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualityAgentAttentionsRequest.
- * Use `create(ListQualityAgentAttentionsRequestSchema)` to create a new message.
- */
-export declare const ListQualityAgentAttentionsRequestSchema: GenMessage<ListQualityAgentAttentionsRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualityAgentAttentionsResponse
- */
-export declare type ListQualityAgentAttentionsResponse = Message<"metaxisdata.v1.ListQualityAgentAttentionsResponse"> & {
-  /**
-   * @generated from field: repeated metaxisdata.v1.QualityAgentAttention quality_agent_attentions = 1;
-   */
-  qualityAgentAttentions: QualityAgentAttention[];
-
-  /**
-   * @generated from field: string next_page_token = 2;
-   */
-  nextPageToken: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualityAgentAttentionsResponse.
- * Use `create(ListQualityAgentAttentionsResponseSchema)` to create a new message.
- */
-export declare const ListQualityAgentAttentionsResponseSchema: GenMessage<ListQualityAgentAttentionsResponse>;
-
-/**
- * @generated from message metaxisdata.v1.ReplyQualityAgentAttentionRequest
- */
-export declare type ReplyQualityAgentAttentionRequest = Message<"metaxisdata.v1.ReplyQualityAgentAttentionRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The owner's answer. Named message_body so the audit ledger redacts it.
-   *
-   * @generated from field: string message_body = 2;
-   */
-  messageBody: string;
-
-  /**
-   * @generated from field: string request_id = 3;
-   */
-  requestId: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.ReplyQualityAgentAttentionRequest.
- * Use `create(ReplyQualityAgentAttentionRequestSchema)` to create a new message.
- */
-export declare const ReplyQualityAgentAttentionRequestSchema: GenMessage<ReplyQualityAgentAttentionRequest>;
-
-/**
- * @generated from message metaxisdata.v1.DismissQualityAgentAttentionRequest
- */
-export declare type DismissQualityAgentAttentionRequest = Message<"metaxisdata.v1.DismissQualityAgentAttentionRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.DismissQualityAgentAttentionRequest.
- * Use `create(DismissQualityAgentAttentionRequestSchema)` to create a new message.
- */
-export declare const DismissQualityAgentAttentionRequestSchema: GenMessage<DismissQualityAgentAttentionRequest>;
 
 /**
  * @generated from message metaxisdata.v1.SetQualityAgentAdoptionRequest
@@ -12601,71 +12394,6 @@ export enum QualityAgentReportPeriod {
 export declare const QualityAgentReportPeriodSchema: GenEnum<QualityAgentReportPeriod>;
 
 /**
- * QualityAgentAttentionKind is why the owner is needed.
- *
- * @generated from enum metaxisdata.v1.QualityAgentAttentionKind
- */
-export enum QualityAgentAttentionKind {
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_BLOCKED = 1;
-   */
-  BLOCKED = 1,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING = 2;
-   */
-  PROPOSAL_PENDING = 2,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY = 3;
-   */
-  REPORT_ANOMALY = 3,
-}
-
-/**
- * Describes the enum metaxisdata.v1.QualityAgentAttentionKind.
- */
-export declare const QualityAgentAttentionKindSchema: GenEnum<QualityAgentAttentionKind>;
-
-/**
- * QualityAgentAttentionStatus is the to-do's lifecycle.
- *
- * @generated from enum metaxisdata.v1.QualityAgentAttentionStatus
- */
-export enum QualityAgentAttentionStatus {
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_OPEN = 1;
-   */
-  OPEN = 1,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_RESOLVED = 2;
-   */
-  RESOLVED = 2,
-
-  /**
-   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_DISMISSED = 3;
-   */
-  DISMISSED = 3,
-}
-
-/**
- * Describes the enum metaxisdata.v1.QualityAgentAttentionStatus.
- */
-export declare const QualityAgentAttentionStatusSchema: GenEnum<QualityAgentAttentionStatus>;
-
-/**
- * QualityAgentAttention is one owner escalation inside an agent.
  * QualityAgentRequestKind is why a subagent needs the lead.
  *
  * @generated from enum metaxisdata.v1.QualityAgentRequestKind
@@ -13975,16 +13703,6 @@ export declare const DataQualityService: GenService<{
     output: typeof ListQualityAgentReportsResponseSchema;
   },
   /**
-   * List one agent's escalations. The owner and administrators may read.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentAttentions
-   */
-  listQualityAgentAttentions: {
-    methodKind: "unary";
-    input: typeof ListQualityAgentAttentionsRequestSchema;
-    output: typeof ListQualityAgentAttentionsResponseSchema;
-  },
-  /**
    * List one agent's work items, the ones still open first. A case is the agent's durable
    * record of a check it could not settle by itself; the owner and administrators may read
    * it to see what the agent is working on and what it has given up on.
@@ -14006,28 +13724,6 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityAgentCaseActionsRequestSchema;
     output: typeof ListQualityAgentCaseActionsResponseSchema;
-  },
-  /**
-   * Answer a legacy escalation as the owner. The reply is appended to the lead
-   * conversation and the attention is resolved; the lead routes the answer. A retry
-   * on a closed attention is a no-op.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ReplyQualityAgentAttention
-   */
-  replyQualityAgentAttention: {
-    methodKind: "unary";
-    input: typeof ReplyQualityAgentAttentionRequestSchema;
-    output: typeof QualityAgentAttentionSchema;
-  },
-  /**
-   * Dismiss an escalation without resuming the session. Owner only.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.DismissQualityAgentAttention
-   */
-  dismissQualityAgentAttention: {
-    methodKind: "unary";
-    input: typeof DismissQualityAgentAttentionRequestSchema;
-    output: typeof QualityAgentAttentionSchema;
   },
   /**
    * List one agent's decision requests. The owner and administrators may read; the

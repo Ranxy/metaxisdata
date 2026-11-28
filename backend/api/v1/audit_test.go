@@ -257,10 +257,4 @@ func TestRedactAuditResponseKeepsProseOutOfTheLedger(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, redactedList.GetQualityAgentSessionMessages()[0].GetContent())
 	require.Empty(t, redactedList.GetQualityAgentSessionMessages()[0].GetReasoning())
-
-	attention := &v1pb.QualityAgentAttention{Title: "owner-only title", Question: "owner-only question"}
-	redactedAttention, ok := redactAuditResponse(attention).(*v1pb.QualityAgentAttention)
-	require.True(t, ok)
-	require.Empty(t, redactedAttention.GetTitle())
-	require.Empty(t, redactedAttention.GetQuestion())
 }

@@ -301,7 +301,6 @@
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
     - [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest)
-    - [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest)
     - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk)
@@ -343,8 +342,6 @@
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
     - [ListQualityAgentAsksRequest](#metaxisdata-v1-ListQualityAgentAsksRequest)
     - [ListQualityAgentAsksResponse](#metaxisdata-v1-ListQualityAgentAsksResponse)
-    - [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest)
-    - [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse)
     - [ListQualityAgentCaseActionsRequest](#metaxisdata-v1-ListQualityAgentCaseActionsRequest)
     - [ListQualityAgentCaseActionsResponse](#metaxisdata-v1-ListQualityAgentCaseActionsResponse)
     - [ListQualityAgentCasesRequest](#metaxisdata-v1-ListQualityAgentCasesRequest)
@@ -396,7 +393,6 @@
     - [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting)
     - [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus)
     - [QualityAgentAsk](#metaxisdata-v1-QualityAgentAsk)
-    - [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
     - [QualityAgentCase](#metaxisdata-v1-QualityAgentCase)
     - [QualityAgentCaseAction](#metaxisdata-v1-QualityAgentCaseAction)
@@ -465,7 +461,6 @@
     - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
-    - [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest)
     - [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
     - [RowCountConfig](#metaxisdata-v1-RowCountConfig)
@@ -504,8 +499,6 @@
     - [QualityAgentAdoptionMode](#metaxisdata-v1-QualityAgentAdoptionMode)
     - [QualityAgentAskKind](#metaxisdata-v1-QualityAgentAskKind)
     - [QualityAgentAskStatus](#metaxisdata-v1-QualityAgentAskStatus)
-    - [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind)
-    - [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus)
     - [QualityAgentCaseActionKind](#metaxisdata-v1-QualityAgentCaseActionKind)
     - [QualityAgentCaseState](#metaxisdata-v1-QualityAgentCaseState)
     - [QualityAgentMessageAudience](#metaxisdata-v1-QualityAgentMessageAudience)
@@ -687,7 +680,6 @@
     - [NotificationRouteMatch](#metaxisdata-v1-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
     - [QualityAgentAskDetail](#metaxisdata-v1-QualityAgentAskDetail)
-    - [QualityAgentAttentionDetail](#metaxisdata-v1-QualityAgentAttentionDetail)
     - [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest)
     - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
     - [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest)
@@ -5558,21 +5550,6 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
-<a name="metaxisdata-v1-DismissQualityAgentAttentionRequest"></a>
-
-### DismissQualityAgentAttentionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ExplainQualityExecutionRequest"></a>
 
 ### ExplainQualityExecutionRequest
@@ -6288,40 +6265,6 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_agent_asks | [QualityAgentAsk](#metaxisdata-v1-QualityAgentAsk) | repeated |  |
-| next_page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityAgentAttentionsRequest"></a>
-
-### ListQualityAgentAttentionsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| status | [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus) |  | UNSPECIFIED lists every status. |
-| page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-v1-ListQualityAgentAttentionsResponse"></a>
-
-### ListQualityAgentAttentionsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quality_agent_attentions | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -7296,34 +7239,6 @@ requests through their ask link.
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The targets whose requests this question covers. |
 | request_count | [int32](#int32) |  | How many requests the answer covers. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentAttention"></a>
-
-### QualityAgentAttention
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
-| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| kind | [QualityAgentAttentionKind](#metaxisdata-v1-QualityAgentAttentionKind) |  |  |
-| status | [QualityAgentAttentionStatus](#metaxisdata-v1-QualityAgentAttentionStatus) |  |  |
-| session | [string](#string) |  | The target session to resume when the owner answers; empty for an agent event. |
-| title | [string](#string) |  |  |
-| question | [string](#string) |  |  |
-| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| resolve_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| resolved_by | [string](#string) |  | Format: users/{user}; empty while open. |
-| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target this escalation is about. Empty for an agent-level event such as a report anomaly. |
-| pending_draft_titles | [string](#string) | repeated | Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING attention. The owner sees what is waiting before replying, without needing the suggestion queue&#39;s own permission. |
-| case | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an escalation that is not about one agent work item. |
-| suggested_patch | [QualityAgentFieldPatch](#metaxisdata-v1-QualityAgentFieldPatch) |  | The concrete change the agent asks for, when the escalation is a proposal. The owner reviews a field, a value and a reason instead of a paragraph; empty when the escalation asks for a decision that has no single change behind it. |
 
 
 
@@ -8929,23 +8844,6 @@ engine&#39;s own regex operator.
 
 
 
-<a name="metaxisdata-v1-ReplyQualityAgentAttentionRequest"></a>
-
-### ReplyQualityAgentAttentionRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
-| message_body | [string](#string) |  | The owner&#39;s answer. Named message_body so the audit ledger redacts it. |
-| request_id | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="metaxisdata-v1-ResumeQualityAgentSessionRequest"></a>
 
 ### ResumeQualityAgentSessionRequest
@@ -9612,34 +9510,6 @@ QualityAgentAskStatus is the ask&#39;s lifecycle.
 
 
 
-<a name="metaxisdata-v1-QualityAgentAttentionKind"></a>
-
-### QualityAgentAttentionKind
-QualityAgentAttentionKind is why the owner is needed.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_ATTENTION_KIND_BLOCKED | 1 |  |
-| QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING | 2 |  |
-| QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY | 3 |  |
-
-
-
-<a name="metaxisdata-v1-QualityAgentAttentionStatus"></a>
-
-### QualityAgentAttentionStatus
-QualityAgentAttentionStatus is the to-do&#39;s lifecycle.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_ATTENTION_STATUS_OPEN | 1 |  |
-| QUALITY_AGENT_ATTENTION_STATUS_RESOLVED | 2 |  |
-| QUALITY_AGENT_ATTENTION_STATUS_DISMISSED | 3 |  |
-
-
-
 <a name="metaxisdata-v1-QualityAgentCaseActionKind"></a>
 
 ### QualityAgentCaseActionKind
@@ -9770,7 +9640,6 @@ QualityAgentReportPeriod is the report&#39;s period shape.
 <a name="metaxisdata-v1-QualityAgentRequestKind"></a>
 
 ### QualityAgentRequestKind
-QualityAgentAttention is one owner escalation inside an agent.
 QualityAgentRequestKind is why a subagent needs the lead.
 
 | Name | Number | Description |
@@ -10560,11 +10429,8 @@ The report includes real sample values from failed checks (capped), so it is a w
 | SendQualityAgentMessage | [SendQualityAgentMessageRequest](#metaxisdata-v1-SendQualityAgentMessageRequest) | [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage) | Append the owner&#39;s message to the agent&#39;s conversation and wake it. Only the agent&#39;s owner may send; administrators may read but not talk. |
 | ListQualityAgentConversationMessages | [ListQualityAgentConversationMessagesRequest](#metaxisdata-v1-ListQualityAgentConversationMessagesRequest) | [ListQualityAgentConversationMessagesResponse](#metaxisdata-v1-ListQualityAgentConversationMessagesResponse) | Read the agent&#39;s front-office conversation. The owner and administrators may read; only the owner may send. |
 | ListQualityAgentReports | [ListQualityAgentReportsRequest](#metaxisdata-v1-ListQualityAgentReportsRequest) | [ListQualityAgentReportsResponse](#metaxisdata-v1-ListQualityAgentReportsResponse) | List one agent&#39;s patrol reports, newest period first. |
-| ListQualityAgentAttentions | [ListQualityAgentAttentionsRequest](#metaxisdata-v1-ListQualityAgentAttentionsRequest) | [ListQualityAgentAttentionsResponse](#metaxisdata-v1-ListQualityAgentAttentionsResponse) | List one agent&#39;s escalations. The owner and administrators may read. |
 | ListQualityAgentCases | [ListQualityAgentCasesRequest](#metaxisdata-v1-ListQualityAgentCasesRequest) | [ListQualityAgentCasesResponse](#metaxisdata-v1-ListQualityAgentCasesResponse) | List one agent&#39;s work items, the ones still open first. A case is the agent&#39;s durable record of a check it could not settle by itself; the owner and administrators may read it to see what the agent is working on and what it has given up on. |
 | ListQualityAgentCaseActions | [ListQualityAgentCaseActionsRequest](#metaxisdata-v1-ListQualityAgentCaseActionsRequest) | [ListQualityAgentCaseActionsResponse](#metaxisdata-v1-ListQualityAgentCaseActionsResponse) | List the writes one agent made to checks, newest first: the ledger behind the write budget and the answer to &#34;what has it changed&#34;. A case narrows it to one work item&#39;s history. |
-| ReplyQualityAgentAttention | [ReplyQualityAgentAttentionRequest](#metaxisdata-v1-ReplyQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Answer a legacy escalation as the owner. The reply is appended to the lead conversation and the attention is resolved; the lead routes the answer. A retry on a closed attention is a no-op. |
-| DismissQualityAgentAttention | [DismissQualityAgentAttentionRequest](#metaxisdata-v1-DismissQualityAgentAttentionRequest) | [QualityAgentAttention](#metaxisdata-v1-QualityAgentAttention) | Dismiss an escalation without resuming the session. Owner only. |
 | ListQualityAgentRequests | [ListQualityAgentRequestsRequest](#metaxisdata-v1-ListQualityAgentRequestsRequest) | [ListQualityAgentRequestsResponse](#metaxisdata-v1-ListQualityAgentRequestsResponse) | List one agent&#39;s decision requests. The owner and administrators may read; the requests are written by the agent&#39;s own tools. |
 | GetQualityAgentDecisionRequest | [GetQualityAgentDecisionRequestRequest](#metaxisdata-v1-GetQualityAgentDecisionRequestRequest) | [QualityAgentRequest](#metaxisdata-v1-QualityAgentRequest) | Read one decision request. |
 | ListQualityAgentAsks | [ListQualityAgentAsksRequest](#metaxisdata-v1-ListQualityAgentAsksRequest) | [ListQualityAgentAsksResponse](#metaxisdata-v1-ListQualityAgentAsksResponse) | List one agent&#39;s owner-facing questions. The owner and administrators may read. |
@@ -12409,7 +12275,6 @@ Notification is one in-app message for one recipient.
 | schema_sync | [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-v1-DataQualityDetail) |  |  |
-| quality_agent_attention | [QualityAgentAttentionDetail](#metaxisdata-v1-QualityAgentAttentionDetail) |  |  |
 | quality_agent_ask | [QualityAgentAskDetail](#metaxisdata-v1-QualityAgentAskDetail) |  |  |
 
 
@@ -12595,8 +12460,6 @@ fell through to an external dataset.
 <a name="metaxisdata-v1-QualityAgentAskDetail"></a>
 
 ### QualityAgentAskDetail
-QualityAgentAttentionDetail reports one agent escalation. The client renders the
-message from the structured detail and its own i18n catalog.
 QualityAgentAskDetail reports one owner-facing question from the lead. The client
 renders the prose; the server stores only identities and the bounded text.
 
@@ -12610,25 +12473,6 @@ renders the prose; the server stores only identities and the bounded text.
 | question | [string](#string) |  |  |
 | request_count | [int32](#int32) |  | How many subagent requests this question covers. |
 | targets | [string](#string) | repeated | Display paths of the affected targets, bounded by the server. |
-
-
-
-
-
-
-<a name="metaxisdata-v1-QualityAgentAttentionDetail"></a>
-
-### QualityAgentAttentionDetail
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| attention | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} |
-| kind | [int32](#int32) |  | 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind). |
-| title | [string](#string) |  |  |
-| question | [string](#string) |  |  |
 
 
 

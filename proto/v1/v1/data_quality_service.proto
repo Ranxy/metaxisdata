@@ -645,12 +645,6 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
-  // List one agent's escalations. The owner and administrators may read.
-  rpc ListQualityAgentAttentions(ListQualityAgentAttentionsRequest) returns (ListQualityAgentAttentionsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/attentions"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
-  }
-
   // List one agent's work items, the ones still open first. A case is the agent's durable
   // record of a check it could not settle by itself; the owner and administrators may read
   // it to see what the agent is working on and what it has given up on.
@@ -663,28 +657,6 @@ service DataQualityService {
   // and the answer to "what has it changed". A case narrows it to one work item's history.
   rpc ListQualityAgentCaseActions(ListQualityAgentCaseActionsRequest) returns (ListQualityAgentCaseActionsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/caseActions"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
-  }
-
-  // Answer a legacy escalation as the owner. The reply is appended to the lead
-  // conversation and the attention is resolved; the lead routes the answer. A retry
-  // on a closed attention is a no-op.
-  rpc ReplyQualityAgentAttention(ReplyQualityAgentAttentionRequest) returns (QualityAgentAttention) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
-  }
-
-  // Dismiss an escalation without resuming the session. Owner only.
-  rpc DismissQualityAgentAttention(DismissQualityAgentAttentionRequest) returns (QualityAgentAttention) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
   }
 
@@ -4108,23 +4080,6 @@ message ListQualityAgentReportsResponse {
   string next_page_token = 2;
 }
 
-// QualityAgentAttentionKind is why the owner is needed.
-enum QualityAgentAttentionKind {
-  QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED = 0;
-  QUALITY_AGENT_ATTENTION_KIND_BLOCKED = 1;
-  QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING = 2;
-  QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY = 3;
-}
-
-// QualityAgentAttentionStatus is the to-do's lifecycle.
-enum QualityAgentAttentionStatus {
-  QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED = 0;
-  QUALITY_AGENT_ATTENTION_STATUS_OPEN = 1;
-  QUALITY_AGENT_ATTENTION_STATUS_RESOLVED = 2;
-  QUALITY_AGENT_ATTENTION_STATUS_DISMISSED = 3;
-}
-
-// QualityAgentAttention is one owner escalation inside an agent.
 // QualityAgentRequestKind is why a subagent needs the lead.
 enum QualityAgentRequestKind {
   QUALITY_AGENT_REQUEST_KIND_UNSPECIFIED = 0;
@@ -4281,45 +4236,6 @@ message GetQualityAgentAskRequest {
   ];
 }
 
-message QualityAgentAttention {
-  option (google.api.resource) = {
-    type: "metaxisdata/QualityAgentAttention"
-    pattern: "workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}"
-  };
-
-  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-  string name = 1;
-  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-  string agent = 2;
-  QualityAgentAttentionKind kind = 3;
-  QualityAgentAttentionStatus status = 4;
-  // The target session to resume when the owner answers; empty for an agent event.
-  string session = 5;
-  // Removed: the UI never rendered the reference.
-  reserved 6;
-  reserved "reference";
-  string title = 7;
-  string question = 8;
-  google.protobuf.Timestamp create_time = 9;
-  google.protobuf.Timestamp resolve_time = 10;
-  // Format: users/{user}; empty while open.
-  string resolved_by = 11;
-  // The target this escalation is about. Empty for an agent-level event such as
-  // a report anomaly.
-  QualityTarget target = 12;
-  // Up to five titles of the pending rule drafts behind a PROPOSAL_PENDING
-  // attention. The owner sees what is waiting before replying, without needing
-  // the suggestion queue's own permission.
-  repeated string pending_draft_titles = 13;
-  // Format: workspaces/{workspace}/qualityAgentCases/{quality_agent_case}; empty for an
-  // escalation that is not about one agent work item.
-  string case = 14;
-  // The concrete change the agent asks for, when the escalation is a proposal. The owner
-  // reviews a field, a value and a reason instead of a paragraph; empty when the escalation
-  // asks for a decision that has no single change behind it.
-  QualityAgentFieldPatch suggested_patch = 15;
-}
-
 // QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
 // value it would take, and why. The agent may not apply it, so the patch is what a person
 // reads before editing: the value already passed the same validation a save runs.
@@ -4465,42 +4381,6 @@ message ListQualityAgentCaseActionsRequest {
 message ListQualityAgentCaseActionsResponse {
   repeated QualityAgentCaseAction quality_agent_case_actions = 1;
   string next_page_token = 2;
-}
-
-message ListQualityAgentAttentionsRequest {
-  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-  string parent = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
-  ];
-  // UNSPECIFIED lists every status.
-  QualityAgentAttentionStatus status = 2;
-  int32 page_size = 3;
-  string page_token = 4;
-}
-
-message ListQualityAgentAttentionsResponse {
-  repeated QualityAgentAttention quality_agent_attentions = 1;
-  string next_page_token = 2;
-}
-
-message ReplyQualityAgentAttentionRequest {
-  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAttention"}
-  ];
-  // The owner's answer. Named message_body so the audit ledger redacts it.
-  string message_body = 2 [(google.api.field_behavior) = REQUIRED];
-  string request_id = 3;
-}
-
-message DismissQualityAgentAttentionRequest {
-  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAttention"}
-  ];
 }
 
 message SetQualityAgentAdoptionRequest {

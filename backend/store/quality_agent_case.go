@@ -307,19 +307,13 @@ func (s *Store) ResolveQualityAgentCasesByClass(ctx context.Context, class, reso
 			SET state = $2, resolution = $3, next_action_at = NULL, updated_at = $4
 			WHERE failure_class = $1 AND state = ANY($5)
 			RETURNING agent_id, target_guid, resource_id
-		), closed AS (
-			UPDATE quality_agent_attention a
-			SET status = $6, resolved_at = $4
-			WHERE a.status = $7 AND a.dedupe_key LIKE 'case:%'
-				AND a.case_resource_id IN (SELECT resource_id FROM settled)
 		)
 		SELECT agent_id, target_guid FROM settled`,
 		class, int16(QualityAgentCaseStateResolved), resolution, now.UTC(),
 		pq.Array([]int16{
 			int16(QualityAgentCaseStateOpen), int16(QualityAgentCaseStateDiagnosed),
 			int16(QualityAgentCaseStateEscalated),
-		}),
-		int16(QualityAgentAttentionStatusResolved), int16(QualityAgentAttentionStatusOpen))
+		}))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to resolve the quality agent cases of one class")
 	}

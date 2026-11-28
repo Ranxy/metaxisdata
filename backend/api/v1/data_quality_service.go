@@ -455,7 +455,7 @@ func (s *DataQualityService) CreateQualityRule(ctx context.Context, req *connect
 	if err != nil {
 		return nil, err
 	}
-	s.resolveProposalAttentionForSuggestion(ctx, suggestion)
+	s.resolveProposalAskForSuggestion(ctx, suggestion)
 	return connect.NewResponse(created), nil
 }
 
@@ -640,8 +640,7 @@ func (s *DataQualityService) supersedeMatchingRuleDrafts(ctx context.Context, ru
 		if proposingAgentID <= 0 {
 			continue
 		}
-		s.resolveProposalAttentionIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: rule.TargetGUID},
-			principalIDPointer(currentUserID(ctx)))
+		s.resolveProposalAskIfDrained(ctx, agentTargetKey{agentID: proposingAgentID, targetGUID: rule.TargetGUID})
 	}
 }
 
@@ -2494,7 +2493,7 @@ func (s *DataQualityService) UpdateQualitySuggestion(ctx context.Context, req *c
 	if err != nil {
 		return nil, err
 	}
-	s.resolveProposalAttentionForSuggestion(ctx, decided)
+	s.resolveProposalAskForSuggestion(ctx, decided)
 	return connect.NewResponse(updated), nil
 }
 

@@ -116,8 +116,8 @@ func TestServerProseLocalizesAndCarriesTheCallerValues(t *testing.T) {
 
 	// Titles carry no caller value; the language alone decides them.
 	require.NotEqual(t,
-		AttentionTitle(English, store.QualityAgentAttentionKindProposalPending),
-		AttentionTitle(Chinese, store.QualityAgentAttentionKindProposalPending))
+		ApprovalTitle(English),
+		ApprovalTitle(Chinese))
 }
 
 // One target's decision card lists what still waits there: the newest hand-off, then the others, so

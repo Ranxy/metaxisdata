@@ -75,12 +75,6 @@ export declare type Notification = Message<"metaxisdata.v1.Notification"> & {
     case: "dataQuality";
   } | {
     /**
-     * @generated from field: metaxisdata.v1.QualityAgentAttentionDetail quality_agent_attention = 9;
-     */
-    value: QualityAgentAttentionDetail;
-    case: "qualityAgentAttention";
-  } | {
-    /**
      * @generated from field: metaxisdata.v1.QualityAgentAskDetail quality_agent_ask = 10;
      */
     value: QualityAgentAskDetail;
@@ -260,8 +254,6 @@ export declare type OpenLineageDetail = Message<"metaxisdata.v1.OpenLineageDetai
 export declare const OpenLineageDetailSchema: GenMessage<OpenLineageDetail>;
 
 /**
- * QualityAgentAttentionDetail reports one agent escalation. The client renders the
- * message from the structured detail and its own i18n catalog.
  * QualityAgentAskDetail reports one owner-facing question from the lead. The client
  * renders the prose; the server stores only identities and the bounded text.
  *
@@ -319,48 +311,6 @@ export declare type QualityAgentAskDetail = Message<"metaxisdata.v1.QualityAgent
  * Use `create(QualityAgentAskDetailSchema)` to create a new message.
  */
 export declare const QualityAgentAskDetailSchema: GenMessage<QualityAgentAskDetail>;
-
-/**
- * @generated from message metaxisdata.v1.QualityAgentAttentionDetail
- */
-export declare type QualityAgentAttentionDetail = Message<"metaxisdata.v1.QualityAgentAttentionDetail"> & {
-  /**
-   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
-   *
-   * @generated from field: string agent = 1;
-   */
-  agent: string;
-
-  /**
-   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
-   *
-   * @generated from field: string attention = 2;
-   */
-  attention: string;
-
-  /**
-   * 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind).
-   *
-   * @generated from field: int32 kind = 3;
-   */
-  kind: number;
-
-  /**
-   * @generated from field: string title = 4;
-   */
-  title: string;
-
-  /**
-   * @generated from field: string question = 5;
-   */
-  question: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.QualityAgentAttentionDetail.
- * Use `create(QualityAgentAttentionDetailSchema)` to create a new message.
- */
-export declare const QualityAgentAttentionDetailSchema: GenMessage<QualityAgentAttentionDetail>;
 
 /**
  * @generated from message metaxisdata.v1.ListNotificationsRequest
