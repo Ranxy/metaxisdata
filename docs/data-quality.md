@@ -606,8 +606,8 @@ tool; a person's approval is recorded under its own origin but never spends it.
   issue id; a `WARN` alone opens no issue but keeps an existing FAIL issue alive. A case is opened only by the server when a check
   cannot conclude, so no one can create one by hand.
 - **Escalates one question, not a whole target.** When the agent cannot settle a work item it hands that item to you — the case
-  becomes escalated and you get an ask — and keeps working on everything else. A session stops only on the runtime (a spent budget,
-  a transient error, an out-of-scope target or a disabled agent), not on a target's work.
+  becomes escalated and you get an ask — and keeps working on everything else. A session stops only on the runtime or a scope condition
+  (a spent budget, a transient error, an out-of-scope target or a disabled agent), not on a target's work.
 - **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
   which revision to which, the failure class and when — newest first, and each work item has a **History** dialog with just its own
   writes. An execution the write planned is one click away. This is the record the daily write budget counts, so "what did it change"

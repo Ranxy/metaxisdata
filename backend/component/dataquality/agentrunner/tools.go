@@ -187,12 +187,12 @@ func (e *Engine) executeTool(
 		}
 		return result, nil
 	case "run_check":
-		if err := rejectCaseReference(arguments); err != nil {
+		if err := rejectCaseReference("run_check", arguments); err != nil {
 			return "", err
 		}
 		return tools.RunCheck(ctx, agentSession, arguments)
 	case "repair_check":
-		if err := rejectCaseReference(arguments); err != nil {
+		if err := rejectCaseReference("repair_check", arguments); err != nil {
 			return "", err
 		}
 		return tools.RepairCheck(ctx, agentSession, arguments)
@@ -412,7 +412,16 @@ func (e *Engine) requireLeadTarget(ctx context.Context, session *store.QualityAg
 	if enrollment == nil {
 		return common.Errorf(common.NotFound, "target %q is not enrolled for this agent", targetGUID)
 	}
-	return nil
+	switch enrollment.State {
+	case storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING,
+		storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE,
+		storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT:
+		return nil
+	default:
+		// OUT_OF_SCOPE and GONE are historical rows: the target left the agent's
+		// scope, so the lead must not read its ledger as if it were still in the team.
+		return common.Errorf(common.NotFound, "target %q is no longer in this agent's scope", targetGUID)
+	}
 }
 
 // listOpenCases is the lead's target-scoped work-item read.

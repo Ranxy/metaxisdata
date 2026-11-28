@@ -14,9 +14,9 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// maxAgentIssues bounds one issue-ledger read. The ledger is a current-problem view,
-// not a history export; a target with more open issues than this needs a person, not a
-// longer tool result.
+// maxAgentIssues bounds one issue-ledger read. A target with more rows than this needs a
+// person, not a longer tool result; RESOLVED and ALL are explicit filters over the same
+// bounded page.
 const maxAgentIssues = 20
 
 // agentIssueRow is one problem-ledger row as a wake reads it. It carries the issue id

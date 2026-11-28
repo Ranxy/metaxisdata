@@ -470,7 +470,7 @@ func conversationToolSpecs() []toolSpec {
 			name:        "list_issues",
 			description: "Read one target's issue ledger — the durable problems a FAIL opened (a WARN keeps an existing issue alive but opens none). Use it before saying a defect is untracked: the issue id is the record, and a failing check is not a work item.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"target": map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+				"target": map[string]any{"type": "string", "description": "subagent name, session resource name, or a target GUID that is one of this agent's enrollments"},
 				"status": map[string]any{
 					"type":        "string",
 					"enum":        []string{"OPEN", "ACKNOWLEDGED", "RESOLVED", "ALL"},
