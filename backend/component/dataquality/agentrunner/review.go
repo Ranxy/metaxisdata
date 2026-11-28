@@ -31,7 +31,15 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 		}
 	}
 	if isLeadSession(session) {
-		return false, nil
+		// An OPEN request is work the lead has not routed yet. It is not a pending
+		// message, so without this read a failed model wake could leave it invisible
+		// until some unrelated event arrives.
+		requests, err := e.store.ListQualityAgentRequests(ctx, session.AgentID,
+			[]store.QualityAgentRequestStatus{store.QualityAgentRequestStatusOpen}, "", 10)
+		if err != nil {
+			return true, err
+		}
+		return len(requests) > 0, nil
 	}
 	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
 		enrollment, err := e.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.AgentID, session.TargetGUID)
@@ -83,20 +91,28 @@ func (e *Engine) Review(ctx context.Context, session *store.QualityAgentSessionM
 	}
 	// A no-op review is silent, but a newly uncovered declared property is durable
 	// knowledge: only that case runs the deterministic survey and records its note.
+	state := cloneEngineState(session.EngineState)
 	if gaps, err := e.coverageGaps(ctx, session); err == nil && len(gaps) > 0 {
-		if _, maintainErr := e.maintain(ctx, session, 0); maintainErr != nil {
+		maintained, maintainErr := e.maintain(ctx, session, 0)
+		if maintainErr != nil {
 			return Outcome{
 				NextWakeAt:  ptrTime(now.Add(retryWake)),
-				EngineState: cloneEngineState(session.EngineState),
+				EngineState: state,
 				ReviewedAt:  ptrTime(now),
 				Summary:     "review deferred: the coverage survey failed",
 			}
+		}
+		// Persist the survey's done-set. Without it every daily Review records the same
+		// asset fact and ENGINE note again; the deterministic path must be silent after
+		// the first gap is recorded.
+		if maintained.EngineState != nil {
+			state = maintained.EngineState
 		}
 	}
 	outcome := Outcome{
 		NextWakeAt:   ptrTime(now.Add(maintainWake)),
 		ProcessedSeq: session.ProcessedSeq,
-		EngineState:  cloneEngineState(session.EngineState),
+		EngineState:  state,
 		ReviewedAt:   ptrTime(now),
 		Summary:      "reviewed: nothing actionable",
 	}

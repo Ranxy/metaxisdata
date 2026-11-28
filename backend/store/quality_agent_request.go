@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -246,7 +247,7 @@ func (s *Store) ListQualityAgentRequests(ctx context.Context, agentID int64, sta
 
 // ListQualityAgentRequestsPage lists one page of an agent's requests, newest first.
 func (s *Store) ListQualityAgentRequestsPage(ctx context.Context, agentID int64, statuses []QualityAgentRequestStatus, targetGUID string, limit, offset int) ([]*QualityAgentRequestMessage, error) {
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 1001 {
 		limit = 50
 	}
 	if offset < 0 {
@@ -310,6 +311,35 @@ func (s *Store) UpdateQualityAgentRequestStatus(ctx context.Context, resourceID 
 	return message, true, nil
 }
 
+// ListQualityAgentRequestsByAskIDs maps each ask to the requests it carries. The ask
+// list uses it to render the affected targets and the request count without an N+1.
+func (s *Store) ListQualityAgentRequestsByAskIDs(ctx context.Context, askIDs []int64) (map[int64][]*QualityAgentRequestMessage, error) {
+	requests := map[int64][]*QualityAgentRequestMessage{}
+	if len(askIDs) == 0 {
+		return requests, nil
+	}
+	rows, err := s.GetDB().QueryContext(ctx, `
+		SELECT `+qualityAgentRequestColumns+` FROM quality_agent_request
+		WHERE ask_id = ANY($1) ORDER BY id`, pq.Array(askIDs))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the requests for asks")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		request, err := scanQualityAgentRequest(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan an ask's request")
+		}
+		if request.AskID != nil {
+			requests[*request.AskID] = append(requests[*request.AskID], request)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate an ask's requests")
+	}
+	return requests, nil
+}
+
 // ResolveQualityAgentRequestsForCase closes active requests attached to one case.
 func (s *Store) ResolveQualityAgentRequestsForCase(ctx context.Context, agentID int64, caseResourceID string, at time.Time) (int64, error) {
 	if agentID <= 0 || caseResourceID == "" {
@@ -318,9 +348,10 @@ func (s *Store) ResolveQualityAgentRequestsForCase(ctx context.Context, agentID 
 	result, err := s.GetDB().ExecContext(ctx, `
 		UPDATE quality_agent_request
 		SET status = $3, resolved_at = $4, updated_at = $4
-		WHERE agent_id = $1 AND case_resource_id = $2 AND status IN ($5, $6)`,
+		WHERE agent_id = $1 AND case_resource_id = $2 AND status IN ($5, $6, $7)`,
 		agentID, caseResourceID, int16(QualityAgentRequestStatusResolved), at.UTC(),
-		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded),
+		int16(QualityAgentRequestStatusAnswered))
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to resolve the case requests")
 	}

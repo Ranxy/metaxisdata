@@ -24,6 +24,25 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 			break
 		}
 	}
+	if ownerAsked {
+		handled, err := e.answerAsksDeterministically(ctx, session, wake, pending)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if handled > 0 {
+			processed := session.ProcessedSeq
+			for _, message := range pending {
+				if message.Seq > processed {
+					processed = message.Seq
+				}
+			}
+			return Outcome{
+				ProcessedSeq: processed,
+				EngineState:  cloneEngineState(session.EngineState),
+				Summary:      fmt.Sprintf("answered %d ask(s) without a model", handled),
+			}, nil
+		}
+	}
 	if !ownerAsked {
 		requests, err := e.store.ListQualityAgentRequests(ctx, session.AgentID,
 			[]store.QualityAgentRequestStatus{store.QualityAgentRequestStatusOpen}, "", 20)
@@ -59,6 +78,82 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 		EngineState:  cloneEngineState(session.EngineState),
 		Summary:      "answered from the deterministic scope summary",
 	}, nil
+}
+
+// answerAsksDeterministically routes the owner's reply to the requests behind the ask.
+// A model-less lead cannot decide, but the owner already did: delivering that answer is
+// bookkeeping, not judgment. It returns how many asks it could close this way.
+func (e *Engine) answerAsksDeterministically(ctx context.Context, session *store.QualityAgentSessionMessage, _ int32, pending []*store.QualityAgentTranscriptMessage) (int, error) {
+	answers := make([]*store.QualityAgentTranscriptMessage, 0, len(pending))
+	for _, message := range pending {
+		if message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK {
+			answers = append(answers, message)
+		}
+	}
+	if len(answers) == 0 {
+		return 0, nil
+	}
+	asks, err := e.store.ListQualityAgentAsks(ctx, session.AgentID,
+		[]store.QualityAgentAskStatus{store.QualityAgentAskStatusAnswered, store.QualityAgentAskStatusOpen}, 100)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to read the agent's asks")
+	}
+	handled := 0
+	for _, answer := range answers {
+		for _, ask := range asks {
+			if ask.AnswerMessageSeq != answer.Seq {
+				continue
+			}
+			requests, err := e.store.ListQualityAgentRequestsByAskIDs(ctx, []int64{ask.ID})
+			if err != nil {
+				return handled, errors.Wrap(err, "failed to read the asks' requests")
+			}
+			for _, request := range requests[ask.ID] {
+				if request.Status != store.QualityAgentRequestStatusOpen &&
+					request.Status != store.QualityAgentRequestStatusForwarded {
+					continue
+				}
+				if request.OriginSessionID == nil {
+					continue
+				}
+				subagent, err := e.store.GetQualityAgentSessionByID(ctx, *request.OriginSessionID)
+				if err != nil {
+					return handled, err
+				}
+				if subagent == nil || subagent.ArchivedAt != nil {
+					continue
+				}
+				_, _, applied, err := e.store.AnswerQualityAgentRequestAtomic(ctx, request.ResourceID,
+					request.Status, answer.Content, subagent, &store.QualityAgentTranscriptMessage{
+						Wake:            subagent.WakeCount + 1,
+						Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+						Origin:          storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+						Content:         fmt.Sprintf("Agent lead sent a message:\n[answer] %s", answer.Content),
+						SenderSessionID: &session.ID,
+						SenderName:      "lead",
+						Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+						Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+						ReplyTo:         common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentRequests/" + request.ResourceID,
+						IdempotencyKey:  fmt.Sprintf("deterministic-answer:%s:%d", request.ResourceID, answer.Seq),
+					}, e.now())
+				if err != nil {
+					return handled, err
+				}
+				if applied {
+					handled++
+				}
+			}
+			if ask.Kind == store.QualityAgentAskKindAnomaly {
+				if _, err := e.store.ResolveQualityAgentAsk(ctx, ask.ResourceID,
+					store.QualityAgentAskStatusResolved, e.now()); err != nil {
+					return handled, err
+				}
+				handled++
+			}
+			break
+		}
+	}
+	return handled, nil
 }
 
 // forwardRequestsDeterministically is the no-model lead's safety net: it puts every

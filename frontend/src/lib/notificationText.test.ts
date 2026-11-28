@@ -10,6 +10,7 @@ import {
   NotificationType,
   OpenLineageDetailSchema,
   OpenLineageFailureKind,
+  QualityAgentAskDetailSchema,
   QualityAgentAttentionDetailSchema,
   SchemaSyncDetailSchema,
   SyncTrigger,
@@ -485,6 +486,35 @@ describe("quality agent attention", () => {
       })
     );
     expect(text.titleKey).toBe("notifications.qualityAgentTitle");
+  });
+});
+
+describe("quality agent ask", () => {
+  it("renders the lead's question and links to the conversation", () => {
+    const text = describeNotification(
+      create(NotificationSchema, {
+        type: NotificationType.DATA_QUALITY_AGENT,
+        severity: NotificationSeverity.WARNING,
+        detail: {
+          case: "qualityAgentAsk",
+          value: create(QualityAgentAskDetailSchema, {
+            agent: "workspaces/ws/qualityAgents/agent1",
+            ask: "workspaces/ws/qualityAgentAsks/a1",
+            kind: 1,
+            title: "Drafts need a decision",
+            question: "Approve the two drafts?",
+            requestCount: 2,
+            targets: ["inst;db;;orders"],
+          }),
+        },
+      })
+    );
+    expect(text.titleKey).toBe("notifications.qualityAgentTitleWithQuestion");
+    expect(text.titleParams).toEqual({
+      title: "Drafts need a decision",
+      question: "Approve the two drafts?",
+    });
+    expect(text.href).toBe("/data-quality/agents/ws/agent1");
   });
 });
 

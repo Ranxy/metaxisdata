@@ -30,9 +30,9 @@ import {
   qualityAgentSessionsRoute,
 } from "@/utils/qualityAgent";
 
-/** The two product views of one agent: the front-office conversation and the
- * per-target work sessions. Both pages and the session detail carry the switch,
- * so moving between them never depends on a page-level back button. */
+/** The two product views of one agent: the owner conversation and the fixed
+ * subagents. Both pages and the transcript detail carry the switch, so moving
+ * between them never depends on a page-level back button. */
 const props = defineProps<{
   agentName: string;
   active: "conversation" | "sessions";

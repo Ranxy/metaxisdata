@@ -6,6 +6,7 @@ import {
   type QualityAgentSessionContextUsage,
   type QualityAgentSessionMessage,
   QualityAgentSessionMode,
+  QualityAgentSessionRole,
   QualityAgentSessionState,
   type QualityToolCall,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -27,6 +28,34 @@ export const AGENT_SESSION_STALE_AFTER_MS = 10 * 60 * 1000;
 
 const WAKE_FINISHED_PREFIX = "wake finished:";
 const TOOL_ARGUMENTS_PREVIEW_LENGTH = 120;
+
+// ---- role ----
+
+/** The label key for a session's place in the agent tree. */
+export function agentSessionRoleKey(role: QualityAgentSessionRole): string {
+  switch (role) {
+    case QualityAgentSessionRole.LEAD:
+      return "qualityAgent.roleLead";
+    case QualityAgentSessionRole.SUBAGENT:
+      return "qualityAgent.roleSubagent";
+    default:
+      return "qualityAgent.roleUnspecified";
+  }
+}
+
+/**
+ * The name a reader looks for in a roster: the model-facing subagent name, falling
+ * back to the target for an older row, and the localized role label for a lead.
+ */
+export function agentSessionDisplayName(
+  session: QualityAgentSession,
+  leadLabel = ""
+): string {
+  if (session.role === QualityAgentSessionRole.LEAD) {
+    return leadLabel;
+  }
+  return session.subagentName || agentSessionTargetName(session);
+}
 
 // ---- session state and mode ----
 

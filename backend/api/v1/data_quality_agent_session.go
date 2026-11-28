@@ -117,6 +117,9 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	if name := strings.TrimSpace(req.Msg.GetSubagentName()); name != "" {
 		find.SubagentName = &name
 	}
+	if query := strings.TrimSpace(req.Msg.GetQuery()); query != "" {
+		find.Search = query
+	}
 	if parentName := strings.TrimSpace(req.Msg.GetParentSession()); parentName != "" {
 		_, parentID, parentErr := s.qualityAgentSessionResourceID(ctx, parentName)
 		if parentErr != nil {

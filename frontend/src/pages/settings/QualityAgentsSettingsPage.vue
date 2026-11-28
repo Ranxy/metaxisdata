@@ -523,12 +523,12 @@
                 <Input v-model.number="form.budgetMaxConcurrentSessions" inputmode="numeric" />
               </div>
               <div class="space-y-1">
-                <Label>{{ t("qualityAgents.budgetNewSessions") }}</Label>
-                <Input v-model.number="form.budgetMaxNewSessionsPerHour" inputmode="numeric" />
+                <Label>{{ t("qualityAgents.budgetTriageSessions") }}</Label>
+                <Input v-model.number="form.budgetMaxTriageSessions" inputmode="numeric" />
               </div>
               <div class="space-y-1">
-                <Label>{{ t("qualityAgents.budgetActiveSessions") }}</Label>
-                <Input v-model.number="form.budgetMaxActiveSessions" inputmode="numeric" />
+                <Label>{{ t("qualityAgents.budgetNewTriageSessions") }}</Label>
+                <Input v-model.number="form.budgetMaxNewTriageSessionsPerHour" inputmode="numeric" />
               </div>
               <div class="space-y-1">
                 <Label>{{ t("qualityAgents.budgetConversation") }}</Label>
@@ -776,6 +776,8 @@ const form = ref({
   budgetMaxConcurrentSessions: 0,
   budgetMaxNewSessionsPerHour: 0,
   budgetMaxActiveSessions: 0,
+  budgetMaxTriageSessions: 0,
+  budgetMaxNewTriageSessionsPerHour: 0,
   budgetConversationMessagesPerHour: 60,
   budgetRepairMaxPerDay: 0,
   budgetRunMaxPerRulePerDay: 0,
@@ -1082,6 +1084,8 @@ function openCreate() {
     budgetMaxConcurrentSessions: 0,
     budgetMaxNewSessionsPerHour: 0,
     budgetMaxActiveSessions: 0,
+    budgetMaxTriageSessions: 0,
+    budgetMaxNewTriageSessionsPerHour: 0,
     budgetConversationMessagesPerHour: 60,
     budgetRepairMaxPerDay: 0,
     budgetRunMaxPerRulePerDay: 0,
@@ -1117,6 +1121,9 @@ function openEdit(agent: QualityAgent) {
     budgetMaxConcurrentSessions: agent.budget?.maxConcurrentSessions ?? 0,
     budgetMaxNewSessionsPerHour: agent.budget?.maxNewSessionsPerHour ?? 0,
     budgetMaxActiveSessions: agent.budget?.maxActiveSessions ?? 0,
+    budgetMaxTriageSessions: agent.budget?.maxTriageSessions ?? 0,
+    budgetMaxNewTriageSessionsPerHour:
+      agent.budget?.maxNewTriageSessionsPerHour ?? 0,
     budgetConversationMessagesPerHour:
       agent.budget?.conversationMessagesPerHour ?? 60,
     budgetRepairMaxPerDay: agent.budget?.repairMaxPerDay ?? 0,
@@ -1210,6 +1217,9 @@ async function submitEdit() {
       maxNewSessionsPerHour:
         Number(form.value.budgetMaxNewSessionsPerHour) || 0,
       maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
+      maxTriageSessions: Number(form.value.budgetMaxTriageSessions) || 0,
+      maxNewTriageSessionsPerHour:
+        Number(form.value.budgetMaxNewTriageSessionsPerHour) || 0,
       conversationMessagesPerHour:
         Number(form.value.budgetConversationMessagesPerHour) || 0,
       repairMaxPerDay: Number(form.value.budgetRepairMaxPerDay) || 0,
@@ -1306,6 +1316,9 @@ async function submitCreate() {
         maxNewSessionsPerHour:
           Number(form.value.budgetMaxNewSessionsPerHour) || 0,
         maxActiveSessions: Number(form.value.budgetMaxActiveSessions) || 0,
+        maxTriageSessions: Number(form.value.budgetMaxTriageSessions) || 0,
+        maxNewTriageSessionsPerHour:
+          Number(form.value.budgetMaxNewTriageSessionsPerHour) || 0,
         conversationMessagesPerHour:
           Number(form.value.budgetConversationMessagesPerHour) || 0,
         repairMaxPerDay: Number(form.value.budgetRepairMaxPerDay) || 0,

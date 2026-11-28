@@ -105,16 +105,16 @@ func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincip
 			slog.String("rule", updated.ResourceID), log.WithError(err))
 	}
 	reason := "the agent paused the check because it cannot run; a person decides whether to resume, archive or replace it"
-	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID, openCase.State,
-		store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason); caseErr != nil {
-		slog.Warn("failed to escalate the case after a pause",
-			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
-	} else if !applied {
-		slog.Warn("the case changed before it could be escalated",
-			slog.String("case", openCase.ResourceID))
-	} else {
-		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
+	_, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID, openCase.State,
+		store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason)
+	if caseErr != nil {
+		return nil, connect.NewError(connect.CodeAborted, errors.Wrap(caseErr, "the case could not be escalated after the pause"))
 	}
+	if !applied {
+		return nil, connect.NewError(connect.CodeAborted,
+			errors.New("the case changed before it could be escalated; the paused check needs a person"))
+	}
+	s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
 	return &AgentControlResult{
 		Case:     openCase.ResourceID,
 		Check:    "qualityRules/" + updated.ResourceID,
@@ -825,15 +825,16 @@ func (s *DataQualityService) ProposeAgentRevision(ctx context.Context, agentPrin
 	entry.Reason = ledgerClass(diagnosis)
 	s.recordAgentCaseAction(ctx, entry)
 	reason := "the agent proposed " + field + " = " + value + "; a person decides whether to apply it"
-	if _, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
-		openCase.State, store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason); caseErr != nil {
-		slog.Warn("failed to escalate the case after a proposal",
-			slog.String("case", openCase.ResourceID), log.WithError(caseErr))
-	} else if !applied {
-		slog.Warn("the case changed before it could be escalated", slog.String("case", openCase.ResourceID))
-	} else {
-		s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
+	_, applied, caseErr := s.store.UpdateQualityAgentCaseState(ctx, openCase.ResourceID,
+		openCase.State, store.QualityAgentCaseStateEscalated, openCase.Attempts, nil, reason)
+	if caseErr != nil {
+		return nil, connect.NewError(connect.CodeAborted, errors.Wrap(caseErr, "the case could not be escalated after the proposal"))
 	}
+	if !applied {
+		return nil, connect.NewError(connect.CodeAborted,
+			errors.New("the case changed before it could be escalated; the proposal was not recorded"))
+	}
+	s.metrics.ObserveAgentCaseTransition(store.QualityAgentCaseStateEscalated.Name())
 	return &AgentProposalResult{
 		Case:   openCase.ResourceID,
 		Check:  "qualityRules/" + rule.ResourceID,

@@ -4370,6 +4370,14 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	}, 30*time.Second, 250*time.Millisecond,
 		"the report runner never recorded the failing period's anomaly: %s", fixture.env.ServerLogs())
 	require.NotEmpty(t, anomalyAsk.Question)
+	// An ask with no request is not "drained" by an unrelated case ending: the sweep
+	// only closes request-backed asks.
+	closed, err := fixture.env.Store.ResolveDrainedQualityAgentAsks(fixture.ctx, storedAgent.ID, time.Now().UTC())
+	require.NoError(t, err)
+	require.Zero(t, closed)
+	stillOpen, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusOpen, stillOpen.Status)
 	// The new coordination reads expose the ask and its request set to the owner.
 	askName := common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + anomalyAsk.ResourceID
 	openAsks, err := fixture.dataQuality.ListQualityAgentAsks(fixture.ctx,
@@ -4399,10 +4407,19 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	answeredAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
 	require.NoError(t, err)
 	require.Equal(t, store.QualityAgentAskStatusAnswered, answeredAsk.Status)
-	resolved, err := fixture.env.Store.ResolveQualityAgentAsk(fixture.ctx, anomalyAsk.ResourceID,
-		store.QualityAgentAskStatusDismissed, time.Now().UTC())
+
+	// A dismissal carries intent=DISMISS: it closes the ask without writing an answer.
+	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "Dismiss this request.",
+			ReplyTo:     askName,
+			Intent:      v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		}))
 	require.NoError(t, err)
-	require.True(t, resolved)
+	dismissedAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusDismissed, dismissedAsk.Status)
 }
 
 // createQualityAgentTestMember creates an ordinary workspace member and returns its
@@ -4808,6 +4825,11 @@ func TestQualityAgentAdoptionRealServerIntegration(t *testing.T) {
 	require.NotNil(t, proposalAsk, "the failed draft leaves an open approval ask")
 	require.Contains(t, proposalAsk.Question, "missing column")
 	require.NotNil(t, proposalAsk.ConversationSessionID, "the ask is written into the lead conversation")
+	// A decision on one draft must not close an approval ask that still has drafts.
+	closedWhilePending, err := fixture.env.Store.ResolveProposalAskIfDrained(fixture.ctx, storedAgent.ID,
+		fixture.usersGUID, store.ProposalAskDedupeKey(fixture.usersGUID), time.Now().UTC())
+	require.NoError(t, err)
+	require.False(t, closedWhilePending, "the approval ask stays open while a draft is pending")
 
 	// The owner-requested tool is the one adoption path that checks the agent's
 	// current database scope; a draft outside it is skipped and stays pending.

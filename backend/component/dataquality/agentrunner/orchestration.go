@@ -185,6 +185,7 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	message.AgentID = session.AgentID
 	message.OriginSessionID = &session.ID
 	message.TargetGUID = session.TargetGUID
+	message.CaseResourceID = normalizeCaseResourceID(message.CaseResourceID)
 	message.TargetType = storepb.MetaType(session.TargetType)
 	if message.DedupeKey == "" {
 		message.DedupeKey = fmt.Sprintf("target:%s:kind:%d", session.TargetGUID, message.Kind)
@@ -398,7 +399,7 @@ func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentS
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid answer_request arguments")
 	}
-	request, err := e.openRequest(ctx, session, input.Request)
+	request, err := e.answerableRequest(ctx, session, input.Request)
 	if err != nil {
 		return "", err
 	}
@@ -561,7 +562,35 @@ func (e *Engine) appendOwnerMessage(ctx context.Context, session *store.QualityA
 	return message, nil
 }
 
+// answerableRequest resolves a request the lead may answer. A request the lead already
+// forwarded to the owner is FORWARDED, not OPEN: the owner's reply is exactly the answer
+// it is waiting for, so both states are valid here.
+func (e *Engine) answerableRequest(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
+	request, err := e.requestByAddress(ctx, session, name)
+	if err != nil {
+		return nil, err
+	}
+	if request.Status != store.QualityAgentRequestStatusOpen &&
+		request.Status != store.QualityAgentRequestStatusForwarded {
+		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
+	}
+	return request, nil
+}
+
 func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
+	request, err := e.requestByAddress(ctx, session, name)
+	if err != nil {
+		return nil, err
+	}
+	if request.Status != store.QualityAgentRequestStatusOpen {
+		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
+	}
+	return request, nil
+}
+
+// requestByAddress resolves a request name and proves it belongs to the caller's agent.
+// Status is the caller's concern: forwarding and answering accept different sets.
+func (e *Engine) requestByAddress(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentRequestMessage, error) {
 	resourceID := strings.TrimPrefix(strings.TrimSpace(name), "qualityAgentRequests/")
 	request, err := e.store.GetQualityAgentRequestByResourceID(ctx, resourceID)
 	if err != nil {
@@ -572,9 +601,6 @@ func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSes
 	}
 	if request.AgentID != session.AgentID {
 		return nil, common.Errorf(common.NotAuthorized, "request %q belongs to another agent", name)
-	}
-	if request.Status != store.QualityAgentRequestStatusOpen {
-		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
 	}
 	return request, nil
 }
@@ -606,6 +632,20 @@ func askDedupeKey(question string, requests []*store.QualityAgentRequestMessage)
 	}
 	slices.Sort(ids)
 	return fmt.Sprintf("%x", contentHash(question+"|"+strings.Join(ids, ",")))
+}
+
+// normalizeCaseResourceID reduces the three names the model may use — a bare id, a
+// relative qualityAgentCases/<id>, or a full workspace resource name — to the id the
+// request table stores. Without it a request never matches its case at close time.
+func normalizeCaseResourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.LastIndex(value, "qualityAgentCases/"); index >= 0 {
+		value = value[index+len("qualityAgentCases/"):]
+	}
+	if index := strings.Index(value, "/"); index >= 0 {
+		value = value[:index]
+	}
+	return value
 }
 
 func requestName(resourceID string) string { return "qualityAgentRequests/" + resourceID }

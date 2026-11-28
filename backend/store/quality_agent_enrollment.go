@@ -19,24 +19,25 @@ import (
 // admission reads and the session the queue created. The session row remains the
 // execution state; this row is the queue.
 type QualityAgentEnrollmentMessage struct {
-	ID             int64
-	ResourceID     string
-	WorkspaceID    string
-	AgentID        int64
-	TargetGUID     string
-	TargetType     storepb.MetaType
-	DatabaseRef    string
-	State          storepb.QualityAgentEnrollmentState
-	Mode           storepb.QualityAgentSessionMode
-	Priority       int32
-	PriorityReason string
-	BlockedReason  string
-	SessionID      *int64
-	TriageCount    int32
-	LastTriagedAt  *time.Time
-	NextReviewAt   *time.Time
-	DiscoveredAt   time.Time
-	LastSeenAt     time.Time
+	ID              int64
+	ResourceID      string
+	WorkspaceID     string
+	AgentID         int64
+	TargetGUID      string
+	TargetType      storepb.MetaType
+	DatabaseRef     string
+	State           storepb.QualityAgentEnrollmentState
+	Mode            storepb.QualityAgentSessionMode
+	Priority        int32
+	PriorityReason  string
+	BlockedReason   string
+	SessionID       *int64
+	TriageCount     int32
+	LastTriagedAt   *time.Time
+	NextReviewAt    *time.Time
+	TriageStartedAt *time.Time
+	DiscoveredAt    time.Time
+	LastSeenAt      time.Time
 	// Participation is the per-target exception; nil inherits the database level.
 	Participation *QualityAgentParticipation
 	Revision      int32
@@ -46,8 +47,8 @@ type QualityAgentEnrollmentMessage struct {
 
 const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, target_guid, target_type,
 	database_ref, state, mode, priority, priority_reason, blocked_reason, session_id,
-	triage_count, last_triaged_at, next_review_at, discovered_at, last_seen_at,
-	participation, revision, created_at, updated_at`
+	triage_count, last_triaged_at, next_review_at, triage_started_at, discovered_at,
+	last_seen_at, participation, revision, created_at, updated_at`
 
 // qualityAgentEnrollmentColumnsQualified is qualityAgentEnrollmentColumns qualified with
 // the enrollment alias. The qualification is load-bearing: a read that aliases the queue
@@ -58,8 +59,8 @@ const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, agent_id, 
 const qualityAgentEnrollmentColumnsQualified = `e.id, e.resource_id, e.workspace_id,
 	e.agent_id, e.target_guid, e.target_type, e.database_ref, e.state, e.mode, e.priority,
 	e.priority_reason, e.blocked_reason, e.session_id, e.triage_count, e.last_triaged_at,
-	e.next_review_at, e.discovered_at, e.last_seen_at, e.participation,
-	e.revision, e.created_at, e.updated_at`
+	e.next_review_at, e.triage_started_at, e.discovered_at, e.last_seen_at,
+	e.participation, e.revision, e.created_at, e.updated_at`
 
 // QualityAgentEnrollmentUpsert is one discovered object. The store mints a resource id
 // for a row it inserts; an existing row keeps its id.
@@ -170,6 +171,49 @@ func (s *Store) MarkQualityAgentEnrollmentsGone(ctx context.Context, workspaceID
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE)); err != nil {
 		return 0, errors.Wrap(err, "failed to archive the sessions of gone targets")
 	}
+	// A gone target's coordination records must not outlive it: the lead would keep
+	// listing requests for an archived session and the owner would keep a dead ask.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_request r
+		SET status = $4, resolved_at = NOW(), updated_at = NOW()
+		WHERE r.agent_id = $2 AND r.status IN ($5, $6, $7)
+			AND r.origin_session_id IN (
+				SELECT e.session_id FROM quality_agent_enrollment e
+				WHERE e.workspace_id = $1 AND e.agent_id = $2 AND e.database_ref = $3
+					AND e.state = $8 AND e.session_id IS NOT NULL
+			)`,
+		workspaceID, agentID, databaseRef,
+		int16(QualityAgentRequestStatusResolved),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded),
+		int16(QualityAgentRequestStatusAnswered),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE)); err != nil {
+		return 0, errors.Wrap(err, "failed to close the gone targets' requests")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_ask a
+		SET status = $4, resolved_at = NOW(), updated_at = NOW()
+		WHERE a.agent_id = $2 AND a.status IN ($5, $6)
+			AND (
+				a.target_guid IN (
+					SELECT e.target_guid FROM quality_agent_enrollment e
+					WHERE e.workspace_id = $1 AND e.agent_id = $2 AND e.database_ref = $3
+						AND e.state = $7
+				)
+				OR (
+					EXISTS (SELECT 1 FROM quality_agent_request owned WHERE owned.ask_id = a.id)
+					AND NOT EXISTS (
+						SELECT 1 FROM quality_agent_request r
+						WHERE r.ask_id = a.id AND r.status IN ($8, $9)
+					)
+				)
+			)`,
+		workspaceID, agentID, databaseRef,
+		int16(QualityAgentAskStatusResolved),
+		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_GONE),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded)); err != nil {
+		return 0, errors.Wrap(err, "failed to close the gone targets' asks")
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, errors.Wrap(err, "failed to commit the enrollment sweep")
 	}
@@ -217,6 +261,38 @@ func scopeDatabaseArray(keepDatabases []string) pq.StringArray {
 	return pq.StringArray(append([]string{}, keepDatabases...))
 }
 
+// activateRestoredMonitorEnrollmentsQuery returns restored covered targets to the
+// active monitor set. A restored row is PENDING only so the unblock can find it; a
+// MONITOR row has no triage step left and must not sit in the pending queue for ever.
+const activateRestoredMonitorEnrollmentsQuery = `
+		UPDATE quality_agent_enrollment
+		SET state = $4, next_review_at = NULL, blocked_reason = '',
+			revision = revision + 1, updated_at = NOW()
+		WHERE workspace_id = $1 AND agent_id = $2 AND database_ref = ANY($3)
+			AND state = $5 AND mode = $6 AND session_id IS NOT NULL
+			AND EXISTS (
+				SELECT 1 FROM quality_agent_session s
+				WHERE s.id = session_id AND s.state = $7 AND s.archived_at IS NULL
+			)`
+
+// unblockRestoredSessionsQuery releases the reversible out-of-scope block on sessions
+// whose database just came back. The queue row alone is not enough: materialize only
+// looks for a missing session, triage only looks at TRIAGE rows, and recoverBlocked only
+// looks at ACTIVE rows, so a restored PENDING row with a blocked session would otherwise
+// never run again.
+const unblockRestoredSessionsQuery = `
+		UPDATE quality_agent_session s
+		SET state = $2, blocked_code = '', blocked_reason = '',
+			next_wake_at = LEAST(COALESCE(s.next_wake_at, NOW()), NOW()),
+			revision = s.revision + 1, updated_at = NOW()
+		WHERE s.archived_at IS NULL AND s.state = $3 AND s.blocked_code = 'out-of-scope'
+			AND s.id IN (
+				SELECT e.session_id FROM quality_agent_enrollment e
+				WHERE e.workspace_id = $1 AND e.agent_id = $4
+				  AND e.database_ref = ANY($5) AND e.state = $6 AND e.mode = $7
+				  AND e.session_id IS NOT NULL
+			)`
+
 // ReconcileQualityAgentEnrollmentScope aligns the queue with the settings' database
 // list: rows outside the list become OUT_OF_SCOPE and their sessions are blocked with
 // the reversible out-of-scope code; rows that came back become PENDING again, so
@@ -257,6 +333,22 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to count the restored enrollments")
 	}
+	if _, err := tx.ExecContext(ctx, unblockRestoredSessionsQuery,
+		workspaceID, int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
+		agentID, keep,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)); err != nil {
+		return 0, 0, errors.Wrap(err, "failed to unblock the restored sessions")
+	}
+	if _, err := tx.ExecContext(ctx, activateRestoredMonitorEnrollmentsQuery,
+		workspaceID, agentID, keep,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)); err != nil {
+		return 0, 0, errors.Wrap(err, "failed to reactivate the restored monitor enrollments")
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, errors.Wrap(err, "failed to commit the enrollment scope reconciliation")
 	}
@@ -272,8 +364,11 @@ type FindQualityAgentEnrollmentMessage struct {
 	States      []storepb.QualityAgentEnrollmentState
 	Mode        storepb.QualityAgentSessionMode
 	Search      string
-	Limit       *int
-	Offset      *int
+	// OrderByTarget walks a stable target order. Priority recomputation updates
+	// priority while paging, so ordering by it would skip rows between pages.
+	OrderByTarget bool
+	Limit         *int
+	Offset        *int
 }
 
 // ListQualityAgentEnrollments lists the queue, most urgent first.
@@ -315,9 +410,13 @@ func (s *Store) ListQualityAgentEnrollments(ctx context.Context, find *FindQuali
 		offset = *find.Offset
 	}
 	args = append(args, limit, offset)
+	order := "priority DESC, target_guid ASC"
+	if find.OrderByTarget {
+		order = "target_guid ASC"
+	}
 	rows, err := s.GetDB().QueryContext(ctx, `SELECT `+qualityAgentEnrollmentColumns+`
 		FROM quality_agent_enrollment WHERE `+where+`
-		ORDER BY priority DESC, target_guid ASC
+		ORDER BY `+order+`
 		LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality agent enrollments")
@@ -493,30 +592,36 @@ func (s *Store) ListPendingTriageQualityAgentEnrollments(ctx context.Context, wo
 // a slot. Monitor targets have their own, effectively unlimited, existence.
 func (s *Store) CountActiveTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error) {
 	var total int
+	// A session parked for a person (needs-human, restart-limit) must not keep a triage
+	// slot. Only a session that can still run counts; a retryable budget block does,
+	// because the window will reopen.
 	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_enrollment
-		WHERE workspace_id = $1 AND agent_id = $2 AND state = $3 AND mode = $4`,
+		SELECT COUNT(*) FROM quality_agent_enrollment e
+		JOIN quality_agent_session s ON s.id = e.session_id
+		WHERE e.workspace_id = $1 AND e.agent_id = $2
+			AND e.state = $3 AND e.mode = $4 AND s.archived_at IS NULL
+			AND (s.state = $5 OR (s.state = $6 AND s.blocked_code = ANY($7)))`,
 		workspaceID, agentID,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
-		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE)).Scan(&total); err != nil {
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
+		pq.Array(retryableSessionBlockedCodes())).Scan(&total); err != nil {
 		return 0, errors.Wrap(err, "failed to count the active triage enrollments")
 	}
 	return total, nil
 }
 
-// CountQualityAgentTriageReviewsSince counts the triage sessions that ran in a window,
-// which is the triage throughput the hourly cap limits. A session that merely reviewed
-// deterministically does not carry a triage mode and is not counted.
-func (s *Store) CountQualityAgentTriageReviewsSince(ctx context.Context, agentID int64, since time.Time) (int, error) {
+// CountQualityAgentTriageStartsSince counts the targets that entered triage in a
+// window. Counting session activity instead let a previously triaged target's event
+// wake consume the hourly admission rate and starve the real queue.
+func (s *Store) CountQualityAgentTriageStartsSince(ctx context.Context, agentID int64, since time.Time) (int, error) {
 	var total int
 	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM quality_agent_session
-		WHERE agent_id = $1 AND role = $2 AND mode = $3 AND last_reviewed_at > $4`,
-		agentID,
-		int16(storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT),
-		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
-		since).Scan(&total); err != nil {
-		return 0, errors.Wrap(err, "failed to count the triage reviews")
+		SELECT COUNT(*) FROM quality_agent_enrollment
+		WHERE agent_id = $1 AND triage_started_at IS NOT NULL AND triage_started_at > $2`,
+		agentID, since).Scan(&total); err != nil {
+		return 0, errors.Wrap(err, "failed to count the triage starts")
 	}
 	return total, nil
 }
@@ -751,8 +856,8 @@ func (s *Store) AdmitQualityAgentTriage(ctx context.Context, enrollmentResourceI
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE quality_agent_enrollment
-		SET state = $2, mode = $3, next_review_at = NULL, blocked_reason = '',
-			revision = revision + 1, updated_at = NOW()
+		SET state = $2, mode = $3, next_review_at = NULL, triage_started_at = NOW(),
+			blocked_reason = '', revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND state = $4`,
 		enrollmentResourceID,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
@@ -879,8 +984,9 @@ func scanQualityAgentEnrollment(scanner interface{ Scan(dest ...any) error }) (*
 		&enrollment.TargetGUID, &targetType, &enrollment.DatabaseRef, &state, &mode,
 		&enrollment.Priority, &enrollment.PriorityReason, &enrollment.BlockedReason,
 		&enrollment.SessionID, &enrollment.TriageCount, &enrollment.LastTriagedAt,
-		&enrollment.NextReviewAt, &enrollment.DiscoveredAt, &enrollment.LastSeenAt,
-		&participation, &enrollment.Revision, &enrollment.CreatedAt, &enrollment.UpdatedAt,
+		&enrollment.NextReviewAt, &enrollment.TriageStartedAt, &enrollment.DiscoveredAt,
+		&enrollment.LastSeenAt, &participation, &enrollment.Revision, &enrollment.CreatedAt,
+		&enrollment.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}

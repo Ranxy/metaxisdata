@@ -2126,6 +2126,8 @@ const (
 	QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER      QualityAgentMessageIntent = 4
 	QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ASSIGN      QualityAgentMessageIntent = 5
 	QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE      QualityAgentMessageIntent = 6
+	// The owner is dismissing the ask, not answering it.
+	QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS QualityAgentMessageIntent = 7
 )
 
 // Enum value maps for QualityAgentMessageIntent.
@@ -2138,6 +2140,7 @@ var (
 		4: "QUALITY_AGENT_MESSAGE_INTENT_ANSWER",
 		5: "QUALITY_AGENT_MESSAGE_INTENT_ASSIGN",
 		6: "QUALITY_AGENT_MESSAGE_INTENT_NOTICE",
+		7: "QUALITY_AGENT_MESSAGE_INTENT_DISMISS",
 	}
 	QualityAgentMessageIntent_value = map[string]int32{
 		"QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED": 0,
@@ -2147,6 +2150,7 @@ var (
 		"QUALITY_AGENT_MESSAGE_INTENT_ANSWER":      4,
 		"QUALITY_AGENT_MESSAGE_INTENT_ASSIGN":      5,
 		"QUALITY_AGENT_MESSAGE_INTENT_NOTICE":      6,
+		"QUALITY_AGENT_MESSAGE_INTENT_DISMISS":     7,
 	}
 )
 
@@ -9454,7 +9458,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1bQualityAgentMessageAudience\x12.\n" +
 	"*QUALITY_AGENT_MESSAGE_AUDIENCE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER\x10\x01\x12+\n" +
-	"'QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL\x10\x02*\xc2\x02\n" +
+	"'QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL\x10\x02*\xec\x02\n" +
 	"\x19QualityAgentMessageIntent\x12,\n" +
 	"(QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED\x10\x00\x12(\n" +
 	"$QUALITY_AGENT_MESSAGE_INTENT_MESSAGE\x10\x01\x12'\n" +
@@ -9462,7 +9466,8 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"%QUALITY_AGENT_MESSAGE_INTENT_QUESTION\x10\x03\x12'\n" +
 	"#QUALITY_AGENT_MESSAGE_INTENT_ANSWER\x10\x04\x12'\n" +
 	"#QUALITY_AGENT_MESSAGE_INTENT_ASSIGN\x10\x05\x12'\n" +
-	"#QUALITY_AGENT_MESSAGE_INTENT_NOTICE\x10\x06*\x8d\x03\n" +
+	"#QUALITY_AGENT_MESSAGE_INTENT_NOTICE\x10\x06\x12(\n" +
+	"$QUALITY_AGENT_MESSAGE_INTENT_DISMISS\x10\a*\x8d\x03\n" +
 	"\x19QualityAgentMessageOrigin\x12,\n" +
 	"(QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED\x10\x00\x12%\n" +
 	"!QUALITY_AGENT_MESSAGE_ORIGIN_WAKE\x10\x01\x12&\n" +

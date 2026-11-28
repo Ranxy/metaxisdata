@@ -314,9 +314,9 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        // The agent's per-target work sessions. The owner and administrators may
-        // read; the raw transcript rows stay on the detail route.
-        path: "agents/:workspace/:agentId/sessions",
+        // The agent's fixed subagents, one per target. The owner and administrators
+        // may read; the raw transcript rows stay on the detail route.
+        path: "agents/:workspace/:agentId/subagents",
         name: "QualityAgentSessions",
         component: () =>
           import("@/pages/data-quality/QualityAgentSessionsPage.vue"),
@@ -327,7 +327,7 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: "agents/:workspace/:agentId/sessions/:sessionId",
+        path: "agents/:workspace/:agentId/subagents/:sessionId",
         name: "QualityAgentSession",
         component: () =>
           import("@/pages/data-quality/QualityAgentSessionPage.vue"),
@@ -336,6 +336,15 @@ const routes: RouteRecordRaw[] = [
           layout: "default",
           permission: "metaxisdata.dataQuality.agents.get",
         },
+      },
+      {
+        // Old work-session URLs stay valid for bookmarks and notifications.
+        path: "agents/:workspace/:agentId/sessions",
+        redirect: (to) => ({ name: "QualityAgentSessions", params: to.params }),
+      },
+      {
+        path: "agents/:workspace/:agentId/sessions/:sessionId",
+        redirect: (to) => ({ name: "QualityAgentSession", params: to.params }),
       },
       {
         // The old administrator diagnostics page became the product work-session

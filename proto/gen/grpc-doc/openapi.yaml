@@ -5434,6 +5434,11 @@ paths:
                   description: Keep only the subagent with this model-facing name.
                   schema:
                     type: string
+                - name: query
+                  in: query
+                  description: Case-insensitive match against the subagent name or target GUID.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -14651,6 +14656,15 @@ components:
                 updateTime:
                     type: string
                     format: date-time
+                targets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityTarget'
+                    description: The targets whose requests this question covers.
+                requestCount:
+                    type: integer
+                    description: How many requests the answer covers.
+                    format: int32
             description: |-
                 QualityAgentAsk is one owner-facing question from the lead. It can cover several
                  requests through their ask link.
@@ -15374,6 +15388,7 @@ components:
                         - QUALITY_AGENT_MESSAGE_INTENT_ANSWER
                         - QUALITY_AGENT_MESSAGE_INTENT_ASSIGN
                         - QUALITY_AGENT_MESSAGE_INTENT_NOTICE
+                        - QUALITY_AGENT_MESSAGE_INTENT_DISMISS
                     type: string
                     format: enum
                 audience:
@@ -18446,6 +18461,21 @@ components:
                         The ask this message answers, when it is a reply to a question. Format:
                          workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
                          is marked answered and the lead routes the answer.
+                intent:
+                    enum:
+                        - QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED
+                        - QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
+                        - QUALITY_AGENT_MESSAGE_INTENT_REPORT
+                        - QUALITY_AGENT_MESSAGE_INTENT_QUESTION
+                        - QUALITY_AGENT_MESSAGE_INTENT_ANSWER
+                        - QUALITY_AGENT_MESSAGE_INTENT_ASSIGN
+                        - QUALITY_AGENT_MESSAGE_INTENT_NOTICE
+                        - QUALITY_AGENT_MESSAGE_INTENT_DISMISS
+                    type: string
+                    description: |-
+                        MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
+                         answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
+                    format: enum
             description: SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
         SendTestEmailRequest:
             type: object

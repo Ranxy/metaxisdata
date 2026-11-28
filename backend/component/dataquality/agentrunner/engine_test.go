@@ -35,6 +35,8 @@ type fakeStore struct {
 	contextUsage         []*storepb.QualityAgentSessionContextUsage
 	agent                *store.QualityAgentMessage
 	openCases            []*store.QualityAgentCaseMessage
+	rules                []*store.QualityRuleMessage
+	contract             *store.QualityContractMessage
 	participation        *store.QualityAgentParticipationLevels
 	actionable           bool
 	lead                 *store.QualityAgentSessionMessage
@@ -45,6 +47,10 @@ type fakeStore struct {
 	enrollment           *store.QualityAgentEnrollmentMessage
 	lastSessionFind      *store.FindQualityAgentSessionMessage
 	sessions             []*store.QualityAgentSessionMessage
+	requestByID          map[string]*store.QualityAgentRequestMessage
+	answerFrom           store.QualityAgentRequestStatus
+	asks                 []*store.QualityAgentAskMessage
+	requestsByAsk        map[int64][]*store.QualityAgentRequestMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -80,12 +86,12 @@ func (*fakeStore) GetUserByID(context.Context, int) (*store.UserMessage, error) 
 	return &store.UserMessage{ID: 7, Type: storepb.PrincipalType_SERVICE_ACCOUNT}, nil
 }
 
-func (*fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
+	return f.rules, nil
 }
 
-func (*fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
-	return nil, nil
+func (f *fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
+	return f.contract, nil
 }
 
 // participation is the delegation cascade the prompt and the verbs read.
@@ -246,8 +252,8 @@ func (*fakeStore) CreateQualityAgentRequest(_ context.Context, message *store.Qu
 	return message, true, nil
 }
 
-func (*fakeStore) GetQualityAgentRequestByResourceID(context.Context, string) (*store.QualityAgentRequestMessage, error) {
-	return nil, nil
+func (f *fakeStore) GetQualityAgentRequestByResourceID(_ context.Context, resourceID string) (*store.QualityAgentRequestMessage, error) {
+	return f.requestByID[resourceID], nil
 }
 
 func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
@@ -279,7 +285,8 @@ func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.Q
 	return message, true, nil
 }
 
-func (*fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string, _ store.QualityAgentRequestStatus, _ string, _ *store.QualityAgentSessionMessage, _ *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error) {
+func (f *fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string, from store.QualityAgentRequestStatus, _ string, _ *store.QualityAgentSessionMessage, _ *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error) {
+	f.answerFrom = from
 	return &store.QualityAgentRequestMessage{}, &store.QualityAgentTranscriptMessage{}, true, nil
 }
 
@@ -303,8 +310,15 @@ func (*fakeStore) GetQualityAgentAskByResourceID(context.Context, string) (*stor
 	return nil, nil
 }
 
-func (*fakeStore) ListQualityAgentAsks(context.Context, int64, []store.QualityAgentAskStatus, int) ([]*store.QualityAgentAskMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityAgentAsks(context.Context, int64, []store.QualityAgentAskStatus, int) ([]*store.QualityAgentAskMessage, error) {
+	return f.asks, nil
+}
+
+func (f *fakeStore) ListQualityAgentRequestsByAskIDs(context.Context, []int64) (map[int64][]*store.QualityAgentRequestMessage, error) {
+	if f.requestsByAsk == nil {
+		return map[int64][]*store.QualityAgentRequestMessage{}, nil
+	}
+	return f.requestsByAsk, nil
 }
 
 func (*fakeStore) MarkQualityAgentAskAnswered(context.Context, string, int32, int64, time.Time) (*store.QualityAgentAskMessage, bool, error) {
@@ -1046,6 +1060,8 @@ func TestWakeSkipsTheRetryWhenNothingCanBeCompacted(t *testing.T) {
 	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.Contains(t, outcome.Summary, "the model call failed")
+	require.Equal(t, testSession().ProcessedSeq, outcome.ProcessedSeq,
+		"a failed model call must not consume the pending input")
 	require.Equal(t, 1, calls, "a retry with nothing compacted would resend the same request")
 	require.Contains(t, engineContents(stores), "retry skipped")
 }
@@ -1193,6 +1209,74 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 }
 
 // fakeToolAudit collects the tool audit entries a wake reports.
+// A lead without a model still routes the owner's answer to the requests behind the
+// ask; otherwise a configured-out model turns every owner decision into a dead end.
+func TestConversationWakeAnswersTheAskWithoutAModel(t *testing.T) {
+	t.Parallel()
+
+	stores, engine, _ := newOrchestrationHarness(t)
+	lead := stores.lead
+	subagent := stores.sessionsByID[3]
+	ask := &store.QualityAgentAskMessage{
+		ID: 4, ResourceID: "a1", AgentID: lead.AgentID,
+		Kind: store.QualityAgentAskKindQuestion, Status: store.QualityAgentAskStatusAnswered,
+		AnswerMessageSeq: 10,
+	}
+	stores.asks = []*store.QualityAgentAskMessage{ask}
+	stores.requestsByAsk = map[int64][]*store.QualityAgentRequestMessage{
+		ask.ID: {{
+			ResourceID: "r1", AgentID: lead.AgentID,
+			Status: store.QualityAgentRequestStatusForwarded, OriginSessionID: &subagent.ID,
+		}},
+	}
+	pending := []*store.QualityAgentTranscriptMessage{{
+		SessionID: lead.ID, Seq: 10,
+		Role:    storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content: "keep it covered",
+	}}
+
+	outcome, err := engine.conversationWake(context.Background(), lead, 1, pending)
+	require.NoError(t, err)
+	require.Contains(t, outcome.Summary, "answered 1 ask")
+	require.Equal(t, store.QualityAgentRequestStatusForwarded, stores.answerFrom)
+}
+
+// A request the lead already forwarded to the owner is answered by the owner's reply;
+// the lead's answer_request must accept FORWARDED, not only OPEN, or the closed loop
+// stops before the subagent ever hears the answer.
+func TestAnswerRequestAcceptsAForwardedRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		status store.QualityAgentRequestStatus
+	}{
+		{name: "open", status: store.QualityAgentRequestStatusOpen},
+		{name: "forwarded", status: store.QualityAgentRequestStatusForwarded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores, engine, _ := newOrchestrationHarness(t)
+			lead := stores.lead
+			subagent := stores.sessionsByID[3]
+			request := &store.QualityAgentRequestMessage{
+				ResourceID:      "r1",
+				AgentID:         lead.AgentID,
+				Status:          tc.status,
+				OriginSessionID: &subagent.ID,
+			}
+			stores.requestByID = map[string]*store.QualityAgentRequestMessage{"r1": request}
+
+			output, err := engine.answerRequest(context.Background(), lead,
+				`{"request":"qualityAgentRequests/r1","answer":"keep it covered"}`)
+			require.NoError(t, err)
+			require.Contains(t, output, `"answered":true`)
+			require.Equal(t, tc.status, stores.answerFrom)
+		})
+	}
+}
+
 // The roster filters and pages in SQL: the engine must hand the store the search, state
 // and offset instead of filtering one unfiltered page in Go.
 func TestListSubagentsFiltersAndPagesInTheStore(t *testing.T) {
@@ -1266,6 +1350,32 @@ func TestEscalateCaseDismissesTheRequestWhenTheCaseRefuses(t *testing.T) {
 	require.Len(t, stores.requests, 1, "the request is raised before the refused case write")
 	require.Equal(t, []store.QualityAgentRequestStatus{store.QualityAgentRequestStatusDismissed},
 		stores.requestStatusUpdates)
+}
+
+// The model reads case names from the prompt and may pass the relative or full
+// resource name. The request stores the bare id so the case's terminal transition can
+// find and close it.
+func TestEscalateCaseStoresTheBareCaseID(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"qualityAgentCases/case-1",
+		"workspaces/ws/qualityAgentCases/case-1",
+		"case-1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			stores, engine, session := newOrchestrationHarness(t)
+			engine.SetEscalate(func(context.Context, int32, string, string) (quality.EscalationOutcome, error) {
+				return quality.EscalationOutcome{State: "ESCALATED"}, nil
+			})
+			_, err := engine.executeTool(context.Background(), session, stores.agent, "escalate_case",
+				`{"case":"`+name+`","reason":"a person must decide"}`, &wakeControl{})
+			require.NoError(t, err)
+			require.Len(t, stores.requests, 1)
+			require.Equal(t, "case-1", stores.requests[0].CaseResourceID)
+		})
+	}
 }
 
 // A successful escalation keeps the request it raised for the lead.

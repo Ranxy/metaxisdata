@@ -161,9 +161,32 @@ func (r *Runner) stallSweepDue(now time.Time) bool {
 // writes the old attention row: the case row is the durable record and the request is the
 // coordination record. Best effort, like every runner-side escalation.
 func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.QualityAgentCaseMessage, rule *store.QualityRuleMessage) {
+	r.raiseCaseRequest(ctx, openCase, rule,
+		store.QualityAgentRequestKindFrozen, "A check exhausted its repair budget", "frozen",
+		func(language, title string) string {
+			return agentlang.CaseFrozenQuestion(language, title, openCase.Attempts)
+		})
+}
+
+// escalatePausedCase makes a runner-side ESCALATED transition visible to the lead. The
+// deterministic verifier can promote a case when a repair's check was paused; without a
+// request nobody in the coordination path knows a person owes a decision.
+func (r *Runner) escalatePausedCase(ctx context.Context, openCase *store.QualityAgentCaseMessage, rule *store.QualityRuleMessage) {
+	r.raiseCaseRequest(ctx, openCase, rule,
+		store.QualityAgentRequestKindDecision, "A paused check needs a decision", "decision",
+		func(language, title string) string {
+			return agentlang.CaseEscalationQuestion(language, title,
+				"the repair cannot be verified because the check is paused")
+		})
+}
+
+// raiseCaseRequest is the one runner-side writer for a case request: it resolves the
+// target's subagent and lead, renders the question, and raises the request plus the
+// lead notice in one call.
+func (r *Runner) raiseCaseRequest(ctx context.Context, openCase *store.QualityAgentCaseMessage, rule *store.QualityRuleMessage, kind store.QualityAgentRequestKind, requestTitle, dedupeSuffix string, render func(language, title string) string) {
 	sessions, err := r.stores.ListQualityAgentSessionsByTarget(ctx, openCase.WorkspaceID, openCase.TargetGUID)
 	if err != nil {
-		slog.Warn("failed to read a frozen case's sessions",
+		slog.Warn("failed to read a case's sessions",
 			slog.String("case", openCase.ResourceID), log.WithError(err))
 		return
 	}
@@ -193,7 +216,7 @@ func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.Quality
 			title = "qualityRules/" + rule.ResourceID
 		}
 	}
-	question := agentlang.CaseFrozenQuestion(language, title, openCase.Attempts)
+	question := render(language, title)
 	content := fmt.Sprintf("Agent %s sent a message:\n[question] %s", origin.SubagentName, question)
 	_, _, err = r.stores.RaiseQualityAgentRequest(ctx, &store.QualityAgentRequestMessage{
 		WorkspaceID:     openCase.WorkspaceID,
@@ -201,11 +224,11 @@ func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.Quality
 		OriginSessionID: &origin.ID,
 		TargetGUID:      openCase.TargetGUID,
 		TargetType:      storepb.MetaType(openCase.TargetType),
-		Kind:            store.QualityAgentRequestKindFrozen,
-		Title:           "A check exhausted its repair budget",
+		Kind:            kind,
+		Title:           requestTitle,
 		Question:        question,
 		CaseResourceID:  openCase.ResourceID,
-		DedupeKey:       fmt.Sprintf("target:%s:case:%s:frozen", openCase.TargetGUID, openCase.ResourceID),
+		DedupeKey:       fmt.Sprintf("target:%s:case:%s:%s", openCase.TargetGUID, openCase.ResourceID, dedupeSuffix),
 	}, lead, &store.QualityAgentTranscriptMessage{
 		Wake:            lead.WakeCount + 1,
 		Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
@@ -215,10 +238,10 @@ func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.Quality
 		SenderName:      origin.SubagentName,
 		Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
 		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
-		IdempotencyKey:  fmt.Sprintf("frozen-request:%s", openCase.ResourceID),
+		IdempotencyKey:  fmt.Sprintf("%s-request:%s", dedupeSuffix, openCase.ResourceID),
 	})
 	if err != nil {
-		slog.Warn("failed to raise a request for a frozen case",
+		slog.Warn("failed to raise a request for a case",
 			slog.String("case", openCase.ResourceID), log.WithError(err))
 	}
 }

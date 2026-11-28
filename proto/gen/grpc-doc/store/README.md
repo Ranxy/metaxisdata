@@ -1942,6 +1942,7 @@ QualityAgentMessageIntent classifies an agent-to-agent message.
 | QUALITY_AGENT_MESSAGE_INTENT_ANSWER | 4 |  |
 | QUALITY_AGENT_MESSAGE_INTENT_ASSIGN | 5 |  |
 | QUALITY_AGENT_MESSAGE_INTENT_NOTICE | 6 |  |
+| QUALITY_AGENT_MESSAGE_INTENT_DISMISS | 7 | The owner is dismissing the ask, not answering it. |
 
 
 

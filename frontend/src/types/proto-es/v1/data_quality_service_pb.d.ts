@@ -7534,6 +7534,14 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
    * @generated from field: string reply_to = 4;
    */
   replyTo: string;
+
+  /**
+   * MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
+   * answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentMessageIntent intent = 5;
+   */
+  intent: QualityAgentMessageIntent;
 };
 
 /**
@@ -7988,6 +7996,20 @@ export declare type QualityAgentAsk = Message<"metaxisdata.v1.QualityAgentAsk"> 
    * @generated from field: google.protobuf.Timestamp update_time = 14;
    */
   updateTime?: Timestamp;
+
+  /**
+   * The targets whose requests this question covers.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 15;
+   */
+  targets: QualityTarget[];
+
+  /**
+   * How many requests the answer covers.
+   *
+   * @generated from field: int32 request_count = 16;
+   */
+  requestCount: number;
 };
 
 /**
@@ -10749,6 +10771,13 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
    * @generated from field: string subagent_name = 12;
    */
   subagentName: string;
+
+  /**
+   * Case-insensitive match against the subagent name or target GUID.
+   *
+   * @generated from field: string query = 13;
+   */
+  query: string;
 };
 
 /**
@@ -13081,6 +13110,13 @@ export enum QualityAgentMessageIntent {
    * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_NOTICE = 6;
    */
   NOTICE = 6,
+
+  /**
+   * The owner is dismissing the ask, not answering it.
+   *
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_INTENT_DISMISS = 7;
+   */
+  DISMISS = 7,
 }
 
 /**

@@ -19,7 +19,7 @@ func TestScanQualityAgentEnrollment(t *testing.T) {
 	values := []any{
 		int64(5), "enr-res", "ws", int64(3), "i;d;public;t", int16(4), "instances/i/databases/d",
 		int16(2), int16(2), int32(450), "rules,failing", "admission-limit",
-		(*int64)(nil), int32(1), (*time.Time)(nil), (*time.Time)(nil),
+		(*int64)(nil), int32(1), (*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil),
 		discovered, discovered, sql.NullInt16{Int16: int16(QualityAgentParticipationObserve), Valid: true},
 		int32(3), discovered, discovered,
 	}
@@ -38,6 +38,7 @@ func TestScanQualityAgentEnrollment(t *testing.T) {
 	require.Equal(t, int32(3), enrollment.Revision)
 	require.NotNil(t, enrollment.Participation)
 	require.Equal(t, QualityAgentParticipationObserve, *enrollment.Participation)
+	require.Nil(t, enrollment.TriageStartedAt)
 	require.Equal(t, discovered, enrollment.DiscoveredAt)
 }
 
@@ -120,6 +121,17 @@ func TestReconcileScopeQueryPinsSafetyPredicates(t *testing.T) {
 	})
 	requirePlaceholdersMatchArgs(t, restoreInScopeEnrollmentsQuery, []any{
 		"ws", int64(3), []string{"instances/i/databases/d"}, int16(1), int16(5),
+	})
+	require.Contains(t, unblockRestoredSessionsQuery, "s.blocked_code = 'out-of-scope'")
+	require.Contains(t, unblockRestoredSessionsQuery, "e.database_ref = ANY($5)")
+	require.Contains(t, unblockRestoredSessionsQuery, "e.mode = $7")
+	requirePlaceholdersMatchArgs(t, unblockRestoredSessionsQuery, []any{
+		"ws", int16(3), int16(3), int64(3),
+		[]string{"instances/i/databases/d"}, int16(1), int16(1),
+	})
+	require.Contains(t, activateRestoredMonitorEnrollmentsQuery, "mode = $6")
+	requirePlaceholdersMatchArgs(t, activateRestoredMonitorEnrollmentsQuery, []any{
+		"ws", int64(3), []string{"instances/i/databases/d"}, int16(2), int16(1), int16(1), int16(1),
 	})
 }
 

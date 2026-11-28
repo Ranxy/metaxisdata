@@ -493,11 +493,10 @@ schedule, reacts to failed checks, drafts checks into the review queue and escal
 
 - **Data Quality → Agents** (`/data-quality/agents`) lists the agents you may see: administrators see every agent, other members see the
 ones they own.
-- **An agent's home** is its working page: the conversation with its owner, its **Work sessions**, its **Patrol reports**, its
-**Needs you** attention list, its auto-adoption setting, and its scope and state. A breadcrumb and the **Conversation / Work sessions**
-tabs keep the agent and its two views visible; the attention list leads with each target and expands in place instead of opening a
-reply dialog.
-- **Work sessions** (`/data-quality/agents/{workspace}/{id}/sessions`) lists one long-lived conversation per target the agent watches.
+- **An agent's home** is its working page: the conversation with its owner, its **Team**, its **Patrol reports**, its **Needs you**
+ask list, its auto-adoption setting, and its scope and state. A breadcrumb and the **Conversation / Team** tabs keep the agent and its
+two views visible; an ask names the target it covers and is answered or dismissed in place.
+- **Team** (`/data-quality/agents/{workspace}/{id}/subagents`) lists the agent's fixed subagents, one per target it watches.
 Opening one shows the full transcript: what woke the agent, its answer, its reasoning when the model returns it, every tool call with
 its arguments and result, and the runner's notes. The transcript opens on the newest message and keeps up with a running session while you
 stay at the bottom; scroll back to read history and the previous page loads when you reach the top. A **Jump to latest** control appears
@@ -525,7 +524,7 @@ give an agent. With it off, an agent still surveys deterministic evidence and ke
 An administrator creates an agent with:
 
 - **Owner** — the person the agent works for. The owner is the only person who can talk to it; the owner and administrators can read its
-home, work sessions, reports and attention list, but administrators cannot hold a conversation with it.
+home, team, reports and asks, but administrators cannot hold a conversation with it.
 - **Language** — English or Simplified Chinese, or *follow the owner*. The agent writes owner-visible answers, reports and escalations in
 this language; table names, column names and other identifiers stay unchanged. Raw work-session internals remain English.
 - **Model** — the LLM provider profile and the model the agent calls. Both are required, and the model is chosen explicitly: one profile
@@ -569,13 +568,13 @@ enabled checks, executions by verdict, new and open problems, pending proposals 
 closing sections answer what the owner asks: what the agent fixed by itself this period (work items it closed, broken down by
 failure class) and what is waiting for a person (work items it escalated or froze, work still in progress, pending proposals, open
 issues). Reports are generated from records, do not call a model, and have no on-demand variant.
-- **Escalates.** Four things become an **attention** item: a conversation blocked on a person, a proposal still waiting after an adoption
-pass, a work item the agent cannot finish with a change only a person may make, and a report that found new failures. Work items dedupe
-**per target**: one card lists the checks still waiting there and closes once nothing does; a conversation's card closes when its session
-runs again, and a target holding no rows is a fact the report names rather than a card. The proposal item separates what policy skipped
-from what failed to write and names the last write failure. A work item the agent cannot finish arrives as one concrete change — the
-check, the config field, the value, the kind of change and the agent's reason — and the value already passed the validation a save runs,
-so nothing has changed until you edit the check yourself. The owner answers or dismisses it from the agent's home; answering resumes the
+- **Escalates.** A subagent that cannot settle a work item asks its lead; the lead either answers it or forwards it to you as an **ask**
+in **Needs you**. An ask can cover several targets and names the requests behind it; answering it sends your decision back through the
+lead to the subagent, and dismissing it closes the question without pretending it was answered. A pending proposal still names the
+check, the config field, the value, the kind of change and the agent's reason, and the value already passed the validation a save runs,
+so nothing has changed until you edit the check yourself. A report that finds new failures is an agent-level ask; a target holding no
+rows is a fact the report names rather than a question. Work items dedupe **per target**, and a case's terminal state closes the
+requests it raised. The owner answers or dismisses from the agent's home; answering resumes the
 target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
 agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them or a person created or
 rejected the last one, and the owner also gets an in-app notification.
@@ -606,7 +605,7 @@ tool; a person's approval is recorded under its own origin but never spends it.
 - **Tells you about a check once.** A check that runs without concluding is a **work item** the agent keeps across wakes, not a
   message it reads again every run; the daily "no verdict" event only arrives when no work item already carries that check.
 - **Escalates one question, not a whole target.** When the agent cannot settle a work item it hands that item to you — the case
-  becomes escalated, you get the attention with its reason — and keeps working on everything else. A target's session only stops on
+  becomes escalated, you get an ask with its reason — and keeps working on everything else. A target's session only stops on
   something about the runtime itself (a spent budget, a transient server error, a concurrency limit), which clears on its own.
 - **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
   which revision to which, the failure class it acted on and when — newest first, and each work item has a **History** dialog with
@@ -628,7 +627,7 @@ the agent's owner (or by the approver when there is none), and MCP stays read-on
 An agent that spends its hourly token or wake budget is **blocked** with `token-budget` or `wake-budget` and recovers at the hour
 boundary. A target whose database left the agent's scope is blocked with `out-of-scope`, and a target of a disabled agent with
 `agent-disabled`; both recover on their own once the cause is cleared. Other blocks need the owner. Blocked states appear in the
-attention list and on the **Work sessions** page. Its transcript is read-only for the owner; an administrator can resume a stuck
+agent's **Needs you** and **Team** surfaces. Its transcript is read-only for the owner; an administrator can resume a stuck
 session there, and the resume action is recorded in the audit log.
 
 ### External consumers
@@ -663,13 +662,13 @@ Settings → Quality agents (`/settings/quality-agents`) is the agent control pa
 the create/edit dialog for each agent, including the provider profile and model each agent runs on. A model can be pinned only when its
 output budget is at least 2,048 tokens and its capacities leave at least 32,768 tokens of compaction budget; a model too small for an
 agent is reported as unavailable rather than silently swapped. The agent's home is where its owner
-talks to it, reads its reports and answers its attention.
+talks to it, reads its reports and answers its asks.
 
 ## Retention
 
 Executions are kept 90 days, resolved issues 90 days, column profiles and the model result cache 7 days, decided or superseded
 suggestions 90 days, and captured raw LLM request/response debug entries 7 days; the maintenance runner prunes them. Checks, open issues
-and accepted labels are not pruned. Agent conversation transcripts (`quality_agent_message`), per-agent reports and attention rows are
+and accepted labels are not pruned. Agent conversation transcripts (`quality_agent_message`), per-agent reports and ask rows are
 **not pruned** in this release, so a workspace with many monitored targets accumulates rows.
 
 ## Troubleshooting
@@ -704,7 +703,7 @@ and accepted labels are not pruned. Agent conversation transcripts (`quality_age
 | A long timeout still ended abandoned | The 15-minute batch deadline bounds the whole scan; a per-check timeout bounds only its query. |
 | An agent never wakes | The workspace runtime is paused, the agent is not Active, or its database scope is empty. |
 | An agent is blocked with `token-budget` or `wake-budget` | It spent its hourly budget and recovers at the hour boundary; an administrator can raise the budget. |
-| An agent is blocked with `out-of-scope`, `agent-disabled` or `needs-human` | The scope changed, the agent was disabled, or the model reported the same blocker three times; fix the cause, then answer the attention item. |
+| An agent is blocked with `out-of-scope`, `agent-disabled` or `needs-human` | The scope changed, the agent was disabled, or the model reported the same blocker three times; fix the cause, then answer the pending ask. |
 | The owner cannot talk to the agent | Only the owner may; administrators can read but not send. |
 | An agent's answer is a fixed scope summary | Model analysis is off under Settings → Data Quality, or the agent's provider profile or model is unavailable (deleted, or all its models disabled); turn the switch on, or restore it under Settings → LLM providers, then edit the agent. |
 | A target the agent never checked stays unchecked | Triage admission needs a model; with the analysis switch off or the agent's pair unavailable it is not admitted. Fix the provider and the target is admitted on the next scan. |

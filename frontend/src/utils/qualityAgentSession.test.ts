@@ -10,6 +10,7 @@ import {
   type QualityAgentSessionMessage,
   QualityAgentSessionMessageSchema,
   QualityAgentSessionMode,
+  QualityAgentSessionRole,
   QualityAgentSessionSchema,
   QualityAgentSessionState,
   QualityTargetPathSchema,
@@ -24,9 +25,11 @@ import {
   agentMessageRoleKey,
   agentSessionContextLevel,
   agentSessionContextRatio,
+  agentSessionDisplayName,
   agentSessionHeartbeat,
   agentSessionModeKey,
   agentSessionModeVariant,
+  agentSessionRoleKey,
   agentSessionStateKey,
   agentSessionStateVariant,
   agentSessionTargetName,
@@ -471,5 +474,27 @@ describe("context usage", () => {
       )
     ).toBe("normal");
     expect(agentSessionContextLevel(undefined)).toBe("normal");
+  });
+});
+
+describe("agent tree role", () => {
+  it("labels the lead and the subagent and prefers the model-facing name", () => {
+    const subagent = create(QualityAgentSessionSchema, {
+      role: QualityAgentSessionRole.SUBAGENT,
+      subagentName: "orders",
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst;db;;orders",
+      }),
+    });
+    expect(agentSessionRoleKey(subagent.role)).toBe(
+      "qualityAgent.roleSubagent"
+    );
+    expect(agentSessionDisplayName(subagent)).toBe("orders");
+
+    const lead = create(QualityAgentSessionSchema, {
+      role: QualityAgentSessionRole.LEAD,
+    });
+    expect(agentSessionRoleKey(lead.role)).toBe("qualityAgent.roleLead");
+    expect(agentSessionDisplayName(lead, "Lead")).toBe("Lead");
   });
 });
