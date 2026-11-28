@@ -55,6 +55,7 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		"deviceCode", "password",
 		"requestBody", "request_body", "responseBody", "response_body",
 		"htmlContent", "html_content",
+		"messageBody", "message_body", "answers",
 	} {
 		raw := map[string]any{
 			"name":   "instances/i1",
