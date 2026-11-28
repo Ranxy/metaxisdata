@@ -106,6 +106,16 @@ func (s *DataQualityService) ListQualityAgentAsks(ctx context.Context, req *conn
 	if err != nil {
 		return nil, err
 	}
+	if len(req.Msg.GetStatuses()) > 0 {
+		statuses = make([]store.QualityAgentAskStatus, 0, len(req.Msg.GetStatuses()))
+		for _, status := range req.Msg.GetStatuses() {
+			converted, statusErr := qualityAgentAskStatuses(status)
+			if statusErr != nil {
+				return nil, statusErr
+			}
+			statuses = append(statuses, converted...)
+		}
+	}
 	asks, err := s.store.ListQualityAgentAsksPage(ctx, agent.ID, statuses, offset.limit+1, offset.offset)
 	if err != nil {
 		return nil, err
@@ -290,6 +300,49 @@ func qualityAgentAskStatuses(status v1pb.QualityAgentAskStatus) ([]store.Quality
 	}
 }
 
+func convertQualityAgentQuestionsToV1(questions []*storepb.QualityAgentAskQuestion) []*v1pb.QualityAgentQuestion {
+	converted := make([]*v1pb.QualityAgentQuestion, 0, len(questions))
+	for _, question := range questions {
+		if question == nil {
+			continue
+		}
+		options := make([]*v1pb.QualityAgentQuestionOption, 0, len(question.Options))
+		for _, option := range question.Options {
+			if option == nil {
+				continue
+			}
+			options = append(options, &v1pb.QualityAgentQuestionOption{
+				Label:       option.Label,
+				Description: option.Description,
+			})
+		}
+		converted = append(converted, &v1pb.QualityAgentQuestion{
+			Id:          question.Id,
+			Header:      question.Header,
+			Question:    question.Question,
+			Detail:      question.Detail,
+			Options:     options,
+			MultiSelect: question.MultiSelect,
+		})
+	}
+	return converted
+}
+
+func convertQualityAgentAnswersToV1(answers []*storepb.QualityAgentAskAnswer) []*v1pb.QualityAgentAnswer {
+	converted := make([]*v1pb.QualityAgentAnswer, 0, len(answers))
+	for _, answer := range answers {
+		if answer == nil {
+			continue
+		}
+		converted = append(converted, &v1pb.QualityAgentAnswer{
+			Id:       answer.Id,
+			Selected: append([]string(nil), answer.Selected...),
+			Custom:   answer.Custom,
+		})
+	}
+	return converted
+}
+
 func convertQualityAgentRequestToV1(workspaceID, agentResourceID string, request *store.QualityAgentRequestMessage, origins, asks map[int64]string) *v1pb.QualityAgentRequest {
 	if request == nil {
 		return nil
@@ -338,6 +391,8 @@ func convertQualityAgentAskToV1(workspaceID, agentResourceID string, ask *store.
 		CreateTime:       timestamppb.New(ask.CreatedAt),
 		UpdateTime:       timestamppb.New(ask.UpdatedAt),
 		RequestCount:     int32(len(requests)),
+		Questions:        convertQualityAgentQuestionsToV1(ask.Questions),
+		Answers:          convertQualityAgentAnswersToV1(ask.Answers),
 	}
 	seenTargets := map[string]bool{}
 	if ask.TargetGUID != "" {

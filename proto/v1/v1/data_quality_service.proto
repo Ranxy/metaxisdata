@@ -3974,18 +3974,24 @@ message SendQualityAgentMessageRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
   ];
-  // The owner's message. The field name is deliberately not `content`: the audit
-  // redaction list matches field names and this body must not enter the ledger.
-  string message_body = 2 [(google.api.field_behavior) = REQUIRED];
+  // The owner's prose: a free-form message, or the custom text of an answer that
+  // does not use the structured answers field. Empty for a structured answer. The
+  // field name is deliberately not `content`: the audit redaction list matches field
+  // names and this body must not enter the ledger.
+  string message_body = 2;
   // A client-generated idempotency id; repeating it returns the existing message.
   string request_id = 3;
   // The ask this message answers, when it is a reply to a question. Format:
   // workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
-  // is marked answered and the lead routes the answer.
+  // is answered atomically and the answer is delivered to the requests behind it.
   string reply_to = 4 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgentAsk"}];
   // MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
   // answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
   QualityAgentMessageIntent intent = 5;
+  // The structured answer to reply_to. When empty and the ask has one question,
+  // message_body is taken as that question's custom answer. When the ask offers
+  // options or has several questions, this field is required.
+  repeated QualityAgentAnswer answers = 6;
 }
 
 // ListQualityAgentConversationMessagesRequest reads the agent's conversation.
@@ -4151,6 +4157,43 @@ message QualityAgentRequest {
   google.protobuf.Timestamp update_time = 14;
 }
 
+// QualityAgentQuestionOption is one selectable answer offered to the owner. The
+// label is both the user-facing text and the model-facing answer value, so an
+// option is data the answer can name, not presentation the server has to parse.
+message QualityAgentQuestionOption {
+  string label = 1;
+  // Optional supporting text rendered beside the label. Never enters the answer.
+  string description = 2;
+}
+
+// QualityAgentQuestion is one decision in an ask. The id is stable within the ask
+// and is echoed by the answer, so several questions in one ask stay routable.
+message QualityAgentQuestion {
+  // Stable within the ask; echoed by QualityAgentAnswer.id.
+  string id = 1;
+  // Optional short heading, such as "Confirm" or "Choose Mode".
+  string header = 2;
+  string question = 3;
+  // Supporting detail rendered with the question but kept out of option labels.
+  string detail = 4;
+  // Choices a UI can render as buttons. Empty means a free-text answer.
+  repeated QualityAgentQuestionOption options = 5;
+  // Whether more than one option may be selected. Defaults to single-select.
+  bool multi_select = 6;
+}
+
+// QualityAgentAnswer is the owner's answer to one QualityAgentQuestion. Selected
+// holds option labels; custom replaces a single choice and supplements a
+// multi-select answer. Empty selected and empty custom is an explicit skip.
+message QualityAgentAnswer {
+  // The answered QualityAgentQuestion.id.
+  string id = 1;
+  // Selected option labels; each must be one of the question's offered labels.
+  repeated string selected = 2;
+  // Free-form answer.
+  string custom = 3;
+}
+
 // QualityAgentAsk is one owner-facing question from the lead. It can cover several
 // requests through their ask link.
 message QualityAgentAsk {
@@ -4183,6 +4226,10 @@ message QualityAgentAsk {
   repeated QualityTarget targets = 15;
   // How many requests the answer covers.
   int32 request_count = 16;
+  // The structured questions. A legacy ask has none and falls back to question.
+  repeated QualityAgentQuestion questions = 17;
+  // The owner's structured answers; empty until the ask is answered.
+  repeated QualityAgentAnswer answers = 18;
 }
 
 message ListQualityAgentRequestsRequest {
@@ -4221,6 +4268,9 @@ message ListQualityAgentAsksRequest {
   QualityAgentAskStatus status = 2;
   int32 page_size = 3;
   string page_token = 4;
+  // When non-empty, lists these statuses instead of status. It lets the owner
+  // conversation read one history page covering answered, resolved and dismissed.
+  repeated QualityAgentAskStatus statuses = 5;
 }
 
 message ListQualityAgentAsksResponse {

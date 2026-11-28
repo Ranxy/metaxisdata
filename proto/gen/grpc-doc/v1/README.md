@@ -392,11 +392,14 @@
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityAgentAdoptionSetting](#metaxisdata-v1-QualityAgentAdoptionSetting)
     - [QualityAgentAdoptionStatus](#metaxisdata-v1-QualityAgentAdoptionStatus)
+    - [QualityAgentAnswer](#metaxisdata-v1-QualityAgentAnswer)
     - [QualityAgentAsk](#metaxisdata-v1-QualityAgentAsk)
     - [QualityAgentBudget](#metaxisdata-v1-QualityAgentBudget)
     - [QualityAgentCase](#metaxisdata-v1-QualityAgentCase)
     - [QualityAgentCaseAction](#metaxisdata-v1-QualityAgentCaseAction)
     - [QualityAgentFieldPatch](#metaxisdata-v1-QualityAgentFieldPatch)
+    - [QualityAgentQuestion](#metaxisdata-v1-QualityAgentQuestion)
+    - [QualityAgentQuestionOption](#metaxisdata-v1-QualityAgentQuestionOption)
     - [QualityAgentReport](#metaxisdata-v1-QualityAgentReport)
     - [QualityAgentReportSchedule](#metaxisdata-v1-QualityAgentReportSchedule)
     - [QualityAgentRequest](#metaxisdata-v1-QualityAgentRequest)
@@ -6250,6 +6253,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | status | [QualityAgentAskStatus](#metaxisdata-v1-QualityAgentAskStatus) |  | UNSPECIFIED lists open and answered asks. |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
+| statuses | [QualityAgentAskStatus](#metaxisdata-v1-QualityAgentAskStatus) | repeated | When non-empty, lists these statuses instead of status. It lets the owner conversation read one history page covering answered, resolved and dismissed. |
 
 
 
@@ -7214,6 +7218,25 @@ so an owner can tell &#34;nothing was eligible&#34; from &#34;the write kept fai
 
 
 
+<a name="metaxisdata-v1-QualityAgentAnswer"></a>
+
+### QualityAgentAnswer
+QualityAgentAnswer is the owner&#39;s answer to one QualityAgentQuestion. Selected
+holds option labels; custom replaces a single choice and supplements a
+multi-select answer. Empty selected and empty custom is an explicit skip.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  | The answered QualityAgentQuestion.id. |
+| selected | [string](#string) | repeated | Selected option labels; each must be one of the question&#39;s offered labels. |
+| custom | [string](#string) |  | Free-form answer. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityAgentAsk"></a>
 
 ### QualityAgentAsk
@@ -7239,6 +7262,8 @@ requests through their ask link.
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | targets | [QualityTarget](#metaxisdata-v1-QualityTarget) | repeated | The targets whose requests this question covers. |
 | request_count | [int32](#int32) |  | How many requests the answer covers. |
+| questions | [QualityAgentQuestion](#metaxisdata-v1-QualityAgentQuestion) | repeated | The structured questions. A legacy ask has none and falls back to question. |
+| answers | [QualityAgentAnswer](#metaxisdata-v1-QualityAgentAnswer) | repeated | The owner&#39;s structured answers; empty until the ask is answered. |
 
 
 
@@ -7346,6 +7371,45 @@ reads before editing: the value already passed the same validation a save runs.
 | base_revision | [int32](#int32) |  | The revision the proposal was computed from; zero when the check has no revision. |
 | effect | [string](#string) |  | SUBJECT, CRITERION or EXECUTABILITY: what the change touches. It is derived from the failure the case diagnosed, never sent by the agent. |
 | rationale | [string](#string) |  | Why the agent proposes it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentQuestion"></a>
+
+### QualityAgentQuestion
+QualityAgentQuestion is one decision in an ask. The id is stable within the ask
+and is echoed by the answer, so several questions in one ask stay routable.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  | Stable within the ask; echoed by QualityAgentAnswer.id. |
+| header | [string](#string) |  | Optional short heading, such as &#34;Confirm&#34; or &#34;Choose Mode&#34;. |
+| question | [string](#string) |  |  |
+| detail | [string](#string) |  | Supporting detail rendered with the question but kept out of option labels. |
+| options | [QualityAgentQuestionOption](#metaxisdata-v1-QualityAgentQuestionOption) | repeated | Choices a UI can render as buttons. Empty means a free-text answer. |
+| multi_select | [bool](#bool) |  | Whether more than one option may be selected. Defaults to single-select. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentQuestionOption"></a>
+
+### QualityAgentQuestionOption
+QualityAgentQuestionOption is one selectable answer offered to the owner. The
+label is both the user-facing text and the model-facing answer value, so an
+option is data the answer can name, not presentation the server has to parse.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| label | [string](#string) |  |  |
+| description | [string](#string) |  | Optional supporting text rendered beside the label. Never enters the answer. |
 
 
 
@@ -9080,10 +9144,11 @@ SendQualityAgentMessageRequest appends the owner&#39;s message and wakes the age
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
-| message_body | [string](#string) |  | The owner&#39;s message. The field name is deliberately not `content`: the audit redaction list matches field names and this body must not enter the ledger. |
+| message_body | [string](#string) |  | The owner&#39;s prose: a free-form message, or the custom text of an answer that does not use the structured answers field. Empty for a structured answer. The field name is deliberately not `content`: the audit redaction list matches field names and this body must not enter the ledger. |
 | request_id | [string](#string) |  | A client-generated idempotency id; repeating it returns the existing message. |
-| reply_to | [string](#string) |  | The ask this message answers, when it is a reply to a question. Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask is marked answered and the lead routes the answer. |
+| reply_to | [string](#string) |  | The ask this message answers, when it is a reply to a question. Format: workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask is answered atomically and the answer is delivered to the requests behind it. |
 | intent | [QualityAgentMessageIntent](#metaxisdata-v1-QualityAgentMessageIntent) |  | MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to. |
+| answers | [QualityAgentAnswer](#metaxisdata-v1-QualityAgentAnswer) | repeated | The structured answer to reply_to. When empty and the ask has one question, message_body is taken as that question&#39;s custom answer. When the ask offers options or has several questions, this field is required. |
 
 
 

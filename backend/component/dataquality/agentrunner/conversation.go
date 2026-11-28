@@ -167,7 +167,10 @@ func (e *Engine) forwardRequestsDeterministically(ctx context.Context, session *
 		}
 		fmt.Fprintf(&builder, "\n%d. %s: %s", index+1, request.TargetGUID, truncateRunes(request.Question, 300))
 	}
-	if _, err := e.createOwnerAsk(ctx, session, builder.String(), requests, nil); err != nil {
+	if _, err := e.createOwnerAsk(ctx, session, []*storepb.QualityAgentAskQuestion{{
+		Id:       "q1",
+		Question: builder.String(),
+	}}, requests, nil); err != nil {
 		return Outcome{}, err
 	}
 	processed := session.ProcessedSeq

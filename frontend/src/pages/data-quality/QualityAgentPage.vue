@@ -108,17 +108,25 @@
                       {{ message.role === QualityAgentMessageRole.USER ? t("qualityAgent.you") : t("qualityAgent.agentReply") }}
                     </span>
                     <div
-                      class="max-w-[85%] rounded-lg px-3 py-2 text-sm"
-                      :class="message.role === QualityAgentMessageRole.USER ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+                      v-if="message.role === QualityAgentMessageRole.USER"
+                      class="max-w-[85%]"
                     >
+                      <QualityAgentAnswerBubble
+                        v-if="isAskAnswer(message)"
+                        :content="message.content"
+                      />
                       <p
-                        v-if="message.role === QualityAgentMessageRole.USER"
-                        class="whitespace-pre-wrap break-words"
+                        v-else
+                        class="whitespace-pre-wrap break-words rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
                       >
                         {{ message.content }}
                       </p>
+                    </div>
+                    <div
+                      v-else
+                      class="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm"
+                    >
                       <AsyncMarkdown
-                        v-else
                         mode="chat"
                         :content="message.content"
                         :final="true"
@@ -146,6 +154,20 @@
                 v-if="canChat"
                 class="space-y-2 border-t p-4"
               >
+                <div
+                  v-if="openAsks.length > 0"
+                  class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-subtle/30 px-3 py-2 text-xs"
+                >
+                  <span>{{ t("qualityAgent.answerOpenQuestionsHint", { count: openAsks.length }) }}</span>
+                  <Button
+                    variant="link"
+                    size="xs"
+                    class="h-auto p-0 text-xs"
+                    @click="scrollToAsks"
+                  >
+                    {{ t("qualityAgent.railNeedsYou") }}
+                  </Button>
+                </div>
                 <p
                   v-if="chatError"
                   class="text-xs text-destructive"
@@ -231,22 +253,22 @@
                     @approve="approveAsk"
                   />
                   <Collapsible
-                    v-if="answeredAsks.length > 0"
+                    v-if="historyAsks.length > 0"
                     class="border-t pt-3"
                   >
                     <CollapsibleTrigger class="group flex w-full items-center gap-2 rounded-md py-1 text-left text-sm font-medium hover:text-foreground">
                       <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-                      <span>{{ t("qualityAgent.askStatusAnswered") }}</span>
+                      <span>{{ t("qualityAgent.askHistory") }}</span>
                       <Badge variant="secondary">
-                        {{ answeredAsks.length }}
+                        {{ historyAsks.length }}
                       </Badge>
                       <span class="ml-auto text-xs font-normal text-muted-foreground">
-                        {{ t("qualityAgent.askAnsweredHint") }}
+                        {{ t("qualityAgent.askHistoryHint") }}
                       </span>
                     </CollapsibleTrigger>
                     <CollapsibleContent class="mt-2 space-y-2">
                       <QualityAgentAskCard
-                        v-for="ask in answeredAsks"
+                        v-for="ask in historyAsks"
                         :key="ask.name"
                         :ask="ask"
                         :can-reply="false"
@@ -591,6 +613,7 @@ import {
 } from "@/api/data-quality";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
+import QualityAgentAnswerBubble from "@/components/data-quality/QualityAgentAnswerBubble.vue";
 import QualityAgentAskCard from "@/components/data-quality/QualityAgentAskCard.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
 import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
@@ -625,6 +648,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityAgent,
   QualityAgentAdoptionMode,
+  type QualityAgentAnswer,
   type QualityAgentAsk,
   QualityAgentAskStatus,
   type QualityAgentCase,
@@ -639,7 +663,6 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import {
-  qualityAgentAskIsActive,
   qualityAgentAskTargetGuid,
   qualityAgentName,
   qualityAgentSessionRoute,
@@ -666,8 +689,13 @@ const asksAnchor = ref<HTMLElement>();
 const openAsks = computed(() =>
   asks.value.filter((ask) => ask.status === QualityAgentAskStatus.OPEN)
 );
-const answeredAsks = computed(() =>
-  asks.value.filter((ask) => ask.status === QualityAgentAskStatus.ANSWERED)
+const historyAsks = computed(() =>
+  asks.value.filter(
+    (ask) =>
+      ask.status === QualityAgentAskStatus.ANSWERED ||
+      ask.status === QualityAgentAskStatus.RESOLVED ||
+      ask.status === QualityAgentAskStatus.DISMISSED
+  )
 );
 const needsYouCount = computed(() => openAsks.value.length);
 type RailTabID = "team" | "reports" | "cases" | "activity";
@@ -857,11 +885,26 @@ async function loadSessions() {
 
 async function loadAsks() {
   try {
-    const page = await listQualityAgentAsksPage(agentName.value, {
-      pageSize: 50,
-    });
-    asks.value = page.asks.filter(qualityAgentAskIsActive);
-    asksNextToken.value = page.nextPageToken;
+    const [open, history] = await Promise.all([
+      listQualityAgentAsksPage(agentName.value, {
+        status: QualityAgentAskStatus.OPEN,
+        pageSize: 50,
+      }),
+      listQualityAgentAsksPage(agentName.value, {
+        statuses: [
+          QualityAgentAskStatus.ANSWERED,
+          QualityAgentAskStatus.RESOLVED,
+          QualityAgentAskStatus.DISMISSED,
+        ],
+        pageSize: 20,
+      }),
+    ]);
+    const known = new Set(open.asks.map((ask) => ask.name));
+    asks.value = [
+      ...open.asks,
+      ...history.asks.filter((ask) => !known.has(ask.name)),
+    ];
+    asksNextToken.value = history.nextPageToken;
   } catch {
     asks.value = [];
     asksNextToken.value = "";
@@ -876,15 +919,18 @@ async function loadMoreAsks() {
   asksLoadingMore.value = true;
   try {
     const page = await listQualityAgentAsksPage(agentName.value, {
-      pageSize: 50,
+      statuses: [
+        QualityAgentAskStatus.ANSWERED,
+        QualityAgentAskStatus.RESOLVED,
+        QualityAgentAskStatus.DISMISSED,
+      ],
+      pageSize: 20,
       pageToken: asksNextToken.value,
     });
     const known = new Set(asks.value.map((ask) => ask.name));
     asks.value = [
       ...asks.value,
-      ...page.asks.filter(
-        (ask) => qualityAgentAskIsActive(ask) && !known.has(ask.name)
-      ),
+      ...page.asks.filter((ask) => !known.has(ask.name)),
     ];
     asksNextToken.value = page.nextPageToken;
   } catch (err) {
@@ -940,16 +986,26 @@ function qualityAgentCaseStateLabel(state: QualityAgentCaseState): string {
   }
 }
 
+/** Whether a message is the structured answer to an ask, not ordinary chat. */
+function isAskAnswer(message: QualityAgentSessionMessage): boolean {
+  return (
+    message.role === QualityAgentMessageRole.USER &&
+    message.intent === QualityAgentMessageIntent.ANSWER &&
+    message.replyTo.includes("/qualityAgentAsks/")
+  );
+}
+
 /** Answer one ask through the one owner channel; the ask link is what marks it. */
-async function replyToAsk(ask: QualityAgentAsk, text: string) {
-  if (busy.value || text.trim() === "") {
+async function replyToAsk(ask: QualityAgentAsk, answers: QualityAgentAnswer[]) {
+  if (busy.value || answers.length === 0) {
     return;
   }
   busy.value = true;
   chatError.value = "";
   try {
-    await sendQualityAgentMessage(agentName.value, text.trim(), {
+    await sendQualityAgentMessage(agentName.value, "", {
       replyTo: ask.name,
+      answers,
       requestId: `ask-${ask.name.split("/").pop()}-${Date.now().toString(36)}`,
     });
     await Promise.all([loadAsks(), loadConversation()]);

@@ -5669,6 +5669,22 @@ paths:
                   in: query
                   schema:
                     type: string
+                - name: statuses
+                  in: query
+                  description: |-
+                    When non-empty, lists these statuses instead of status. It lets the owner
+                     conversation read one history page covering answered, resolved and dismissed.
+                  schema:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_AGENT_ASK_STATUS_UNSPECIFIED
+                            - QUALITY_AGENT_ASK_STATUS_OPEN
+                            - QUALITY_AGENT_ASK_STATUS_ANSWERED
+                            - QUALITY_AGENT_ASK_STATUS_RESOLVED
+                            - QUALITY_AGENT_ASK_STATUS_DISMISSED
+                        type: string
+                        format: enum
             responses:
                 "200":
                     description: OK
@@ -14450,6 +14466,24 @@ components:
             description: |-
                 QualityAgentAdoptionStatus is the effective outcome of the configured guardrails,
                  so an owner can tell "nothing was eligible" from "the write kept failing".
+        QualityAgentAnswer:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: The answered QualityAgentQuestion.id.
+                selected:
+                    type: array
+                    items:
+                        type: string
+                    description: Selected option labels; each must be one of the question's offered labels.
+                custom:
+                    type: string
+                    description: Free-form answer.
+            description: |-
+                QualityAgentAnswer is the owner's answer to one QualityAgentQuestion. Selected
+                 holds option labels; custom replaces a single choice and supplements a
+                 multi-select answer. Empty selected and empty custom is an explicit skip.
         QualityAgentAsk:
             type: object
             properties:
@@ -14515,6 +14549,16 @@ components:
                     type: integer
                     description: How many requests the answer covers.
                     format: int32
+                questions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentQuestion'
+                    description: The structured questions. A legacy ask has none and falls back to question.
+                answers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentAnswer'
+                    description: The owner's structured answers; empty until the ask is answered.
             description: |-
                 QualityAgentAsk is one owner-facing question from the lead. It can cover several
                  requests through their ask link.
@@ -14736,6 +14780,43 @@ components:
                 QualityAgentFieldPatch is one change an agent proposes to a check: the config field, the
                  value it would take, and why. The agent may not apply it, so the patch is what a person
                  reads before editing: the value already passed the same validation a save runs.
+        QualityAgentQuestion:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable within the ask; echoed by QualityAgentAnswer.id.
+                header:
+                    type: string
+                    description: Optional short heading, such as "Confirm" or "Choose Mode".
+                question:
+                    type: string
+                detail:
+                    type: string
+                    description: Supporting detail rendered with the question but kept out of option labels.
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentQuestionOption'
+                    description: Choices a UI can render as buttons. Empty means a free-text answer.
+                multiSelect:
+                    type: boolean
+                    description: Whether more than one option may be selected. Defaults to single-select.
+            description: |-
+                QualityAgentQuestion is one decision in an ask. The id is stable within the ask
+                 and is echoed by the answer, so several questions in one ask stay routable.
+        QualityAgentQuestionOption:
+            type: object
+            properties:
+                label:
+                    type: string
+                description:
+                    type: string
+                    description: Optional supporting text rendered beside the label. Never enters the answer.
+            description: |-
+                QualityAgentQuestionOption is one selectable answer offered to the owner. The
+                 label is both the user-facing text and the model-facing answer value, so an
+                 option is data the answer can name, not presentation the server has to parse.
         QualityAgentReport:
             type: object
             properties:
@@ -18190,7 +18271,6 @@ components:
         SendQualityAgentMessageRequest:
             required:
                 - name
-                - messageBody
             type: object
             properties:
                 name:
@@ -18199,8 +18279,10 @@ components:
                 messageBody:
                     type: string
                     description: |-
-                        The owner's message. The field name is deliberately not `content`: the audit
-                         redaction list matches field names and this body must not enter the ledger.
+                        The owner's prose: a free-form message, or the custom text of an answer that
+                         does not use the structured answers field. Empty for a structured answer. The
+                         field name is deliberately not `content`: the audit redaction list matches field
+                         names and this body must not enter the ledger.
                 requestId:
                     type: string
                     description: A client-generated idempotency id; repeating it returns the existing message.
@@ -18209,7 +18291,7 @@ components:
                     description: |-
                         The ask this message answers, when it is a reply to a question. Format:
                          workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
-                         is marked answered and the lead routes the answer.
+                         is answered atomically and the answer is delivered to the requests behind it.
                 intent:
                     enum:
                         - QUALITY_AGENT_MESSAGE_INTENT_UNSPECIFIED
@@ -18225,6 +18307,14 @@ components:
                         MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
                          answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to.
                     format: enum
+                answers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentAnswer'
+                    description: |-
+                        The structured answer to reply_to. When empty and the ask has one question,
+                         message_body is taken as that question's custom answer. When the ask offers
+                         options or has several questions, this field is required.
             description: SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
         SendTestEmailRequest:
             type: object

@@ -1691,6 +1691,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityAgentAnswer"><span class="badge">M</span>QualityAgentAnswer</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityAgentAsk"><span class="badge">M</span>QualityAgentAsk</a>
                 </li>
               
@@ -1708,6 +1712,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentFieldPatch"><span class="badge">M</span>QualityAgentFieldPatch</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentQuestion"><span class="badge">M</span>QualityAgentQuestion</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentQuestionOption"><span class="badge">M</span>QualityAgentQuestionOption</a>
                 </li>
               
                 <li>
@@ -18002,6 +18014,14 @@ to retrieve the subsequent page. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>statuses</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentAskStatus">QualityAgentAskStatus</a></td>
+                  <td>repeated</td>
+                  <td><p>When non-empty, lists these statuses instead of status. It lets the owner
+conversation read one history page covering answered, resolved and dismissed. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -20605,6 +20625,44 @@ recorded for the owner&#39;s accounting but never spends the autonomous ceiling.
 
         
       
+        <h3 id="metaxisdata.v1.QualityAgentAnswer">QualityAgentAnswer</h3>
+        <p>QualityAgentAnswer is the owner's answer to one QualityAgentQuestion. Selected</p><p>holds option labels; custom replaces a single choice and supplements a</p><p>multi-select answer. Empty selected and empty custom is an explicit skip.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The answered QualityAgentQuestion.id. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>selected</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Selected option labels; each must be one of the question&#39;s offered labels. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>custom</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Free-form answer. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityAgentAsk">QualityAgentAsk</h3>
         <p>QualityAgentAsk is one owner-facing question from the lead. It can cover several</p><p>requests through their ask link.</p>
 
@@ -20726,6 +20784,20 @@ the question was written into. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p>How many requests the answer covers. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>questions</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentQuestion">QualityAgentQuestion</a></td>
+                  <td>repeated</td>
+                  <td><p>The structured questions. A legacy ask has none and falls back to question. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>answers</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentAnswer">QualityAgentAnswer</a></td>
+                  <td>repeated</td>
+                  <td><p>The owner&#39;s structured answers; empty until the ask is answered. </p></td>
                 </tr>
               
             </tbody>
@@ -21101,6 +21173,96 @@ failure the case diagnosed, never sent by the agent. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Why the agent proposes it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentQuestion">QualityAgentQuestion</h3>
+        <p>QualityAgentQuestion is one decision in an ask. The id is stable within the ask</p><p>and is echoed by the answer, so several questions in one ask stay routable.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Stable within the ask; echoed by QualityAgentAnswer.id. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>header</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional short heading, such as &#34;Confirm&#34; or &#34;Choose Mode&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>question</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>detail</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Supporting detail rendered with the question but kept out of option labels. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>options</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentQuestionOption">QualityAgentQuestionOption</a></td>
+                  <td>repeated</td>
+                  <td><p>Choices a UI can render as buttons. Empty means a free-text answer. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>multi_select</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether more than one option may be selected. Defaults to single-select. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentQuestionOption">QualityAgentQuestionOption</h3>
+        <p>QualityAgentQuestionOption is one selectable answer offered to the owner. The</p><p>label is both the user-facing text and the model-facing answer value, so an</p><p>option is data the answer can name, not presentation the server has to parse.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>label</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional supporting text rendered beside the label. Never enters the answer. </p></td>
                 </tr>
               
             </tbody>
@@ -26581,8 +26743,10 @@ display order. The model may rank types but may not invent one. </p></td>
                   <td>message_body</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The owner&#39;s message. The field name is deliberately not `content`: the audit
-redaction list matches field names and this body must not enter the ledger. </p></td>
+                  <td><p>The owner&#39;s prose: a free-form message, or the custom text of an answer that
+does not use the structured answers field. Empty for a structured answer. The
+field name is deliberately not `content`: the audit redaction list matches field
+names and this body must not enter the ledger. </p></td>
                 </tr>
               
                 <tr>
@@ -26598,7 +26762,7 @@ redaction list matches field names and this body must not enter the ledger. </p>
                   <td></td>
                   <td><p>The ask this message answers, when it is a reply to a question. Format:
 workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
-is marked answered and the lead routes the answer. </p></td>
+is answered atomically and the answer is delivered to the requests behind it. </p></td>
                 </tr>
               
                 <tr>
@@ -26607,6 +26771,15 @@ is marked answered and the lead routes the answer. </p></td>
                   <td></td>
                   <td><p>MESSAGE for free text, ANSWER for a reply_to, DISMISS to close the ask without
 answering it. UNSPECIFIED behaves as MESSAGE/ANSWER from reply_to. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>answers</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentAnswer">QualityAgentAnswer</a></td>
+                  <td>repeated</td>
+                  <td><p>The structured answer to reply_to. When empty and the ask has one question,
+message_body is taken as that question&#39;s custom answer. When the ask offers
+options or has several questions, this field is required. </p></td>
                 </tr>
               
             </tbody>

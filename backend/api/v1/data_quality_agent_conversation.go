@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -26,6 +25,11 @@ const (
 // SendQualityAgentMessage appends the owner's message to the agent conversation and
 // wakes it. Only the owner may send; an administrator may read the conversation but
 // cannot speak as the owner.
+//
+// A message with reply_to answers that ask. The answer is validated against the ask's
+// questions, written and delivered to the requests behind the ask in one transaction,
+// so neither a model nor the UI has to infer which question a sentence belongs to. A
+// message without reply_to is ordinary conversation and closes no ask.
 func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *connect.Request[v1pb.SendQualityAgentMessageRequest]) (*connect.Response[v1pb.QualityAgentSessionMessage], error) {
 	workspaceID, resourceID, err := s.qualityAgentResourceID(ctx, req.Msg.GetName())
 	if err != nil {
@@ -40,8 +44,9 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			errors.New("the agent is disabled; it can no longer answer"))
 	}
 	content := strings.TrimSpace(req.Msg.GetMessageBody())
-	if content == "" {
-		return nil, connectErrorInvalid("a message is required")
+	answers := req.Msg.GetAnswers()
+	if content == "" && len(answers) == 0 {
+		return nil, connectErrorInvalid("a message or an answer is required")
 	}
 	if len(content) > maxQualityAgentConversationText {
 		return nil, connectErrorInvalid("the message is too long (max %d bytes)", maxQualityAgentConversationText)
@@ -67,6 +72,12 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 	if dismiss && replyTo == "" {
 		return nil, connectErrorInvalid("a dismissal needs the ask it closes")
 	}
+	if dismiss && len(answers) > 0 {
+		return nil, connectErrorInvalid("a dismissal carries no answer")
+	}
+	if len(answers) > 0 && replyTo == "" {
+		return nil, connectErrorInvalid("an answer needs the ask it answers")
+	}
 	var ask *store.QualityAgentAskMessage
 	if replyTo != "" {
 		stored, askErr := s.qualityAgentAskForReply(ctx, workspaceID, agent.ID, replyTo)
@@ -74,6 +85,28 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			return nil, askErr
 		}
 		ask = stored
+		if ask.Status != store.QualityAgentAskStatusOpen {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the question is no longer open"))
+		}
+	}
+	if ask != nil && !dismiss {
+		if len(answers) == 0 {
+			// A legacy text answer is still a valid custom answer to a single
+			// question; a multi-question ask has no way to tell which one it means.
+			if len(ask.Questions) > 1 {
+				return nil, connectErrorInvalid("this question has several parts; answer each one")
+			}
+			questionID := "q1"
+			if len(ask.Questions) == 1 && strings.TrimSpace(ask.Questions[0].Id) != "" {
+				questionID = strings.TrimSpace(ask.Questions[0].Id)
+			}
+			answers = []*v1pb.QualityAgentAnswer{{Id: questionID, Custom: content}}
+		}
+		return s.answerQualityAgentAsk(ctx, workspaceID, agent, ask, answers, key, int(limit))
+	}
+	if ask != nil && dismiss {
+		return s.dismissQualityAgentAsk(ctx, workspaceID, agent, ask, content, key, int(limit))
 	}
 	var conversation *store.QualityAgentSessionMessage
 	var message *store.QualityAgentTranscriptMessage
@@ -90,15 +123,6 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		if err != nil {
 			return err
 		}
-		intent := storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_MESSAGE
-		replyToName := ""
-		if ask != nil {
-			intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER
-			replyToName = common.FormatWorkspace(workspaceID) + "/" + qualityAgentAskPrefix + ask.ResourceID
-		}
-		if dismiss {
-			intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS
-		}
 		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
 			SessionID:      conversation.ID,
 			WorkspaceID:    workspaceID,
@@ -106,9 +130,8 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 			Content:        content,
-			Intent:         intent,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_MESSAGE,
 			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
-			ReplyTo:        replyToName,
 			IdempotencyKey: key,
 		})
 		if err != nil {
@@ -124,30 +147,197 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 		}
 		return nil, lockErr
 	}
-	// An explicit reply_to answers that ask. Without it, the message answers the
-	// lead's question only when that question was the last thing the owner saw; a
-	// free-form remark must not close an older ask. Failing to record the answer never
-	// fails the message: the lead still reads it and can route it.
-	var applied bool
-	var markErr error
-	if dismiss {
-		if ask != nil {
-			applied, markErr = s.store.DismissQualityAgentAsk(ctx, ask.ID, time.Now().UTC())
+	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
+}
+
+// answerQualityAgentAsk validates one owner answer, builds the lead and per-request
+// envelopes, and writes them atomically with the ask and request states.
+func (s *DataQualityService) answerQualityAgentAsk(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, ask *store.QualityAgentAskMessage, answers []*v1pb.QualityAgentAnswer, key string, limit int) (*connect.Response[v1pb.QualityAgentSessionMessage], error) {
+	normalized := make([]*storepb.QualityAgentAskAnswer, 0, len(answers))
+	for _, answer := range answers {
+		if answer == nil {
+			continue
 		}
-	} else if ask != nil {
-		if ask.Status == store.QualityAgentAskStatusOpen {
-			_, applied, markErr = s.store.MarkQualityAgentAskAnswered(ctx, ask.ResourceID,
-				int32(currentUserID(ctx)), message.Seq, time.Now().UTC())
-		}
-	} else {
-		_, applied, markErr = s.store.MarkLatestOpenQualityAgentAskAnswered(ctx, agent.ID,
-			int32(currentUserID(ctx)), message.Seq, time.Now().UTC())
+		normalized = append(normalized, &storepb.QualityAgentAskAnswer{
+			Id:       answer.GetId(),
+			Selected: append([]string(nil), answer.GetSelected()...),
+			Custom:   answer.GetCustom(),
+		})
 	}
-	if markErr != nil {
-		slog.Warn("failed to mark the owner's reply against its ask",
-			slog.String("agent", agent.ResourceID), log.WithError(markErr))
-	} else if applied {
-		slog.Debug("the owner's reply answered the lead's ask", slog.String("agent", agent.ResourceID))
+	questions := dataquality.QuestionsOf(ask)
+	if len(questions) == 1 {
+		for _, answer := range normalized {
+			if strings.TrimSpace(answer.GetId()) == "" {
+				answer.Id = questions[0].GetId()
+			}
+		}
+	}
+	validated, err := dataquality.ValidateAnswers(questions, normalized)
+	if err != nil {
+		return nil, connectErrorInvalid("%s", err.Error())
+	}
+	requestsByAsk, err := s.store.ListQualityAgentRequestsByAskIDs(ctx, []int64{ask.ID})
+	if err != nil {
+		return nil, err
+	}
+	active := make([]*store.QualityAgentRequestMessage, 0, len(requestsByAsk[ask.ID]))
+	requestNames := make([]string, 0, len(requestsByAsk[ask.ID]))
+	for _, request := range requestsByAsk[ask.ID] {
+		if request.Status != store.QualityAgentRequestStatusOpen &&
+			request.Status != store.QualityAgentRequestStatusForwarded {
+			continue
+		}
+		active = append(active, request)
+		requestNames = append(requestNames, dataquality.RequestName(request))
+	}
+	envelope, err := dataquality.BuildAnswerEnvelope(ask, validated, requestNames)
+	if err != nil {
+		return nil, err
+	}
+	deliveries := make([]*store.QualityAgentRequestDelivery, 0, len(active))
+	for _, request := range active {
+		requestEnvelope, text, buildErr := dataquality.BuildRequestAnswerEnvelope(ask, request, validated)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		var subagent *store.QualityAgentSessionMessage
+		if request.OriginSessionID != nil {
+			subagent, buildErr = s.store.GetQualityAgentSessionByID(ctx, *request.OriginSessionID)
+			if buildErr != nil {
+				return nil, buildErr
+			}
+			if subagent != nil && subagent.ArchivedAt != nil {
+				subagent = nil
+			}
+		}
+		delivery := &store.QualityAgentRequestDelivery{
+			Request:    request,
+			Subagent:   subagent,
+			Resolution: text,
+		}
+		if subagent != nil {
+			delivery.Message = storepbRequestAnswerMessage(subagent, request, requestEnvelope)
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	var conversation *store.QualityAgentSessionMessage
+	var message *store.QualityAgentTranscriptMessage
+	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqchat:%d", agent.ID), func() error {
+		count, err := s.store.CountQualityAgentConversationMessagesSince(ctx, agent.ID, time.Now().UTC().Add(-time.Hour))
+		if err != nil {
+			return err
+		}
+		if count >= int64(limit) {
+			return connect.NewError(connect.CodeResourceExhausted,
+				errors.New("the agent conversation reached its hourly message limit"))
+		}
+		conversation, err = s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
+		if err != nil {
+			return err
+		}
+		for _, delivery := range deliveries {
+			if delivery != nil && delivery.Message != nil {
+				delivery.Message.SenderSessionID = &conversation.ID
+			}
+		}
+		leadMessage := &store.QualityAgentTranscriptMessage{
+			Wake:           conversation.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			Content:        envelope,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			ReplyTo:        dataquality.AskName(ask),
+			IdempotencyKey: key,
+		}
+		_, message, _, err = s.store.AnswerQualityAgentAskAtomic(ctx, ask.ResourceID, validated,
+			int32(currentUserID(ctx)), leadMessage, deliveries, time.Now().UTC())
+		return err
+	})
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrQualityAgentBusy) {
+			return nil, connect.NewError(connect.CodeAborted,
+				errors.New("another message is being sent; retry"))
+		}
+		switch common.ErrorCode(lockErr) {
+		case common.Conflict:
+			return nil, connect.NewError(connect.CodeFailedPrecondition, lockErr)
+		case common.NotFound:
+			return nil, connect.NewError(connect.CodeNotFound, lockErr)
+		}
+		return nil, lockErr
+	}
+	_, _ = s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC())
+	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
+}
+
+func storepbRequestAnswerMessage(subagent *store.QualityAgentSessionMessage, request *store.QualityAgentRequestMessage, content string) *store.QualityAgentTranscriptMessage {
+	return &store.QualityAgentTranscriptMessage{
+		SessionID:      subagent.ID,
+		WorkspaceID:    subagent.WorkspaceID,
+		Wake:           subagent.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Content:        content,
+		SenderName:     "lead",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		ReplyTo:        dataquality.RequestName(request),
+		IdempotencyKey: fmt.Sprintf("ask-answer:%s", request.ResourceID),
+	}
+}
+
+// dismissQualityAgentAsk closes one open ask without pretending it was answered.
+func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, ask *store.QualityAgentAskMessage, content, key string, limit int) (*connect.Response[v1pb.QualityAgentSessionMessage], error) {
+	var conversation *store.QualityAgentSessionMessage
+	var message *store.QualityAgentTranscriptMessage
+	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqchat:%d", agent.ID), func() error {
+		count, err := s.store.CountQualityAgentConversationMessagesSince(ctx, agent.ID, time.Now().UTC().Add(-time.Hour))
+		if err != nil {
+			return err
+		}
+		if count >= int64(limit) {
+			return connect.NewError(connect.CodeResourceExhausted,
+				errors.New("the agent conversation reached its hourly message limit"))
+		}
+		conversation, err = s.store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
+		if err != nil {
+			return err
+		}
+		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
+			SessionID:      conversation.ID,
+			WorkspaceID:    workspaceID,
+			Wake:           conversation.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			Content:        content,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			ReplyTo:        dataquality.AskName(ask),
+			IdempotencyKey: key,
+		})
+		if err != nil {
+			return err
+		}
+		applied, dismissErr := s.store.DismissQualityAgentAsk(ctx, ask.ID, time.Now().UTC())
+		if dismissErr != nil {
+			return dismissErr
+		}
+		if !applied {
+			return common.Errorf(common.Conflict, "the question is no longer open")
+		}
+		_, err = s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC())
+		return err
+	})
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrQualityAgentBusy) {
+			return nil, connect.NewError(connect.CodeAborted,
+				errors.New("another message is being sent; retry"))
+		}
+		if common.ErrorCode(lockErr) == common.Conflict {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, lockErr)
+		}
+		return nil, lockErr
 	}
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
 }

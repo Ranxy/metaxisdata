@@ -80,6 +80,7 @@ import {
   type PublishQualityContractResponse,
   type QualityAgent,
   QualityAgentAdoptionMode,
+  type QualityAgentAnswer,
   type QualityAgentAsk,
   QualityAgentAskStatus,
   type QualityAgentCase,
@@ -1709,6 +1710,7 @@ export async function listQualityAgentAsksPage(
   agentName: string,
   options: {
     status?: QualityAgentAskStatus;
+    statuses?: QualityAgentAskStatus[];
     pageSize?: number;
     pageToken?: string;
     signal?: AbortSignal;
@@ -1717,6 +1719,7 @@ export async function listQualityAgentAsksPage(
   const request = create(ListQualityAgentAsksRequestSchema, {
     parent: agentName,
     status: options.status ?? QualityAgentAskStatus.UNSPECIFIED,
+    statuses: options.statuses ?? [],
     pageSize: options.pageSize ?? 50,
     pageToken: options.pageToken ?? "",
   });
@@ -1832,6 +1835,7 @@ export async function sendQualityAgentMessage(
     requestId?: string;
     replyTo?: string;
     intent?: QualityAgentMessageIntent;
+    answers?: QualityAgentAnswer[];
     signal?: AbortSignal;
   } = {}
 ): Promise<QualityAgentSessionMessage> {
@@ -1841,6 +1845,7 @@ export async function sendQualityAgentMessage(
     requestId: options.requestId ?? "",
     replyTo: options.replyTo ?? "",
     intent: options.intent ?? QualityAgentMessageIntent.UNSPECIFIED,
+    answers: options.answers ?? [],
   });
   return await dataQualityClient.sendQualityAgentMessage(request, {
     signal: options.signal,

@@ -94,6 +94,51 @@ func internalMeta() tool.Meta {
 	}
 }
 
+// askQuestionParameters is the schema shared by ask_owner and forward_request.
+// One ask puts one decision to the owner; options are answer values, not labels the
+// server has to parse back out of prose.
+func askQuestionParameters() map[string]any {
+	return map[string]any{
+		"question": map[string]any{"type": "string", "description": "the one decision to put to the owner"},
+		"header":   map[string]any{"type": "string", "description": "optional short heading, such as Timeout or Confirm"},
+		"detail":   map[string]any{"type": "string", "description": "optional supporting evidence rendered with the question, not in the option labels"},
+		"options": map[string]any{
+			"type":        "array",
+			"description": "choices the owner can click. Put a recommended choice first and append (Recommended) to its label. Leave empty for a free-text question.",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"label":       map[string]any{"type": "string", "description": "short user-facing answer value"},
+					"description": map[string]any{"type": "string", "description": "one sentence explaining the tradeoff or impact"},
+				},
+				"required": []string{"label"},
+			},
+		},
+		"multi_select": map[string]any{"type": "boolean", "description": "whether the owner may select more than one option; defaults to false"},
+	}
+}
+
+// askOwnerParameters is askQuestionParameters plus the optional requests the ask covers.
+func askOwnerParameters() map[string]any {
+	parameters := askQuestionParameters()
+	parameters["requests"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+	return parameters
+}
+
+// answerRequestParameters is the schema of answer_request.
+func answerRequestParameters() map[string]any {
+	return map[string]any{
+		"request": map[string]any{"type": "string", "description": "qualityAgentRequests/... id from list_requests"},
+		"answer":  map[string]any{"type": "string", "description": "the answer text; use selected/custom when relaying a structured owner answer"},
+		"selected": map[string]any{
+			"type":        "array",
+			"items":       map[string]any{"type": "string"},
+			"description": "option labels the owner selected, when the question offered choices",
+		},
+		"custom": map[string]any{"type": "string", "description": "free-form text the owner typed"},
+	}
+}
+
 // targetToolSpecs is the base tool set of a target work session. Capability
 // profiles add the tools a selected capability grants; the base set itself is
 // read-, propose- and wake-control only.
@@ -399,20 +444,14 @@ func conversationToolSpecs() []toolSpec {
 		{
 			name:        "answer_request",
 			description: "Answer one subagent request yourself. The answer is delivered to the origin subagent and the request becomes ANSWERED.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"request": map[string]any{"type": "string", "description": "qualityAgentRequests/... id from list_requests"},
-				"answer":  map[string]any{"type": "string"},
-			}, "required": []string{"request", "answer"}},
-			meta: internalMeta(),
+			parameters:  map[string]any{"type": "object", "properties": answerRequestParameters(), "required": []string{"request"}},
+			meta:        internalMeta(),
 		},
 		{
 			name:        "forward_request",
-			description: "Forward one or more subagent requests to the owner as one question. The owner's answer comes back as a message.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"question": map[string]any{"type": "string"},
-			}, "required": []string{"requests", "question"}},
-			meta: internalMeta(),
+			description: "Forward one or more subagent requests to the owner as one question, optionally with clickable options. The owner's answer comes back as a delivered message.",
+			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"requests", "question"}},
+			meta:        internalMeta(),
 		},
 		{
 			name:        "reply_owner",
@@ -424,12 +463,9 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "ask_owner",
-			description: "Ask the owner a concrete question, optionally covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
-			parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"question": map[string]any{"type": "string"},
-				"requests": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-			}, "required": []string{"question"}},
-			meta: internalMeta(),
+			description: "Ask the owner a concrete question, optionally with clickable options and covering several requests. This writes an owner-visible message and rings the doorbell; end the wake after it.",
+			parameters:  map[string]any{"type": "object", "properties": askOwnerParameters(), "required": []string{"question"}},
+			meta:        internalMeta(),
 		},
 		{
 			name:        "schedule_wake",

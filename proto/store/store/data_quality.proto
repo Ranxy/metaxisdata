@@ -1539,3 +1539,40 @@ message QualityAgentFieldPatch {
   // Why the agent proposes it, in the language of the agent's owner.
   string rationale = 5;
 }
+
+// QualityAgentAskQuestionOption is one selectable answer stored in
+// quality_agent_ask.questions. The label is both the owner-facing text and the
+// model-facing answer value.
+message QualityAgentAskQuestionOption {
+  string label = 1;
+  string description = 2;
+}
+
+// QualityAgentAskQuestion is one decision an ask puts to the owner.
+message QualityAgentAskQuestion {
+  // Stable within the ask; echoed by the answer.
+  string id = 1;
+  string header = 2;
+  string question = 3;
+  string detail = 4;
+  repeated QualityAgentAskQuestionOption options = 5;
+  bool multi_select = 6;
+}
+
+// QualityAgentAskQuestionList is the JSONB payload of
+// quality_agent_ask.questions.
+message QualityAgentAskQuestionList {
+  repeated QualityAgentAskQuestion questions = 1;
+}
+
+// QualityAgentAskAnswer is the owner's answer to one question.
+message QualityAgentAskAnswer {
+  string id = 1;
+  repeated string selected = 2;
+  string custom = 3;
+}
+
+// QualityAgentAskAnswerList is the JSONB payload of quality_agent_ask.answers.
+message QualityAgentAskAnswerList {
+  repeated QualityAgentAskAnswer answers = 1;
+}

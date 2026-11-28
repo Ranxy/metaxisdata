@@ -312,6 +312,26 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentAskAnswer"><span class="badge">M</span>QualityAgentAskAnswer</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentAskAnswerList"><span class="badge">M</span>QualityAgentAskAnswerList</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentAskQuestion"><span class="badge">M</span>QualityAgentAskQuestion</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentAskQuestionList"><span class="badge">M</span>QualityAgentAskQuestionList</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentAskQuestionOption"><span class="badge">M</span>QualityAgentAskQuestionOption</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentEnrollment"><span class="badge">M</span>QualityAgentEnrollment</a>
                 </li>
               
@@ -2656,6 +2676,182 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td></td>
                   <td><p>True when the observed value was longer than the display bound and was cut for
 storage. A consumer that turns the value into a rule parameter must skip it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentAskAnswer">QualityAgentAskAnswer</h3>
+        <p>QualityAgentAskAnswer is the owner's answer to one question.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>selected</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>custom</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentAskAnswerList">QualityAgentAskAnswerList</h3>
+        <p>QualityAgentAskAnswerList is the JSONB payload of quality_agent_ask.answers.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>answers</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAskAnswer">QualityAgentAskAnswer</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentAskQuestion">QualityAgentAskQuestion</h3>
+        <p>QualityAgentAskQuestion is one decision an ask puts to the owner.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Stable within the ask; echoed by the answer. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>header</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>question</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>detail</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>options</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAskQuestionOption">QualityAgentAskQuestionOption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>multi_select</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentAskQuestionList">QualityAgentAskQuestionList</h3>
+        <p>QualityAgentAskQuestionList is the JSONB payload of</p><p>quality_agent_ask.questions.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>questions</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAskQuestion">QualityAgentAskQuestion</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentAskQuestionOption">QualityAgentAskQuestionOption</h3>
+        <p>QualityAgentAskQuestionOption is one selectable answer stored in</p><p>quality_agent_ask.questions. The label is both the owner-facing text and the</p><p>model-facing answer value.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>label</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>

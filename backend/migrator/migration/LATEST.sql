@@ -1934,6 +1934,12 @@ CREATE TABLE IF NOT EXISTS quality_agent_ask (
     message_seq INT8 NOT NULL DEFAULT 0,
     title TEXT NOT NULL DEFAULT '',
     question TEXT NOT NULL DEFAULT '',
+    -- Stored as QualityAgentAskQuestionList (proto/store/store/data_quality.proto).
+    -- The structured form of the question; a legacy ask has none and falls back to question.
+    questions JSONB NOT NULL DEFAULT '{}',
+    -- Stored as QualityAgentAskAnswerList (proto/store/store/data_quality.proto).
+    -- Empty until the owner answers.
+    answers JSONB NOT NULL DEFAULT '{}',
     -- The target an approval ask is about; empty for an agent-level ask.
     target_guid TEXT COLLATE "C" NOT NULL DEFAULT '',
     target_type INT2 NOT NULL DEFAULT 0,
@@ -1959,6 +1965,8 @@ CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_target
     ON quality_agent_ask(agent_id, target_guid);
 COMMENT ON TABLE quality_agent_ask IS 'One owner-facing question from the lead; it can cover several subagent requests';
 COMMENT ON COLUMN quality_agent_ask.status IS '1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED';
+COMMENT ON COLUMN quality_agent_ask.questions IS 'Stored as QualityAgentAskQuestionList (proto/store/store/data_quality.proto); empty on a legacy ask';
+COMMENT ON COLUMN quality_agent_ask.answers IS 'Stored as QualityAgentAskAnswerList (proto/store/store/data_quality.proto); empty until the owner answers';
 
 -- A subagent request for a decision from the lead. It is the durable hand-off
 -- between one target's subagent and the lead; an ask carries one or more requests

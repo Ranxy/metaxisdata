@@ -347,6 +347,7 @@ func (f *fakeStore) CreateQualityAgentAskAtomic(_ context.Context, ask *store.Qu
 	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), message); err != nil {
 		return nil, err
 	}
+	f.asks = append(f.asks, ask)
 	return ask, nil
 }
 
@@ -371,10 +372,6 @@ func (f *fakeStore) ListQualityAgentRequestsByAskIDs(context.Context, []int64) (
 		return map[int64][]*store.QualityAgentRequestMessage{}, nil
 	}
 	return f.requestsByAsk, nil
-}
-
-func (*fakeStore) MarkQualityAgentAskAnswered(context.Context, string, int32, int64, time.Time) (*store.QualityAgentAskMessage, bool, error) {
-	return nil, false, nil
 }
 
 func (*fakeStore) ResolveQualityAgentAsk(context.Context, string, store.QualityAgentAskStatus, time.Time) (bool, error) {

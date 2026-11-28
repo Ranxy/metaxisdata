@@ -37,6 +37,11 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityAgentAskAnswer](#metaxisdata-store-QualityAgentAskAnswer)
+    - [QualityAgentAskAnswerList](#metaxisdata-store-QualityAgentAskAnswerList)
+    - [QualityAgentAskQuestion](#metaxisdata-store-QualityAgentAskQuestion)
+    - [QualityAgentAskQuestionList](#metaxisdata-store-QualityAgentAskQuestionList)
+    - [QualityAgentAskQuestionOption](#metaxisdata-store-QualityAgentAskQuestionOption)
     - [QualityAgentEnrollment](#metaxisdata-store-QualityAgentEnrollment)
     - [QualityAgentFieldPatch](#metaxisdata-store-QualityAgentFieldPatch)
     - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
@@ -826,6 +831,92 @@ value the column holds.
 | value | [string](#string) |  |  |
 | count | [int64](#int64) |  |  |
 | truncated | [bool](#bool) |  | True when the observed value was longer than the display bound and was cut for storage. A consumer that turns the value into a rule parameter must skip it. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAskAnswer"></a>
+
+### QualityAgentAskAnswer
+QualityAgentAskAnswer is the owner&#39;s answer to one question.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| selected | [string](#string) | repeated |  |
+| custom | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAskAnswerList"></a>
+
+### QualityAgentAskAnswerList
+QualityAgentAskAnswerList is the JSONB payload of quality_agent_ask.answers.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| answers | [QualityAgentAskAnswer](#metaxisdata-store-QualityAgentAskAnswer) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAskQuestion"></a>
+
+### QualityAgentAskQuestion
+QualityAgentAskQuestion is one decision an ask puts to the owner.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  | Stable within the ask; echoed by the answer. |
+| header | [string](#string) |  |  |
+| question | [string](#string) |  |  |
+| detail | [string](#string) |  |  |
+| options | [QualityAgentAskQuestionOption](#metaxisdata-store-QualityAgentAskQuestionOption) | repeated |  |
+| multi_select | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAskQuestionList"></a>
+
+### QualityAgentAskQuestionList
+QualityAgentAskQuestionList is the JSONB payload of
+quality_agent_ask.questions.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| questions | [QualityAgentAskQuestion](#metaxisdata-store-QualityAgentAskQuestion) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentAskQuestionOption"></a>
+
+### QualityAgentAskQuestionOption
+QualityAgentAskQuestionOption is one selectable answer stored in
+quality_agent_ask.questions. The label is both the owner-facing text and the
+model-facing answer value.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| label | [string](#string) |  |  |
+| description | [string](#string) |  |  |
 
 
 

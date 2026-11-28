@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/lib/pq"
 
@@ -46,6 +48,11 @@ type QualityAgentAskMessage struct {
 	MessageSeq            int64
 	Title                 string
 	Question              string
+	// Questions is the structured decision the ask puts to the owner. A legacy ask
+	// has none and the text Question is the whole question.
+	Questions []*storepb.QualityAgentAskQuestion
+	// Answers is the owner's structured answer; empty until answered.
+	Answers []*storepb.QualityAgentAskAnswer
 	// TargetGUID is the target an approval ask is about; empty for an agent-level ask.
 	TargetGUID string
 	TargetType storepb.MetaType
@@ -61,9 +68,9 @@ type QualityAgentAskMessage struct {
 }
 
 const qualityAgentAskColumns = `id, resource_id, workspace_id, agent_id,
-	conversation_session_id, kind, message_seq, title, question, target_guid, target_type,
-	dedupe_key, status, answered_by, answered_at, answer_message_seq, resolved_at,
-	created_at, updated_at`
+	conversation_session_id, kind, message_seq, title, question, questions, answers,
+	target_guid, target_type, dedupe_key, status, answered_by, answered_at,
+	answer_message_seq, resolved_at, created_at, updated_at`
 
 // CreateQualityAgentAsk inserts one owner-facing question.
 func (s *Store) CreateQualityAgentAsk(ctx context.Context, message *QualityAgentAskMessage) (*QualityAgentAskMessage, error) {
@@ -91,20 +98,51 @@ func (s *Store) CreateQualityAgentAsk(ctx context.Context, message *QualityAgent
 			return nil, errors.Wrap(err, "failed to generate the ask id")
 		}
 	}
+	questions, err := encodeQualityAgentAskQuestions(message.Questions)
+	if err != nil {
+		return nil, err
+	}
+	answers, err := encodeQualityAgentAskAnswers(message.Answers)
+	if err != nil {
+		return nil, err
+	}
 	created, err := scanQualityAgentAsk(s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_ask
 			(resource_id, workspace_id, agent_id, conversation_session_id, kind, message_seq,
-			 title, question, target_guid, target_type, dedupe_key, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			 title, question, questions, answers, target_guid, target_type, dedupe_key, status,
+			 created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING `+qualityAgentAskColumns,
 		resourceID, message.WorkspaceID, message.AgentID, message.ConversationSessionID,
 		int16(message.Kind), message.MessageSeq, message.Title, message.Question,
-		message.TargetGUID, int16(message.TargetType), message.DedupeKey,
+		questions, answers, message.TargetGUID, int16(message.TargetType), message.DedupeKey,
 		int16(message.Status), message.CreatedAt, message.UpdatedAt))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the quality agent ask")
 	}
 	return created, nil
+}
+
+func encodeQualityAgentAskQuestions(questions []*storepb.QualityAgentAskQuestion) ([]byte, error) {
+	if questions == nil {
+		questions = []*storepb.QualityAgentAskQuestion{}
+	}
+	encoded, err := protojson.Marshal(&storepb.QualityAgentAskQuestionList{Questions: questions})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode the ask questions")
+	}
+	return encoded, nil
+}
+
+func encodeQualityAgentAskAnswers(answers []*storepb.QualityAgentAskAnswer) ([]byte, error) {
+	if answers == nil {
+		answers = []*storepb.QualityAgentAskAnswer{}
+	}
+	encoded, err := protojson.Marshal(&storepb.QualityAgentAskAnswerList{Answers: answers})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode the ask answers")
+	}
+	return encoded, nil
 }
 
 // GetQualityAgentAskByResourceID reads one ask; nil means absent.
@@ -208,37 +246,6 @@ func (s *Store) ListQualityAgentAsksByIDs(ctx context.Context, ids []int64) (map
 	return asks, nil
 }
 
-// MarkLatestOpenQualityAgentAskAnswered records the owner's reply against the ask
-// whose question was the last owner-visible message. The lead may speak again after
-// asking (a reply_owner note), which is why the newest owner-facing message and not
-// "any open ask" decides: a free-form message must not close an older question.
-func (s *Store) MarkLatestOpenQualityAgentAskAnswered(ctx context.Context, agentID int64, answeredBy int32, answerSeq int64, at time.Time) (*QualityAgentAskMessage, bool, error) {
-	message, err := scanQualityAgentAsk(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_agent_ask a
-		SET status = $2, answered_by = $3, answered_at = $4, answer_message_seq = $5, updated_at = $4
-		WHERE a.id = (
-			SELECT candidate.id FROM quality_agent_ask candidate
-			WHERE candidate.agent_id = $1 AND candidate.status = $6
-			  AND candidate.message_seq = (
-				SELECT MAX(seq) FROM quality_agent_message
-				WHERE session_id = candidate.conversation_session_id
-				  AND audience = $7 AND seq < $5
-			  )
-			ORDER BY candidate.id DESC LIMIT 1
-		)
-		RETURNING `+qualityAgentAskColumns,
-		agentID, int16(QualityAgentAskStatusAnswered), answeredBy, at.UTC(), answerSeq,
-		int16(QualityAgentAskStatusOpen),
-		int16(storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER)))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, errors.Wrap(err, "failed to mark the ask answered")
-	}
-	return message, true, nil
-}
-
 // RefreshQualityAgentAskByDedupe rewrites an open ask's wording without notifying again.
 // The approval queue changes as drafts are added or decided, and a stale "3 pending"
 // would mislead the owner.
@@ -312,9 +319,9 @@ func (s *Store) DismissQualityAgentAsk(ctx context.Context, askID int64, at time
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE quality_agent_ask SET status = $2, resolved_at = $3, updated_at = $3
-		WHERE id = $1 AND status IN ($4, $5)`,
+		WHERE id = $1 AND status = $4`,
 		askID, int16(QualityAgentAskStatusDismissed), at.UTC(),
-		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered))
+		int16(QualityAgentAskStatusOpen))
 	if err != nil {
 		return false, errors.Wrap(err, "failed to dismiss the ask")
 	}
@@ -368,11 +375,13 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 		answeredBy   sql.NullInt32
 		answeredAt   sql.NullTime
 		resolvedAt   sql.NullTime
+		questions    []byte
+		answers      []byte
 	)
 	err := scanner.Scan(
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.AgentID,
 		&conversation, &kind, &message.MessageSeq, &message.Title, &message.Question,
-		&message.TargetGUID, &targetType, &message.DedupeKey, &status,
+		&questions, &answers, &message.TargetGUID, &targetType, &message.DedupeKey, &status,
 		&answeredBy, &answeredAt, &message.AnswerMessageSeq, &resolvedAt,
 		&message.CreatedAt, &message.UpdatedAt,
 	)
@@ -382,6 +391,20 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 	message.Kind = QualityAgentAskKind(kind)
 	message.Status = QualityAgentAskStatus(status)
 	message.TargetType = storepb.MetaType(targetType)
+	if len(questions) > 0 {
+		decoded := &storepb.QualityAgentAskQuestionList{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(questions, decoded); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal the ask questions")
+		}
+		message.Questions = decoded.Questions
+	}
+	if len(answers) > 0 {
+		decoded := &storepb.QualityAgentAskAnswerList{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(answers, decoded); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal the ask answers")
+		}
+		message.Answers = decoded.Answers
+	}
 	if conversation.Valid {
 		value := conversation.Int64
 		message.ConversationSessionID = &value
@@ -480,15 +503,24 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 		return nil, false, err
 	}
 	ask.MessageSeq = createdMessage.Seq
+	questions, err := encodeQualityAgentAskQuestions(ask.Questions)
+	if err != nil {
+		return nil, false, err
+	}
+	answers, err := encodeQualityAgentAskAnswers(ask.Answers)
+	if err != nil {
+		return nil, false, err
+	}
 	created, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_ask
 			(resource_id, workspace_id, agent_id, conversation_session_id, kind, message_seq,
-			 title, question, target_guid, target_type, dedupe_key, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			 title, question, questions, answers, target_guid, target_type, dedupe_key, status,
+			 created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING `+qualityAgentAskColumns,
 		ask.ResourceID, ask.WorkspaceID, ask.AgentID, ask.ConversationSessionID,
 		int16(ask.Kind), ask.MessageSeq, ask.Title, ask.Question,
-		ask.TargetGUID, int16(ask.TargetType), ask.DedupeKey,
+		questions, answers, ask.TargetGUID, int16(ask.TargetType), ask.DedupeKey,
 		int16(ask.Status), ask.CreatedAt, ask.UpdatedAt))
 	if err != nil {
 		return nil, false, errors.Wrap(err, "failed to create the quality agent ask")
@@ -513,6 +545,123 @@ func (s *Store) CreateQualityAgentAskDeduped(ctx context.Context, ask *QualityAg
 		return nil, false, errors.Wrap(err, "failed to commit the ask")
 	}
 	return created, true, nil
+}
+
+// QualityAgentRequestDelivery is one request's share of an ask answer: the request to
+// mark answered, the subagent that raised it, and the answer message to append. A
+// delivery with no subagent still closes the request; it just cannot be told.
+type QualityAgentRequestDelivery struct {
+	Request    *QualityAgentRequestMessage
+	Subagent   *QualityAgentSessionMessage
+	Message    *QualityAgentTranscriptMessage
+	Resolution string
+}
+
+// AnswerQualityAgentAskAtomic answers one open ask and delivers the answer to the
+// requests behind it in one transaction. The ask's status is the concurrency guard:
+// a second answer waits on the row lock and then fails instead of answering twice.
+func (s *Store) AnswerQualityAgentAskAtomic(ctx context.Context, resourceID string, answers []*storepb.QualityAgentAskAnswer, answeredBy int32, leadMessage *QualityAgentTranscriptMessage, deliveries []*QualityAgentRequestDelivery, at time.Time) (*QualityAgentAskMessage, *QualityAgentTranscriptMessage, []*QualityAgentRequestMessage, error) {
+	if resourceID == "" || leadMessage == nil {
+		return nil, nil, nil, common.Errorf(common.Invalid, "an answer needs an ask and a message")
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	encodedAnswers, err := encodeQualityAgentAskAnswers(answers)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, nil, errors.Wrap(err, "failed to begin the ask answer transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	locked, err := scanQualityAgentAsk(tx.QueryRowContext(ctx,
+		`SELECT `+qualityAgentAskColumns+` FROM quality_agent_ask WHERE resource_id = $1 FOR UPDATE`,
+		resourceID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil, common.Errorf(common.NotFound, "the ask was not found")
+		}
+		return nil, nil, nil, errors.Wrap(err, "failed to lock the ask")
+	}
+	if locked.Status != QualityAgentAskStatusOpen {
+		return nil, nil, nil, common.Errorf(common.Conflict, "the ask is no longer open")
+	}
+	if locked.ConversationSessionID == nil {
+		return nil, nil, nil, common.Errorf(common.Invalid, "the ask has no conversation")
+	}
+	leadMessage.SessionID = *locked.ConversationSessionID
+	leadMessage.WorkspaceID = locked.WorkspaceID
+	createdMessage, err := s.appendQualityAgentTranscriptTx(ctx, tx, leadMessage)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	updated, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
+		UPDATE quality_agent_ask
+		SET status = $2, answers = $3, answered_by = $4, answered_at = $5,
+			answer_message_seq = $6, updated_at = $5
+		WHERE id = $1 AND status = $7
+		RETURNING `+qualityAgentAskColumns,
+		locked.ID, int16(QualityAgentAskStatusAnswered), encodedAnswers, answeredBy,
+		at.UTC(), createdMessage.Seq, int16(QualityAgentAskStatusOpen)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil, common.Errorf(common.Conflict, "the ask is no longer open")
+		}
+		return nil, nil, nil, errors.Wrap(err, "failed to mark the ask answered")
+	}
+	answered := make([]*QualityAgentRequestMessage, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		if delivery == nil || delivery.Request == nil {
+			continue
+		}
+		resolution := delivery.Resolution
+		if resolution == "" {
+			resolution = "answered"
+		}
+		request, err := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
+			UPDATE quality_agent_request
+			SET status = $2, resolution = $3, resolved_by = $4, updated_at = $5
+			WHERE id = $1 AND status IN ($6, $7)
+			RETURNING `+qualityAgentRequestColumns,
+			delivery.Request.ID, int16(QualityAgentRequestStatusAnswered), resolution,
+			answeredBy, at.UTC(), int16(QualityAgentRequestStatusOpen),
+			int16(QualityAgentRequestStatusForwarded)))
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				// The lead already answered or closed it; the owner's answer must not
+				// reopen a settled request.
+				continue
+			}
+			return nil, nil, nil, errors.Wrap(err, "failed to answer a quality agent request")
+		}
+		if delivery.Subagent != nil && delivery.Message != nil {
+			delivery.Message.SessionID = delivery.Subagent.ID
+			delivery.Message.WorkspaceID = delivery.Subagent.WorkspaceID
+			if _, err := s.appendQualityAgentTranscriptTx(ctx, tx, delivery.Message); err != nil {
+				return nil, nil, nil, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE quality_agent_session
+				SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+				WHERE id = $1 AND archived_at IS NULL`, delivery.Subagent.ID, at.UTC()); err != nil {
+				return nil, nil, nil, errors.Wrap(err, "failed to wake the answered subagent")
+			}
+		}
+		answered = append(answered, request)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, nil, errors.Wrap(err, "failed to commit the ask answer")
+	}
+	if _, err := s.ResolveQualityAgentAskIfDrained(ctx, updated.ID, at); err != nil {
+		// The answer was committed and delivered; failing the call now would make the
+		// owner retry an already-answered question. The ask can still be resolved by
+		// the next request transition.
+		slog.Warn("failed to resolve a drained ask after its answer",
+			slog.String("ask", updated.ResourceID), slog.Any("error", err))
+	}
+	return updated, createdMessage, answered, nil
 }
 
 // ResolveQualityAgentAskIfDrained closes an ask once no active request points at it.
