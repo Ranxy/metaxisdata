@@ -59,6 +59,7 @@ func handlesTool(name string) bool {
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
 		"list_subagents", "get_subagent", "send_subagent_message", "list_requests",
 		"answer_request", "forward_request", "reply_owner", "ask_owner", "cancel_ask", "list_asks", "list_open_cases",
+		"list_issues",
 		"adopt_pending_drafts":
 		return true
 	default:
@@ -139,6 +140,15 @@ func (e *Engine) executeTool(
 		return tools.GetMemory(ctx, agentSession)
 	case "list_open_cases":
 		return e.listOpenCases(ctx, session, arguments)
+	case "list_issues":
+		if isLeadSession(session) {
+			target, err := e.leadTargetSession(ctx, session, arguments)
+			if err != nil {
+				return "", err
+			}
+			return e.listIssues(ctx, target, arguments)
+		}
+		return e.listIssues(ctx, agentSession, arguments)
 	case "control_check":
 		var input struct {
 			Case   string `json:"case"`

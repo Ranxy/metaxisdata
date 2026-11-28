@@ -46,6 +46,15 @@ func evidenceMeta() tool.Meta {
 	return meta
 }
 
+// issuesMeta is the metadata of the problem-ledger read. issues.list is scoped, so the
+// agent principal's grant is evaluated on the target the read names; rules.list is in
+// the member baseline and cannot express "this agent, these databases".
+func issuesMeta() tool.Meta {
+	meta := readMeta()
+	meta.Permission = string(permission.DataQualityIssuesList)
+	return meta
+}
+
 // repairMeta is the metadata of a tool that changes one check through the application layer. It
 // is a publish-class write: the pipeline audits it, and the permission is rules.repair rather
 // than rules.update, so the catalog reads as "this actor may not rewrite an arbitrary
@@ -229,8 +238,22 @@ func targetToolSpecs() []toolSpec {
 			meta: evidenceMeta(),
 		},
 		{
+			name:        "list_issues",
+			description: "Read this target's issue ledger — the durable problems a FAIL or WARN opened. Use it before telling the lead or owner that a defect is untracked: the issue id is the record. A failing check is a finding, not a work item.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"status": map[string]any{
+					"type":        "string",
+					"enum":        []string{"OPEN", "ACKNOWLEDGED", "RESOLVED", "ALL"},
+					"description": "optional; defaults to OPEN",
+				},
+				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20},
+			}},
+			meta: issuesMeta(),
+		},
+		{
 			name: "control_check",
-			description: "Pause a check that cannot run, so its failures stop while a person decides what to do with it. " +
+			description: "Pause a check whose own definition cannot run (an unsupported column, a refused bound, a moved structure), so its failures stop while a person decides what to do with it. " +
+				"An empty target or a data failure has no such case and cannot be paused this way. " +
 				"The check's case becomes escalated. You cannot archive or resume a check.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
@@ -346,7 +369,7 @@ func targetToolSpecs() []toolSpec {
 			description: "Hand one work item to its owner and stop working on it: a change you may not make, a failure no field change " +
 				"fixes, a decision that is not yours. The case becomes escalated and the owner is told, with your reason as the question. " +
 				"Use this instead of reporting a blocker: a blocked session stops every target it covers. It acts on a work item only: a " +
-				"check that produced a FAIL has none, because a failing check is a finding the issue ledger already reports to your owner.",
+				"check that produced a FAIL has none, because a failing check is a finding the issue ledger already reports to your owner — read list_issues and report that issue id instead.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"case": map[string]any{
 					"type":        "string",
@@ -442,6 +465,20 @@ func conversationToolSpecs() []toolSpec {
 				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 20},
 			}, "required": []string{"target"}},
 			meta: readMeta(),
+		},
+		{
+			name:        "list_issues",
+			description: "Read one target's issue ledger — the durable problems a FAIL or WARN opened. Use it before saying a defect is untracked: the issue id is the record, and a failing check is not a work item.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"target": map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
+				"status": map[string]any{
+					"type":        "string",
+					"enum":        []string{"OPEN", "ACKNOWLEDGED", "RESOLVED", "ALL"},
+					"description": "optional; defaults to OPEN",
+				},
+				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20},
+			}, "required": []string{"target"}},
+			meta: issuesMeta(),
 		},
 		{
 			name:        "list_subagents",

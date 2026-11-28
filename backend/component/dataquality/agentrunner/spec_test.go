@@ -89,11 +89,13 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Equal(t, monitorTools, triageTools, "the target products share one tool set; only their prompt and turn budget differ")
 	require.Contains(t, monitorTools, "get_table_context")
 	require.Contains(t, monitorTools, "draft_checks")
+	require.Contains(t, monitorTools, "list_issues", "a target wake reads the problem ledger")
 	require.NotContains(t, monitorTools, "adopt_pending_drafts", "owner-requested adoption belongs to the lead")
 	require.NotContains(t, triageTools, "adopt_pending_drafts", "owner-requested adoption belongs to the lead")
 
 	conversationTools := toolSpecNames(toolsFor(conversationProduct, all))
 	require.Contains(t, conversationTools, "list_pending_proposals")
+	require.Contains(t, conversationTools, "list_issues", "the lead reads the problem ledger before it answers the owner")
 	require.Contains(t, conversationTools, "adopt_pending_drafts")
 	require.NotContains(t, conversationTools, "draft_checks")
 
