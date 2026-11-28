@@ -54,7 +54,7 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "inspect_check", "control_check", "run_check",
-		"repair_check", "propose_revision", "flag_proposal", "escalate_case", "get_memory",
+		"repair_check", "propose_revision", "flag_proposal", "withdraw_draft", "escalate_case", "get_memory",
 		"record_asset_fact", "block_session", "schedule_wake", "send_lead_message",
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
@@ -231,6 +231,8 @@ func (e *Engine) executeTool(
 		return result, nil
 	case "flag_proposal":
 		return tools.FlagProposal(ctx, agentSession, arguments)
+	case "withdraw_draft":
+		return tools.WithdrawDraft(ctx, agentSession, arguments)
 	case "escalate_case":
 		var input struct {
 			Case   string `json:"case"`
@@ -489,6 +491,7 @@ func (e *Engine) agentTools() *quality.AgentTools {
 		Propose:      e.propose,
 		Revise:       e.revise,
 		Flag:         e.flag,
+		Withdraw:     e.withdraw,
 		Escalate:     e.escalate,
 	})
 }

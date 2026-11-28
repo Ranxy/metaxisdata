@@ -24,6 +24,7 @@ type (
 	TableContextProfile = quality.TableContextProfile
 	TableContextReader  = quality.TableContextReader
 	DraftChecksFunc     = quality.DraftChecksFunc
+	DraftedCheck        = quality.DraftedCheck
 )
 
 // Option configures optional agent capabilities without changing the constructor's

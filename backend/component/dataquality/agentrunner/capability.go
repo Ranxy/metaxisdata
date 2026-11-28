@@ -148,6 +148,7 @@ func suggestProfile() capabilityProfile {
 					"- Use list_pending_proposals to read this agent's pending check drafts with their ids, check types and confidence.",
 					"- Never invent counts or titles; answer from the tool result.",
 					"- A draft is created only when a person or the Adoption policy accepts it.",
+					"- Withdraw a draft you judge wrong with withdraw_draft and a reason. A person never decided it, so this is not a rejection.",
 				}, "\n")}}
 			default:
 				return nil
@@ -161,7 +162,9 @@ func suggestProfile() capabilityProfile {
 				// cannot draft can only escalate a check it knows how to replace.
 				return []toolSpec{getTableContextSpec(), draftChecksSpec()}
 			case conversationProduct.Name:
-				return []toolSpec{listPendingProposalsSpec()}
+				// The lead may retract a draft its subagents queued; a person never decided
+				// it, and the queue's approval ask closes with it.
+				return []toolSpec{listPendingProposalsSpec(), withdrawDraftSpec()}
 			default:
 				return nil
 			}

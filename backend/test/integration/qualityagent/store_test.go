@@ -710,3 +710,113 @@ func TestQualityAgentAskEmptyAnswerIsDeliveredAsSkipped(t *testing.T) {
 	}
 	require.True(t, skipped, "the subagent sees the skip as skipped, not as an unreadable answer")
 }
+
+// A draft's author may retract it before a person decides, which closes the target's
+// approval ask once nothing else is pending. The retraction records no decider and does
+// not suppress the same identity, but a reviewer's decision that landed first wins and
+// another agent's draft is not the caller's to take back.
+func TestQualitySuggestionWithdrawalIsAnAuthorRetraction(t *testing.T) {
+	t.Parallel()
+
+	f := newDraftAgent(t)
+	queue := func(resourceID, column string) *store.QualitySuggestionMessage {
+		t.Helper()
+		payload := &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+			Rule: &storepb.QualityRuleDraftConfig{
+				Title:      "unique " + column,
+				Confidence: 0.8,
+				Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+				Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
+					Unique: &storepb.UniqueConfig{Column: column},
+				}},
+			},
+		}}
+		queued, _, err := f.env.store.QueueQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
+			ResourceID: resourceID,
+			Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+			Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+			AgentID:    &f.agent.ID,
+			TargetGUID: f.targetGUID,
+			TargetType: storepb.MetaType_TABLE,
+			Signature: dataquality.RuleSignature(
+				storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, payload.GetRule().GetConfig()),
+			Payload:    payload,
+			Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+			Confidence: 0.8,
+		})
+		require.NoError(t, err)
+		return queued
+	}
+	sequence := fixtureSequence.Add(1)
+	first := queue(fmt.Sprintf("itwd%d-a", sequence), "id")
+	second := queue(fmt.Sprintf("itwd%d-b", sequence), "email")
+
+	// The pending drafts are one approval ask for the target, as the adoption pass leaves it.
+	dedupeKey := store.ProposalAskDedupeKey(f.targetGUID)
+	ask := &store.QualityAgentAskMessage{
+		WorkspaceID: f.env.workspaceID, AgentID: f.agent.ID, Kind: store.QualityAgentAskKindApproval,
+		Title: "check drafts", Question: "two drafts need a decision",
+		TargetGUID: f.targetGUID, TargetType: storepb.MetaType_TABLE, DedupeKey: dedupeKey,
+	}
+	_, created, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead,
+		&store.QualityAgentTranscriptMessage{
+			Wake:           f.lead.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			Content:        "two drafts need a decision",
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			IdempotencyKey: fmt.Sprintf("it-withdraw-ask-%d", sequence),
+		}, nil, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, created)
+
+	// Another agent's draft is not the caller's to withdraw.
+	_, applied, err := f.env.store.WithdrawQualitySuggestion(f.ctx, first.ResourceID,
+		f.agent.ID+1, "not mine", time.Now().UTC())
+	require.NoError(t, err)
+	require.False(t, applied)
+	untouched, err := f.env.store.GetQualitySuggestion(f.ctx, &store.FindQualitySuggestionMessage{
+		ResourceID: &first.ResourceID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING, untouched.Status)
+
+	// The author's own withdrawal leaves no decider and keeps the note as its record.
+	withdrawn, applied, err := f.env.store.WithdrawQualitySuggestion(f.ctx, first.ResourceID,
+		f.agent.ID, "the primary key already makes this unique", time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Equal(t, storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN, withdrawn.Status)
+	require.Nil(t, withdrawn.DecidedBy, "a withdrawal is not a decision")
+	require.NotNil(t, withdrawn.DecidedAt)
+	require.Equal(t, "the primary key already makes this unique", withdrawn.DecisionNote)
+	require.Nil(t, withdrawn.RefreshedAt)
+
+	// One draft remains, so the approval ask stays open.
+	resolved, err := f.env.store.ResolveProposalAskIfDrained(f.ctx, f.agent.ID, f.targetGUID, dedupeKey, time.Now().UTC())
+	require.NoError(t, err)
+	require.False(t, resolved)
+
+	// A reviewer decision that lands first wins: the same draft can no longer be withdrawn.
+	_, err = f.env.store.DecideQualitySuggestion(f.ctx, second.ResourceID,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, 1, "noise", time.Now().UTC())
+	require.NoError(t, err)
+	_, applied, err = f.env.store.WithdrawQualitySuggestion(f.ctx, second.ResourceID,
+		f.agent.ID, "too late", time.Now().UTC())
+	require.NoError(t, err)
+	require.False(t, applied, "a decided draft is no longer the author's to retract")
+
+	// The queue is empty, so the approval ask drains.
+	resolved, err = f.env.store.ResolveProposalAskIfDrained(f.ctx, f.agent.ID, f.targetGUID, dedupeKey, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, resolved)
+	open, err := f.env.store.ListQualityAgentAsks(f.ctx, f.agent.ID, []store.QualityAgentAskStatus{store.QualityAgentAskStatusOpen}, 10)
+	require.NoError(t, err)
+	require.Empty(t, open, "a drained approval ask leaves the owner's to-do list")
+
+	// Withdrawal does not suppress the identity: a corrected draft of the same rule
+	// may be proposed again.
+	requeued := queue(fmt.Sprintf("itwd%d-c", sequence), "id")
+	require.NotNil(t, requeued)
+	require.NotEqual(t, first.ID, requeued.ID, "a withdrawal frees the identity for a corrected draft")
+}

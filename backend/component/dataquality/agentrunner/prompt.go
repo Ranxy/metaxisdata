@@ -38,8 +38,9 @@ func qualityPrompt() *agent.Prompt {
 		"- You may record asset facts (observations backed by tool results, never published",
 		"  changes), block the session for a person, or schedule an earlier wake when there",
 		"  is concrete unfinished work.",
-		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
-		"  What you may do follows the capability sections and the Adoption section.",
+		"- You cannot publish a contract, edit a check, reject a draft a person is reviewing, or change settings.",
+		"  You may withdraw a draft you queued and no longer stand behind. What you may do",
+		"  follows the capability sections and the Adoption section.",
 		"- Keep every claim backed by a tool result. When a wake has nothing to do, reply",
 		"  briefly and stop calling tools; the session then sleeps until its next wake.",
 		"- Report to the lead with send_lead_message only when you need a decision, a repair",
@@ -137,11 +138,18 @@ func conversationPrompt() *agent.Prompt {
 // adoption is unavailable: a model must never infer an ability from a stale
 // transcript.
 func adoptionPolicySection(agent *store.QualityAgentMessage, spec *Spec) string {
+	// The target products carry withdraw_draft in their base tool set; the lead only holds
+	// it with the suggest capability, whose own fragment states it. Mentioning it here for
+	// a lead without that capability would promise a tool the wake does not have.
+	withdraw := " You may withdraw a pending draft you no longer stand behind."
+	if spec != nil && spec.Name == conversationProduct.Name {
+		withdraw = ""
+	}
 	if !dataquality.AgentAdoptionReady(agent) {
 		return strings.Join([]string{
 			"Adoption:",
 			"- Adoption is unavailable for this agent (off, inactive, or the adopt/suggest capabilities are missing). You cannot adopt drafts. Tell the owner to enable adoption in the agent settings, or that a person must decide the drafts in the review queue.",
-			"- You cannot publish a contract, edit a check, reject a draft or change settings.",
+			"- You cannot publish a contract, edit a check, reject a draft or change settings." + withdraw,
 		}, "\n")
 	}
 	mode := "PAUSED"
@@ -177,7 +185,7 @@ func adoptionPolicySection(agent *store.QualityAgentMessage, spec *Spec) string 
 		ownerRequested,
 		ownerRequestedDetail,
 		"- Automatic adoption also runs after a wake that queued drafts, when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
-		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
+		"- You cannot publish a contract, edit a check, reject a draft or change settings." + withdraw,
 	}, "\n")
 }
 

@@ -140,6 +140,8 @@ type Engine struct {
 	revise quality.ReviseFunc
 	// flag records the agent's own objection to a draft it queued. It is a setter for the same reason.
 	flag quality.FlagFunc
+	// withdraw retracts a pending draft the agent queued. It is a setter for the same reason.
+	withdraw quality.WithdrawFunc
 	// escalate hands one work item to a person. It is a setter for the same reason.
 	escalate quality.EscalateFunc
 	// adoption applies the agent's auto-adoption guardrails after a target wake that queued drafts.
@@ -222,6 +224,12 @@ func (e *Engine) SetRevise(revise quality.ReviseFunc) {
 // SetAdoption is a setter.
 func (e *Engine) SetFlag(flag quality.FlagFunc) {
 	e.flag = flag
+}
+
+// SetWithdraw wires the draft-withdrawal verb after the API service exists, for the same
+// reason SetAdoption is a setter.
+func (e *Engine) SetWithdraw(withdraw quality.WithdrawFunc) {
+	e.withdraw = withdraw
 }
 
 // SetEscalate wires the escalation verb after the API service exists, for the same reason
