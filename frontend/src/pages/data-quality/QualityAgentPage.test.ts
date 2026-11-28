@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -281,6 +282,44 @@ describe("QualityAgentPage", () => {
     expect(jumps).toHaveLength(1);
     await jumps[0]?.trigger("click");
     expect(scrollIntoView).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("answers a single-question ask from the composer when replying", async () => {
+    const ask = create(QualityAgentAskSchema, {
+      name: "workspaces/ws/qualityAgentAsks/a-open",
+      kind: QualityAgentAskKind.QUESTION,
+      status: QualityAgentAskStatus.OPEN,
+      title: "A decision is needed",
+      question: "Keep the check?",
+      questions: [
+        create(QualityAgentQuestionSchema, {
+          id: "q1",
+          question: "Keep the check?",
+        }),
+      ],
+    });
+    mocks.listQualityAgentAsksPage.mockResolvedValue({
+      asks: [ask],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    const select = wrapper.findComponent(Select);
+    expect(select.exists()).toBe(true);
+    await select.vm.$emit("update:modelValue", ask.name);
+    await wrapper.find("textarea").setValue("Keep it for now");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send");
+    await send?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.sendQualityAgentMessage).toHaveBeenCalledTimes(1);
+    const [, body, options] = mocks.sendQualityAgentMessage.mock.calls[0];
+    expect(body).toBe("");
+    expect(options.replyTo).toBe(ask.name);
+    expect(options.answers[0].id).toBe("q1");
+    expect(options.answers[0].custom).toBe("Keep it for now");
     wrapper.unmount();
   });
 

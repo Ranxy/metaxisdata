@@ -185,6 +185,43 @@
                     {{ t("qualityAgent.railNeedsYou") }}
                   </Button>
                 </div>
+                <div
+                  v-if="replyableAsks.length > 0"
+                  class="flex flex-wrap items-center gap-2 text-xs"
+                >
+                  <span class="text-muted-foreground">
+                    {{ t("qualityAgent.replyingTo") }}
+                  </span>
+                  <Select
+                    :model-value="replyAskName || 'none'"
+                    @update:model-value="setReplyAsk"
+                  >
+                    <SelectTrigger class="h-7 w-auto min-w-52 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {{ t("qualityAgent.replyToNone") }}
+                      </SelectItem>
+                      <SelectItem
+                        v-for="ask in replyableAsks"
+                        :key="ask.name"
+                        :value="ask.name"
+                      >
+                        {{ ask.title || ask.question }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    v-if="replyAsk"
+                    variant="link"
+                    size="xs"
+                    class="h-auto p-0 text-xs"
+                    @click="openReplyAskCard"
+                  >
+                    {{ t("qualityAgent.answerInNeedsYou") }}
+                  </Button>
+                </div>
                 <p
                   v-if="chatError"
                   class="text-xs text-destructive"
@@ -195,14 +232,14 @@
                   v-model="composer"
                   rows="3"
                   class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  :placeholder="t('qualityAgent.messagePlaceholder')"
+                  :placeholder="replyAsk ? t('qualityAgent.replyToPlaceholder') : t('qualityAgent.messagePlaceholder')"
                   :disabled="sending"
                   @keydown.enter.exact.prevent="onComposerEnter"
                 />
                 <div class="flex justify-end">
                   <Button
                     size="sm"
-                    :disabled="sending || composer.trim() === ''"
+                    :disabled="sending || busy || composer.trim() === ''"
                     @click="send"
                   >
                     <Loader2
@@ -600,6 +637,7 @@
 </template>
 
 <script setup lang="ts">
+import { create } from "@bufbuild/protobuf";
 import {
   AlertTriangle,
   ArrowDown,
@@ -660,6 +698,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useChatScroll } from "@/composables/useChatScroll";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
@@ -668,6 +713,7 @@ import {
   type QualityAgent,
   QualityAgentAdoptionMode,
   type QualityAgentAnswer,
+  QualityAgentAnswerSchema,
   type QualityAgentAsk,
   QualityAgentAskStatus,
   type QualityAgentCase,
@@ -743,17 +789,50 @@ function askAnchorID(ask: QualityAgentAsk): string {
   return `quality-agent-ask-${ask.name.split("/").pop() ?? ""}`;
 }
 
-function scrollToQuestionAsk(message: QualityAgentSessionMessage) {
-  const ask = askForQuestionMessage(message);
-  if (!ask) {
-    return;
-  }
+function scrollToAsk(ask: QualityAgentAsk) {
   const element = document.getElementById(askAnchorID(ask));
   if (element) {
     element.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   scrollToAsks();
+}
+
+function scrollToQuestionAsk(message: QualityAgentSessionMessage) {
+  const ask = askForQuestionMessage(message);
+  if (ask) {
+    scrollToAsk(ask);
+  }
+}
+
+// The composer may answer one single-question ask explicitly selected here. A batch
+// stays card-only: one text box cannot address every part.
+const replyAskName = ref("");
+const replyableAsks = computed(() =>
+  openAsks.value.filter((ask) => ask.questions.length <= 1)
+);
+const replyAsk = computed(() =>
+  replyableAsks.value.find((ask) => ask.name === replyAskName.value)
+);
+watch(replyableAsks, (list) => {
+  if (
+    replyAskName.value !== "" &&
+    !list.some((ask) => ask.name === replyAskName.value)
+  ) {
+    replyAskName.value = "";
+  }
+});
+
+function setReplyAsk(value: unknown) {
+  replyAskName.value =
+    typeof value === "string" && value !== "none" ? value : "";
+}
+
+function openReplyAskCard() {
+  const ask = replyAsk.value;
+  if (ask) {
+    scrollToAsk(ask);
+  }
 }
 type RailTabID = "team" | "reports" | "cases" | "activity";
 const activeTab = ref<RailTabID>("team");
@@ -1053,9 +1132,12 @@ function isAskAnswer(message: QualityAgentSessionMessage): boolean {
 }
 
 /** Answer one ask through the one owner channel; the ask link is what marks it. */
-async function replyToAsk(ask: QualityAgentAsk, answers: QualityAgentAnswer[]) {
+async function replyToAsk(
+  ask: QualityAgentAsk,
+  answers: QualityAgentAnswer[]
+): Promise<boolean> {
   if (busy.value || answers.length === 0) {
-    return;
+    return false;
   }
   busy.value = true;
   chatError.value = "";
@@ -1067,8 +1149,10 @@ async function replyToAsk(ask: QualityAgentAsk, answers: QualityAgentAnswer[]) {
     });
     await Promise.all([loadAsks(), loadConversation()]);
     notify.success(t("qualityAgent.askSent"));
+    return true;
   } catch (err) {
     notify.error(formatError(err));
+    return false;
   } finally {
     busy.value = false;
   }
@@ -1138,6 +1222,22 @@ async function jumpToConversationLatest() {
 async function send() {
   const content = composer.value.trim();
   if (content === "" || sending.value) {
+    return;
+  }
+  // An explicit "Replying to" selection turns the text into that ask's answer. No
+  // selection keeps the composer ordinary chat, so a sentence never guesses.
+  if (replyAsk.value) {
+    const ask = replyAsk.value;
+    const answers = [
+      create(QualityAgentAnswerSchema, {
+        id: ask.questions[0]?.id || "q1",
+        custom: content,
+      }),
+    ];
+    if (await replyToAsk(ask, answers)) {
+      composer.value = "";
+      replyAskName.value = "";
+    }
     return;
   }
   sending.value = true;
