@@ -473,6 +473,33 @@ describe("quality agent ask", () => {
     });
     expect(text.href).toBe("/data-quality/agents/ws/agent1");
   });
+
+  it("lists the offered options in the inbox line", () => {
+    const text = describeNotification(
+      create(NotificationSchema, {
+        type: NotificationType.DATA_QUALITY_AGENT,
+        severity: NotificationSeverity.WARNING,
+        detail: {
+          case: "qualityAgentAsk",
+          value: create(QualityAgentAskDetailSchema, {
+            agent: "workspaces/ws/qualityAgents/agent1",
+            ask: "workspaces/ws/qualityAgentAsks/a1",
+            kind: 1,
+            title: "Drafts need a decision",
+            question: "Approve the two drafts?",
+            options: ["Keep it", "Pause it"],
+          }),
+        },
+      })
+    );
+    expect(text.messageKey).toBe(
+      "notifications.qualityAgentMessageWithOptions"
+    );
+    expect(text.messageParams).toEqual({
+      agent: "agent1",
+      options: "Keep it / Pause it",
+    });
+  });
 });
 
 describe("databaseLabel", () => {

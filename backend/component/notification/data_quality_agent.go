@@ -55,5 +55,6 @@ func boundQualityAgentAskDetail(detail *storepb.QualityAgentAskDetail) *storepb.
 		Question:     truncateBytes(detail.GetQuestion()),
 		RequestCount: detail.GetRequestCount(),
 		Targets:      detail.GetTargets(),
+		Options:      detail.GetOptions(),
 	}
 }

@@ -394,6 +394,7 @@ func convertToV1Notification(notification *storepb.Notification, workspaceID str
 				Question:     detail.GetQuestion(),
 				RequestCount: detail.GetRequestCount(),
 				Targets:      detail.GetTargets(),
+				Options:      detail.GetOptions(),
 			},
 		}
 	default:

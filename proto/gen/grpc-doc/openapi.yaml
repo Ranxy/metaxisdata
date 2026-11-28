@@ -14588,6 +14588,13 @@ components:
                     items:
                         type: string
                     description: Display paths of the affected targets, bounded by the server.
+                options:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Option labels the question offered, bounded by the server. Empty for a
+                         free-text question.
             description: |-
                 QualityAgentAskDetail reports one owner-facing question from the lead. The client
                  renders the prose; the server stores only identities and the bounded text.

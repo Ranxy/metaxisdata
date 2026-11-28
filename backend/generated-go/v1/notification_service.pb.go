@@ -982,7 +982,10 @@ type QualityAgentAskDetail struct {
 	// How many subagent requests this question covers.
 	RequestCount int32 `protobuf:"varint,6,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
 	// Display paths of the affected targets, bounded by the server.
-	Targets       []string `protobuf:"bytes,7,rep,name=targets,proto3" json:"targets,omitempty"`
+	Targets []string `protobuf:"bytes,7,rep,name=targets,proto3" json:"targets,omitempty"`
+	// Option labels the question offered, bounded by the server. Empty for a
+	// free-text question.
+	Options       []string `protobuf:"bytes,8,rep,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1062,6 +1065,13 @@ func (x *QualityAgentAskDetail) GetRequestCount() int32 {
 func (x *QualityAgentAskDetail) GetTargets() []string {
 	if x != nil {
 		return x.Targets
+	}
+	return nil
+}
+
+func (x *QualityAgentAskDetail) GetOptions() []string {
+	if x != nil {
+		return x.Options
 	}
 	return nil
 }
@@ -3696,7 +3706,7 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\aapi_key\x18\x06 \x01(\tR\x06apiKey\x12%\n" +
 	"\x0ereceived_count\x18\a \x01(\x05R\rreceivedCount\x12!\n" +
 	"\ffailed_count\x18\b \x01(\x05R\vfailedCount\x12\x14\n" +
-	"\x05error\x18\t \x01(\tR\x05error\"\xc4\x01\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"\xde\x01\n" +
 	"\x15QualityAgentAskDetail\x12\x14\n" +
 	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x10\n" +
 	"\x03ask\x18\x02 \x01(\tR\x03ask\x12\x12\n" +
@@ -3704,7 +3714,8 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1a\n" +
 	"\bquestion\x18\x05 \x01(\tR\bquestion\x12#\n" +
 	"\rrequest_count\x18\x06 \x01(\x05R\frequestCount\x12\x18\n" +
-	"\atargets\x18\a \x03(\tR\atargets\"\x94\x01\n" +
+	"\atargets\x18\a \x03(\tR\atargets\x12\x18\n" +
+	"\aoptions\x18\b \x03(\tR\aoptions\"\x94\x01\n" +
 	"\x18ListNotificationsRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +

@@ -304,6 +304,14 @@ export declare type QualityAgentAskDetail = Message<"metaxisdata.v1.QualityAgent
    * @generated from field: repeated string targets = 7;
    */
   targets: string[];
+
+  /**
+   * Option labels the question offered, bounded by the server. Empty for a
+   * free-text question.
+   *
+   * @generated from field: repeated string options = 8;
+   */
+  options: string[];
 };
 
 /**

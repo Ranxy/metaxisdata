@@ -426,6 +426,9 @@ message QualityAgentAskDetail {
   int32 request_count = 6;
   // Display paths of the affected targets, bounded by the server.
   repeated string targets = 7;
+  // Option labels the question offered, bounded by the server. Empty for a
+  // free-text question.
+  repeated string options = 8;
 }
 
 // NotificationRoute is one owner/team routing rule, as notification_route.payload.

@@ -162,6 +162,7 @@ func TestConvertToV1NotificationMapsAQualityAgentAskDetail(t *testing.T) {
 			Question:     "Approve the drafts?",
 			RequestCount: 2,
 			Targets:      []string{"inst;db;;orders"},
+			Options:      []string{"Keep it", "Pause it"},
 		}},
 	}, "ws")
 	detail := notification.GetQualityAgentAsk()
@@ -170,6 +171,7 @@ func TestConvertToV1NotificationMapsAQualityAgentAskDetail(t *testing.T) {
 	require.Equal(t, int32(3), detail.GetKind())
 	require.Equal(t, int32(2), detail.GetRequestCount())
 	require.Equal(t, []string{"inst;db;;orders"}, detail.GetTargets())
+	require.Equal(t, []string{"Keep it", "Pause it"}, detail.GetOptions())
 }
 
 func TestConvertToV1NotificationWithoutAKnownDetail(t *testing.T) {
