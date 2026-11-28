@@ -37,6 +37,8 @@ type fakeStore struct {
 	agent                *store.QualityAgentMessage
 	openCases            []*store.QualityAgentCaseMessage
 	rules                []*store.QualityRuleMessage
+	issues               []*store.QualityIssueMessage
+	lastIssueFind        *store.FindQualityIssueMessage
 	contract             *store.QualityContractMessage
 	participation        *store.QualityAgentParticipationLevels
 	actionable           bool
@@ -111,6 +113,11 @@ func (f *fakeStore) ListOpenQualityAgentCasesByTarget(context.Context, int64, st
 
 func (*fakeStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
 	return nil, nil
+}
+
+func (f *fakeStore) ListQualityIssues(_ context.Context, find *store.FindQualityIssueMessage) ([]*store.QualityIssueMessage, error) {
+	f.lastIssueFind = find
+	return f.issues, nil
 }
 
 func (f *fakeStore) GetQualityExecution(_ context.Context, id int64) (*store.QualityExecutionMessage, error) {

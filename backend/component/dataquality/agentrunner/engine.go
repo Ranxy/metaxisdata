@@ -58,6 +58,7 @@ type Store interface {
 	GetQualityContract(ctx context.Context, targetGUID string, targetType storepb.MetaType) (*store.QualityContractMessage, error)
 	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
+	ListQualityIssues(ctx context.Context, find *store.FindQualityIssueMessage) ([]*store.QualityIssueMessage, error)
 	ListQualityMemories(ctx context.Context, find *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
