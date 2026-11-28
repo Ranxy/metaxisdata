@@ -576,7 +576,7 @@ you may skip an individual question; the target's agent is told it was skipped r
 check, the config field, the value, the kind of change and the agent's reason, and the value already passed the validation a save runs,
 so nothing has changed until you edit the check yourself. A report that finds new failures is an agent-level ask; a target holding no
 rows is a fact the report names rather than a question. Work items dedupe **per target**, and a case's terminal state closes the
-requests it raised. The owner answers or dismisses from the agent's home; answering resumes the target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
+requests it raised. The owner answers or dismisses from the agent's home, or answers a single question from the composer after selecting it; answering resumes the target's session, a reply can ask the agent to adopt pending drafts, and the proposal item offers **Approve pending drafts** to the
 agent's owner or an administrator. The item closes once no pending draft is left, whether the agent adopted them or a person created or
 rejected the last one, and the owner also gets an in-app notification.
 - **Shows what it is carrying.** The agent's home lists its **work items**: the checks it could not settle by itself, each with the

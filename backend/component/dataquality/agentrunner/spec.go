@@ -463,7 +463,7 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "list_requests",
-			description: "List the subagent requests waiting for the lead. Default is OPEN and FORWARDED.",
+			description: "List the subagent requests waiting for the lead. Default is OPEN and FORWARDED. A forwarded request names its ask; OPEN has no ask yet.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"status": map[string]any{"type": "string", "enum": []string{"OPEN", "FORWARDED", "CLOSED"}},
 				"target": map[string]any{"type": "string"},

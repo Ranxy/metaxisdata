@@ -1,6 +1,7 @@
 package dataquality
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -134,6 +135,31 @@ func TestQuestionsOfSynthesizesOneForALegacyAsk(t *testing.T) {
 	require.Len(t, questions, 1)
 	require.Equal(t, "q1", questions[0].Id)
 	require.Equal(t, "Legacy question?", questions[0].Question)
+}
+
+func TestAskOptionLabelsDedupesAndBounds(t *testing.T) {
+	t.Parallel()
+
+	questions := []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "First?", Options: []*storepb.QualityAgentAskQuestionOption{
+			{Label: "Keep it"},
+			{Label: "Pause it"},
+		}},
+		{Id: "q2", Question: "Second?", Options: []*storepb.QualityAgentAskQuestionOption{
+			{Label: "Keep it"},
+			{Label: "Delete it"},
+		}},
+	}
+	ask := &store.QualityAgentAskMessage{Questions: questions}
+	require.Equal(t, []string{"Keep it", "Pause it", "Delete it"}, AskOptionLabels(ask))
+
+	many := make([]*storepb.QualityAgentAskQuestionOption, 0, MaxAskNotificationOptions+1)
+	for index := 0; index < MaxAskNotificationOptions+1; index++ {
+		many = append(many, &storepb.QualityAgentAskQuestionOption{Label: fmt.Sprintf("option-%d", index)})
+	}
+	require.Len(t, AskOptionLabels(&store.QualityAgentAskMessage{Questions: []*storepb.QualityAgentAskQuestion{
+		{Id: "q1", Question: "Which?", Options: many},
+	}}), MaxAskNotificationOptions)
 }
 
 func TestBuildRequestDismissedEnvelopeNamesTheRequest(t *testing.T) {

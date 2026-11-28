@@ -251,6 +251,9 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
 function qualityAgentAskText(detail: QualityAgentAskDetail): NotificationText {
   const question = detail.question.trim();
   const agentID = qualityAgentRouteParams(detail.agent)?.agentId ?? "";
+  const options = detail.options
+    .map((option) => option.trim())
+    .filter((option) => option !== "");
   return {
     titleKey:
       question === ""
@@ -260,8 +263,14 @@ function qualityAgentAskText(detail: QualityAgentAskDetail): NotificationText {
       title: detail.title || "Quality agent",
       question,
     },
-    messageKey: "notifications.qualityAgentMessage",
-    messageParams: { agent: agentID },
+    messageKey:
+      options.length > 0
+        ? "notifications.qualityAgentMessageWithOptions"
+        : "notifications.qualityAgentMessage",
+    messageParams:
+      options.length > 0
+        ? { agent: agentID, options: options.join(" / ") }
+        : { agent: agentID },
     href: detail.agent === "" ? undefined : qualityAgentPath(detail.agent),
   };
 }

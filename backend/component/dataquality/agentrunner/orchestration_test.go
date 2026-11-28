@@ -176,6 +176,10 @@ func TestForwardRequestCopiesTheSingleRequestsOptions(t *testing.T) {
 	require.Len(t, stores.asks[0].Questions[0].Options, 1)
 	require.Equal(t, "Keep it", stores.asks[0].Questions[0].Options[0].Label)
 	require.True(t, stores.asks[0].Questions[0].MultiSelect)
+
+	listed, err := engine.listRequests(context.Background(), stores.lead, `{}`)
+	require.NoError(t, err)
+	require.Contains(t, listed, `"ask":"workspaces/ws/qualityAgentAsks/ask-1"`)
 }
 
 func TestAskOwnerBatchNamesDisjointRequestSubsets(t *testing.T) {

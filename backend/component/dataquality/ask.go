@@ -94,6 +94,34 @@ func AskName(ask *store.QualityAgentAskMessage) string {
 	return common.FormatWorkspace(ask.WorkspaceID) + "/qualityAgentAsks/" + ask.ResourceID
 }
 
+// MaxAskNotificationOptions bounds the labels copied into one notification. The
+// notification is a doorbell; the card is where every option is read.
+const MaxAskNotificationOptions = 6
+
+// AskOptionLabels returns the distinct labels the ask offered, in question order and
+// bounded for a notification body. It never copies an answer.
+func AskOptionLabels(ask *store.QualityAgentAskMessage) []string {
+	if ask == nil {
+		return nil
+	}
+	labels := make([]string, 0, MaxAskNotificationOptions)
+	seen := make(map[string]bool, MaxAskNotificationOptions)
+	for _, question := range QuestionsOf(ask) {
+		for _, option := range question.Options {
+			label := strings.TrimSpace(option.Label)
+			if label == "" || seen[label] {
+				continue
+			}
+			seen[label] = true
+			labels = append(labels, label)
+			if len(labels) == MaxAskNotificationOptions {
+				return labels
+			}
+		}
+	}
+	return labels
+}
+
 // RequestName renders a request's API resource name.
 func RequestName(request *store.QualityAgentRequestMessage) string {
 	if request == nil {

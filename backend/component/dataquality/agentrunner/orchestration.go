@@ -426,10 +426,25 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 	if err != nil {
 		return "", err
 	}
+	askIDs := make([]int64, 0, len(requests))
+	for _, request := range requests {
+		if request.AskID != nil {
+			askIDs = append(askIDs, *request.AskID)
+		}
+	}
+	asksByID, err := e.store.ListQualityAgentAsksByIDs(ctx, askIDs)
+	if err != nil {
+		return "", err
+	}
 	rows := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
+		ask := ""
+		if request.AskID != nil {
+			ask = askResourceName(asksByID[*request.AskID])
+		}
 		rows = append(rows, map[string]any{
 			"request":      requestName(request.ResourceID),
+			"ask":          ask,
 			"target":       request.TargetGUID,
 			"kind":         int(request.Kind),
 			"status":       int(request.Status),
@@ -441,6 +456,15 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 		})
 	}
 	return marshalJSON(map[string]any{"requests": rows, "count": len(rows)})
+}
+
+// askResourceName renders the ask a forwarded request belongs to. An empty string
+// means the request has not been forwarded yet.
+func askResourceName(ask *store.QualityAgentAskMessage) string {
+	if ask == nil {
+		return ""
+	}
+	return common.FormatWorkspace(ask.WorkspaceID) + "/" + askName(ask.ResourceID)
 }
 
 // requestOptionsView renders a subagent's offered choices for list_requests.

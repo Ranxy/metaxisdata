@@ -326,6 +326,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			Question:     notice.Ask.Question,
 			RequestCount: int32(notice.RequestCount),
 			Targets:      notice.Targets,
+			Options:      dataquality.AskOptionLabels(notice.Ask),
 		}
 		dedupeKey := "dqagent:ask:" + notice.Ask.ResourceID
 		if agent.OwnerPrincipalID != nil {

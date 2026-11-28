@@ -4391,6 +4391,7 @@ renders the prose; the server stores only identities and the bounded text.
 | question | [string](#string) |  |  |
 | request_count | [int32](#int32) |  | How many subagent requests this question covers. |
 | targets | [string](#string) | repeated | Display paths of the affected targets, bounded by the server. |
+| options | [string](#string) | repeated | Option labels the question offered, bounded by the server. Empty for a free-text question. |
 
 
 

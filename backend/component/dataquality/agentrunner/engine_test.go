@@ -342,10 +342,21 @@ func (f *fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string,
 	return &store.QualityAgentRequestMessage{}, &store.QualityAgentTranscriptMessage{}, true, nil
 }
 
-func (f *fakeStore) CreateQualityAgentAskAtomic(_ context.Context, ask *store.QualityAgentAskMessage, lead *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, _ []*store.QualityAgentRequestMessage, _ time.Time) (*store.QualityAgentAskMessage, error) {
+func (f *fakeStore) CreateQualityAgentAskAtomic(_ context.Context, ask *store.QualityAgentAskMessage, lead *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage, _ time.Time) (*store.QualityAgentAskMessage, error) {
 	message.SessionID = lead.ID
 	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), message); err != nil {
 		return nil, err
+	}
+	if ask.ID == 0 {
+		ask.ID = int64(len(f.asks) + 1)
+	}
+	if ask.ResourceID == "" {
+		ask.ResourceID = fmt.Sprintf("ask-%d", ask.ID)
+	}
+	for _, request := range requests {
+		askID := ask.ID
+		request.AskID = &askID
+		request.Status = store.QualityAgentRequestStatusForwarded
 	}
 	f.asks = append(f.asks, ask)
 	return ask, nil
@@ -365,6 +376,19 @@ func (*fakeStore) GetQualityAgentAskByResourceID(context.Context, string) (*stor
 
 func (f *fakeStore) ListQualityAgentAsks(context.Context, int64, []store.QualityAgentAskStatus, int) ([]*store.QualityAgentAskMessage, error) {
 	return f.asks, nil
+}
+
+func (f *fakeStore) ListQualityAgentAsksByIDs(_ context.Context, ids []int64) (map[int64]*store.QualityAgentAskMessage, error) {
+	asks := make(map[int64]*store.QualityAgentAskMessage, len(ids))
+	for _, id := range ids {
+		for _, ask := range f.asks {
+			if ask.ID == id {
+				asks[id] = ask
+				break
+			}
+		}
+	}
+	return asks, nil
 }
 
 func (f *fakeStore) ListQualityAgentRequestsByAskIDs(context.Context, []int64) (map[int64][]*store.QualityAgentRequestMessage, error) {

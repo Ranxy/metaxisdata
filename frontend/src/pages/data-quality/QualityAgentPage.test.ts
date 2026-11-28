@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -10,9 +11,12 @@ import {
   QualityAgentAskKind,
   QualityAgentAskSchema,
   QualityAgentAskStatus,
+  QualityAgentMessageIntent,
+  QualityAgentMessageRole,
   QualityAgentQuestionOptionSchema,
   QualityAgentQuestionSchema,
   QualityAgentSchema,
+  QualityAgentSessionMessageSchema,
   QualityAgentSessionMode,
   QualityAgentSessionRole,
   QualityAgentSessionSchema,
@@ -218,6 +222,104 @@ describe("QualityAgentPage", () => {
     expect(options.replyTo).toBe(ask.name);
     expect(options.answers[0].id).toBe("q1");
     expect(options.answers[0].selected).toEqual(["Keep it"]);
+    wrapper.unmount();
+  });
+
+  it("marks the agent's question message and jumps to its ask", async () => {
+    const ask = create(QualityAgentAskSchema, {
+      name: "workspaces/ws/qualityAgentAsks/a-open",
+      kind: QualityAgentAskKind.QUESTION,
+      status: QualityAgentAskStatus.OPEN,
+      title: "A decision is needed",
+      question: "Keep the check?",
+      messageSeq: 7n,
+      questions: [
+        create(QualityAgentQuestionSchema, {
+          id: "q1",
+          question: "Keep the check?",
+        }),
+      ],
+    });
+    mocks.listQualityAgentAsksPage.mockResolvedValue({
+      asks: [ask],
+      nextPageToken: "",
+    });
+    mocks.listQualityAgentConversationMessages.mockResolvedValue({
+      qualityAgentConversationMessages: [
+        create(QualityAgentSessionMessageSchema, {
+          name: "workspaces/ws/qualityAgentSessions/s1/messages/7",
+          seq: 7n,
+          role: QualityAgentMessageRole.ASSISTANT,
+          intent: QualityAgentMessageIntent.QUESTION,
+          content: "Keep the check?",
+        }),
+        create(QualityAgentSessionMessageSchema, {
+          name: "workspaces/ws/qualityAgentSessions/s1/messages/8",
+          seq: 8n,
+          role: QualityAgentMessageRole.ASSISTANT,
+          intent: QualityAgentMessageIntent.QUESTION,
+          content: "A question the ask list does not know.",
+        }),
+      ],
+    });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    const wrapper = await mountPage();
+    const messages = wrapper
+      .findAll("div.bg-muted")
+      .filter((candidate) => candidate.text().includes("Keep the check?"));
+    const questionMessage = messages.find((candidate) =>
+      candidate.text().includes("Answer in Needs you")
+    );
+    expect(questionMessage?.text()).toContain("Question");
+    const jumps = wrapper
+      .findAll("button")
+      .filter((candidate) => candidate.text() === "Answer in Needs you");
+    expect(jumps).toHaveLength(1);
+    await jumps[0]?.trigger("click");
+    expect(scrollIntoView).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("answers a single-question ask from the composer when replying", async () => {
+    const ask = create(QualityAgentAskSchema, {
+      name: "workspaces/ws/qualityAgentAsks/a-open",
+      kind: QualityAgentAskKind.QUESTION,
+      status: QualityAgentAskStatus.OPEN,
+      title: "A decision is needed",
+      question: "Keep the check?",
+      questions: [
+        create(QualityAgentQuestionSchema, {
+          id: "q1",
+          question: "Keep the check?",
+        }),
+      ],
+    });
+    mocks.listQualityAgentAsksPage.mockResolvedValue({
+      asks: [ask],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    const select = wrapper.findComponent(Select);
+    expect(select.exists()).toBe(true);
+    await select.vm.$emit("update:modelValue", ask.name);
+    await wrapper.find("textarea").setValue("Keep it for now");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send");
+    await send?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.sendQualityAgentMessage).toHaveBeenCalledTimes(1);
+    const [, body, options] = mocks.sendQualityAgentMessage.mock.calls[0];
+    expect(body).toBe("");
+    expect(options.replyTo).toBe(ask.name);
+    expect(options.answers[0].id).toBe("q1");
+    expect(options.answers[0].custom).toBe("Keep it for now");
     wrapper.unmount();
   });
 
