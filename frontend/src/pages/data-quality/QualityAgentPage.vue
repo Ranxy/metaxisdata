@@ -124,8 +124,25 @@
                     </div>
                     <div
                       v-else
-                      class="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm"
+                      class="max-w-[85%] space-y-1 rounded-lg bg-muted px-3 py-2 text-sm"
                     >
+                      <div
+                        v-if="askForQuestionMessage(message)"
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <Badge variant="secondary">
+                          {{ t("qualityAgent.questionBadge") }}
+                        </Badge>
+                        <Button
+                          v-if="askForQuestionMessage(message)?.status === QualityAgentAskStatus.OPEN"
+                          variant="link"
+                          size="xs"
+                          class="h-auto p-0 text-xs"
+                          @click="scrollToQuestionAsk(message)"
+                        >
+                          {{ t("qualityAgent.answerInNeedsYou") }}
+                        </Button>
+                      </div>
                       <AsyncMarkdown
                         mode="chat"
                         :content="message.content"
@@ -243,6 +260,7 @@
                   </p>
                   <QualityAgentAskCard
                     v-for="ask in openAsks"
+                    :id="askAnchorID(ask)"
                     :key="ask.name"
                     :ask="ask"
                     :can-reply="canChat"
@@ -269,6 +287,7 @@
                     <CollapsibleContent class="mt-2 space-y-2">
                       <QualityAgentAskCard
                         v-for="ask in historyAsks"
+                        :id="askAnchorID(ask)"
                         :key="ask.name"
                         :ask="ask"
                         :can-reply="false"
@@ -698,6 +717,44 @@ const historyAsks = computed(() =>
   )
 );
 const needsYouCount = computed(() => openAsks.value.length);
+
+// The ask's message_seq is the transcript row that carried the question. Pairing on
+// it marks the exact assistant message without guessing from message order.
+const asksByMessageSeq = computed(() => {
+  const bySeq = new Map<bigint, QualityAgentAsk>();
+  for (const ask of asks.value) {
+    if (ask.messageSeq > 0n) {
+      bySeq.set(ask.messageSeq, ask);
+    }
+  }
+  return bySeq;
+});
+
+function askForQuestionMessage(
+  message: QualityAgentSessionMessage
+): QualityAgentAsk | undefined {
+  if (message.intent !== QualityAgentMessageIntent.QUESTION) {
+    return undefined;
+  }
+  return asksByMessageSeq.value.get(message.seq);
+}
+
+function askAnchorID(ask: QualityAgentAsk): string {
+  return `quality-agent-ask-${ask.name.split("/").pop() ?? ""}`;
+}
+
+function scrollToQuestionAsk(message: QualityAgentSessionMessage) {
+  const ask = askForQuestionMessage(message);
+  if (!ask) {
+    return;
+  }
+  const element = document.getElementById(askAnchorID(ask));
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  scrollToAsks();
+}
 type RailTabID = "team" | "reports" | "cases" | "activity";
 const activeTab = ref<RailTabID>("team");
 const railTabs = computed<
