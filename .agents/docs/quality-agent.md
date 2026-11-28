@@ -17,7 +17,19 @@ A quality agent is an internal identity, not an API subject: one `quality_agent`
 
 ## The runners
 
-Three runners carry the runtime. `qualityenrollmentrunner` (60s) advances the enrollment queue and scans each in-scope database every 15 minutes against the registry digest; enrollment rows are `PENDING`, `ACTIVE`, `DORMANT`, `OUT_OF_SCOPE`, `GONE`, each agent+target pair one row; scope exit blocks the session as out-of-scope, agent disablement blocks it as agent-disabled, both self-heal when the cause disappears, and an object that disappears from a fully scanned database is marked gone and its session archived. Enrollment creates the only target sessions; there is no product RPC to create, pause, archive or wake one. `qualitysessionrunner` (3s tick) claims due sessions under a lease (15m lease, 10m wake), appends a user message, rebuilds the model input from the transcript after the compacted summary point, and either continues the conversation with the model or runs a deterministic patrol/event review. The compaction pressure threshold is derived from the pinned model's context window (`floor(min(W×0.8, W−O−B))`, headroom `min(65536, W/8)`), so a model change also moves when its conversation compacts: old tool results are trimmed first, then the oldest tool-pair-balanced region is summarized, the system prompt is never compacted, and transcripts are kept. The pressure itself is a text estimate charged per script at a dense transcript's rate rather than a prose average; the trigger's output reservation is what keeps a wake that skips compaction inside the window. `qualityagentrunner` (60s) generates each agent's scheduled DAILY/WEEKLY report — scope health, targets and coverage, enabled checks, period verdict counts, new/open issues, pending proposals and a markdown body — aggregated over that agent's enrollment target set rather than a database prefix, idempotent by `(agent_id, period_key)`, and appends a "report ready" message to the conversation.
+Three runners carry the runtime. `qualityenrollmentrunner` advances the enrollment queue and scans each in-scope database
+against the registry digest; each agent+target pair has one enrollment row, scope exit blocks the session as out-of-scope, agent
+disablement blocks it as agent-disabled, both self-heal, and an object that disappears from a fully scanned database is marked gone
+and its session archived. Enrollment creates the only target sessions; there is no product RPC to create, pause, archive or wake
+one. `qualitysessionrunner` claims due sessions under a lease, appends a user message, rebuilds the model input from the transcript
+after the compacted summary point, and either continues the conversation with the model or runs a deterministic patrol/event review.
+The compaction pressure threshold is derived from the pinned model's context window and output budget, so a model change also moves
+when its conversation compacts: old tool results are trimmed first, then the oldest tool-pair-balanced region is summarized, the
+system prompt is never compacted, and transcripts are kept. The pressure is a text estimate charged per script at a dense
+transcript's rate rather than a prose average; the trigger's output reservation keeps a wake that skips compaction inside the
+window. `qualityagentrunner` generates each agent's scheduled report — scope health, targets and coverage, enabled checks, period
+verdicts, new/open issues, pending proposals and a markdown body — aggregated over that agent's enrollment target set, idempotent
+by `(agent_id, period_key)`, and appends a "report ready" message to the conversation.
 
 ## Model
 
@@ -29,7 +41,14 @@ The prompt and tool set are composed, not hand-written per product: a product sp
 
 ## What the agent may write
 
-Four tools are publish-class. `adopt_pending_drafts` creates a check: its schema is present whenever the `adopt` capability and adoption configuration are ready, but it is executable only on a wake that answers an owner question, under the readiness predicate below, with scope, the daily cap, rule validation and audit still applying. `run_check` executes the check a diagnosed case is about, now, through the ordinary manual-run path, so a failure can be reproduced or a repair verified without waiting for the next scheduled slot; the case waits for the verdict like any other verification. `control_check` pauses a check whose case says it cannot run: the server re-reads the case, the participation level, the pins and the diagnosis, refuses a check that can produce a verdict, writes the state with an optimistic revision and escalates the case, so the check stops failing while a person decides whether to resume, archive or replace it. `repair_check` applies the one deterministic repair a diagnosis names: it re-reads the case, re-derives the diagnosis, and writes the value the registry owns — today the column snapshot of a `schema_drift` check that reports the target's structure changed. The model supplies only the case, because a value it supplied would let it pin a snapshot that never existed; the patch is validated and compiled first, written as one compare-and-set against the revision the decision was based on, and the check's own fingerprint moves with it so the next run does not report the drift it just settled. The verb plans the run that verifies the repair, because a repair is only a repair once a run proves it, and refuses a paused check outright: a paused check never runs, so the case would wait for evidence that cannot arrive. A criterion is a separate case. At `repair` level the verb refuses it, because changing what a check accepts is what the delegation withholds, and it goes through `propose_revision`; at `tune` level the verb accepts it only with a replay: the recent runs are judged again under the new definition, and a change that would turn a failing run — or a run that reached no verdict — into a pass is refused and has to be proposed instead. A replay needs evidence to replay, so a check with no judged run leaves a criterion change unverifiable, and unverifiable is a proposal rather than a write. `propose_revision` is the verb for every change the delegation withholds — a criterion, a field someone pinned, a value on a check a person manages — and it writes no check: the server re-derives the diagnosis, refuses a field the diagnosis did not name, validates the proposed value with the same pipeline a save runs (without a probe, because a proposal asks for a decision rather than starting a run), records the field, the value, the effect and the reason on the escalation, and moves the case to `ESCALATED`. The change travels as a payload rather than as prose, so the owner reviews a field and a value instead of a summary of them. The participation level, the pins and the replay gate deliberately do not refuse a proposal: they withhold the write, and handing the decision to a person is the alternative they name.
+Exactly four publish-class writes exist: adopt a pending draft, run a diagnosed check now, pause a check whose own definition cannot
+run, and apply the deterministic repair a diagnosis names. Their schemas and per-verb gates live in `agentrunner/spec.go` and
+`agentpolicy`; this page states only the constraints that must not break. The three case verbs are case-scoped and re-read the case
+server-side before writing; `control_check` and `repair_check` also re-read participation, pins and the diagnosis, while `run_check`
+re-reads the rule and the run budget. `adopt_pending_drafts` is not case-scoped: it runs on an owner-question wake under the adoption
+gate. A repair is written as one compare-and-set and is only a repair once a run proves it. A criterion change is a proposal at
+`repair` level; at `tune` level it must survive a replay that leaves every failing run failing. `propose_revision` records a field
+and value for a person and never writes a check. No tool publishes, edits, archives, resumes, changes settings or rejects.
 
 ### The replay
 
@@ -96,18 +115,26 @@ paired Q&A bubble. A payload that does not name every question exactly once is s
 
 ## Work items (cases)
 
-A case is the agent's durable work item, separate from the issue ledger: a FAIL is a conclusion about the data and becomes an issue, while a check that **cannot** produce a verdict (a refused bound, an unsupported column, a missing baseline — but not an empty target, which is a fact) becomes a case. A class that describes the target rather than a defect is a **fact**, not work: `dataquality.FactNotWorkClasses` is the one list the intake, a 60-second sweep and the escalation guard read, an empty target opens no case and settles one that exists (an escalated fact case included, because ESCALATED contradicts a class that says no decision exists), `escalate_case` refuses the class with the move to make instead, the wake does not render it as an item, and the patrol report states it once — "N targets could not be judged because they hold no rows" — which is where a fact belongs. The server opens it — never the model — in `DIAGNOSED` with the class the deterministic diagnosis computed, and one open case claims a subject (agent plus target, rule and kind) through a partial unique index, so a retried batch cannot open two. States are `OPEN`/`DIAGNOSED`/`ACTED`/`AWAITING_VERIFICATION`/`RESOLVED`/`FROZEN`/`ESCALATED`; the last three are terminal and release the subject, because a frozen case that kept its subject would make the check permanently invisible to the agent. A later execution that produces a verdict closes the open case, so the table holds current work rather than history. A case with a repair pending is verified by the next execution of its check: a verdict closes it, the same class spends one attempt and freezes at the budget (two by default), a different class re-diagnoses without spending one, and a run that has not finished spends nothing. The case's own evidence execution is never taken as its verification run, so a retried batch cannot spend an attempt, and only a case that actually has a repair pending is verified — a still-failing run on a merely diagnosed case must not burn the budget before the agent has changed anything.
+A case is the agent's durable work item, separate from the issue ledger: a FAIL is a conclusion about the data and becomes an
+issue, while a check that **cannot** produce a verdict — except an empty target, which is a fact — becomes a case. The server opens it,
+never the model, with the class the deterministic diagnosis computed; one open case exists per check and target, so a retried batch
+cannot open two. A later verdict closes it. A case with a repair pending is verified by the next execution of its check: the case's own
+evidence run never verifies it, a repeat of the same failure spends one attempt and freezes at the budget, a different failure
+re-diagnoses without spending one, and an unfinished run spends nothing. A class that describes the target is a **fact**, not work:
+`dataquality.FactNotWorkClasses` is the one list the intake, the sweep and the escalation guard read, an empty target opens no case and
+settles one that exists, `escalate_case` refuses the class with the move to make instead, and the wake does not render it as an item.
+The opening and settling rules live in `qualityrunner`'s intake, the verification transitions in `dataquality.VerifyCase`, and the
+case store owns the states; this page states only the invariants. A terminal case releases the check, because a frozen case that kept
+it would make the check permanently invisible to the agent.
 
 The agent has no create-case verb, and this build has no create-case RPC or UI action for a person either: cases come from the
-deterministic intake. A `FAIL` is deliberately not one, so the base target and lead prompts state that a failing check is a finding in
-the issue ledger, and both surfaces read it with `list_issues`; the target session reads only its own target, the lead must name
-one of the agent's enrollments, and the read is bounded. It exists so a wake reports the issue id instead of asking for a case. `list_issues` is in the base tool set, not a capability: the boundary is true
-for every agent.
+deterministic intake. A `FAIL` is deliberately not one, so the base target and lead prompts state that a failing check is a finding
+in the issue ledger, and both surfaces read it with `list_issues`; the target session reads only its own target, the lead must name
+a target still in the agent's scope, and the read is bounded. `list_issues` is in the base tool set, not a capability: the boundary is
+true for every agent.
 
-The board is the read-only view of that table: `ListQualityAgentCases` lists one agent's work items, open ones first and soonest
-action first, with the class, the state, the repair attempts spent and the sentence naming the check. The agent's owner and
-administrators may read it. It is a projection, not a second state machine — nothing writes through it, and a person who wants to act
-does so through the check itself or by answering the escalation.
+The case board is a read-only projection over that table, not a second state machine: nothing writes through it, and a person who
+wants to act does so through the check itself or by answering the escalation. The agent's owner and administrators may read it.
 
 ## Delegated authority: participation and pins
 
@@ -117,7 +144,7 @@ How far an agent may go on a target is `participation`: `OBSERVE`, `REPAIR` (the
 
 A session blocks only on the runtime: a spent token or wake budget, a transient internal error, a concurrency limit. Those really do
 stop everything in the session, and they are retryable. Everything else — a change the delegation withholds, a failure no field
-change fixes, a decision that is not the agent's — is a **case escalation**: `escalate_case` moves one work item to `ESCALATED` and
+change fixes, a decision that is not the agent's — is a **case escalation**: `escalate_case` moves one work item to its terminal escalated state and
 raises one request with the agent's reason as the question. It acts on a work item only. A check that produced a FAIL has none — the
 issue ledger already reported it to the owner — so a wake has no case id to name there and must not manufacture one from an execution
 it read; the tool's refusal names the id space for exactly that reason. The distinction is the difference between losing one target's
@@ -145,8 +172,7 @@ poll.
 A wake that read a case and decided there was nothing to do pushes that case's next look out by an hour (`DeferQualityAgentCases`)
 before the release path merges it. Without that, the merge saw the same past-due instant after every wake, the clamp turned it into one
 wake a minute, and — because the merge is agent-wide — every one of the agent's target sessions woke with it: eight sessions woke
-fifty-three times in twelve minutes, each read the same evidence and concluded nothing had changed. Only `OPEN` and `DIAGNOSED`
-cases are deferred; a case waiting for a verification run keeps its own timing, because that run really is due.
+fifty-three times in twelve minutes, each read the same evidence and concluded nothing had changed. Only unfinished cases are deferred; a case waiting for a verification run keeps its own timing, because that run really is due.
 
 The merge happens twice on purpose: the engine's read covers the cases it rendered, and the lease release re-reads so a case another pass opened mid-wake is not left sleeping until the idle cadence.
 
@@ -181,13 +207,13 @@ Memory holds only confirmed asset facts: agents write them, a fact for the same 
 
 | Rule | Why / guard |
 | --- | --- |
-| An agent is an internal identity (one row plus an internal principal, no token, no external write API; external consumers get only the eight read-only MCP quality tools), and its sessions are durable: one active session per target, `ENABLED`/`BLOCKED`/`ARCHIVED`, created only by enrollment, readable by the owner and administrators, and resumable only by an administrator | agent/session tests + MCP tool guards |
+| An agent is an internal identity (one row plus an internal principal, no token, no external write API; external consumers get only the eight read-only MCP quality tools), and its sessions are durable: one active session per target, created only by enrollment, readable by the owner and administrators, and resumable only by an administrator | agent/session tests + MCP tool guards |
 | An agent's model is one stored `provider_profile` + `provider_model` pair, required at write and validated against the enabled profiles only when it changes; resolution is per wake with no fallback, and a vanished profile or model leaves the agent without a model instead of silently switching | provider config/handler tests + `llm` pair tests + engine tests |
 | Every model path of an agent — wake, compaction, triage drafts — and its enrollment admission use that agent's pair through one resolver; the workspace analysis pair never applies to an agent | engine/enrollment/draft tests + wiring review |
 | Model reasoning is display-only: it is persisted on the assistant transcript row when the provider returns it, never sent back to the provider, and never counted in the model context | loop/engine tests + conversion test |
 | The agent language is one config value used by the system prompt, the wake reminder and server prose; a language change updates the stored SYSTEM row in place on the next wake, and the prompt instructs the model not to translate identifiers | prompt/language tests + agentlang tests + engine test |
 | An ask answer is linked by `reply_to` and question ids, validated against the offered option labels, written atomically with the ask/request/subagent states, and delivered directly to the requests behind the ask; a batch question names a non-empty disjoint request subset and its answer reaches only those requests, while a message without `reply_to` answers no ask, a closed ask refuses a second answer, and an answer payload that cannot be paired is rendered as text rather than guessed | `dataquality/ask.go` tests + store integration + API/HTTP tests + UI card/bubble tests |
-| A wake continues the same conversation; the tool whitelist is read, propose (including `propose_revision`, which validates a value, records it on the case's escalation and escalates the case, and never writes a check), wake-control and exactly four publish-class writes: `repair_check` (applies a diagnosis's deterministic repair with a value the registry owns — or, at `tune` level only, a criterion that the replay proves leaves every failing run failing — validated, compiled, probed when the statement changed, written as one compare-and-set with the target fingerprint, case `ACTED` behind a planned verification run), `adopt_pending_drafts` (owner-question wake only, active agent with adoption ready, scoped, capped, audited, refused without the question), `run_check` (executes one check now as a diagnostic, authorized with `rules.run` on the target) and `control_check` (pauses a check that cannot produce a verdict, re-checking the case, participation, pins and diagnosis server-side, writing with an optimistic revision and escalating the case). There is no publish, edit, archive, resume, settings or reject tool; failure events are idempotent and capped | engine/context/owner-adoption/control tests |
+| A wake's writes are reads, proposals (`propose_revision`, `flag_proposal`), asset facts, lead messages/asks, wake-control and exactly four publish-class verbs: adopt a draft, run a check, pause a check whose own definition cannot run, apply a deterministic repair. The publish-class verbs are server-gated and audited; the three case verbs are case-scoped. No publish, edit, archive, resume, settings or reject tool exists; failure events are idempotent and capped | engine/control/owner-adoption tests |
 | Compaction trims old tool results first, then summarizes balanced tool pairs, never compacts the system prompt and never deletes the transcript; its threshold is derived from the pinned model's context window and output budget and its pressure from a per-script text estimate, and a model too small to compact cannot be pinned to an agent at selection time; memory holds only confirmed asset facts with automatic supersede and `get_memory` is read-only | compaction/engine tests + integration |
 
 ## Failure modes

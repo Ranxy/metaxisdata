@@ -163,7 +163,7 @@ func pinsField(pinned []string, field string) bool {
 type ControlAction string
 
 const (
-	// ControlPause stops a check that cannot produce a verdict, so its noise ends while a
+	// ControlPause stops a check whose own definition cannot run, so its noise ends while a
 	// person decides what to do with it.
 	ControlPause ControlAction = "PAUSE"
 	// ControlResume restarts a paused check. It is not a case verb: pausing escalates the case,
@@ -175,8 +175,8 @@ const (
 )
 
 // DecideControl answers whether one state change may be applied to one case. Pausing is only for
-// a check that cannot produce a verdict: there is no red to hide, so stopping the noise is safe,
-// while pausing a check that concludes would remove it from the score.
+// a check whose own definition cannot run: there is no red to hide, so stopping the noise is
+// safe, while pausing a check that concludes would remove it from the score.
 func (p Policy) DecideControl(facts CaseFacts, action ControlAction) Verdict {
 	if facts.ManualLock {
 		return Verdict{Reason: "a person manages this check"}

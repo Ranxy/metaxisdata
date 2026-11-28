@@ -35,10 +35,10 @@ type AgentControlResult struct {
 	Reason   string `json:"reason"`
 }
 
-// ControlAgentCheck pauses a check whose case says it cannot run. It is the one write that ends
-// the noise of a broken check without deciding anything about the data: pausing a check that
-// cannot produce a verdict hides no red, and the escalated case tells a person that a decision
-// about the check is still owed.
+// ControlAgentCheck pauses a check whose own definition cannot run (a refused bound, an
+// unsupported column or a moved structure). It is the one write that ends the noise of a broken
+// check without deciding anything about the data: such a check hides no red, and the escalated
+// case tells a person that a decision about the check is still owed.
 func (s *DataQualityService) ControlAgentCheck(ctx context.Context, agentPrincipalID int32, caseResourceID, action string) (*AgentControlResult, error) {
 	openCase, agent, err := s.agentCaseForRepair(ctx, agentPrincipalID, caseResourceID, permission.DataQualityRulesRepair)
 	if err != nil {

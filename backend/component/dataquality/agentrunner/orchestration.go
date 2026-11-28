@@ -1170,11 +1170,9 @@ func normalizeCaseResourceID(value string) string {
 	return value
 }
 
-// caseReferenceProblem names a reference that can never be a work item before the
-// write path turns it into a generic ownership error. "qualityRules/..." normalizes to
-// "qualityRules" and used to read as "case qualityRules does not belong to this
-// target", which hid the real answer: a check or an execution is not a case, and a
-// FAIL is tracked by the issue ledger instead.
+// caseReferenceProblem rejects a check, execution or issue reference before the write
+// path turns it into a generic ownership error. These verbs act on a case; a FAIL is
+// tracked by the issue ledger, and list_issues names it.
 func caseReferenceProblem(value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {

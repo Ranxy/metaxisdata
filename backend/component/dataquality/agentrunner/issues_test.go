@@ -150,7 +150,7 @@ func TestListIssuesLeadReadsTheNamedTarget(t *testing.T) {
 	require.Equal(t, "t", *stores.lastIssueFind.TargetGUID)
 }
 
-// A lead may name a target only if it is one of the agent's enrollments; a raw GUID
+// A lead may name a target only if it is still in the agent's scope; a raw GUID
 // outside the team must not become a cross-agent ledger read.
 func TestListIssuesLeadRejectsAnUnenrolledTarget(t *testing.T) {
 	t.Parallel()

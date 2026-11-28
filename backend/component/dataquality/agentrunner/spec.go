@@ -46,9 +46,9 @@ func evidenceMeta() tool.Meta {
 	return meta
 }
 
-// issuesMeta is the metadata of the problem-ledger read. issues.list is in the member
-// baseline, so it cannot express "this agent, these databases": the target session
-// reads only its own target, and the lead must name one of the agent's enrollments.
+// issuesMeta is the problem-ledger read. issues.list is baseline and cannot express
+// "this agent, these databases": the target session is fixed, and the lead is bounded
+// by requireLeadTarget.
 func issuesMeta() tool.Meta {
 	meta := readMeta()
 	meta.Permission = string(permission.DataQualityIssuesList)
