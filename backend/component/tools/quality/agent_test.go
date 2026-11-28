@@ -448,6 +448,39 @@ func TestFlagProposalPassesTheConcernThrough(t *testing.T) {
 	require.ErrorContains(t, err, "needs a draft and a concern")
 }
 
+// withdraw_draft is the author's exit from the review queue: it takes the draft and the reason to the
+// application layer and reports the queue state. It is not a rejection, so a correct retraction must
+// say so instead of borrowing the decision vocabulary.
+func TestWithdrawDraftPassesTheRetractionThrough(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotDraft, gotReason string
+	tools := NewAgentTools(AgentDeps{
+		Store: &fakeAgentStore{},
+		Withdraw: func(_ context.Context, principalID int32, draftResourceID, reason string) (WithdrawOutcome, error) {
+			gotPrincipal, gotDraft, gotReason = principalID, draftResourceID, reason
+			return WithdrawOutcome{Draft: "qualitySuggestions/s123", Reason: reason, State: "WITHDRAWN"}, nil
+		},
+	})
+	result, err := tools.WithdrawDraft(context.Background(), AgentSession{AgentPrincipalID: 110},
+		`{"draft":"qualitySuggestions/s123","reason":"the table is emptied by the ETL every night"}`)
+	require.NoError(t, err)
+	require.Equal(t, int32(110), gotPrincipal)
+	require.Equal(t, "qualitySuggestions/s123", gotDraft)
+	require.Equal(t, "the table is emptied by the ETL every night", gotReason)
+	require.Contains(t, result, `"state":"WITHDRAWN"`)
+	require.Contains(t, result, "a corrected draft may be proposed again")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).WithdrawDraft(context.Background(), AgentSession{},
+		`{"draft":"s1","reason":"x"}`)
+	require.ErrorContains(t, err, "not configured")
+
+	_, err = NewAgentTools(AgentDeps{Store: &fakeAgentStore{}}).WithdrawDraft(context.Background(), AgentSession{},
+		`{"draft":"s1"}`)
+	require.ErrorContains(t, err, "needs a draft and a reason")
+}
+
 // escalate_case is the model's exit for a decision it may not make: it carries the work item and the
 // question to the application layer, which turns it into an escalated case and an owner attention.
 func TestEscalateCasePassesTheQuestionThrough(t *testing.T) {

@@ -182,7 +182,7 @@ type qualityDraftChecks struct {
 // is attributed to the agent's principal, which is also how the agent's own provider
 // and model are resolved: a triage wake drafts on the model the agent was configured
 // with, not on a workspace default.
-func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]agentrunner.DraftedCheck, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 	agent, err := d.store.GetQualityAgentByPrincipalID(ctx, int(createdBy))
 	if err != nil {
 		return nil, nil, nil, err
@@ -203,11 +203,27 @@ func (d *qualityDraftChecks) DraftChecks(ctx context.Context, targetGUID string,
 		}
 		return nil, nil, nil, err
 	}
-	titles := make([]string, 0, len(queued))
+	return draftedChecks(queued), rejections, summary, nil
+}
+
+// draftedChecks names each draft a drafting call queued, not only its title: the model
+// must be able to flag or withdraw a proposal it just created without a second read of
+// the queue. A config this build cannot map keeps an empty ruleType instead of failing
+// the whole result.
+func draftedChecks(queued []*store.QualitySuggestionMessage) []agentrunner.DraftedCheck {
+	drafts := make([]agentrunner.DraftedCheck, 0, len(queued))
 	for _, suggestion := range queued {
-		titles = append(titles, suggestion.Payload.GetRule().GetTitle())
+		draft := agentrunner.DraftedCheck{
+			ID:         "qualitySuggestions/" + suggestion.ResourceID,
+			Title:      suggestion.Payload.GetRule().GetTitle(),
+			Confidence: suggestion.Confidence,
+		}
+		if ruleType, ok := dataquality.RuleTypeForDraftConfig(suggestion.Payload.GetRule().GetConfig()); ok {
+			draft.RuleType = dataquality.RuleTypeShortName(ruleType)
+		}
+		drafts = append(drafts, draft)
 	}
-	return titles, rejections, summary, nil
+	return drafts
 }
 
 // triageAllowedRuleTypes renders the check types draft_checks can propose on a

@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -42,12 +43,18 @@ func newDraftAgent(t *testing.T) *draftAgent {
 	workspaceID, err := testEnv.Store.GetWorkspaceID(ctx)
 	require.NoError(t, err)
 	resourceID := fmt.Sprintf("itqa%d", fixtureSequence.Add(1))
+	targetGUID := fmt.Sprintf("it-qualityagent;%s;;orders", resourceID)
 	agent, err := testEnv.Store.CreateQualityAgent(ctx, resourceID, "integration quality agent "+resourceID, "", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		// The suite owns a disposable database, but deleting the agent keeps repeated
-		// local runs small. Sessions, requests, asks and cases cascade from it.
+		// local runs small. Sessions, requests, asks and cases cascade from it; drafts do
+		// not cascade (agent_id is SET NULL), so they are removed by target.
 		background := context.Background()
+		if _, deleteErr := testEnv.Store.GetDB().ExecContext(background,
+			`DELETE FROM quality_suggestion WHERE target_guid = $1`, targetGUID); deleteErr != nil {
+			t.Logf("cleanup: failed to delete drafts for %s: %v", targetGUID, deleteErr)
+		}
 		if _, deleteErr := testEnv.Store.GetDB().ExecContext(background,
 			`DELETE FROM quality_agent WHERE id = $1`, agent.ID); deleteErr != nil {
 			t.Logf("cleanup: failed to delete quality agent %d: %v", agent.ID, deleteErr)
@@ -59,7 +66,6 @@ func newDraftAgent(t *testing.T) *draftAgent {
 	})
 	lead, err := testEnv.Store.EnsureQualityAgentConversation(ctx, workspaceID, agent.ID)
 	require.NoError(t, err)
-	targetGUID := fmt.Sprintf("it-qualityagent;%s;;orders", resourceID)
 	session, err := testEnv.Store.CreateQualityAgentSession(ctx, &store.CreateQualityAgentSessionInput{
 		WorkspaceID:     workspaceID,
 		AgentID:         agent.ID,
@@ -223,3 +229,69 @@ $$ LANGUAGE plpgsql`, function, condition))
 }
 
 func nowUTC() time.Time { return time.Now().UTC() }
+
+// queueDraft queues one pending agent draft on the fixture's target. The column makes
+// the proposal identity distinct; the caller chooses the resource id so a failure
+// names the draft.
+func queueDraft(t *testing.T, f *draftAgent, resourceID, column string) *store.QualitySuggestionMessage {
+	t.Helper()
+
+	payload := &storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{
+		Rule: &storepb.QualityRuleDraftConfig{
+			Title:      "unique " + column,
+			Confidence: 0.8,
+			Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
+				Unique: &storepb.UniqueConfig{Column: column},
+			}},
+		},
+	}}
+	queued, _, err := f.env.store.QueueQualitySuggestion(f.ctx, &store.QualitySuggestionMessage{
+		ResourceID: resourceID,
+		Kind:       storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		Source:     storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
+		AgentID:    &f.agent.ID,
+		TargetGUID: f.targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Signature: dataquality.RuleSignature(
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, payload.GetRule().GetConfig()),
+		Payload:    payload,
+		Status:     storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		Confidence: 0.8,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, queued)
+	return queued
+}
+
+// seedProposalAsk writes the approval ask the adoption pass leaves for one target, in
+// the same shape the pass writes it: a runner assistant question announced as an ask.
+func seedProposalAsk(t *testing.T, f *draftAgent) *store.QualityAgentAskMessage {
+	t.Helper()
+
+	askID := fmt.Sprintf("itask%d", fixtureSequence.Add(1))
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  askID,
+		WorkspaceID: f.env.workspaceID,
+		AgentID:     f.agent.ID,
+		Kind:        store.QualityAgentAskKindApproval,
+		Title:       "check drafts",
+		Question:    "one or more drafts need a decision",
+		TargetGUID:  f.targetGUID,
+		TargetType:  storepb.MetaType_TABLE,
+		DedupeKey:   store.ProposalAskDedupeKey(f.targetGUID),
+	}
+	created, isNew, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead,
+		&store.QualityAgentTranscriptMessage{
+			Wake:           f.lead.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
+			Content:        ask.Question,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			IdempotencyKey: "proposal-ask:" + askID,
+		}, nil, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, isNew)
+	return created
+}

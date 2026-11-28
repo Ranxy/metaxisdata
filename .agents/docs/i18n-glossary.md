@@ -180,6 +180,7 @@ agent than reading the JSON.
 | quality score | 质量分 | Data Quality | The 0-100 weighted health of a target or the workspace over its judged checks; unset, not 100, while nothing has been judged. | dataQuality. | zh-CN: `质量评分`, `质量得分` |
 | pass rate | 通过率 | Data Quality | The share of a target's recent completed executions that passed. | dataQuality. | zh-CN: `合格率` |
 | superseded | 已失效 | Data Quality | The server closed a proposal because its fact now exists; it was never a person's decision, and the same proposal may be queued again later. | dataQuality. | zh-CN: `已取代`, `已作废` |
+| withdrawn | 已撤回 | Data Quality | The proposing agent retracted its own undecided proposal; it was never a person's decision, and the same proposal may be queued again later. | dataQuality. | zh-CN: `已撤销` |
 | check | 检查 | Data Quality | One typed check over one target table or column, run on a schedule or on demand, authored inside its target contract. | dataQuality., menu. | — |
 | check type | 检查类型 | Data Quality | The category a check belongs to; it decides which configuration the check carries and how its verdict is read. | dataQuality. | en-US: `/\brule types?/i`; zh-CN: `规则类型`, `规则种类` |
 | check result | 检查结果 | Data Quality | The verdict of an execution. | dataQuality. | — |

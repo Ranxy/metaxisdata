@@ -1401,7 +1401,8 @@
       "pending": "Pending",
       "rejected": "Rejected",
       "superseded": "Superseded",
-      "unspecified": "Unspecified"
+      "unspecified": "Unspecified",
+      "withdrawn": "Withdrawn"
     },
     "suggestionSummary": {
       "created": "{count} new",
@@ -1516,6 +1517,7 @@
       "supersededByServer": "Closed by the server",
       "title": "Suggestion queue",
       "viewAllStatuses": "Show all statuses",
+      "withdrawnByAgent": "Withdrawn by the agent",
       "workbench": {}
     },
     "tags": "Tags",

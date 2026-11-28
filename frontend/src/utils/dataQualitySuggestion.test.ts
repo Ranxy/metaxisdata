@@ -143,6 +143,9 @@ describe("suggestion vocabulary", () => {
     expect(suggestionStatusKey(QualitySuggestionStatus.SUPERSEDED)).toBe(
       "dataQuality.suggestionStatus.superseded"
     );
+    expect(suggestionStatusKey(QualitySuggestionStatus.WITHDRAWN)).toBe(
+      "dataQuality.suggestionStatus.withdrawn"
+    );
     expect(suggestionStatusKey(QualitySuggestionStatus.UNSPECIFIED)).toBe(
       "dataQuality.suggestionStatus.unspecified"
     );
@@ -164,6 +167,10 @@ describe("suggestion vocabulary", () => {
     // The server closed this one; it is never a person's decision, so it does
     // not share the rejected tone.
     expect(suggestionStatusVariant(QualitySuggestionStatus.SUPERSEDED)).toBe(
+      "outline"
+    );
+    // The author retracted this one; it is still not a person's decision.
+    expect(suggestionStatusVariant(QualitySuggestionStatus.WITHDRAWN)).toBe(
       "outline"
     );
     expect(suggestionStatusVariant(99 as QualitySuggestionStatus)).toBe(

@@ -89,6 +89,17 @@ const decideQualitySuggestionQuery = `
 	WHERE resource_id = $1 AND status = 1
 	RETURNING ` + qualitySuggestionColumns
 
+// withdrawQualitySuggestionQuery retracts one pending draft on its author's behalf.
+// The author predicate is part of the write, not only of the caller's read: an agent
+// may withdraw only a draft it queued, and the status guard makes a reviewer's
+// decision that landed first win. decided_by stays NULL because a withdrawal is not
+// a decision.
+const withdrawQualitySuggestionQuery = `
+	UPDATE quality_suggestion
+	SET status = $2, decided_at = $3, decision_note = $4, refreshed_at = NULL
+	WHERE resource_id = $1 AND agent_id = $5 AND status = $6
+	RETURNING ` + qualitySuggestionColumns
+
 // reopenQualitySuggestionQuery puts an accepted suggestion back into the queue.
 // The caller uses it when it claimed a draft in order to create a rule and the rule
 // write then failed: the claim is not a decision the reviewer made, so leaving the
@@ -487,6 +498,34 @@ func (s *Store) SetQualitySuggestionConcern(ctx context.Context, resourceID, con
 	return stored, true, nil
 }
 
+// WithdrawQualitySuggestion closes one pending draft its proposing agent no longer
+// stands behind. It is the author's retraction, not a reviewer's rejection: the row
+// keeps no decider (decided_by stays NULL), the note says why, and the identity may
+// be proposed again. Only a PENDING row owned by agentID can be withdrawn; a decision
+// that landed first, a draft of another agent, and an already withdrawn row all
+// return applied=false with no error, and the caller tells them apart by re-reading
+// the row.
+func (s *Store) WithdrawQualitySuggestion(ctx context.Context, resourceID string, agentID int64, note string, at time.Time) (*QualitySuggestionMessage, bool, error) {
+	if strings.TrimSpace(resourceID) == "" || agentID <= 0 {
+		return nil, false, common.Errorf(common.Invalid, "a draft and its proposing agent are required")
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	} else {
+		at = at.UTC()
+	}
+	withdrawn, err := scanQualitySuggestion(s.GetDB().QueryRowContext(ctx, withdrawQualitySuggestionQuery,
+		resourceID, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN), at,
+		strings.TrimSpace(note), agentID, int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to withdraw a quality suggestion")
+	}
+	return withdrawn, true, nil
+}
+
 // GetQualitySuggestion returns the suggestion the find names, or (nil, nil) when
 // it does not exist.
 func (s *Store) GetQualitySuggestion(ctx context.Context, find *FindQualitySuggestionMessage) (*QualitySuggestionMessage, error) {
@@ -711,7 +750,7 @@ func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID
 	return states, nil
 }
 
-// DeleteExpiredQualitySuggestions removes the decided suggestions older than
+// DeleteExpiredQualitySuggestions removes the closed suggestions older than
 // cutoff. A pending suggestion is never pruned: it is still waiting for a
 // reviewer.
 func (s *Store) DeleteExpiredQualitySuggestions(ctx context.Context, cutoff time.Time) (int64, error) {

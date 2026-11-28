@@ -101,3 +101,15 @@ func TestDraftConcernReasonQuotesTheAgentObjection(t *testing.T) {
 	require.True(t, flagged)
 	require.LessOrEqual(t, len(reason), len("the agent flagged its own draft: ")+300)
 }
+
+// A draft that left the queue before adoption was closed by another writer, not failed:
+// counting it as a failed write would put a change nobody attempted on the owner's home.
+func TestAdoptionClaimLostOnlyCoversAClosedDraft(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, adoptionClaimLost(connect.NewError(connect.CodeAborted,
+		errors.New("quality suggestion is already decided"))))
+	require.False(t, adoptionClaimLost(connect.NewError(connect.CodeInvalidArgument,
+		errors.New("the draft config is invalid"))))
+	require.False(t, adoptionClaimLost(errors.New("plain failure")))
+}

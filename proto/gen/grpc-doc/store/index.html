@@ -7662,7 +7662,7 @@ the server (for example an industry or municipal code set).</p></td>
         </table>
       
         <h3 id="metaxisdata.store.QualitySuggestionStatus">QualitySuggestionStatus</h3>
-        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p><p>PENDING is the one live state. ACCEPTED and REJECTED are human decisions and</p><p>are final. SUPERSEDED means the proposal stopped being relevant before anybody</p><p>decided it (the fact it proposed already exists, or the target changed); it is</p><p>closed by the server, never by a reviewer, and its identity may be proposed</p><p>again later.</p>
+        <p>QualitySuggestionStatus is where a suggestion is in the review queue.</p><p>PENDING is the one live state. ACCEPTED and REJECTED are human decisions and</p><p>are final. SUPERSEDED means the proposal stopped being relevant before anybody</p><p>decided it (the fact it proposed already exists, or the target changed); it is</p><p>closed by the server, never by a reviewer, and its identity may be proposed</p><p>again later. WITHDRAWN means the proposing agent retracted its own proposal</p><p>before anybody decided it; it is not a reviewer's decision either, and its</p><p>identity may be proposed again later.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -7696,6 +7696,12 @@ the server (for example an industry or municipal code set).</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_STATUS_SUPERSEDED</td>
                 <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_STATUS_WITHDRAWN</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             

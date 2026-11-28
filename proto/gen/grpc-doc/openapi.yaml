@@ -8054,6 +8054,7 @@ paths:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     format: enum
                 - name: kind
@@ -17107,6 +17108,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     format: enum
                 provider:
@@ -17121,9 +17123,13 @@ components:
                     format: date-time
                 decidedBy:
                     type: string
-                    description: 'Who decided it. Format: users/{user}. Empty while pending.'
+                    description: |-
+                        Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+                         suggestion, which no reviewer decided; a withdrawal's reason is in
+                         decision_note.
                 decideTime:
                     type: string
+                    description: When the reviewer decided it, or when the proposing agent withdrew it.
                     format: date-time
                 decisionNote:
                     type: string
@@ -19328,6 +19334,7 @@ components:
                         - QUALITY_SUGGESTION_STATUS_ACCEPTED
                         - QUALITY_SUGGESTION_STATUS_REJECTED
                         - QUALITY_SUGGESTION_STATUS_SUPERSEDED
+                        - QUALITY_SUGGESTION_STATUS_WITHDRAWN
                     type: string
                     description: |-
                         The decision: ACCEPTED or REJECTED. A suggestion starts PENDING and a

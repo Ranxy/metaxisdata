@@ -1022,13 +1022,16 @@ enum QualitySuggestionKind {
 // final. SUPERSEDED means the server closed the proposal because its fact already
 // exists (the column now has a label, or a rule with the same identity exists) or
 // the target changed; it was never decided, and the same proposal may be queued
-// again later.
+// again later. WITHDRAWN means the agent that proposed it took it back before a
+// person decided; it is not a reviewer's decision either, and the same proposal
+// may be queued again later.
 enum QualitySuggestionStatus {
   QUALITY_SUGGESTION_STATUS_UNSPECIFIED = 0;
   QUALITY_SUGGESTION_STATUS_PENDING = 1;
   QUALITY_SUGGESTION_STATUS_ACCEPTED = 2;
   QUALITY_SUGGESTION_STATUS_REJECTED = 3;
   QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
+  QUALITY_SUGGESTION_STATUS_WITHDRAWN = 5;
 }
 
 // QualitySuggestionSource is what produced a suggestion.
@@ -2076,9 +2079,12 @@ message QualitySuggestion {
 
   google.protobuf.Timestamp create_time = 10;
 
-  // Who decided it. Format: users/{user}. Empty while pending.
+  // Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+  // suggestion, which no reviewer decided; a withdrawal's reason is in
+  // decision_note.
   string decided_by = 11 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
 
+  // When the reviewer decided it, or when the proposing agent withdrew it.
   google.protobuf.Timestamp decide_time = 12;
 
   string decision_note = 13;

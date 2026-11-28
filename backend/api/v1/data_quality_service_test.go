@@ -767,6 +767,20 @@ func TestApplyQualitySuggestionListFilters(t *testing.T) {
 	require.NoError(t, applyQualitySuggestionListFilters(raw, &v1pb.ListQualitySuggestionsRequest{Instance: "instance_1"}))
 	require.Equal(t, "instance_1", raw.Instance)
 
+	// Every status the queue renders is a filter the list accepts; a value the UI
+	// offers but the switch forgets turns the filter into InvalidArgument.
+	for _, status := range []v1pb.QualitySuggestionStatus{
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN,
+	} {
+		scoped := &store.FindQualitySuggestionMessage{}
+		require.NoError(t, applyQualitySuggestionListFilters(scoped, &v1pb.ListQualitySuggestionsRequest{Status: status}))
+		require.Equal(t, []storepb.QualitySuggestionStatus{storepb.QualitySuggestionStatus(status)}, scoped.Statuses)
+	}
+
 	empty := &store.FindQualitySuggestionMessage{}
 	require.NoError(t, applyQualitySuggestionListFilters(empty, &v1pb.ListQualitySuggestionsRequest{}))
 	require.Empty(t, empty.Statuses)

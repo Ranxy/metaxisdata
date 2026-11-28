@@ -904,7 +904,9 @@ func (QualitySuggestionKind) EnumDescriptor() ([]byte, []int) {
 // final. SUPERSEDED means the server closed the proposal because its fact already
 // exists (the column now has a label, or a rule with the same identity exists) or
 // the target changed; it was never decided, and the same proposal may be queued
-// again later.
+// again later. WITHDRAWN means the agent that proposed it took it back before a
+// person decided; it is not a reviewer's decision either, and the same proposal
+// may be queued again later.
 type QualitySuggestionStatus int32
 
 const (
@@ -913,6 +915,7 @@ const (
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED    QualitySuggestionStatus = 2
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED    QualitySuggestionStatus = 3
 	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED  QualitySuggestionStatus = 4
+	QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN   QualitySuggestionStatus = 5
 )
 
 // Enum value maps for QualitySuggestionStatus.
@@ -923,6 +926,7 @@ var (
 		2: "QUALITY_SUGGESTION_STATUS_ACCEPTED",
 		3: "QUALITY_SUGGESTION_STATUS_REJECTED",
 		4: "QUALITY_SUGGESTION_STATUS_SUPERSEDED",
+		5: "QUALITY_SUGGESTION_STATUS_WITHDRAWN",
 	}
 	QualitySuggestionStatus_value = map[string]int32{
 		"QUALITY_SUGGESTION_STATUS_UNSPECIFIED": 0,
@@ -930,6 +934,7 @@ var (
 		"QUALITY_SUGGESTION_STATUS_ACCEPTED":    2,
 		"QUALITY_SUGGESTION_STATUS_REJECTED":    3,
 		"QUALITY_SUGGESTION_STATUS_SUPERSEDED":  4,
+		"QUALITY_SUGGESTION_STATUS_WITHDRAWN":   5,
 	}
 )
 
@@ -7826,8 +7831,11 @@ type QualitySuggestion struct {
 	Model         string                 `protobuf:"bytes,8,opt,name=model,proto3" json:"model,omitempty"`
 	PromptVersion string                 `protobuf:"bytes,9,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
 	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// Who decided it. Format: users/{user}. Empty while pending.
-	DecidedBy    string                 `protobuf:"bytes,11,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
+	// Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+	// suggestion, which no reviewer decided; a withdrawal's reason is in
+	// decision_note.
+	DecidedBy string `protobuf:"bytes,11,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
+	// When the reviewer decided it, or when the proposing agent withdrew it.
 	DecideTime   *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=decide_time,json=decideTime,proto3" json:"decide_time,omitempty"`
 	DecisionNote string                 `protobuf:"bytes,13,opt,name=decision_note,json=decisionNote,proto3" json:"decision_note,omitempty"`
 	// When a later generation pass refreshed this pending proposal's payload.
@@ -24894,13 +24902,14 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x15QualitySuggestionKind\x12'\n" +
 	"#QUALITY_SUGGESTION_KIND_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"QUALITY_SUGGESTION_KIND_RULE_DRAFT\x10\x01\x12!\n" +
-	"\x1dQUALITY_SUGGESTION_KIND_LABEL\x10\x02*\xe5\x01\n" +
+	"\x1dQUALITY_SUGGESTION_KIND_LABEL\x10\x02*\x8e\x02\n" +
 	"\x17QualitySuggestionStatus\x12)\n" +
 	"%QUALITY_SUGGESTION_STATUS_UNSPECIFIED\x10\x00\x12%\n" +
 	"!QUALITY_SUGGESTION_STATUS_PENDING\x10\x01\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_ACCEPTED\x10\x02\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_REJECTED\x10\x03\x12(\n" +
-	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\xc9\x01\n" +
+	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04\x12'\n" +
+	"#QUALITY_SUGGESTION_STATUS_WITHDRAWN\x10\x05*\xc9\x01\n" +
 	"\x17QualitySuggestionSource\x12)\n" +
 	"%QUALITY_SUGGESTION_SOURCE_UNSPECIFIED\x10\x00\x12.\n" +
 	"*QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE\x10\x01\x12%\n" +

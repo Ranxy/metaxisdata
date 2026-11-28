@@ -2456,7 +2456,8 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 	case storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
 		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED,
-		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED:
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN:
 		find.Statuses = []storepb.QualitySuggestionStatus{status}
 	default:
 		return connectErrorInvalid("unknown quality suggestion status %d", status)
@@ -2566,7 +2567,9 @@ func qualitySuggestionDecision(decision v1pb.QualitySuggestionStatus) (storepb.Q
 	case v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED:
 		return storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED, nil
 	case v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_UNSPECIFIED,
-		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING:
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_SUPERSEDED,
+		v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_WITHDRAWN:
 		return 0, connectErrorInvalid("decision must be ACCEPTED or REJECTED")
 	default:
 		return 0, connectErrorInvalid("unknown quality suggestion decision %d", decision)

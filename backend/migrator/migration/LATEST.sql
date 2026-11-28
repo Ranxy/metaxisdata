@@ -1239,7 +1239,7 @@ CREATE TABLE IF NOT EXISTS quality_suggestion (
     -- Deterministic proposal identity. Rows from before identity-keyed queueing
     -- carry a unique "legacy:" value and are never deduplicated.
     signature TEXT COLLATE "C" NOT NULL DEFAULT '',
-    -- 1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED.
+    -- 1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED, 5 WITHDRAWN.
     status INT2 NOT NULL DEFAULT 1,
     provider TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
@@ -1257,7 +1257,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_suggestion_target ON quality_suggestion(t
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_suggestion_pending_signature
     ON quality_suggestion(target_guid, target_type, signature)
     WHERE status = 1;
-COMMENT ON COLUMN quality_suggestion.status IS '1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED';
+COMMENT ON COLUMN quality_suggestion.status IS '1 PENDING, 2 ACCEPTED, 3 REJECTED, 4 SUPERSEDED, 5 WITHDRAWN (retracted by its proposing agent)';
 COMMENT ON COLUMN quality_suggestion.signature IS 'Deterministic proposal identity: label|<column> or rule|<type>|<sorted columns>|<discriminator>; one PENDING row per (target, signature)';
 COMMENT ON COLUMN quality_suggestion.refreshed_at IS 'When a later generation pass refreshed this pending proposal';
 

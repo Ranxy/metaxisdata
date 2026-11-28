@@ -268,11 +268,11 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			},
 		},
 		{
-			// Only decided suggestions are pruned; a pending one is still waiting
+			// Only closed suggestions are pruned; a pending one is still waiting
 			// for a reviewer.
 			name:    "quality_suggestions",
-			failure: "Failed to prune decided quality suggestions",
-			success: "Pruned decided quality suggestions",
+			failure: "Failed to prune closed quality suggestions",
+			success: "Pruned closed quality suggestions",
 			delete: func(ctx context.Context) (int64, error) {
 				return r.store.DeleteExpiredQualitySuggestions(ctx, now.Add(-qualitySuggestionRetention))
 			},

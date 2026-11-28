@@ -163,6 +163,13 @@ func configureGrpcRouters(
 			}
 			return quality.FlagOutcome{Draft: result.Draft, Concern: result.Concern, State: result.State}, nil
 		})
+		sessionEngine.SetWithdraw(func(ctx context.Context, agentPrincipalID int32, draftResourceID, reason string) (quality.WithdrawOutcome, error) {
+			result, err := dataQualityService.WithdrawAgentDraft(ctx, agentPrincipalID, draftResourceID, reason)
+			if err != nil {
+				return quality.WithdrawOutcome{}, err
+			}
+			return quality.WithdrawOutcome{Draft: result.Draft, Reason: result.Reason, State: result.State}, nil
+		})
 		sessionEngine.SetPropose(func(ctx context.Context, agentPrincipalID int32, caseResourceID, field, value, rationale string) (quality.ProposalOutcome, error) {
 			result, err := dataQualityService.ProposeAgentRevision(ctx, agentPrincipalID, caseResourceID, field, value, rationale)
 			if err != nil {

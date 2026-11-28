@@ -2622,13 +2622,17 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
   createTime?: Timestamp;
 
   /**
-   * Who decided it. Format: users/{user}. Empty while pending.
+   * Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+   * suggestion, which no reviewer decided; a withdrawal's reason is in
+   * decision_note.
    *
    * @generated from field: string decided_by = 11;
    */
   decidedBy: string;
 
   /**
+   * When the reviewer decided it, or when the proposing agent withdrew it.
+   *
    * @generated from field: google.protobuf.Timestamp decide_time = 12;
    */
   decideTime?: Timestamp;
@@ -11582,7 +11586,9 @@ export declare const QualitySuggestionKindSchema: GenEnum<QualitySuggestionKind>
  * final. SUPERSEDED means the server closed the proposal because its fact already
  * exists (the column now has a label, or a rule with the same identity exists) or
  * the target changed; it was never decided, and the same proposal may be queued
- * again later.
+ * again later. WITHDRAWN means the agent that proposed it took it back before a
+ * person decided; it is not a reviewer's decision either, and the same proposal
+ * may be queued again later.
  *
  * @generated from enum metaxisdata.v1.QualitySuggestionStatus
  */
@@ -11611,6 +11617,11 @@ export enum QualitySuggestionStatus {
    * @generated from enum value: QUALITY_SUGGESTION_STATUS_SUPERSEDED = 4;
    */
   SUPERSEDED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_STATUS_WITHDRAWN = 5;
+   */
+  WITHDRAWN = 5,
 }
 
 /**

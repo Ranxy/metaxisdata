@@ -8529,8 +8529,8 @@ normal rule or label path.
 | model | [string](#string) |  |  |
 | prompt_version | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| decided_by | [string](#string) |  | Who decided it. Format: users/{user}. Empty while pending. |
-| decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| decided_by | [string](#string) |  | Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN suggestion, which no reviewer decided; a withdrawal&#39;s reason is in decision_note. |
+| decide_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the reviewer decided it, or when the proposing agent withdrew it. |
 | decision_note | [string](#string) |  |  |
 | refresh_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When a later generation pass refreshed this pending proposal&#39;s payload. Unset when the proposal has not been refreshed. |
 | viewer_permissions | [string](#string) | repeated | The permissions the caller holds on this suggestion&#39;s target, e.g. &#34;metaxisdata.dataQuality.rules.create&#34;. Output only; a page uses it to gate the row&#39;s create-rule and decision actions without a second request. |
@@ -10310,7 +10310,9 @@ PENDING is the one live state. ACCEPTED and REJECTED are human decisions and
 final. SUPERSEDED means the server closed the proposal because its fact already
 exists (the column now has a label, or a rule with the same identity exists) or
 the target changed; it was never decided, and the same proposal may be queued
-again later.
+again later. WITHDRAWN means the agent that proposed it took it back before a
+person decided; it is not a reviewer&#39;s decision either, and the same proposal
+may be queued again later.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -10319,6 +10321,7 @@ again later.
 | QUALITY_SUGGESTION_STATUS_ACCEPTED | 2 |  |
 | QUALITY_SUGGESTION_STATUS_REJECTED | 3 |  |
 | QUALITY_SUGGESTION_STATUS_SUPERSEDED | 4 |  |
+| QUALITY_SUGGESTION_STATUS_WITHDRAWN | 5 |  |
 
 
 

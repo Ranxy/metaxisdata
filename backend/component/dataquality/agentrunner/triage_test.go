@@ -48,16 +48,19 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 	require.Contains(t, result, `"allowedRuleTypes":["ROW_COUNT","ROW_COUNT_CHANGE"]`)
 }
 
-func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
+func TestDraftChecksToolBoundsColumnsAndNamesItsDrafts(t *testing.T) {
 	t.Parallel()
 
 	var gotColumns []string
 	var gotIntent string
 	engine := NewEngine(newFakeStore())
-	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+	engine.draftChecks = func(_ context.Context, _ string, _ storepb.MetaType, columns []string, intent string, _ int32) ([]DraftedCheck, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 		gotColumns = columns
 		gotIntent = intent
-		return []string{"orders amount not null", "orders id unique"}, nil, nil, nil
+		return []DraftedCheck{
+			{ID: "qualitySuggestions/draft-1", Title: "orders amount not null", RuleType: "NULL_RATE", Confidence: 0.8},
+			{ID: "qualitySuggestions/draft-2", Title: "orders id unique", RuleType: "UNIQUE"},
+		}, nil, nil, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
 	result, err := engine.executeTool(context.Background(), testSession(), nil, "draft_checks", args, &wakeControl{})
@@ -65,7 +68,11 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	require.Len(t, gotColumns, quality.MaxTriageDraftColumns)
 	require.Equal(t, "watch order integrity", gotIntent)
 	require.Contains(t, result, `"queued":2`)
+	require.Contains(t, result, `"id":"qualitySuggestions/draft-1"`, "the model must be able to withdraw what it just queued")
+	require.Contains(t, result, `"ruleType":"NULL_RATE"`)
+	require.Contains(t, result, `"confidence":0.8`)
 	require.Contains(t, result, "orders id unique")
+	require.Contains(t, result, "withdraw_draft")
 	require.NotContains(t, result, `"rejected"`)
 }
 
@@ -82,7 +89,7 @@ func TestDraftChecksToolExplainsUnqueuedDrafts(t *testing.T) {
 	}{
 		{
 			name: "a refused draft carries its reason",
-			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]DraftedCheck, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 				return nil, []dataquality.DraftRejection{{
 					Title:  "Status must be a declared enum label",
 					Reason: `value "discontinued" is not a declared label of column "status"; valid labels: "active", "draft"`,
@@ -92,7 +99,7 @@ func TestDraftChecksToolExplainsUnqueuedDrafts(t *testing.T) {
 		},
 		{
 			name: "a valid draft skipped by the queue is counted",
-			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
+			draft: func(context.Context, string, storepb.MetaType, []string, string, int32) ([]DraftedCheck, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error) {
 				return nil, nil, &storepb.QualitySuggestionQueueSummary{
 					SkippedExistingFact: 2,
 					SkippedDecided:      1,
@@ -131,4 +138,26 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		Downstream:       3,
 		AllowedRuleTypes: []string{"ROW_COUNT", "ROW_COUNT_CHANGE"},
 	}, nil
+}
+
+// withdraw_draft is the author's exit from the review queue. The wake must pass the
+// agent principal and the draft the model named to the application layer; the tool
+// body and the spec already keep the arguments, and this proves the dispatch branch.
+func TestWithdrawDraftToolReachesTheApplicationLayer(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotDraft, gotReason string
+	engine := NewEngine(newFakeStore())
+	engine.withdraw = func(_ context.Context, principalID int32, draftResourceID, reason string) (quality.WithdrawOutcome, error) {
+		gotPrincipal, gotDraft, gotReason = principalID, draftResourceID, reason
+		return quality.WithdrawOutcome{Draft: "qualitySuggestions/s1", Reason: reason, State: "WITHDRAWN"}, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "withdraw_draft",
+		`{"draft":"qualitySuggestions/s1","reason":"the target is emptied nightly"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Equal(t, int32(7), gotPrincipal)
+	require.Equal(t, "qualitySuggestions/s1", gotDraft)
+	require.Equal(t, "the target is emptied nightly", gotReason)
+	require.Contains(t, result, `"state":"WITHDRAWN"`)
 }

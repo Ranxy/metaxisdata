@@ -135,13 +135,24 @@ type TableContextReader interface {
 	ReadTableContext(ctx context.Context, targetGUID string, targetType storepb.MetaType) (*TableContext, error)
 }
 
-// DraftChecksFunc drafts checks for one target and returns the queued draft
-// titles plus the drafts the pipeline refused. It reuses the same Suggester the
-// suggestion center uses, so the drafts land in the review queue; the model
-// cannot create enabled checks. The refusals let an agent correct a draft (an
-// accepted value that is not one of an enum column's labels, say) instead of
-// silently retrying the same intent.
-type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]string, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error)
+// DraftedCheck is one draft a drafting call queued, named the way the model must
+// name it to flag or withdraw it. The id is part of the result because the drafting
+// call is the only place the model learns which proposals it just created; without
+// it, every self-correction needed a second read of the queue.
+type DraftedCheck struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title,omitempty"`
+	RuleType   string  `json:"ruleType,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// DraftChecksFunc drafts checks for one target and returns the queued drafts plus
+// the drafts the pipeline refused. It reuses the same Suggester the suggestion
+// center uses, so the drafts land in the review queue; the model cannot create
+// enabled checks. The refusals let an agent correct a draft (an accepted value that
+// is not one of an enum column's labels, say) instead of silently retrying the same
+// intent.
+type DraftChecksFunc func(ctx context.Context, targetGUID string, targetType storepb.MetaType, columns []string, intent string, createdBy int32) ([]DraftedCheck, []dataquality.DraftRejection, *storepb.QualitySuggestionQueueSummary, error)
 
 // AgentEvidence is the slice of the quality application layer the evidence tools read
 // through. It is the same read the RPC and MCP surfaces use, which is what keeps one
@@ -174,6 +185,8 @@ type AgentDeps struct {
 	Revise ReviseFunc
 	// Flag records the agent's own objection to a draft it queued; nil reports it as not configured.
 	Flag FlagFunc
+	// Withdraw retracts a pending draft the agent queued; nil reports it as not configured.
+	Withdraw WithdrawFunc
 	// Escalate hands one work item to a person; nil reports it as not configured.
 	Escalate EscalateFunc
 }
@@ -352,6 +365,47 @@ func (t *AgentTools) FlagProposal(ctx context.Context, session AgentSession, arg
 		"concern": outcome.Concern,
 		"state":   outcome.State,
 		"note":    "a flagged draft is never adopted automatically; a person reads the concern and decides",
+	})
+}
+
+// WithdrawOutcome is what one withdrawal recorded. It carries no service type, for the
+// same reason FlagOutcome does not.
+type WithdrawOutcome struct {
+	Draft  string
+	Reason string
+	State  string
+}
+
+// WithdrawFunc retracts one of the agent's own pending drafts through the application
+// layer.
+type WithdrawFunc func(ctx context.Context, agentPrincipalID int32, draftResourceID, reason string) (WithdrawOutcome, error)
+
+// WithdrawDraft retracts a draft the agent queued and no longer stands behind. It is not
+// a rejection: nobody decided the proposal, so it may be queued again with a corrected
+// definition, and the target's approval ask closes once nothing else is pending.
+func (t *AgentTools) WithdrawDraft(ctx context.Context, session AgentSession, arguments string) (string, error) {
+	var input struct {
+		Draft  string `json:"draft"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid withdraw_draft arguments")
+	}
+	if strings.TrimSpace(input.Draft) == "" || strings.TrimSpace(input.Reason) == "" {
+		return "", errors.New("withdraw_draft needs a draft and a reason")
+	}
+	if t.deps.Withdraw == nil {
+		return "", errors.New("the withdraw verb is not configured in this process")
+	}
+	outcome, err := t.deps.Withdraw(ctx, session.AgentPrincipalID, input.Draft, input.Reason)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"draft":  outcome.Draft,
+		"reason": outcome.Reason,
+		"state":  outcome.State,
+		"note":   "the draft has left the review queue; a person never decided it, so a corrected draft may be proposed again",
 	})
 }
 
@@ -714,11 +768,15 @@ func (t *AgentTools) DraftChecks(ctx context.Context, session AgentSession, argu
 			break
 		}
 	}
-	titles, rejections, summary, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
+	drafts, rejections, summary, err := t.deps.DraftChecks(ctx, session.TargetGUID, session.TargetType, columns, intent, session.AgentPrincipalID)
 	if err != nil {
 		return "", err
 	}
-	result := map[string]any{"queued": len(titles), "drafts": titles}
+	result := map[string]any{
+		"queued": len(drafts),
+		"drafts": drafts,
+		"note":   "a draft you judge wrong can be withdrawn with withdraw_draft; correcting a threshold is a new draft with the same identity, which refreshes the queued one",
+	}
 	if skipped := suggestionSkipCounts(summary); len(skipped) > 0 {
 		// A draft that was valid but not queued (the fact exists, an equivalent
 		// proposal is pending, or it was already decided) is an honest zero: the

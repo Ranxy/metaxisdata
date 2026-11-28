@@ -344,6 +344,7 @@ func targetToolSpecs() []toolSpec {
 			}, "required": []string{"draft", "concern"}},
 			meta: suggestMeta(),
 		},
+		withdrawDraftSpec(),
 		{
 			name:        "get_memory",
 			description: "List the target's confirmed asset facts.",
@@ -404,6 +405,30 @@ func targetToolSpecs() []toolSpec {
 		},
 	}
 	return specs
+}
+
+// withdrawDraftSpec is the author's exit from the review queue. It is not a decision:
+// no person decided the proposal, so it does not suppress a corrected version of the
+// same identity, and the target's approval ask closes once nothing else is pending.
+func withdrawDraftSpec() toolSpec {
+	return toolSpec{
+		name: "withdraw_draft",
+		description: "Withdraw one of your own pending check drafts when you no longer stand behind it: it cannot run on this target, " +
+			"its intent was mistaken, a saved check already covers it, or it would only ever be noise. The draft leaves the review queue " +
+			"as withdrawn. This is not a rejection: no person decided it, so a corrected draft may be proposed again, and the target's " +
+			"approval request closes once it has no pending draft left. Name a draft the drafting tool returned.",
+		parameters: map[string]any{"type": "object", "properties": map[string]any{
+			"draft": map[string]any{
+				"type":        "string",
+				"description": "the qualitySuggestions resource name or id the drafting tool returned",
+			},
+			"reason": map[string]any{
+				"type":        "string",
+				"description": "why the proposal should leave the queue, in one or two sentences",
+			},
+		}, "required": []string{"draft", "reason"}},
+		meta: suggestMeta(),
+	}
 }
 
 // conversationToolSpecs is the front-office tool set: reads over the agent's scope

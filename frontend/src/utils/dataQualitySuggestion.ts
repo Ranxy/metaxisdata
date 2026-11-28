@@ -86,14 +86,17 @@ export function suggestionStatusKey(status: QualitySuggestionStatus): string {
       return "dataQuality.suggestionStatus.rejected";
     case QualitySuggestionStatus.SUPERSEDED:
       return "dataQuality.suggestionStatus.superseded";
+    case QualitySuggestionStatus.WITHDRAWN:
+      return "dataQuality.suggestionStatus.withdrawn";
     default:
       return "dataQuality.suggestionStatus.unspecified";
   }
 }
 
 /**
- * The badge variant for a suggestion's decision state. Superseded is the server's
- * own closing, never a person's decision, so it stays distinct from rejected.
+ * The badge variant for a suggestion's decision state. Superseded and withdrawn are
+ * closings nobody decided, so they stay distinct from rejected: the server closed one,
+ * the proposing agent retracted the other.
  */
 export function suggestionStatusVariant(
   status: QualitySuggestionStatus
@@ -106,6 +109,7 @@ export function suggestionStatusVariant(
     case QualitySuggestionStatus.REJECTED:
       return "neutral";
     case QualitySuggestionStatus.SUPERSEDED:
+    case QualitySuggestionStatus.WITHDRAWN:
       return "outline";
     default:
       return "secondary";
