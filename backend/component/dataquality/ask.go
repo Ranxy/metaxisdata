@@ -401,6 +401,47 @@ func BuildRequestDismissedEnvelope(ask *store.QualityAgentAskMessage, request *s
 	return string(encoded), nil
 }
 
+// DismissEnvelope is the owner-facing content of a dismissed ask. It keeps the
+// question that was closed, so the transcript reads as a decision instead of an
+// ordinary chat line.
+type DismissEnvelope struct {
+	Kind      string           `json:"kind"`
+	Ask       string           `json:"ask"`
+	Questions []AnswerQuestion `json:"questions,omitempty"`
+	Text      string           `json:"text,omitempty"`
+}
+
+// BuildDismissEnvelope renders the content written when the owner dismisses an ask.
+func BuildDismissEnvelope(ask *store.QualityAgentAskMessage, text string) (string, error) {
+	if ask == nil {
+		return "", common.Errorf(common.Invalid, "a dismissal needs an ask")
+	}
+	envelope := DismissEnvelope{
+		Kind:      "dismiss_ask",
+		Ask:       AskName(ask),
+		Questions: answerQuestions(QuestionsOf(ask)),
+		Text:      strings.TrimSpace(text),
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return "", common.Errorf(common.Internal, "failed to encode the dismissal: %v", err)
+	}
+	return string(encoded), nil
+}
+
+// ParseDismissEnvelope reads a dismissal envelope. An unreadable message is not a
+// dismissal.
+func ParseDismissEnvelope(content string) (*DismissEnvelope, bool) {
+	var envelope DismissEnvelope
+	if err := json.Unmarshal([]byte(content), &envelope); err != nil {
+		return nil, false
+	}
+	if envelope.Kind != "dismiss_ask" || envelope.Ask == "" {
+		return nil, false
+	}
+	return &envelope, true
+}
+
 // BuildDecisionAnswerEnvelope is the envelope for a decision the lead made itself
 // rather than relaying an owner answer. The request id is still the pairing key, so
 // the subagent can tell which question this answers.

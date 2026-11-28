@@ -115,6 +115,10 @@
                         v-if="isAskAnswer(message)"
                         :content="message.content"
                       />
+                      <QualityAgentDismissBubble
+                        v-else-if="isAskDismissal(message)"
+                        :content="message.content"
+                      />
                       <p
                         v-else
                         class="whitespace-pre-wrap break-words rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
@@ -677,6 +681,7 @@ import QualityAgentAnswerBubble from "@/components/data-quality/QualityAgentAnsw
 import QualityAgentAskCard from "@/components/data-quality/QualityAgentAskCard.vue";
 import QualityAgentBreadcrumb from "@/components/data-quality/QualityAgentBreadcrumb.vue";
 import QualityAgentCaseActivity from "@/components/data-quality/QualityAgentCaseActivity.vue";
+import QualityAgentDismissBubble from "@/components/data-quality/QualityAgentDismissBubble.vue";
 import QualityAgentSubagentList from "@/components/data-quality/QualityAgentSubagentList.vue";
 import QualityAgentTabs from "@/components/data-quality/QualityAgentTabs.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -1130,6 +1135,15 @@ function isAskAnswer(message: QualityAgentSessionMessage): boolean {
   return (
     message.role === QualityAgentMessageRole.USER &&
     message.intent === QualityAgentMessageIntent.ANSWER &&
+    message.replyTo.includes("/qualityAgentAsks/")
+  );
+}
+
+/** Whether a message closes an ask; it must not render as ordinary chat. */
+function isAskDismissal(message: QualityAgentSessionMessage): boolean {
+  return (
+    message.role === QualityAgentMessageRole.USER &&
+    message.intent === QualityAgentMessageIntent.DISMISS &&
     message.replyTo.includes("/qualityAgentAsks/")
   );
 }

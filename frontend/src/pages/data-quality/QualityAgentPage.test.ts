@@ -359,6 +359,32 @@ describe("QualityAgentPage", () => {
     wrapper.unmount();
   });
 
+  it("renders a dismissal as a decision, not ordinary chat", async () => {
+    const envelope = JSON.stringify({
+      kind: "dismiss_ask",
+      ask: "workspaces/ws/qualityAgentAsks/a-dismissed",
+      questions: [{ id: "q1", question: "Which mail rule should apply?" }],
+    });
+    mocks.listQualityAgentConversationMessages.mockResolvedValue({
+      qualityAgentConversationMessages: [
+        create(QualityAgentSessionMessageSchema, {
+          name: "workspaces/ws/qualityAgentSessions/s1/messages/10",
+          seq: 10n,
+          role: QualityAgentMessageRole.USER,
+          intent: QualityAgentMessageIntent.DISMISS,
+          content: envelope,
+          replyTo: "workspaces/ws/qualityAgentAsks/a-dismissed",
+        }),
+      ],
+    });
+
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain("Ask dismissed");
+    expect(wrapper.text()).toContain("Which mail rule should apply?");
+    expect(wrapper.text()).not.toContain(envelope);
+    wrapper.unmount();
+  });
+
   it("switches the rail between team, reports, work items and activity", async () => {
     const wrapper = await mountPage();
     const tabs = wrapper.findAll('[role="tab"]');

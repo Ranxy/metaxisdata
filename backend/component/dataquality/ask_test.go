@@ -184,6 +184,28 @@ func TestBuildRequestDismissedEnvelopeNamesTheRequest(t *testing.T) {
 	require.Contains(t, envelope.Text, "dismissed")
 }
 
+func TestBuildDismissEnvelopeNamesTheClosedQuestions(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Questions: []*storepb.QualityAgentAskQuestion{
+			{Id: "q1", Header: "Mail", Question: "Should mail be required?"},
+			{Id: "q2", Question: "Should the empty tables pause?"},
+		},
+	}
+	content, err := BuildDismissEnvelope(ask, "Dismiss this request.")
+	require.NoError(t, err)
+
+	envelope, ok := ParseDismissEnvelope(content)
+	require.True(t, ok)
+	require.Equal(t, "workspaces/ws/qualityAgentAsks/a1", envelope.Ask)
+	require.Len(t, envelope.Questions, 2)
+	require.Equal(t, "Should mail be required?", envelope.Questions[0].Question)
+	require.Equal(t, "Dismiss this request.", envelope.Text)
+}
+
 func TestBuildAnswerEnvelopeEncodesASkippedSelectionAsAnEmptyArray(t *testing.T) {
 	t.Parallel()
 
