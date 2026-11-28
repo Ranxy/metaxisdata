@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // QualityAgentAskKind is what the lead is telling the owner.
@@ -154,6 +155,37 @@ func (s *Store) MarkQualityAgentAskAnswered(ctx context.Context, resourceID stri
 		RETURNING `+qualityAgentAskColumns,
 		resourceID, int16(QualityAgentAskStatusAnswered), answeredBy, at.UTC(), answerSeq,
 		int16(QualityAgentAskStatusOpen)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, errors.Wrap(err, "failed to mark the ask answered")
+	}
+	return message, true, nil
+}
+
+// MarkLatestOpenQualityAgentAskAnswered records the owner's reply against the ask
+// whose question was the last owner-visible message. The lead may speak again after
+// asking (a reply_owner note), which is why the newest owner-facing message and not
+// "any open ask" decides: a free-form message must not close an older question.
+func (s *Store) MarkLatestOpenQualityAgentAskAnswered(ctx context.Context, agentID int64, answeredBy int32, answerSeq int64, at time.Time) (*QualityAgentAskMessage, bool, error) {
+	message, err := scanQualityAgentAsk(s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_agent_ask a
+		SET status = $2, answered_by = $3, answered_at = $4, answer_message_seq = $5, updated_at = $4
+		WHERE a.id = (
+			SELECT candidate.id FROM quality_agent_ask candidate
+			WHERE candidate.agent_id = $1 AND candidate.status = $6
+			  AND candidate.message_seq = (
+				SELECT MAX(seq) FROM quality_agent_message
+				WHERE session_id = candidate.conversation_session_id
+				  AND audience = $7 AND seq < $5
+			  )
+			ORDER BY candidate.id DESC LIMIT 1
+		)
+		RETURNING `+qualityAgentAskColumns,
+		agentID, int16(QualityAgentAskStatusAnswered), answeredBy, at.UTC(), answerSeq,
+		int16(QualityAgentAskStatusOpen),
+		int16(storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false, nil

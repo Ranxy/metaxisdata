@@ -188,6 +188,23 @@ func insertQualityAgentRequestTx(ctx context.Context, tx *sql.Tx, message *Quali
 		if existing == nil {
 			return nil, false, errors.New("the request conflicted but no active row was found")
 		}
+		// A repeated escalation refreshes what the lead reads, without a second
+		// notification. A forwarded request is left alone: the owner may already be
+		// looking at the question it was asked.
+		if existing.Status == QualityAgentRequestStatusOpen {
+			refreshed, refreshErr := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
+				UPDATE quality_agent_request
+				SET title = $2, question = $3, suggested_patch = COALESCE($4, suggested_patch),
+					updated_at = $5
+				WHERE id = $1 AND status = $6
+				RETURNING `+qualityAgentRequestColumns,
+				existing.ID, message.Title, message.Question, patchJSON, message.UpdatedAt,
+				int16(QualityAgentRequestStatusOpen)))
+			if refreshErr != nil {
+				return nil, false, errors.Wrap(refreshErr, "failed to refresh the active request")
+			}
+			return refreshed, false, nil
+		}
 		return existing, false, nil
 	}
 	if err != nil {

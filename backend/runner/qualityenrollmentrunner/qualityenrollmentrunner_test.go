@@ -34,133 +34,127 @@ func TestComputePriorityOrdersByValue(t *testing.T) {
 	require.Equal(t, int32(1000), capped, "the score is capped")
 }
 
-// Admission refuses a target whose mode the agent cannot serve, before any session
-// is created: a TRIAGE target needs the suggest capability and a usable model, a
-// MONITOR target the patrol capability.
-func TestAdmissionRefusesAModeTheAgentCannotServe(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name            string
-		capabilities    []string
-		mode            storepb.QualityAgentSessionMode
-		llmReady        bool
-		wantLLMAsked    bool
-		wantBlockedCode string
-	}{
-		{
-			name: "triage without a model", capabilities: []string{"suggest", "patrol"},
-			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
-			llmReady: false, wantLLMAsked: true, wantBlockedCode: "no-model",
-		},
-		{
-			name: "triage without the suggest capability", capabilities: []string{"patrol"},
-			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
-			llmReady: true, wantBlockedCode: "capability-suggest-disabled",
-		},
-		{
-			name: "monitor without the patrol capability", capabilities: []string{"suggest"},
-			mode:     storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
-			llmReady: true, wantBlockedCode: "capability-patrol-disabled",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			fake := newFakeStore()
-			fake.agent = testAgent()
-			fake.agent.Capabilities = tc.capabilities
-			fake.candidates = []*store.QualityAgentEnrollmentMessage{{
-				ResourceID:  "enr-1",
-				TargetGUID:  "i;d;public;t",
-				TargetType:  storepb.MetaType_TABLE,
-				DatabaseRef: "instances/i/databases/d",
-				Mode:        tc.mode,
-			}}
-			runner := testRunner(fake)
-			var asked *store.QualityAgentMessage
-			runner.llmConfigured = func(_ context.Context, agent *store.QualityAgentMessage) bool {
-				asked = agent
-				return tc.llmReady
-			}
-
-			runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-			require.Empty(t, fake.created)
-			require.Equal(t, []string{tc.wantBlockedCode}, fake.blockedReasonValues)
-			if tc.wantLLMAsked {
-				require.NotNil(t, asked, "admission asks about the agent it is admitting for")
-				require.Equal(t, int64(7), asked.ID)
-			}
-		})
-	}
-}
-
-func TestAdmissionCreatesAutomaticSession(t *testing.T) {
+// Materialization creates a subagent for every pending target, without an existence
+// budget: a covered target becomes an active monitor, an uncovered one waits in the
+// triage queue with its session already created.
+func TestMaterializeCreatesASubagentForEveryPendingTarget(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeStore()
 	fake.agent = testAgent()
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{{
-		ResourceID:  "enr-1",
-		TargetGUID:  "i;d;public;t",
-		TargetType:  storepb.MetaType_TABLE,
-		DatabaseRef: "instances/i/databases/d",
-		Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
-	}}
-	fake.sessionsByTarget = map[string]*store.QualityAgentSessionMessage{"i;d;public;t": nil}
+	fake.unmaterialized = []*store.QualityAgentEnrollmentMessage{
+		{ResourceID: "enr-monitor", TargetGUID: "i;d;public;covered", TargetType: storepb.MetaType_TABLE,
+			DatabaseRef: "instances/i/databases/d", Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR},
+		{ResourceID: "enr-triage", TargetGUID: "i;d;public;uncovered", TargetType: storepb.MetaType_TABLE,
+			DatabaseRef: "instances/i/databases/d", Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE},
+	}
 	runner := testRunner(fake)
-	runner.llmConfigured = func(context.Context, *store.QualityAgentMessage) bool { return true }
 
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+	runner.materialize(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
-	require.Len(t, fake.created, 1)
-	require.Equal(t, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, fake.created[0].Mode)
-	require.Equal(t, int16(0), fake.created[0].Kind, "a target session defaults to the work-thread kind")
-	require.NotNil(t, fake.created[0].NextWakeAt)
-	require.Len(t, fake.linked, 1)
+	require.Len(t, fake.created, 2, "every pending target gets its fixed subagent")
+	for _, created := range fake.created {
+		require.Equal(t, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR, created.Mode,
+			"a waiting triage starts in monitor so it cannot model wake before admission")
+		require.NotNil(t, created.NextWakeAt)
+	}
+	require.ElementsMatch(t, []string{"enr-monitor", "enr-triage"}, fake.attached)
+	require.Equal(t, []string{"enr-monitor"}, fake.linked, "only the covered target is admitted immediately")
 }
 
-// Admission stops when any one of the agent's budgets is spent, and records the
-// reason on the candidate rows so the queue page can explain a stalled run.
-func TestAdmissionStopsAtItsBudgets(t *testing.T) {
+// A pending target outside the agent's current scope is not materialized.
+func TestMaterializeSkipsAnOutOfScopeTarget(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeStore()
+	fake.agent = testAgent()
+	fake.unmaterialized = []*store.QualityAgentEnrollmentMessage{{
+		ResourceID: "enr-1", TargetGUID: "i;d;public;t", DatabaseRef: "instances/other/databases/d",
+	}}
+	runner := testRunner(fake)
+
+	runner.materialize(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+
+	require.Empty(t, fake.created)
+	require.Equal(t, []string{"out-of-scope"}, fake.blockedReasonValues)
+}
+
+// Triage has its own concurrency and hourly rate. A missing model or capability parks
+// the target with a reason instead of creating an unbounded model queue.
+func TestAdmitTriageRespectsItsOwnBudget(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name       string
-		spend      func(*fakeStore)
+		setup      func(*fakeStore, *Runner)
 		wantReason string
 	}{
 		{
-			name:       "the hourly new-session rate",
-			spend:      func(f *fakeStore) { f.createdLastHour = int(testAgent().MaxNewSessionsPerHour) },
-			wantReason: "admission-limit",
+			name: "without a model",
+			setup: func(_ *fakeStore, runner *Runner) {
+				runner.llmConfigured = func(context.Context, *store.QualityAgentMessage) bool { return false }
+			},
+			wantReason: "no-model",
 		},
 		{
-			name:       "the active-session budget",
-			spend:      func(f *fakeStore) { f.activeEnrollments = int(testAgent().MaxActiveSessions) },
-			wantReason: "active-limit",
+			name: "without the suggest capability",
+			setup: func(fake *fakeStore, _ *Runner) {
+				fake.agent.Capabilities = []string{"patrol"}
+			},
+			wantReason: "capability-suggest-disabled",
 		},
 		{
-			// Half of the 100-wake hourly budget is reserved for events and people.
-			name:       "the wake budget reserved for events and people",
-			spend:      func(f *fakeStore) { f.wakesLastHour = 50 },
-			wantReason: "event-budget",
+			name: "at the concurrent triage budget",
+			setup: func(fake *fakeStore, _ *Runner) {
+				fake.activeTriage = dataquality.DefaultAgentRunnerMaxTriageSessions
+			},
+			wantReason: "triage-limit",
+		},
+		{
+			name: "at the hourly triage rate",
+			setup: func(fake *fakeStore, _ *Runner) {
+				fake.triageReviewsLastHour = dataquality.DefaultAgentRunnerMaxNewTriageSessionsPerHour
+			},
+			wantReason: "triage-limit",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			fake := newFakeStore()
 			fake.agent = testAgent()
-			fake.candidates = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
-			tc.spend(fake)
+			fake.pendingTriage = []*store.QualityAgentEnrollmentMessage{{ResourceID: "enr-1", TargetGUID: "i;d;public;t"}}
 			runner := testRunner(fake)
+			tc.setup(fake, runner)
 
-			runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+			runner.admitTriage(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
 
-			require.Empty(t, fake.created)
-			require.Equal(t, []string{tc.wantReason}, fake.blockedReasonValues)
+			require.Empty(t, fake.linked)
+			require.Contains(t, fake.blockedReasonValues, tc.wantReason)
 		})
 	}
+}
+
+// Admitting a triage target switches its session out of the waiting monitor mode,
+// links the queue row and makes the wake due now.
+func TestAdmitTriageStartsTheFirstAnalysis(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeStore()
+	fake.agent = testAgent()
+	fake.pendingTriage = []*store.QualityAgentEnrollmentMessage{{
+		ResourceID: "enr-1", TargetGUID: "i;d;public;t", DatabaseRef: "instances/i/databases/d",
+		Mode: storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+	}}
+	fake.sessionsByTarget["i;d;public;t"] = &store.QualityAgentSessionMessage{
+		ID: 3, ResourceID: "session-3", TargetGUID: "i;d;public;t",
+	}
+	runner := testRunner(fake)
+
+	runner.admitTriage(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
+
+	require.Equal(t, []string{"enr-1"}, fake.linked)
+	require.Equal(t, []string{"session-3"}, fake.sessionModesSet)
+	require.Equal(t, []string{"session-3"}, fake.advancedWakes)
 }
 
 func TestRequeueDueReviews(t *testing.T) {
@@ -263,23 +257,6 @@ func TestScanDatabaseUpsertsAndMarksGone(t *testing.T) {
 	require.True(t, fake.prioritiesUpdated)
 }
 
-func TestAdmissionClampsToTheRemainingActiveSlots(t *testing.T) {
-	t.Parallel()
-
-	fake := newFakeStore()
-	fake.agent = testAgent()
-	fake.activeEnrollments = int(testAgent().MaxActiveSessions) - 1
-	fake.candidates = []*store.QualityAgentEnrollmentMessage{
-		{ResourceID: "enr-1", TargetGUID: "i;d;public;a", DatabaseRef: "instances/i/databases/d"},
-		{ResourceID: "enr-2", TargetGUID: "i;d;public;b", DatabaseRef: "instances/i/databases/d"},
-	}
-	runner := testRunner(fake)
-
-	runner.admit(context.Background(), "ws", testActiveAgent(fake), time.Unix(10_000, 0).UTC())
-
-	require.Len(t, fake.created, 1, "one free active slot admits exactly one session")
-}
-
 // testAgent is one ACTIVE agent with its merged runtime configuration and budgets.
 func testAgent() *store.QualityAgentMessage {
 	return &store.QualityAgentMessage{
@@ -328,26 +305,28 @@ type fakeStore struct {
 	agents             []*store.QualityAgentMessage
 	scopes             map[int64][]string
 	enrollments        []*store.QualityAgentEnrollmentMessage
-	candidates         []*store.QualityAgentEnrollmentMessage
+	unmaterialized     []*store.QualityAgentEnrollmentMessage
+	pendingTriage      []*store.QualityAgentEnrollmentMessage
 	dueDormant         []*store.QualityAgentEnrollmentMessage
 	covered            []*store.QualityAgentEnrollmentMessage
 	recoverable        []*store.QualityAgentEnrollmentMessage
 	enrollmentByTarget map[string]*store.QualityAgentEnrollmentMessage
 
-	sessionsByTarget  map[string]*store.QualityAgentSessionMessage
-	created           []*store.CreateQualityAgentSessionInput
-	createdLastHour   int
-	activeEnrollments int
-	wakesLastHour     int64
-	databaseTime      time.Time
-	contracts         []*store.QualityContractMessage
-	rules             []*store.QualityRuleMessage
+	sessionsByTarget      map[string]*store.QualityAgentSessionMessage
+	created               []*store.CreateQualityAgentSessionInput
+	activeTriage          int
+	triageReviewsLastHour int
+	wakesLastHour         int64
+	databaseTime          time.Time
+	contracts             []*store.QualityContractMessage
+	rules                 []*store.QualityRuleMessage
 
 	upserted            []*store.QualityAgentEnrollmentUpsert
 	markedGone          []string
 	prioritiesUpdated   bool
 	reconcileCalls      int
 	requeued            []string
+	attached            []string
 	linked              []string
 	promoted            []string
 	sessionModesSet     []string
@@ -381,8 +360,21 @@ func (f *fakeStore) ReconcileQualityAgentEnrollmentScope(context.Context, string
 func (f *fakeStore) ListQualityAgentEnrollments(context.Context, *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error) {
 	return f.enrollments, nil
 }
-func (f *fakeStore) ListAdmissibleQualityAgentEnrollments(context.Context, string, int64, int) ([]*store.QualityAgentEnrollmentMessage, error) {
-	return f.candidates, nil
+func (f *fakeStore) ListUnmaterializedQualityAgentEnrollments(context.Context, string, int64, int) ([]*store.QualityAgentEnrollmentMessage, error) {
+	return f.unmaterialized, nil
+}
+func (f *fakeStore) AttachQualityAgentEnrollmentSession(_ context.Context, resourceID string, _ int64, _ storepb.QualityAgentSessionMode) (*store.QualityAgentEnrollmentMessage, bool, error) {
+	f.attached = append(f.attached, resourceID)
+	return &store.QualityAgentEnrollmentMessage{ResourceID: resourceID}, true, nil
+}
+func (f *fakeStore) ListPendingTriageQualityAgentEnrollments(context.Context, string, int64, int) ([]*store.QualityAgentEnrollmentMessage, error) {
+	return f.pendingTriage, nil
+}
+func (f *fakeStore) CountActiveTriageQualityAgentEnrollments(context.Context, string, int64) (int, error) {
+	return f.activeTriage, nil
+}
+func (f *fakeStore) CountQualityAgentTriageReviewsSince(context.Context, int64, time.Time) (int, error) {
+	return f.triageReviewsLastHour, nil
 }
 func (f *fakeStore) ListDueDormantQualityAgentEnrollments(context.Context, string, int64, time.Time, int) ([]*store.QualityAgentEnrollmentMessage, error) {
 	return f.dueDormant, nil
@@ -407,6 +399,12 @@ func (f *fakeStore) PromoteQualityAgentEnrollment(_ context.Context, resourceID 
 func (f *fakeStore) LinkQualityAgentEnrollmentSession(_ context.Context, resourceID string, _ int64, _ storepb.QualityAgentSessionMode) (*store.QualityAgentEnrollmentMessage, bool, error) {
 	f.linked = append(f.linked, resourceID)
 	return &store.QualityAgentEnrollmentMessage{ResourceID: resourceID}, true, nil
+}
+func (f *fakeStore) AdmitQualityAgentTriage(_ context.Context, enrollmentResourceID, sessionResourceID string, _ time.Time) (bool, error) {
+	f.linked = append(f.linked, enrollmentResourceID)
+	f.sessionModesSet = append(f.sessionModesSet, sessionResourceID)
+	f.advancedWakes = append(f.advancedWakes, sessionResourceID)
+	return true, nil
 }
 func (f *fakeStore) SetQualityAgentEnrollmentBlockedReason(_ context.Context, _ string, reason string) error {
 	f.blockedReasonValues = append(f.blockedReasonValues, reason)
@@ -436,13 +434,6 @@ func (f *fakeStore) AdvanceQualityAgentSessionWake(_ context.Context, resourceID
 	f.advancedWakes = append(f.advancedWakes, resourceID)
 	return true, nil
 }
-func (f *fakeStore) CountActiveQualityAgentEnrollments(context.Context, string, int64) (int, error) {
-	return f.activeEnrollments, nil
-}
-func (f *fakeStore) CountQualityAgentSessionsCreatedSince(context.Context, string, int64, time.Time) (int, error) {
-	return f.createdLastHour, nil
-}
-
 func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, int64, time.Time) (int64, error) {
 	return f.wakesLastHour, nil
 }

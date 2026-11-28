@@ -136,23 +136,33 @@ func (e *Engine) executeTool(
 	case "list_open_cases":
 		return e.listOpenCases(ctx, session, arguments)
 	case "control_check":
-		result, err := tools.ControlCheck(ctx, agentSession, arguments)
-		if err != nil {
-			return "", err
-		}
 		var input struct {
 			Case   string `json:"case"`
 			Action string `json:"action"`
 		}
-		_ = json.Unmarshal([]byte(arguments), &input)
-		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid control_check arguments")
+		}
+		if strings.TrimSpace(input.Case) == "" {
+			return "", errors.New("control_check needs a case")
+		}
+		// The request is the decision record; the pause is the action. Raise it first
+		// so a pause can never succeed without a lead-visible question, and dismiss it
+		// if the action is refused.
+		request, created, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindDecision,
 			CaseResourceID: input.Case,
 			Title:          "A paused check needs a decision",
 			Question:       "The check was paused because it could not produce a verdict; decide whether to resume, archive or replace it.",
 			DedupeKey:      fmt.Sprintf("target:%s:case:%s:control", session.TargetGUID, input.Case),
-		}); reqErr != nil {
+		})
+		if reqErr != nil {
 			return "", reqErr
+		}
+		result, err := tools.ControlCheck(ctx, agentSession, arguments)
+		if err != nil {
+			e.dismissRaisedRequest(ctx, request, created, "the control action was refused")
+			return "", err
 		}
 		return result, nil
 	case "run_check":
@@ -160,48 +170,62 @@ func (e *Engine) executeTool(
 	case "repair_check":
 		return tools.RepairCheck(ctx, agentSession, arguments)
 	case "propose_revision":
-		result, err := tools.ProposeRevision(ctx, agentSession, arguments)
-		if err != nil {
-			return "", err
-		}
 		var input struct {
 			Case      string `json:"case"`
 			Field     string `json:"field"`
 			Value     string `json:"value"`
 			Rationale string `json:"rationale"`
 		}
-		_ = json.Unmarshal([]byte(arguments), &input)
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid propose_revision arguments")
+		}
+		if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Field) == "" || input.Value == "" {
+			return "", errors.New("propose_revision needs a case, a field and a value")
+		}
 		question := fmt.Sprintf("propose %s = %s: %s", input.Field, input.Value, input.Rationale)
-		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		request, created, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindProposal,
 			CaseResourceID: input.Case,
 			Title:          "A check change needs approval",
 			Question:       question,
 			DedupeKey:      fmt.Sprintf("target:%s:case:%s:proposal", session.TargetGUID, input.Case),
-		}); reqErr != nil {
+		})
+		if reqErr != nil {
 			return "", reqErr
+		}
+		result, err := tools.ProposeRevision(ctx, agentSession, arguments)
+		if err != nil {
+			e.dismissRaisedRequest(ctx, request, created, "the proposal was refused")
+			return "", err
 		}
 		return result, nil
 	case "flag_proposal":
 		return tools.FlagProposal(ctx, agentSession, arguments)
 	case "escalate_case":
-		result, err := tools.EscalateCase(ctx, agentSession, arguments)
-		if err != nil {
-			return "", err
-		}
 		var input struct {
 			Case   string `json:"case"`
 			Reason string `json:"reason"`
 		}
-		_ = json.Unmarshal([]byte(arguments), &input)
-		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid escalate_case arguments")
+		}
+		if strings.TrimSpace(input.Case) == "" || strings.TrimSpace(input.Reason) == "" {
+			return "", errors.New("escalate_case needs a case and a reason")
+		}
+		request, created, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindDecision,
 			CaseResourceID: input.Case,
 			Title:          "A work item needs a decision",
 			Question:       input.Reason,
 			DedupeKey:      fmt.Sprintf("target:%s:case:%s:decision", session.TargetGUID, input.Case),
-		}); reqErr != nil {
+		})
+		if reqErr != nil {
 			return "", reqErr
+		}
+		result, err := tools.EscalateCase(ctx, agentSession, arguments)
+		if err != nil {
+			e.dismissRaisedRequest(ctx, request, created, "the escalation was refused")
+			return "", err
 		}
 		return result, nil
 	case "record_asset_fact":
@@ -233,13 +257,8 @@ func (e *Engine) executeTool(
 		control.blocked = true
 		control.blockedCode = input.Code
 		control.blockedWhy = input.Reason
-		if isSubagentSession(session) {
-			if lead, leadErr := e.leadFor(ctx, session); leadErr == nil {
-				_, _ = e.deliverAgentMessage(ctx, session, session.SubagentName, lead,
-					fmt.Sprintf("[notice] blocked: %s: %s", input.Code, input.Reason),
-					storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE, "")
-			}
-		}
+		// The runner parks the session after this wake and tells the lead; sending a
+		// second notice here would duplicate the same fact.
 		return marshalJSON(map[string]any{"blocked": true, "threshold": blockedThreshold})
 	case "schedule_wake":
 		var input struct {

@@ -76,6 +76,10 @@ func (f *fakeStore) SumQualityAgentSessionTokensSince(context.Context, string, i
 	return f.tokensSpent, nil
 }
 
+func (f *fakeStore) SumQualityAgentSubagentTokensSince(context.Context, string, int64, time.Time) (int64, error) {
+	return f.tokensSpent, nil
+}
+
 func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, int64, time.Time) (int64, error) {
 	return f.wakesSpent, nil
 }
@@ -353,8 +357,7 @@ func TestHostParksABlockedSession(t *testing.T) {
 	require.Empty(t, stores.releasedWakes)
 }
 
-// The lease sweep's restart-limit parks are escalated to one owner attention per
-// session through the existing sink.
+// The lease sweep's restart-limit parks are reported to the lead through the sink.
 func TestRunOnceEscalatesRestartLimitSessions(t *testing.T) {
 	t.Parallel()
 
@@ -367,13 +370,51 @@ func TestRunOnceEscalatesRestartLimitSessions(t *testing.T) {
 	stores := &fakeStore{blockedSessions: []*store.QualityAgentSessionMessage{blocked}}
 	runner := testRunner(stores, &fakeEngine{})
 	var escalated []string
-	runner.SetAttentionSink(func(_ context.Context, session *store.QualityAgentSessionMessage, code, _ string) {
+	runner.SetBlockedSink(func(_ context.Context, session *store.QualityAgentSessionMessage, code, _ string) {
 		escalated = append(escalated, session.ResourceID+":"+code)
 	})
 
 	runner.runOnce(context.Background())
 
 	require.Equal(t, []string{"session-2:restart-limit"}, escalated)
+}
+
+// A deterministic review does not take a model slot: a target whose agent is already
+// at max_concurrent_sessions must still be reviewed today, not requeued behind model
+// wakes.
+func TestHostReviewsWithoutAModelSlot(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{}
+	engine := &fakeEngine{skipModel: true}
+	runner := testRunner(stores, engine)
+	runner.agentSlots = map[int64]int{3: 2}
+
+	runner.host(context.Background(), testSession())
+
+	require.Equal(t, 1, engine.reviewed)
+	require.Zero(t, engine.called)
+	require.Empty(t, stores.releasedWakes, "a review is not requeued for model concurrency")
+}
+
+// The lead is the coordinator: it runs even when the subagent token and wake budgets
+// are spent, so the owner's question can still be answered.
+func TestHostRunsTheLeadEvenWhenTheSubagentBudgetsAreSpent(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{tokensSpent: 10_000_000, wakesSpent: 10_000}
+	engine := &fakeEngine{}
+	runner := testRunner(stores, engine)
+	lead := testSession()
+	lead.Role = storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD
+	lead.Kind = 2
+	lead.TargetGUID = ""
+	lead.DatabaseRef = ""
+
+	runner.host(context.Background(), lead)
+
+	require.Equal(t, 1, engine.called)
+	require.Empty(t, stores.blockedCodes)
 }
 
 // A session skipped because its agent is at the concurrent-session budget is handed

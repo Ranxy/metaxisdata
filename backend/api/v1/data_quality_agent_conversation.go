@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -95,6 +97,17 @@ func (s *DataQualityService) SendQualityAgentMessage(ctx context.Context, req *c
 				errors.New("another message is being sent; retry"))
 		}
 		return nil, lockErr
+	}
+	// The owner's message is the answer when the lead's question was the last thing
+	// it saw. A free-form remark must not close an older ask, so the store compares
+	// the ask's message with the newest owner-visible row. Failing to record the
+	// answer never fails the message: the lead still reads it and can route it.
+	if _, applied, markErr := s.store.MarkLatestOpenQualityAgentAskAnswered(ctx, agent.ID,
+		int32(currentUserID(ctx)), message.Seq, time.Now().UTC()); markErr != nil {
+		slog.Warn("failed to mark the owner's reply against its ask",
+			slog.String("agent", agent.ResourceID), log.WithError(markErr))
+	} else if applied {
+		slog.Debug("the owner's reply answered the lead's ask", slog.String("agent", agent.ResourceID))
 	}
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
 }

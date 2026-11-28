@@ -349,9 +349,10 @@ func scanQualityAgentAttention(scanner interface{ Scan(dest ...any) error }) (*Q
 }
 
 // ReplyQualityAgentAttentionAtomic answers an open escalation in one transaction:
-// claim the attention, append the owner's ASK to the target session, resume a
-// BLOCKED session, record the front-office note, and resolve the attention. A retry
-// on a closed attention returns applied=false without writing anything.
+// claim the attention, append the owner's answer to the lead conversation, wake the
+// lead, and resolve the attention. The target subagent is not addressed directly —
+// the lead routes the answer — so an owner reply can never bypass the coordinator.
+// A retry on a closed attention returns applied=false without writing anything.
 func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID, workspaceID, content string, createdBy *int32, idempotencyKey string, now time.Time) (*QualityAgentAttentionMessage, *QualityAgentTranscriptMessage, bool, error) {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
@@ -371,83 +372,34 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		return attention, nil, false, nil
 	}
 	var answered *QualityAgentTranscriptMessage
-	if attention.SessionID != nil {
-		_, lockErr := tx.ExecContext(ctx,
-			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, *attention.SessionID)
-		if lockErr != nil {
-			return nil, nil, false, errors.Wrap(lockErr, "failed to lock the attention's session")
-		}
-		var wake int32
-		if err := tx.QueryRowContext(ctx,
-			`SELECT wake_count + 1 FROM quality_agent_session WHERE id = $1`,
-			*attention.SessionID).Scan(&wake); err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to read the attention's session wake")
-		}
-		answered, err = scanQualityAgentTranscript(tx.QueryRowContext(ctx, `
-			INSERT INTO quality_agent_message
-				(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-				 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
-			VALUES ($1, $2,
-				(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-				$3, 0, $4, $5, $6, '{}', '', '', '', 0, '', false, $7)
-			RETURNING `+qualityAgentTranscriptColumns,
-			*attention.SessionID, workspaceID, wake,
-			int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
-			int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK),
-			content, idempotencyKey))
-		if err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to append the attention reply")
-		}
-		result, updateErr := tx.ExecContext(ctx, `
-			UPDATE quality_agent_session
-			SET state = CASE WHEN state = $2 THEN $3 ELSE state END,
-				blocked_code = CASE WHEN state = $2 THEN '' ELSE blocked_code END,
-				blocked_reason = CASE WHEN state = $2 THEN '' ELSE blocked_reason END,
-				next_wake_at = LEAST(COALESCE(next_wake_at, $4), $4),
-				revision = revision + 1, updated_at = NOW()
-			WHERE id = $1 AND archived_at IS NULL`,
-			*attention.SessionID,
-			int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
-			int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED), now)
-		if updateErr != nil {
-			return nil, nil, false, errors.Wrap(updateErr, "failed to resume the attention's session")
-		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected == 0 {
-			return nil, nil, false, errors.New("the attention's session is archived or missing")
-		}
+	lead, leadErr := scanQualityAgentSession(tx.QueryRowContext(ctx, `
+		SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
+		WHERE agent_id = $1 AND role = 1 AND archived_at IS NULL
+		ORDER BY id DESC LIMIT 1 FOR UPDATE`, attention.AgentID))
+	if leadErr != nil && !errors.Is(leadErr, sql.ErrNoRows) {
+		return nil, nil, false, errors.Wrap(leadErr, "failed to read the attention's lead")
 	}
-	var conversationID int64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT id FROM quality_agent_session
-		WHERE agent_id = $1 AND role = 1 AND archived_at IS NULL LIMIT 1`,
-		attention.AgentID).Scan(&conversationID); err == nil {
-		role := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER
-		body := content
-		if attention.SessionID != nil {
-			role = storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE
-			body = "The owner replied to the escalation."
-		}
-		if _, lockErr := tx.ExecContext(ctx,
-			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, conversationID); lockErr != nil {
-			return nil, nil, false, errors.Wrap(lockErr, "failed to lock the attention conversation")
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO quality_agent_message
-				(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-				 tool_call_id, tool_name, reference, tokens, error, truncated, idempotency_key)
-			VALUES ($1, $2,
-				(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-				0, 0, $3, $4, $5, '{}', '', '', $6, 0, '', false, $7)`,
-			conversationID, workspaceID, int16(role),
-			int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK),
-			body, resourceID, "attention-note:"+resourceID); err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to record the reply in the conversation")
+	if leadErr == nil {
+		answered, err = s.appendQualityAgentTranscriptTx(ctx, tx, &QualityAgentTranscriptMessage{
+			SessionID:      lead.ID,
+			WorkspaceID:    workspaceID,
+			Wake:           lead.WakeCount + 1,
+			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+			Content:        content,
+			Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+			IdempotencyKey: idempotencyKey,
+		})
+		if err != nil {
+			return nil, nil, false, errors.Wrap(err, "failed to append the owner's reply")
 		}
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE quality_agent_session SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2),
+			UPDATE quality_agent_session
+			SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2),
 				revision = revision + 1, updated_at = NOW()
-			WHERE id = $1`, conversationID, now); err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to wake the agent conversation")
+			WHERE id = $1`, lead.ID, now); err != nil {
+			return nil, nil, false, errors.Wrap(err, "failed to wake the lead after the owner replied")
 		}
 	}
 	resolved, err := scanQualityAgentAttention(tx.QueryRowContext(ctx, `

@@ -393,6 +393,134 @@ func (s *Store) ListAdmissibleQualityAgentEnrollments(ctx context.Context, works
 	return enrollments, nil
 }
 
+// unmaterializedQualityAgentEnrollmentsQuery finds pending targets that have no live
+// session. A session is the target's fixed identity, so it is created once and then
+// reused; this query is what makes "every target has a subagent" converge.
+const unmaterializedQualityAgentEnrollmentsQuery = `
+		SELECT ` + qualityAgentEnrollmentColumnsQualified + ` FROM quality_agent_enrollment e
+		LEFT JOIN quality_agent_session s ON s.id = e.session_id AND s.archived_at IS NULL
+		WHERE e.workspace_id = $1 AND e.agent_id = $2 AND e.state = $3 AND s.id IS NULL
+		ORDER BY e.priority DESC, e.target_guid ASC
+		LIMIT $4`
+
+// ListUnmaterializedQualityAgentEnrollments returns pending targets still waiting for
+// their subagent, highest priority first.
+func (s *Store) ListUnmaterializedQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*QualityAgentEnrollmentMessage, error) {
+	if limit <= 0 {
+		limit = 1
+	}
+	rows, err := s.GetDB().QueryContext(ctx, unmaterializedQualityAgentEnrollmentsQuery,
+		workspaceID, agentID,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING), limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the unmaterialized enrollments")
+	}
+	defer rows.Close()
+	var enrollments []*QualityAgentEnrollmentMessage
+	for rows.Next() {
+		enrollment, err := scanQualityAgentEnrollment(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan an unmaterialized enrollment")
+		}
+		enrollments = append(enrollments, enrollment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the unmaterialized enrollments")
+	}
+	return enrollments, nil
+}
+
+// AttachQualityAgentEnrollmentSession links a pending target to its subagent without
+// admitting it. Materialization creates the identity; the mode-specific admission
+// (monitor or triage) decides when the session first runs.
+func (s *Store) AttachQualityAgentEnrollmentSession(ctx context.Context, resourceID string, sessionID int64, mode storepb.QualityAgentSessionMode) (*QualityAgentEnrollmentMessage, bool, error) {
+	enrollment, err := scanQualityAgentEnrollment(s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_agent_enrollment
+		SET session_id = $2, mode = $3, blocked_reason = '',
+			revision = revision + 1, updated_at = NOW()
+		WHERE resource_id = $1 AND state = $4
+		RETURNING `+qualityAgentEnrollmentColumns,
+		resourceID, sessionID, int16(mode),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, errors.Wrap(err, "failed to attach the enrollment session")
+	}
+	return enrollment, true, nil
+}
+
+// pendingTriageQualityAgentEnrollmentsQuery is the triage queue: materialized targets
+// that are uncovered and waiting for a model slot.
+const pendingTriageQualityAgentEnrollmentsQuery = `
+		SELECT ` + qualityAgentEnrollmentColumns + ` FROM quality_agent_enrollment
+		WHERE workspace_id = $1 AND agent_id = $2 AND state = $3 AND mode = $4
+			AND session_id IS NOT NULL
+		ORDER BY priority DESC, target_guid ASC
+		LIMIT $5`
+
+// ListPendingTriageQualityAgentEnrollments returns the materialized targets waiting for
+// their one-time triage.
+func (s *Store) ListPendingTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, limit int) ([]*QualityAgentEnrollmentMessage, error) {
+	if limit <= 0 {
+		limit = 1
+	}
+	rows, err := s.GetDB().QueryContext(ctx, pendingTriageQualityAgentEnrollmentsQuery,
+		workspaceID, agentID,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the pending triage enrollments")
+	}
+	defer rows.Close()
+	var enrollments []*QualityAgentEnrollmentMessage
+	for rows.Next() {
+		enrollment, err := scanQualityAgentEnrollment(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan a pending triage enrollment")
+		}
+		enrollments = append(enrollments, enrollment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the pending triage enrollments")
+	}
+	return enrollments, nil
+}
+
+// CountActiveTriageQualityAgentEnrollments counts the triage targets currently holding
+// a slot. Monitor targets have their own, effectively unlimited, existence.
+func (s *Store) CountActiveTriageQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64) (int, error) {
+	var total int
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_enrollment
+		WHERE workspace_id = $1 AND agent_id = $2 AND state = $3 AND mode = $4`,
+		workspaceID, agentID,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE)).Scan(&total); err != nil {
+		return 0, errors.Wrap(err, "failed to count the active triage enrollments")
+	}
+	return total, nil
+}
+
+// CountQualityAgentTriageReviewsSince counts the triage sessions that ran in a window,
+// which is the triage throughput the hourly cap limits. A session that merely reviewed
+// deterministically does not carry a triage mode and is not counted.
+func (s *Store) CountQualityAgentTriageReviewsSince(ctx context.Context, agentID int64, since time.Time) (int, error) {
+	var total int
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_session
+		WHERE agent_id = $1 AND role = $2 AND mode = $3 AND last_reviewed_at > $4`,
+		agentID,
+		int16(storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		since).Scan(&total); err != nil {
+		return 0, errors.Wrap(err, "failed to count the triage reviews")
+	}
+	return total, nil
+}
+
 // ListDueDormantQualityAgentEnrollments returns dormant rows whose review is due.
 func (s *Store) ListDueDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, agentID int64, now time.Time, limit int) ([]*QualityAgentEnrollmentMessage, error) {
 	if limit <= 0 {
@@ -609,6 +737,48 @@ func (s *Store) LinkQualityAgentEnrollmentSession(ctx context.Context, resourceI
 		return nil, false, errors.Wrap(err, "failed to link the enrollment session")
 	}
 	return enrollment, true, nil
+}
+
+// AdmitQualityAgentTriage moves one materialized target into triage in one
+// transaction: the queue row becomes active, the session switches mode, and its wake
+// becomes due. A partial write would leave a TRIAGE session waking without a slot or an
+// active enrollment whose session never runs.
+func (s *Store) AdmitQualityAgentTriage(ctx context.Context, enrollmentResourceID, sessionResourceID string, now time.Time) (bool, error) {
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to begin the triage admission")
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_enrollment
+		SET state = $2, mode = $3, next_review_at = NULL, blocked_reason = '',
+			revision = revision + 1, updated_at = NOW()
+		WHERE resource_id = $1 AND state = $4`,
+		enrollmentResourceID,
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to activate the triage enrollment")
+	}
+	if affected, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return false, errors.Wrap(rowsErr, "failed to count the triage enrollment")
+	} else if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET mode = $2, next_wake_at = LEAST(COALESCE(next_wake_at, $3), $3),
+			revision = revision + 1, updated_at = NOW()
+		WHERE resource_id = $1 AND archived_at IS NULL`,
+		sessionResourceID,
+		int16(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE), now.UTC()); err != nil {
+		return false, errors.Wrap(err, "failed to start the triage session")
+	}
+	if err := tx.Commit(); err != nil {
+		return false, errors.Wrap(err, "failed to commit the triage admission")
+	}
+	return true, nil
 }
 
 // SetQualityAgentEnrollmentBlockedReason records why admission passed a pending row

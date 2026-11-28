@@ -10,6 +10,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentattention"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentlang"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -43,22 +44,8 @@ func (r *Runner) sweepFactCases(ctx context.Context, now time.Time) {
 			slog.Info("settled quality agent cases that are facts, not work",
 				slog.String("class", string(class)), slog.String("target", group.TargetGUID),
 				slog.Int64("cases", group.Cases))
-			// The settled items were the reason the target had a decision card; the card must not
-			// outlive them.
-			r.refreshTargetCard(ctx, group.AgentID, group.TargetGUID)
 		}
 	}
-}
-
-// refreshTargetCard recomputes one target's decision card after work items settled. A read failure
-// is logged and dropped: the card is a notice, not the record.
-func (r *Runner) refreshTargetCard(ctx context.Context, agentID int64, targetGUID string) {
-	agent, err := r.stores.GetQualityAgentByID(ctx, agentID)
-	if err != nil || agent == nil {
-		return
-	}
-	raiser := &agentattention.Raiser{Store: r.stores, Notifier: r.notifier}
-	raiser.Refresh(ctx, agent, targetGUID)
 }
 
 // sweepStalledChecks tells each target session about the checks that have stopped running.
@@ -169,10 +156,31 @@ func (r *Runner) stallSweepDue(now time.Time) bool {
 	return true
 }
 
-// escalateFrozenCase tells the owner that the agent exhausted its repair budget on one check. It is
-// best effort, like every other escalation: the case row is the durable record, and a failed notice
-// must never fail the batch that produced it.
+// escalateFrozenCase turns "the agent exhausted its repair budget on this check" into a
+// request for the target's lead. The lead owns the owner conversation, so the runner never
+// writes the old attention row: the case row is the durable record and the request is the
+// coordination record. Best effort, like every runner-side escalation.
 func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.QualityAgentCaseMessage, rule *store.QualityRuleMessage) {
+	sessions, err := r.stores.ListQualityAgentSessionsByTarget(ctx, openCase.WorkspaceID, openCase.TargetGUID)
+	if err != nil {
+		slog.Warn("failed to read a frozen case's sessions",
+			slog.String("case", openCase.ResourceID), log.WithError(err))
+		return
+	}
+	var origin *store.QualityAgentSessionMessage
+	for _, session := range sessions {
+		if session.AgentID == openCase.AgentID && session.ArchivedAt == nil {
+			origin = session
+			break
+		}
+	}
+	if origin == nil {
+		return
+	}
+	lead, err := r.stores.GetQualityAgentConversation(ctx, openCase.AgentID)
+	if err != nil || lead == nil {
+		return
+	}
 	agent, err := r.stores.GetQualityAgentByID(ctx, openCase.AgentID)
 	if err != nil || agent == nil {
 		return
@@ -185,9 +193,32 @@ func (r *Runner) escalateFrozenCase(ctx context.Context, openCase *store.Quality
 			title = "qualityRules/" + rule.ResourceID
 		}
 	}
-	raiser := &agentattention.Raiser{Store: r.stores, Notifier: r.notifier}
-	raiser.Raise(ctx, openCase, agent, agentattention.Notice{
-		Kind:     store.QualityAgentAttentionKindBlocked,
-		Question: agentlang.CaseFrozenQuestion(language, title, openCase.Attempts),
+	question := agentlang.CaseFrozenQuestion(language, title, openCase.Attempts)
+	content := fmt.Sprintf("Agent %s sent a message:\n[question] %s", origin.SubagentName, question)
+	_, _, err = r.stores.RaiseQualityAgentRequest(ctx, &store.QualityAgentRequestMessage{
+		WorkspaceID:     openCase.WorkspaceID,
+		AgentID:         openCase.AgentID,
+		OriginSessionID: &origin.ID,
+		TargetGUID:      openCase.TargetGUID,
+		TargetType:      storepb.MetaType(openCase.TargetType),
+		Kind:            store.QualityAgentRequestKindFrozen,
+		Title:           "A check exhausted its repair budget",
+		Question:        question,
+		CaseResourceID:  openCase.ResourceID,
+		DedupeKey:       fmt.Sprintf("target:%s:case:%s:frozen", openCase.TargetGUID, openCase.ResourceID),
+	}, lead, &store.QualityAgentTranscriptMessage{
+		Wake:            lead.WakeCount + 1,
+		Role:            storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:          storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Content:         content,
+		SenderSessionID: &origin.ID,
+		SenderName:      origin.SubagentName,
+		Intent:          storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION,
+		Audience:        storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		IdempotencyKey:  fmt.Sprintf("frozen-request:%s", openCase.ResourceID),
 	})
+	if err != nil {
+		slog.Warn("failed to raise a request for a frozen case",
+			slog.String("case", openCase.ResourceID), log.WithError(err))
+	}
 }

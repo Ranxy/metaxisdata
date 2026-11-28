@@ -100,8 +100,8 @@ func (*gatingStore) AdvanceQualityAgentSessionWake(context.Context, string, time
 
 func (*gatingStore) GetUserByID(context.Context, int) (*store.UserMessage, error) { return nil, nil }
 
-func (*gatingStore) CreateQualityAgentAttention(context.Context, *store.QualityAgentAttentionMessage) (*store.QualityAgentAttentionMessage, bool, error) {
-	return nil, false, nil
+func (*gatingStore) CreateQualityAgentAskAtomic(context.Context, *store.QualityAgentAskMessage, *store.QualityAgentSessionMessage, *store.QualityAgentTranscriptMessage, []*store.QualityAgentRequestMessage, time.Time) (*store.QualityAgentAskMessage, error) {
+	return nil, nil
 }
 
 // The report runner is gated by the workspace runner switch, like the session,

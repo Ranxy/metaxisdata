@@ -4271,10 +4271,10 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond,
 		"the resumed session never finished its wake: %s", fixture.env.ServerLogs())
 
-	// An owner escalation is answered through the reply RPC: the attention resolves, the
-	// reply lands on the target session as the owner's ASK, and the session resumes. The
-	// runner writes this row when a session parks for a person; a model is unavailable
-	// here, so the fixture opens the escalation the runner would have opened.
+	// An owner escalation is answered through the reply RPC: the attention resolves and
+	// the reply lands on the lead conversation, which routes it. The runner writes this
+	// row when a session parks for a person; a model is unavailable here, so the fixture
+	// opens the escalation the runner would have opened.
 	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)
 	parked = parkSession()
@@ -4313,11 +4313,11 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		"the escalation points at the session the owner's answer resumes")
 	require.Equal(t, session.GetTarget().GetMetaGuid(), replied.Msg.GetTarget().GetMetaGuid(),
 		"the escalation carries the target it is about")
-	answer := waitForQualityAgentSessionMessage(t, fixture, session.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
+	answer := waitForQualityAgentConversationMessage(t, fixture, agent.GetName(), func(message *v1pb.QualityAgentSessionMessage) bool {
 		return message.GetOrigin() == v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK &&
 			message.GetContent() == "Keep it covered; the sparse batch is expected."
 	})
-	require.NotEmpty(t, answer.GetContent())
+	require.NotEmpty(t, answer.GetContent(), "the owner's reply reaches the lead, not the target")
 
 	// The patrol report runner generates the daily report on its own tick; the owner may
 	// read it and its anomaly escalation, which they dismiss.
@@ -4350,39 +4350,29 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.NoError(t, err, "the owner may read the patrol reports")
 	require.NotEmpty(t, ownerReports.Msg.GetQualityAgentReports())
 
-	var anomaly *v1pb.QualityAgentAttention
+	// A report anomaly is an agent-level ask, not an attention row and not a request:
+	// it belongs to the agent, so the lead is not woken to coordinate it.
+	var anomalyAsk *store.QualityAgentAskMessage
 	require.Eventually(t, func() bool {
-		response, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
-			withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
-				Parent:   agent.GetName(),
-				Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_OPEN,
-				PageSize: 50,
-			}))
+		asks, err := fixture.env.Store.ListQualityAgentAsks(fixture.ctx, storedAgent.ID,
+			[]store.QualityAgentAskStatus{store.QualityAgentAskStatusOpen}, 20)
 		if err != nil {
 			return false
 		}
-		for _, attention := range response.Msg.GetQualityAgentAttentions() {
-			if attention.GetKind() == v1pb.QualityAgentAttentionKind_QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY {
-				anomaly = attention
+		for _, ask := range asks {
+			if ask.Kind == store.QualityAgentAskKindAnomaly {
+				anomalyAsk = ask
 				return true
 			}
 		}
 		return false
 	}, 30*time.Second, 250*time.Millisecond,
-		"the report runner never escalated the failing period: %s", fixture.env.ServerLogs())
-	dismissed, err := fixture.dataQuality.DismissQualityAgentAttention(fixture.ctx,
-		withToken(ownerToken, &v1pb.DismissQualityAgentAttentionRequest{Name: anomaly.GetName()}))
+		"the report runner never recorded the failing period's anomaly: %s", fixture.env.ServerLogs())
+	require.NotEmpty(t, anomalyAsk.Question)
+	resolved, err := fixture.env.Store.ResolveQualityAgentAsk(fixture.ctx, anomalyAsk.ResourceID,
+		store.QualityAgentAskStatusDismissed, time.Now().UTC())
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_DISMISSED, dismissed.Msg.GetStatus())
-	require.Equal(t, ownerName, dismissed.Msg.GetResolvedBy())
-	dismissedList, err := fixture.dataQuality.ListQualityAgentAttentions(fixture.ctx,
-		withToken(ownerToken, &v1pb.ListQualityAgentAttentionsRequest{
-			Parent:   agent.GetName(),
-			Status:   v1pb.QualityAgentAttentionStatus_QUALITY_AGENT_ATTENTION_STATUS_DISMISSED,
-			PageSize: 50,
-		}))
-	require.NoError(t, err)
-	require.Contains(t, qualityAgentAttentionNames(dismissedList.Msg.GetQualityAgentAttentions()), anomaly.GetName())
+	require.True(t, resolved)
 }
 
 // createQualityAgentTestMember creates an ordinary workspace member and returns its
@@ -4518,6 +4508,33 @@ func qualityAgentSessionNames(sessions []*v1pb.QualityAgentSession) []string {
 		names = append(names, session.GetName())
 	}
 	return names
+}
+
+// waitForQualityAgentConversationMessage waits until the lead's front-office
+// conversation contains an entry matching match.
+func waitForQualityAgentConversationMessage(t *testing.T, fixture *qualityFixture, agentName string, match func(*v1pb.QualityAgentSessionMessage) bool) *v1pb.QualityAgentSessionMessage {
+	t.Helper()
+
+	var found *v1pb.QualityAgentSessionMessage
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentConversationMessages(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.ListQualityAgentConversationMessagesRequest{
+				Parent:   agentName,
+				PageSize: 200,
+			}))
+		if err != nil {
+			return false
+		}
+		for _, message := range response.Msg.GetQualityAgentConversationMessages() {
+			if match(message) {
+				found = message
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 250*time.Millisecond,
+		"the lead conversation never contained the expected entry: %s", fixture.env.ServerLogs())
+	return found
 }
 
 // waitForQualityAgentSessionMessage waits until one session transcript entry matches

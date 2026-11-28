@@ -44,10 +44,16 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 		return true, nil
 	}
 	now := e.now()
-	for _, openCase := range e.openCases(ctx, session) {
+	openCases := e.openCases(ctx, session)
+	for _, openCase := range openCases {
 		if openCase.NextActionAt == nil || !openCase.NextActionAt.After(now) {
 			return true, nil
 		}
+	}
+	// The read is bounded. If it filled the bound, a due case may be just past it, so
+	// the review errs toward a model wake instead of silently skipping one.
+	if len(openCases) >= 3 {
+		return true, nil
 	}
 	since := session.CreatedAt
 	if session.LastReviewedAt != nil {
@@ -64,6 +70,17 @@ func (e *Engine) NeedsModel(ctx context.Context, session *store.QualityAgentSess
 // returns the next daily wake without writing a transcript row.
 func (e *Engine) Review(ctx context.Context, session *store.QualityAgentSessionMessage) Outcome {
 	now := e.now()
+	if isLeadSession(session) {
+		// The lead has no target and no plan. Its quiet path is a daily look with no
+		// survey note: the owner's conversation must stay free of engine bookkeeping.
+		return Outcome{
+			NextWakeAt:   ptrTime(now.Add(maintainWake)),
+			ProcessedSeq: session.ProcessedSeq,
+			EngineState:  cloneEngineState(session.EngineState),
+			ReviewedAt:   ptrTime(now),
+			Summary:      "reviewed: nothing actionable",
+		}
+	}
 	// A no-op review is silent, but a newly uncovered declared property is durable
 	// knowledge: only that case runs the deterministic survey and records its note.
 	if gaps, err := e.coverageGaps(ctx, session); err == nil && len(gaps) > 0 {

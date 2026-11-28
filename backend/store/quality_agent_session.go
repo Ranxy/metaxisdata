@@ -387,14 +387,17 @@ func (s *Store) ListQualityAgentSessionsByTarget(ctx context.Context, workspaceI
 
 // FindQualityAgentSessionMessage filters a session list; every field is optional.
 type FindQualityAgentSessionMessage struct {
-	WorkspaceID     *string
-	AgentID         *int64
-	Kind            int16
-	Role            storepb.QualityAgentSessionRole
-	TargetGUID      *string
-	DatabaseRef     *string
-	States          []storepb.QualityAgentSessionState
-	Mode            storepb.QualityAgentSessionMode
+	WorkspaceID *string
+	AgentID     *int64
+	Kind        int16
+	Role        storepb.QualityAgentSessionRole
+	TargetGUID  *string
+	DatabaseRef *string
+	States      []storepb.QualityAgentSessionState
+	Mode        storepb.QualityAgentSessionMode
+	// Search matches the name or target GUID; it is applied in SQL so a page is not
+	// the first page of an unfiltered roster.
+	Search          string
 	IncludeArchived bool
 	Limit           *int
 	Offset          *int
@@ -444,6 +447,10 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 	}
 	if find.Mode != storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		where += ` AND mode = ` + arg(int16(find.Mode))
+	}
+	if search := strings.TrimSpace(find.Search); search != "" {
+		pattern := "%" + likePatternEscaper.Replace(search) + "%"
+		where += ` AND (subagent_name ILIKE ` + arg(pattern) + ` ESCAPE E'\\' OR target_guid ILIKE ` + arg(pattern) + ` ESCAPE E'\\')`
 	}
 	limit, offset := 100, 0
 	if find.Limit != nil && *find.Limit > 0 {
@@ -1008,6 +1015,24 @@ func (s *Store) SumQualityAgentSessionTokensSince(ctx context.Context, workspace
 	return total, nil
 }
 
+// SumQualityAgentSubagentTokensSince is the subagent share of the token budget. The
+// lead's coordination is reserved from the same hourly total, so the subagents are
+// held to four fifths and the lead can still answer the owner.
+func (s *Store) SumQualityAgentSubagentTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error) {
+	var total int64
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(m.tokens), 0)
+		FROM quality_agent_message m
+		JOIN quality_agent_session s ON s.id = m.session_id
+		WHERE m.workspace_id = $1 AND s.agent_id = $2 AND m.created_at > $3
+			AND s.role = $4`,
+		workspaceID, agentID, since,
+		int16(storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_SUBAGENT)).Scan(&total); err != nil {
+		return 0, errors.Wrap(err, "failed to sum the subagent tokens")
+	}
+	return total, nil
+}
+
 // CountQualityAgentSessionWakesSince counts the wakes one agent's target sessions performed since
 // an instant: the wake budget's read.
 //
@@ -1322,6 +1347,11 @@ func subagentNameBase(targetGUID string) string {
 func (s *Store) GetQualityAgentSubagentByAddress(ctx context.Context, agentID int64, address string) (*QualityAgentSessionMessage, error) {
 	if agentID <= 0 || address == "" {
 		return nil, nil
+	}
+	// Accept the full resource name as well as the model-facing short name: the lead
+	// reads names like workspaces/{ws}/qualityAgentSessions/{id} from lists.
+	if index := strings.LastIndex(address, "/"); index >= 0 {
+		address = address[index+1:]
 	}
 	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx,
 		`SELECT `+qualityAgentSessionColumns+` FROM quality_agent_session
