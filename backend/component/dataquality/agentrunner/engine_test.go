@@ -94,6 +94,20 @@ func (f *fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMess
 	return f.rules, nil
 }
 
+func (f *fakeStore) ListQualityRulesByIDs(_ context.Context, ids []int64) ([]*store.QualityRuleMessage, error) {
+	wanted := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	var rules []*store.QualityRuleMessage
+	for _, rule := range f.rules {
+		if rule != nil && wanted[rule.ID] {
+			rules = append(rules, rule)
+		}
+	}
+	return rules, nil
+}
+
 func (f *fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
 	return f.contract, nil
 }

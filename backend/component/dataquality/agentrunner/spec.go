@@ -46,9 +46,9 @@ func evidenceMeta() tool.Meta {
 	return meta
 }
 
-// issuesMeta is the metadata of the problem-ledger read. issues.list is scoped, so the
-// agent principal's grant is evaluated on the target the read names; rules.list is in
-// the member baseline and cannot express "this agent, these databases".
+// issuesMeta is the metadata of the problem-ledger read. issues.list is in the member
+// baseline, so it cannot express "this agent, these databases": the target session
+// reads only its own target, and the lead must name one of the agent's enrollments.
 func issuesMeta() tool.Meta {
 	meta := readMeta()
 	meta.Permission = string(permission.DataQualityIssuesList)
@@ -239,7 +239,7 @@ func targetToolSpecs() []toolSpec {
 		},
 		{
 			name:        "list_issues",
-			description: "Read this target's issue ledger — the durable problems a FAIL or WARN opened. Use it before telling the lead or owner that a defect is untracked: the issue id is the record. A failing check is a finding, not a work item.",
+			description: "Read this target's issue ledger — the durable problems a FAIL opened (a WARN keeps an existing issue alive but opens none). Use it before telling the lead or owner that a defect is untracked: the issue id is the record. A failing check is a finding, not a work item.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"status": map[string]any{
 					"type":        "string",
@@ -468,7 +468,7 @@ func conversationToolSpecs() []toolSpec {
 		},
 		{
 			name:        "list_issues",
-			description: "Read one target's issue ledger — the durable problems a FAIL or WARN opened. Use it before saying a defect is untracked: the issue id is the record, and a failing check is not a work item.",
+			description: "Read one target's issue ledger — the durable problems a FAIL opened (a WARN keeps an existing issue alive but opens none). Use it before saying a defect is untracked: the issue id is the record, and a failing check is not a work item.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{
 				"target": map[string]any{"type": "string", "description": "subagent name, target GUID or session resource name"},
 				"status": map[string]any{

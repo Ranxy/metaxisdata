@@ -20,6 +20,11 @@ func TestCaseVerbsRejectACheckReferenceBeforeRaisingARequest(t *testing.T) {
 		{"control_check", `{"case":"qualityRules/r1","action":"PAUSE"}`},
 		{"propose_revision", `{"case":"qualityRules/r1","field":"range.min","value":"1","rationale":"x"}`},
 		{"escalate_case", `{"case":"qualityExecutions/9","reason":"x"}`},
+		{"run_check", `{"case":"qualityIssues/i1"}`},
+		{"repair_check", `{"case":"qualityRules/r1"}`},
+		{"control_check", `{"case":"qualityRules","action":"PAUSE"}`},
+		{"control_check", `{"case":"workspaces/ws/qualityRules/r1","action":"PAUSE"}`},
+		{"escalate_case", `{"case":"workspaces/ws/qualityExecutions/9","reason":"x"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

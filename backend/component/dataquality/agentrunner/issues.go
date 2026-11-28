@@ -24,6 +24,7 @@ const maxAgentIssues = 20
 // inspect_check.
 type agentIssueRow struct {
 	Issue             string `json:"issue"`
+	Target            string `json:"target,omitempty"`
 	Rule              string `json:"rule,omitempty"`
 	RuleTitle         string `json:"ruleTitle,omitempty"`
 	Status            string `json:"status"`
@@ -65,9 +66,22 @@ func (e *Engine) listIssues(ctx context.Context, target quality.AgentSession, ar
 	if err != nil {
 		return "", errors.Wrap(err, "failed to read the target's issues")
 	}
-	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &target.TargetGUID})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to read the target's rules")
+	// Read the rules by id, not by target: an archived rule keeps its issues, and a
+	// target-filtered list drops it, so the row would lose the check it is about.
+	ruleIDs := make([]int64, 0, len(issues))
+	seen := make(map[int64]bool, len(issues))
+	for _, issue := range issues {
+		if issue != nil && !seen[issue.RuleID] {
+			seen[issue.RuleID] = true
+			ruleIDs = append(ruleIDs, issue.RuleID)
+		}
+	}
+	var rules []*store.QualityRuleMessage
+	if len(ruleIDs) > 0 {
+		rules, err = e.store.ListQualityRulesByIDs(ctx, ruleIDs)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to read the issues' rules")
+		}
 	}
 	return marshalJSON(map[string]any{
 		"target": target.TargetGUID,
@@ -110,6 +124,7 @@ func agentIssueRows(issues []*store.QualityIssueMessage, rules []*store.QualityR
 		}
 		row := agentIssueRow{
 			Issue:           "qualityIssues/" + issue.ResourceID,
+			Target:          issue.TargetGUID,
 			Status:          strings.TrimPrefix(issue.Status.String(), "QUALITY_ISSUE_STATUS_"),
 			Severity:        strings.TrimPrefix(issue.Severity.String(), "QUALITY_SEVERITY_"),
 			OccurrenceCount: issue.OccurrenceCount,

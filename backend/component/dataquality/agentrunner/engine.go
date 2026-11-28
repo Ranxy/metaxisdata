@@ -55,6 +55,7 @@ const (
 // Store is the slice of *store.Store the engine needs.
 type Store interface {
 	ListQualityRules(ctx context.Context, find *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error)
+	ListQualityRulesByIDs(ctx context.Context, ids []int64) ([]*store.QualityRuleMessage, error)
 	GetQualityContract(ctx context.Context, targetGUID string, targetType storepb.MetaType) (*store.QualityContractMessage, error)
 	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)

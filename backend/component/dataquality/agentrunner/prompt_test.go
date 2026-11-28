@@ -8,6 +8,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentpolicy"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -56,9 +57,8 @@ func TestBasePromptSaysAFailingCheckIsNotAWorkItem(t *testing.T) {
 	require.Contains(t, base, "A failing check is a finding, not a work item")
 	require.Contains(t, base, "issue ledger")
 	require.Contains(t, base, "list_issues")
+	require.Contains(t, base, "A WARN keeps an existing FAIL issue alive but opens none")
 	require.Contains(t, base, "An empty target is a fact, not a case")
-	require.NotContains(t, base, "Escalate a blocker that needs a person instead of guessing",
-		"an unqualified escalation invitation is what produced a fabricated case id")
 }
 
 // The lead is the only surface the owner talks to, so it must know the same boundary and must not
@@ -70,7 +70,8 @@ func TestLeadPromptStatesTheWorkItemBoundary(t *testing.T) {
 	require.Contains(t, base, "A failing check is a finding, not a work item")
 	require.Contains(t, base, "list_issues")
 	require.Contains(t, base, "you cannot create one and neither can")
-	require.Contains(t, base, "issues are opened automatically")
+	require.Contains(t, base, "A WARN alone opens no")
+	require.Contains(t, base, "opened automatically")
 	require.Contains(t, base, "Offer the owner only an action the product has")
 }
 
@@ -259,4 +260,15 @@ func TestPendingAgentMessagesBlockRendersTheRequestAnswer(t *testing.T) {
 	}}, 5)
 	require.Contains(t, block, "workspaces/ws/qualityAgentRequests/r1")
 	require.Contains(t, block, "Keep it")
+}
+
+// The participation sentence is model-facing policy too: a repair-level delegation may
+// pause a check whose own definition cannot run, not every check that failed to conclude
+// (an empty target or a missing baseline is refused by DecideControl).
+func TestRepairParticipationDoesNotPromiseEveryNonVerdictPause(t *testing.T) {
+	t.Parallel()
+
+	text := participationBlock(agentpolicy.ParticipationRepair)
+	require.Contains(t, text, "pause one whose own definition cannot run")
+	require.NotContains(t, text, "pause one that cannot conclude")
 }

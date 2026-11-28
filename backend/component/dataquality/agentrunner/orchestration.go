@@ -1175,6 +1175,18 @@ func normalizeCaseResourceID(value string) string {
 // "qualityRules" and used to read as "case qualityRules does not belong to this
 // target", which hid the real answer: a check or an execution is not a case, and a
 // FAIL is tracked by the issue ledger instead.
+// rejectCaseReference is the run/repair dispatch guard. Those verbs parse more of the
+// arguments themselves, so the dispatch only needs the one field the refusal is about.
+func rejectCaseReference(arguments string) error {
+	var input struct {
+		Case string `json:"case"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return errors.Wrap(err, "invalid case argument")
+	}
+	return caseReferenceProblem(input.Case)
+}
+
 func caseReferenceProblem(value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -1183,7 +1195,7 @@ func caseReferenceProblem(value string) error {
 	for _, kind := range []string{"qualityRules", "qualityExecutions", "qualityIssues"} {
 		if trimmed == kind || strings.HasPrefix(trimmed, kind+"/") || strings.Contains(trimmed, "/"+kind+"/") {
 			return common.Errorf(common.Invalid,
-				"%s is not a work item: these verbs act on qualityAgentCases/<id>. A check that produced a FAIL has no work item because the issue ledger already reports it; read list_issues and report the issue id instead", kind)
+				"%q is not a work item: these verbs act on qualityAgentCases/<id>. A check that produced a FAIL has no work item because the issue ledger already reports it; read list_issues and report the issue id instead", trimmed)
 		}
 	}
 	return nil

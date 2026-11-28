@@ -39,6 +39,7 @@ func TestListIssuesProjectsTheProblemLedger(t *testing.T) {
 	result, err := engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, `{}`)
 	require.NoError(t, err)
 	require.Contains(t, result, `"issue":"qualityIssues/Rkur80IfwLi9"`)
+	require.Contains(t, result, `"target":"t"`)
 	require.Contains(t, result, `"rule":"qualityRules/MG95jGF8dc8U"`)
 	require.Contains(t, result, `"ruleTitle":"mail must look like a valid email address when present"`)
 	require.Contains(t, result, `"status":"OPEN"`)
@@ -51,22 +52,59 @@ func TestListIssuesProjectsTheProblemLedger(t *testing.T) {
 }
 
 // A resolved read is an explicit status filter, not the open predicate; the two are
-// different questions and the ledger's own definition of open has to survive.
+// different questions and the ledger's own definition of open has to survive. ALL is
+// the only value that adds no predicate.
 func TestListIssuesFiltersByStatus(t *testing.T) {
 	t.Parallel()
 
-	stores := newFakeStore()
-	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+	cases := []struct {
+		name     string
+		status   string
+		openOnly bool
+		statuses []storepb.QualityIssueStatus
+	}{
+		{"open", "OPEN", true, nil},
+		{"acknowledged", "ACKNOWLEDGED", false, []storepb.QualityIssueStatus{storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED}},
+		{"resolved", "RESOLVED", false, []storepb.QualityIssueStatus{storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED}},
+		{"all", "ALL", false, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores := newFakeStore()
+			engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
 
-	_, err := engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, `{"status":"RESOLVED","limit":3}`)
-	require.NoError(t, err)
-	require.False(t, stores.lastIssueFind.OpenOnly)
-	require.Equal(t, []storepb.QualityIssueStatus{storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED}, stores.lastIssueFind.Statuses)
-	require.Equal(t, 3, *stores.lastIssueFind.Limit)
+			_, err := engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, `{"status":"`+tc.status+`"}`)
+			require.NoError(t, err)
+			require.Equal(t, tc.openOnly, stores.lastIssueFind.OpenOnly)
+			require.Equal(t, tc.statuses, stores.lastIssueFind.Statuses)
+		})
+	}
+}
 
-	_, err = engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, `{"limit":50}`)
-	require.NoError(t, err)
-	require.Equal(t, maxAgentIssues, *stores.lastIssueFind.Limit)
+func TestListIssuesClampsTheLimit(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		limit string
+		want  int
+	}{
+		{"default", `{}`, 10},
+		{"explicit", `{"limit":3}`, 3},
+		{"above-max", `{"limit":50}`, maxAgentIssues},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stores := newFakeStore()
+			engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+
+			_, err := engine.listIssues(context.Background(), quality.AgentSession{TargetGUID: "t"}, tc.limit)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, *stores.lastIssueFind.Limit)
+		})
+	}
 }
 
 func TestListIssuesRejectsAnUnknownStatus(t *testing.T) {
@@ -87,6 +125,7 @@ func TestListIssuesLeadReadsTheNamedTarget(t *testing.T) {
 	stores.subagents = map[string]*store.QualityAgentSessionMessage{
 		"orders": {TargetGUID: "t"},
 	}
+	stores.enrollment = &store.QualityAgentEnrollmentMessage{}
 	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
 	lead := &store.QualityAgentSessionMessage{
 		ID: 2, ResourceID: "lead", WorkspaceID: "ws", AgentID: 1,
@@ -97,4 +136,26 @@ func TestListIssuesLeadReadsTheNamedTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stores.lastIssueFind)
 	require.Equal(t, "t", *stores.lastIssueFind.TargetGUID)
+}
+
+// A lead may name a target only if it is one of the agent's enrollments; a raw GUID
+// outside the team must not become a cross-agent ledger read.
+func TestListIssuesLeadRejectsAnUnenrolledTarget(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.subagents = map[string]*store.QualityAgentSessionMessage{
+		"orders": {TargetGUID: "t"},
+	}
+	shared := &store.QualityAgentSessionMessage{ID: 2, ResourceID: "lead", WorkspaceID: "ws", AgentID: 1,
+		Role: storepb.QualityAgentSessionRole_QUALITY_AGENT_SESSION_ROLE_LEAD}
+	stores.enrollment = &store.QualityAgentEnrollmentMessage{}
+	engine := &Engine{store: stores, now: func() time.Time { return time.Unix(10_000, 0).UTC() }}
+
+	_, err := engine.executeTool(context.Background(), shared, stores.agent, "list_issues", `{"target":"orders"}`, &wakeControl{})
+	require.NoError(t, err)
+
+	stores.enrollment = nil
+	_, err = engine.executeTool(context.Background(), shared, stores.agent, "list_issues", `{"target":"orders"}`, &wakeControl{})
+	require.ErrorContains(t, err, "is not enrolled")
 }
