@@ -74,6 +74,15 @@ describe("SuggestionDetailDrawer superseded proposals", () => {
     expect(wrapper.text()).not.toContain("Decided at");
   });
 
+  it("shows the proposing agent's retraction with its reason instead of a decision", () => {
+    const wrapper = mountDrawer(QualitySuggestionStatus.WITHDRAWN);
+
+    expect(wrapper.text()).toContain("Withdrawn by the agent");
+    expect(wrapper.text()).toContain("the column already has a semantic label");
+    expect(wrapper.text()).not.toContain("Decided by");
+    expect(wrapper.text()).not.toContain("Closed by the server");
+  });
+
   it("keeps the decision wording for a rejected proposal", () => {
     const wrapper = mountDrawer(QualitySuggestionStatus.REJECTED);
 

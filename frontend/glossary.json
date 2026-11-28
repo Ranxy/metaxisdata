@@ -961,6 +961,23 @@
       }
     },
     {
+      "id": "withdrawn",
+      "category": "Data Quality",
+      "definition": "The proposing agent retracted its own undecided proposal; it was never a person's decision, and the same proposal may be queued again later.",
+      "translations": {
+        "en-US": "withdrawn",
+        "zh-CN": "已撤回"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "已撤销"
+        ]
+      }
+    },
+    {
       "id": "quality-check",
       "category": "Data Quality",
       "definition": "One typed check over one target table or column, run on a schedule or on demand, authored inside its target contract.",

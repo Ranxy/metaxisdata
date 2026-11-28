@@ -695,6 +695,10 @@ const statusOptions = [
     value: QualitySuggestionStatus.SUPERSEDED,
     key: "dataQuality.suggestionStatus.superseded",
   },
+  {
+    value: QualitySuggestionStatus.WITHDRAWN,
+    key: "dataQuality.suggestionStatus.withdrawn",
+  },
 ];
 const kindOptions = [
   {

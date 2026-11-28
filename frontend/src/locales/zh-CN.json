@@ -1401,7 +1401,8 @@
       "pending": "待处理",
       "rejected": "已拒绝",
       "superseded": "已失效",
-      "unspecified": "未指定"
+      "unspecified": "未指定",
+      "withdrawn": "已撤回"
     },
     "suggestionSummary": {
       "created": "新建 {count} 条",
@@ -1516,6 +1517,7 @@
       "supersededByServer": "已由系统关闭",
       "title": "建议队列",
       "viewAllStatuses": "查看全部状态",
+      "withdrawnByAgent": "已由代理撤回",
       "workbench": {}
     },
     "tags": "标签",
