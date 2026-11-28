@@ -48,6 +48,10 @@ func qualityPrompt() *agent.Prompt {
 		"  belong in cases and reports, not in the lead's inbox.",
 		"- A report is self-contained: target, what you found, what you did, what you need and",
 		"  evidence references. The lead does not see your transcript.",
+		"- A QUESTION needs a stable question_key: reuse the same key only when retrying the",
+		"  same question, give a different decision a different key (for example timeout or",
+		"  pause-check), and never invent a random id. A question about one case may omit it",
+		"  when the case id alone identifies the decision.",
 	}
 	return agent.NewPrompt(
 		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
@@ -227,6 +231,7 @@ func wakePrompt(
 	pending []*store.QualityAgentTranscriptMessage,
 	agent *store.QualityAgentMessage,
 	cases []*store.QualityAgentCaseMessage,
+	requests []*store.QualityAgentRequestMessage,
 	participation agentpolicy.Participation,
 ) string {
 	events, asks, agents := 0, 0, 0
@@ -283,7 +288,7 @@ func wakePrompt(
 			"[triage wake %d] This target has no quality coverage yet.%s %s You cannot publish a contract or edit a check. If nothing is worth monitoring, say so briefly and record why. Do not repeat work you already recorded in an earlier triage. Target: %s. Objective: %s.",
 			wake, pendingNote, coverage, target, objective)
 	}
-	work := participationBlock(participation) + openCaseBlock(cases)
+	work := participationBlock(participation) + openCaseBlock(cases) + openRequestBlock(requests)
 	switch {
 	case asks > 0:
 		return fmt.Sprintf(
@@ -327,6 +332,49 @@ func pendingAgentMessagesBlock(pending []*store.QualityAgentTranscriptMessage, l
 		return ""
 	}
 	return "\n\nPending agent messages:" + builder.String()
+}
+
+// openRequestBlock shows the questions this target's subagent already has with the lead.
+// The model can reuse the stored question_key instead of inventing one, and a duplicate
+// question is visible before it is sent. Only questions are listed: other request kinds
+// do not accept a question_key.
+func openRequestBlock(requests []*store.QualityAgentRequestMessage) string {
+	if len(requests) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	_, _ = builder.WriteString("\nYour open questions with the lead (reuse question_key only for the same question):")
+	shown := 0
+	for _, request := range requests {
+		if request.Kind != store.QualityAgentRequestKindQuestion {
+			continue
+		}
+		if shown >= 3 {
+			break
+		}
+		shown++
+		key := "no question_key"
+		switch {
+		case request.QuestionKey != "" && request.CaseResourceID != "":
+			key = "question_key=" + request.QuestionKey + " (case " + request.CaseResourceID + ")"
+		case request.QuestionKey != "":
+			key = "question_key=" + request.QuestionKey + " (no case)"
+		case request.CaseResourceID != "":
+			key += " (case " + request.CaseResourceID + "; omit question_key to retry)"
+		default:
+			key += " (no case; omit question_key and the case, keep the wording)"
+		}
+		status := "OPEN"
+		if request.Status == store.QualityAgentRequestStatusForwarded {
+			status = "FORWARDED"
+		}
+		fmt.Fprintf(&builder, "\n- %s [%s] %s: %s", requestName(request.ResourceID), status, key,
+			truncateRunes(request.Question, 200))
+	}
+	if shown == 0 {
+		return ""
+	}
+	return builder.String()
 }
 
 // participationBlock states the authority the target session runs under. It is part of the

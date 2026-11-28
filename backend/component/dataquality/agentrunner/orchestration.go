@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -114,9 +115,10 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		return "", errors.New("only a subagent can message its lead")
 	}
 	var input struct {
-		Message string `json:"message"`
-		Intent  string `json:"intent"`
-		Case    string `json:"case"`
+		Message     string `json:"message"`
+		Intent      string `json:"intent"`
+		Case        string `json:"case"`
+		QuestionKey string `json:"question_key"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
 		return "", errors.Wrap(err, "invalid send_lead_message arguments")
@@ -126,21 +128,34 @@ func (e *Engine) sendLeadMessage(ctx context.Context, session *store.QualityAgen
 		intent = storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_REPORT
 	}
 	if intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_QUESTION {
-		dedupe := fmt.Sprintf("target:%s:question", session.TargetGUID)
-		if input.Case != "" {
-			dedupe = fmt.Sprintf("target:%s:case:%s:question", session.TargetGUID, input.Case)
+		if strings.TrimSpace(input.Message) == "" {
+			return "", errors.New("a QUESTION needs a message")
 		}
-		request, _, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
-			Kind:           store.QualityAgentRequestKindQuestion,
-			CaseResourceID: input.Case,
-			Title:          "Subagent question",
-			Question:       input.Message,
-			DedupeKey:      dedupe,
+		caseID := normalizeCaseResourceID(input.Case)
+		questionKey := strings.TrimSpace(input.QuestionKey)
+		if questionKey != "" && !questionKeyPattern.MatchString(questionKey) {
+			return "", errors.New("question_key must be a short lowercase slug such as timeout or pause-check: 2-41 characters, starting with a letter, then letters, digits and hyphens")
+		}
+		dedupe := questionDedupeKey(session.TargetGUID, caseID, questionKey, input.Message)
+		request, created, err := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+			Kind:                        store.QualityAgentRequestKindQuestion,
+			CaseResourceID:              input.Case,
+			Title:                       "Subagent question",
+			Question:                    input.Message,
+			DedupeKey:                   dedupe,
+			QuestionKey:                 questionKey,
+			ConflictOnDifferentQuestion: true,
 		})
 		if err != nil {
 			return "", err
 		}
-		return marshalJSON(map[string]any{"delivered": true, "to": "lead", "request": requestName(request.ResourceID)})
+		return marshalJSON(map[string]any{
+			"delivered":    true,
+			"to":           "lead",
+			"request":      requestName(request.ResourceID),
+			"duplicate":    !created,
+			"question_key": request.QuestionKey,
+		})
 	}
 	lead, err := e.leadFor(ctx, session)
 	if err != nil {
@@ -186,6 +201,21 @@ func (e *Engine) raiseRequest(ctx context.Context, session *store.QualityAgentSe
 	message.OriginSessionID = &session.ID
 	message.TargetGUID = session.TargetGUID
 	message.CaseResourceID = normalizeCaseResourceID(message.CaseResourceID)
+	if message.CaseResourceID != "" {
+		// A case id is a namespace, not a free-form suffix: a colon would let "c1:timeout"
+		// collide with case c1 plus key timeout. The row must also belong to this target, so
+		// a subagent cannot address another target's case.
+		if strings.Contains(message.CaseResourceID, ":") {
+			return nil, false, common.Errorf(common.Invalid, "case %q is not a valid case id", message.CaseResourceID)
+		}
+		openCase, err := e.store.GetQualityAgentCaseByResourceID(ctx, message.CaseResourceID)
+		if err != nil {
+			return nil, false, err
+		}
+		if openCase == nil || openCase.AgentID != session.AgentID || openCase.TargetGUID != session.TargetGUID {
+			return nil, false, common.Errorf(common.Invalid, "case %q does not belong to this target", message.CaseResourceID)
+		}
+	}
 	message.TargetType = storepb.MetaType(session.TargetType)
 	if message.DedupeKey == "" {
 		message.DedupeKey = fmt.Sprintf("target:%s:kind:%d", session.TargetGUID, message.Kind)
@@ -646,6 +676,26 @@ func normalizeCaseResourceID(value string) string {
 		value = value[:index]
 	}
 	return value
+}
+
+var questionKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
+
+// questionDedupeKey is the stable identity of one question. A case scopes the first
+// question; a second distinct question on that case needs an explicit slug. Without a
+// case the slug is the scope, and a missing slug falls back to the question text so the
+// model can never create an id it has to remember.
+func questionDedupeKey(targetGUID, caseID, questionKey, question string) string {
+	switch {
+	case caseID != "" && questionKey != "":
+		return "target:" + targetGUID + ":case:" + caseID + ":question:" + questionKey
+	case caseID != "":
+		return "target:" + targetGUID + ":case:" + caseID + ":question"
+	case questionKey != "":
+		return fmt.Sprintf("target:%s:question:%s", targetGUID, questionKey)
+	default:
+		normalized := strings.Join(strings.Fields(question), " ")
+		return fmt.Sprintf("target:%s:question:%x", targetGUID, contentHash(normalized))
+	}
 }
 
 func requestName(resourceID string) string { return "qualityAgentRequests/" + resourceID }

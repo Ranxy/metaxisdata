@@ -65,3 +65,13 @@ func TestSendSubagentMessageRefusesAnUnknownChild(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, stores.messages)
 }
+
+// A case-scoped question key must not share the namespace of the case verbs: a key
+// named control would otherwise collide with control_check's decision request.
+func TestCaseQuestionKeyDoesNotShareTheControlNamespace(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "target:t:case:c1:question:control", questionDedupeKey("t", "c1", "control", "Resume the check?"))
+	require.Equal(t, "target:t:case:c1:question", questionDedupeKey("t", "c1", "", "Resume the check?"))
+	require.NotEqual(t, "target:t:case:c1:control", questionDedupeKey("t", "c1", "control", "Resume the check?"))
+}

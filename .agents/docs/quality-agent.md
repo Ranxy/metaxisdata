@@ -50,6 +50,14 @@ A subagent that cannot settle a work item raises a **request** to its lead. The 
 active request exists per `(agent, dedupe key)`: a repeated escalation refreshes an OPEN request's wording and does not notify twice.
 A request is `OPEN` until the lead either answers it or forwards it to the owner.
 
+A subagent's QUESTION carries a stable `question_key`. The key is a short lowercase slug, not an opaque id: a case-scoped
+question can omit it and is scoped by the case, while a second decision on the same case names a suffix such as `timeout`.
+A case-scoped question must name a case belonging to the same target; a subagent cannot address another target's case. Reusing a key for a
+different question is a conflict, not an overwrite; the lead is never shown a silently replaced question.
+A fingerprint over target, case, kind and the whitespace-normalized text catches a retry whose key drifted; the comparison is
+whitespace-insensitive for the same reason. The key is stored on the request, so the wake instruction lists the target's open
+questions as `question_key=...` and marks a case-only or wording-only question as having no key to reuse.
+
 The owner never talks to a subagent. When the lead needs the owner, it raises an **ask** and writes the question into the lead
 conversation; an ask can cover several requests through their `ask_id`. The owner answers with `SendQualityAgentMessage(reply_to =
 ask)` (or dismisses with `intent = DISMISS`); the lead then answers each forwarded request, which delivers the answer to the
