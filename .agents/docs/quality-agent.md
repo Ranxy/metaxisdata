@@ -70,7 +70,8 @@ requests and the subagent messages: the server delivers the answer to every acti
 subagents, so no model has to infer which question a sentence belongs to. The lead sees an `answer_to_ask` envelope naming the ask,
 the questions, the selected labels and the requests; the subagent sees an `answer_to_request` envelope naming its request and carrying only the question that request decided; a batch
 delivers one such envelope per request, not the whole batch. An ask
-resolves when no request under it is still OPEN or FORWARDED; a dismissal closes the ask and its requests as `DISMISSED`, and a
+resolves when no request under it is still OPEN or FORWARDED; a dismissal closes the ask and its requests as `DISMISSED` and writes a
+`request_dismissed` notice to each origin subagent, so none waits for an answer that will not come. A
 request with no ask can still be answered by the lead directly. Case settlement closes the requests attached to the case and then
 any ask they drain.
 

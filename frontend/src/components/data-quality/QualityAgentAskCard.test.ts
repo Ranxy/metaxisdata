@@ -10,6 +10,8 @@ import {
   QualityAgentAskStatus,
   QualityAgentQuestionOptionSchema,
   QualityAgentQuestionSchema,
+  QualityTargetPathSchema,
+  QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import QualityAgentAskCard from "./QualityAgentAskCard.vue";
 
@@ -251,6 +253,79 @@ describe("QualityAgentAskCard", () => {
     expect(emitted[1].map((answer) => answer.id)).toEqual(["first", "second"]);
     expect(emitted[1][0].selected).toEqual(["Yes"]);
     expect(emitted[1][1].selected).toEqual(["No"]);
+  });
+
+  it("skips one question in a batch", async () => {
+    const ask = askFixture();
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "first",
+        question: "First?",
+        options: [create(QualityAgentQuestionOptionSchema, { label: "Yes" })],
+        requests: ["workspaces/ws/qualityAgentRequests/r1"],
+      }),
+      create(QualityAgentQuestionSchema, {
+        id: "second",
+        question: "Second?",
+        options: [create(QualityAgentQuestionOptionSchema, { label: "No" })],
+        requests: ["workspaces/ws/qualityAgentRequests/r2"],
+      }),
+    ];
+    const wrapper = await mountCard(ask);
+    const yes = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Yes"));
+    await yes?.trigger("click");
+    const skip = wrapper
+      .findAll("button")
+      .filter((candidate) => candidate.text() === "Skip this question");
+    expect(skip).toHaveLength(2);
+    await skip[1]?.trigger("click");
+    expect(wrapper.text()).toContain("This question will be skipped");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send answer");
+    await send?.trigger("click");
+    const emitted = wrapper.emitted("reply")?.[0] as [
+      QualityAgentAsk,
+      { id: string; selected: string[]; custom: string }[],
+    ];
+    expect(emitted[1]).toEqual([
+      create(QualityAgentAnswerSchema, {
+        id: "first",
+        selected: ["Yes"],
+        custom: "",
+      }),
+      create(QualityAgentAnswerSchema, {
+        id: "second",
+        selected: [],
+        custom: "",
+      }),
+    ]);
+  });
+
+  it("names the target each question covers", async () => {
+    const ask = askFixture();
+    ask.targets = [
+      create(QualityTargetSchema, {
+        metaGuid: "g1",
+        path: create(QualityTargetPathSchema, { object: "orders" }),
+      }),
+    ];
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "first",
+        question: "First?",
+        requests: ["workspaces/ws/qualityAgentRequests/r1"],
+      }),
+      create(QualityAgentQuestionSchema, {
+        id: "second",
+        question: "Second?",
+        requests: ["workspaces/ws/qualityAgentRequests/r2"],
+      }),
+    ];
+    const wrapper = await mountCard(ask);
+    expect(wrapper.text().match(/Covers orders · 1 request/g)).toHaveLength(2);
   });
 
   it("clamps a long question and expands it on request", async () => {

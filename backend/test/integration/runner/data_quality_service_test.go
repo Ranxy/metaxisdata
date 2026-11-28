@@ -4350,7 +4350,8 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		withToken(ownerToken, &v1pb.ListQualityAgentRequestsRequest{Parent: agent.GetName()}))
 	require.NoError(t, err, "the owner reads the agent's request list")
 
-	// An explicit reply_to is what marks the ask answered; the lead then routes it.
+	// An explicit reply_to is what answers the ask. An anomaly ask has no request
+	// behind it, so there is nothing to deliver and the ask resolves immediately.
 	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
 		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
 			Name:        agent.GetName(),
@@ -4360,9 +4361,10 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	answeredAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
 	require.NoError(t, err)
-	require.Equal(t, store.QualityAgentAskStatusAnswered, answeredAsk.Status)
+	require.Equal(t, store.QualityAgentAskStatusResolved, answeredAsk.Status)
 
-	// A dismissal carries intent=DISMISS: it closes the ask without writing an answer.
+	// A dismissal carries intent=DISMISS and is only valid while the ask is open; it
+	// closes the ask without writing an answer.
 	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
 		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
 			Name:        agent.GetName(),
@@ -4370,8 +4372,37 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 			ReplyTo:     askName,
 			Intent:      v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
 		}))
+	require.Error(t, err, "a settled ask cannot be dismissed")
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	lead, err := fixture.env.Store.EnsureQualityAgentConversation(fixture.ctx, workspaceID, storedAgent.ID)
 	require.NoError(t, err)
-	dismissedAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, anomalyAsk.ResourceID)
+	dismissable, _, err := fixture.env.Store.CreateQualityAgentAskDeduped(fixture.ctx, &store.QualityAgentAskMessage{
+		WorkspaceID: workspaceID,
+		AgentID:     storedAgent.ID,
+		Kind:        store.QualityAgentAskKindAnomaly,
+		Title:       "Dismiss me",
+		Question:    "Dismiss this request.",
+		DedupeKey:   "it-runner-dismiss-ask",
+	}, lead, &store.QualityAgentTranscriptMessage{
+		Wake:           lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Dismiss this request.",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-runner-dismiss-ask-message",
+	}, nil, time.Now().UTC())
+	require.NoError(t, err)
+	dismissName := common.FormatWorkspace(workspaceID) + "/qualityAgentAsks/" + dismissable.ResourceID
+	_, err = fixture.dataQuality.SendQualityAgentMessage(fixture.ctx,
+		withToken(ownerToken, &v1pb.SendQualityAgentMessageRequest{
+			Name:        agent.GetName(),
+			MessageBody: "Dismiss this request.",
+			ReplyTo:     dismissName,
+			Intent:      v1pb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		}))
+	require.NoError(t, err)
+	dismissedAsk, err := fixture.env.Store.GetQualityAgentAskByResourceID(fixture.ctx, dismissable.ResourceID)
 	require.NoError(t, err)
 	require.Equal(t, store.QualityAgentAskStatusDismissed, dismissedAsk.Status)
 }

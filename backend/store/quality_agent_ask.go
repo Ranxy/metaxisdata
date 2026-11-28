@@ -305,44 +305,122 @@ func (s *Store) ResolveProposalAskIfDrained(ctx context.Context, agentID int64, 
 	return affected > 0, nil
 }
 
-// DismissQualityAgentAsk closes an ask the owner explicitly dismissed, together with
-// the requests it covers. It is not an answer: no request becomes ANSWERED and no
-// subagent receives a decision it never got.
-func (s *Store) DismissQualityAgentAsk(ctx context.Context, askID int64, at time.Time) (bool, error) {
-	if askID <= 0 {
-		return false, nil
+// DismissQualityAgentAskAtomic closes one open ask, appends the owner's dismissal and
+// tells the subagents whose requests it closes, all in one transaction. A dismissal is
+// not an answer: no request records a resolution and no subagent receives a decision
+// it never got. The ask's status is the concurrency guard, so a second dismissal waits
+// on the row lock and then fails instead of closing it twice.
+func (s *Store) DismissQualityAgentAskAtomic(ctx context.Context, resourceID string, ownerMessage *QualityAgentTranscriptMessage, notices []*QualityAgentRequestDelivery, at time.Time) (*QualityAgentAskMessage, *QualityAgentTranscriptMessage, []*QualityAgentRequestMessage, error) {
+	if resourceID == "" || ownerMessage == nil {
+		return nil, nil, nil, common.Errorf(common.Invalid, "a dismissal needs an ask and a message")
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
 	}
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to begin the ask dismissal")
+		return nil, nil, nil, errors.Wrap(err, "failed to begin the ask dismissal")
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `
-		UPDATE quality_agent_ask SET status = $2, resolved_at = $3, updated_at = $3
-		WHERE id = $1 AND status = $4`,
-		askID, int16(QualityAgentAskStatusDismissed), at.UTC(),
-		int16(QualityAgentAskStatusOpen))
+	locked, err := scanQualityAgentAsk(tx.QueryRowContext(ctx,
+		`SELECT `+qualityAgentAskColumns+` FROM quality_agent_ask WHERE resource_id = $1 FOR UPDATE`,
+		resourceID))
 	if err != nil {
-		return false, errors.Wrap(err, "failed to dismiss the ask")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil, common.Errorf(common.NotFound, "the ask was not found")
+		}
+		return nil, nil, nil, errors.Wrap(err, "failed to lock the ask")
 	}
-	affected, err := result.RowsAffected()
+	if locked.Status != QualityAgentAskStatusOpen {
+		return nil, nil, nil, common.Errorf(common.Conflict, "the ask is no longer open")
+	}
+	if locked.ConversationSessionID == nil {
+		return nil, nil, nil, common.Errorf(common.Invalid, "the ask has no conversation")
+	}
+	ownerMessage.SessionID = *locked.ConversationSessionID
+	ownerMessage.WorkspaceID = locked.WorkspaceID
+	createdMessage, err := s.appendQualityAgentTranscriptTx(ctx, tx, ownerMessage)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to count the dismissed ask")
+		return nil, nil, nil, err
 	}
-	if affected == 0 {
-		return false, nil
+	dismissedAsk, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
+		UPDATE quality_agent_ask
+		SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE id = $1 AND status = $4
+		RETURNING `+qualityAgentAskColumns,
+		locked.ID, int16(QualityAgentAskStatusDismissed), at.UTC(),
+		int16(QualityAgentAskStatusOpen)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil, common.Errorf(common.Conflict, "the ask is no longer open")
+		}
+		return nil, nil, nil, errors.Wrap(err, "failed to dismiss the ask")
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE quality_agent_request SET status = $2, resolved_at = $3, updated_at = $3
-		WHERE ask_id = $1 AND status IN ($4, $5)`,
-		askID, int16(QualityAgentRequestStatusDismissed), at.UTC(),
-		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded)); err != nil {
-		return false, errors.Wrap(err, "failed to dismiss the ask's requests")
+	byRequest := make(map[string]*QualityAgentRequestDelivery, len(notices))
+	for _, notice := range notices {
+		if notice != nil && notice.Request != nil {
+			byRequest[notice.Request.ResourceID] = notice
+		}
+	}
+	active, err := func() ([]*QualityAgentRequestMessage, error) {
+		rows, queryErr := tx.QueryContext(ctx, `SELECT `+qualityAgentRequestColumns+`
+			FROM quality_agent_request WHERE ask_id = $1 AND status IN ($2, $3) FOR UPDATE`,
+			locked.ID, int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+		if queryErr != nil {
+			return nil, errors.Wrap(queryErr, "failed to read the ask's requests")
+		}
+		defer rows.Close()
+		var requests []*QualityAgentRequestMessage
+		for rows.Next() {
+			request, scanErr := scanQualityAgentRequest(rows)
+			if scanErr != nil {
+				return nil, errors.Wrap(scanErr, "failed to scan an ask request")
+			}
+			requests = append(requests, request)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, errors.Wrap(err, "failed to iterate the ask's requests")
+		}
+		return requests, nil
+	}()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	closed := make([]*QualityAgentRequestMessage, 0, len(active))
+	for _, request := range active {
+		dismissed, err := scanQualityAgentRequest(tx.QueryRowContext(ctx, `
+			UPDATE quality_agent_request
+			SET status = $2, resolved_at = $3, updated_at = $3
+			WHERE id = $1 AND status IN ($4, $5)
+			RETURNING `+qualityAgentRequestColumns,
+			request.ID, int16(QualityAgentRequestStatusDismissed), at.UTC(),
+			int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded)))
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, nil, nil, errors.Wrap(err, "failed to dismiss an ask request")
+		}
+		notice := byRequest[request.ResourceID]
+		if notice != nil && notice.Subagent != nil && notice.Message != nil {
+			notice.Message.SessionID = notice.Subagent.ID
+			notice.Message.WorkspaceID = notice.Subagent.WorkspaceID
+			if _, err := s.appendQualityAgentTranscriptTx(ctx, tx, notice.Message); err != nil {
+				return nil, nil, nil, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE quality_agent_session
+				SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+				WHERE id = $1 AND archived_at IS NULL`, notice.Subagent.ID, at.UTC()); err != nil {
+				return nil, nil, nil, errors.Wrap(err, "failed to wake the dismissed subagent")
+			}
+		}
+		closed = append(closed, dismissed)
 	}
 	if err := tx.Commit(); err != nil {
-		return false, errors.Wrap(err, "failed to commit the ask dismissal")
+		return nil, nil, nil, errors.Wrap(err, "failed to commit the ask dismissal")
 	}
-	return true, nil
+	return dismissedAsk, createdMessage, closed, nil
 }
 
 // ResolveQualityAgentAsk closes an ask once every request under it settled.

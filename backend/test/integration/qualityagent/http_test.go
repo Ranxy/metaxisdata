@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
@@ -452,6 +453,105 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	require.NoError(t, f.env.Store.GetDB().QueryRowContext(f.ctx,
 		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'quality_agent_attention'`).Scan(&attentionTable))
 	require.Zero(t, attentionTable, "the legacy attention table is gone")
+}
+
+// A batch ask written to the real store is answered through the public API, and each
+// question's answer reaches only the request that question names. This is the HTTP
+// counterpart of the store-level per-question delivery test.
+func TestQualityAgentHTTPServerBatchAnswer(t *testing.T) {
+	f := newHTTPAgentFixture(t)
+	session := f.waitForTargetSession(t)
+	storedSession, err := f.env.Store.GetQualityAgentSession(f.ctx, resourceIDFromName(session.GetName()))
+	require.NoError(t, err)
+	lead, err := f.env.Store.EnsureQualityAgentConversation(f.ctx, f.workspaceID, f.agent.ID)
+	require.NoError(t, err)
+
+	createRequest := func(key, question string) *store.QualityAgentRequestMessage {
+		origin := storedSession.ID
+		request, created, err := f.env.Store.CreateQualityAgentRequest(f.ctx, &store.QualityAgentRequestMessage{
+			WorkspaceID:     f.workspaceID,
+			AgentID:         f.agent.ID,
+			OriginSessionID: &origin,
+			TargetGUID:      f.targetGUID,
+			TargetType:      storepb.MetaType_TABLE,
+			Kind:            store.QualityAgentRequestKindQuestion,
+			Status:          store.QualityAgentRequestStatusOpen,
+			Title:           question,
+			Question:        question,
+			DedupeKey:       key,
+		})
+		require.NoError(t, err)
+		require.True(t, created)
+		return request
+	}
+	first := createRequest("it-batch-http-1", "Which window should the first check use?")
+	second := createRequest("it-batch-http-2", "Which window should the second check use?")
+
+	created, isNew, err := f.env.Store.CreateQualityAgentAskDeduped(f.ctx, &store.QualityAgentAskMessage{
+		WorkspaceID: f.workspaceID,
+		AgentID:     f.agent.ID,
+		Kind:        store.QualityAgentAskKindQuestion,
+		Title:       "Two windows",
+		Question:    "Which window should each check use?",
+		Questions: []*storepb.QualityAgentAskQuestion{
+			{Id: "first", Question: first.Question, Requests: []string{dataquality.RequestName(first)}},
+			{Id: "second", Question: second.Question, Requests: []string{dataquality.RequestName(second)}},
+		},
+		TargetGUID: f.targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		DedupeKey:  "it-batch-http-ask",
+	}, lead, &store.QualityAgentTranscriptMessage{
+		Wake:           lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Which window should each check use?",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-batch-http-ask-message",
+	}, []*store.QualityAgentRequestMessage{first, second}, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, isNew)
+
+	read, err := f.dataQuality.GetQualityAgentAsk(f.ctx, withToken(f.ownerToken,
+		&v1pb.GetQualityAgentAskRequest{Name: dataquality.AskName(created)}))
+	require.NoError(t, err)
+	require.Len(t, read.Msg.GetQuestions(), 2)
+	require.Equal(t, []string{dataquality.RequestName(first)}, read.Msg.GetQuestions()[0].GetRequests())
+
+	_, err = f.dataQuality.SendQualityAgentMessage(f.ctx, withToken(f.ownerToken, &v1pb.SendQualityAgentMessageRequest{
+		Name:    f.agentName,
+		ReplyTo: dataquality.AskName(created),
+		Answers: []*v1pb.QualityAgentAnswer{
+			{Id: "first", Custom: "one day"},
+			{Id: "second", Custom: "seven days"},
+		},
+	}))
+	require.NoError(t, err)
+	f.waitForAskStatus(t, created.ResourceID, store.QualityAgentAskStatusResolved)
+	require.Equal(t, "one day", f.getHTTPRequest(t, first.ResourceID).Resolution)
+	require.Equal(t, "seven days", f.getHTTPRequest(t, second.ResourceID).Resolution,
+		"each question's answer reaches its own request")
+
+	require.Eventually(t, func() bool {
+		messages, err := f.env.Store.ListQualityAgentTranscriptMessages(f.ctx,
+			&store.FindQualityAgentTranscriptMessage{SessionID: storedSession.ID, Limit: 100})
+		if err != nil {
+			return false
+		}
+		firstAnswer, secondAnswer := false, false
+		for _, message := range messages {
+			if message.Intent != storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER {
+				continue
+			}
+			if strings.Contains(message.Content, "one day") {
+				firstAnswer = true
+			}
+			if strings.Contains(message.Content, "seven days") {
+				secondAnswer = true
+			}
+		}
+		return firstAnswer && secondAnswer
+	}, 60*time.Second, 250*time.Millisecond,
+		"the subagent never received both per-question answers: %s", f.env.ServerLogs())
 }
 
 // The A architecture materializes every in-scope target, not one session per agent

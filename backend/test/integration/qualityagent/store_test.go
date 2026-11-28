@@ -267,7 +267,7 @@ func TestQualityAgentAskDedupesAndDrains(t *testing.T) {
 	require.Equal(t, store.QualityAgentAskStatusResolved, drained.Status)
 }
 
-func TestQualityAgentAskDismissesItsRequests(t *testing.T) {
+func TestQualityAgentAskDismissalClosesAndNotifies(t *testing.T) {
 	t.Parallel()
 
 	f := newDraftAgent(t)
@@ -289,13 +289,66 @@ func TestQualityAgentAskDismissesItsRequests(t *testing.T) {
 		[]*store.QualityAgentRequestMessage{request}, time.Now().UTC())
 	require.NoError(t, err)
 	require.True(t, isNew)
-	applied, err := f.env.store.DismissQualityAgentAsk(f.ctx, created.ID, time.Now().UTC())
+
+	content, err := dataquality.BuildRequestDismissedEnvelope(created, request)
 	require.NoError(t, err)
-	require.True(t, applied)
-	dismissedAsk, err := f.env.store.GetQualityAgentAskByResourceID(f.ctx, created.ResourceID)
+	ownerMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Dismiss this request.",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		ReplyTo:        dataquality.AskName(created),
+		IdempotencyKey: "it-dismiss-lead",
+	}
+	dismissed, message, closed, err := f.env.store.DismissQualityAgentAskAtomic(f.ctx, created.ResourceID,
+		ownerMessage, []*store.QualityAgentRequestDelivery{{
+			Request:  request,
+			Subagent: f.session,
+			Message: &store.QualityAgentTranscriptMessage{
+				Wake:           f.session.WakeCount + 1,
+				Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+				Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+				Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+				Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+				Content:        content,
+				ReplyTo:        dataquality.RequestName(request),
+				IdempotencyKey: "it-dismiss-subagent",
+			},
+		}}, time.Now().UTC())
 	require.NoError(t, err)
-	require.Equal(t, store.QualityAgentAskStatusDismissed, dismissedAsk.Status)
+	require.NotNil(t, dismissed)
+	require.NotNil(t, message)
+	require.Len(t, closed, 1)
+	require.Equal(t, store.QualityAgentAskStatusDismissed, dismissed.Status)
+	require.Equal(t, store.QualityAgentRequestStatusDismissed, closed[0].Status)
+	require.Empty(t, closed[0].Resolution, "a dismissal never records an answer")
+
+	storedAsk, err := f.env.store.GetQualityAgentAskByResourceID(f.ctx, created.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusDismissed, storedAsk.Status)
 	require.Equal(t, store.QualityAgentRequestStatusDismissed, f.getRequest(t, request.ResourceID).Status)
+
+	messages, err := f.env.store.ListQualityAgentTranscriptMessages(f.ctx, &store.FindQualityAgentTranscriptMessage{
+		SessionID: f.session.ID, Limit: 100,
+	})
+	require.NoError(t, err)
+	var notified bool
+	for _, entry := range messages {
+		if entry.Intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS &&
+			strings.Contains(entry.Content, "request_dismissed") {
+			notified = true
+		}
+	}
+	require.True(t, notified, "the origin subagent is told its request was dismissed")
+
+	// The ask's status is the guard: a second dismissal must not append a second
+	// owner message or a second notice.
+	second := *ownerMessage
+	second.IdempotencyKey = "it-dismiss-lead-2"
+	_, _, _, err = f.env.store.DismissQualityAgentAskAtomic(f.ctx, created.ResourceID, &second, nil, time.Now().UTC())
+	require.Error(t, err, "a closed ask refuses a second dismissal")
 }
 
 // A case's terminal transition closes its requests and a request-backed ask, but an
