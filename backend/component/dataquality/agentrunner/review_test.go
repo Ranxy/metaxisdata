@@ -69,8 +69,34 @@ func TestReviewIsDeterministicAndWritesNothing(t *testing.T) {
 	stores := newFakeStore()
 	engine := NewEngine(stores)
 	session := reviewSession()
-	outcome := engine.Review(session)
+	outcome := engine.Review(context.Background(), session)
 	require.NotNil(t, outcome.NextWakeAt)
 	require.WithinDuration(t, time.Now().Add(maintainWake), *outcome.NextWakeAt, time.Minute)
 	require.Empty(t, stores.messages, "a no-op review must not append a transcript row")
+}
+
+func TestNeedsModelIgnoresACaseThatIsNotDue(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	future := time.Now().UTC().Add(time.Hour)
+	stores.openCases = []*store.QualityAgentCaseMessage{{NextActionAt: &future}}
+	engine := NewEngine(stores)
+	needs, err := engine.NeedsModel(context.Background(), reviewSession())
+	require.NoError(t, err)
+	require.False(t, needs)
+}
+
+func TestNeedsModelSkipsTriageUntilItsReviewIsDue(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	review := time.Now().UTC().Add(24 * time.Hour)
+	stores.enrollment = &store.QualityAgentEnrollmentMessage{NextReviewAt: &review}
+	session := reviewSession()
+	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
+	engine := NewEngine(stores)
+	needs, err := engine.NeedsModel(context.Background(), session)
+	require.NoError(t, err)
+	require.False(t, needs, "a triaged target waits for next_review_at")
 }

@@ -17,6 +17,23 @@ import (
 // conversationWake answers without a model: it records the current scope summary as
 // an assistant message so the owner still gets a useful reply.
 func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, pending []*store.QualityAgentTranscriptMessage) (Outcome, error) {
+	ownerAsked := false
+	for _, message := range pending {
+		if message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK {
+			ownerAsked = true
+			break
+		}
+	}
+	if !ownerAsked {
+		requests, err := e.store.ListQualityAgentRequests(ctx, session.AgentID,
+			[]store.QualityAgentRequestStatus{store.QualityAgentRequestStatusOpen}, "", 20)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if len(requests) > 0 {
+			return e.forwardRequestsDeterministically(ctx, session, wake, pending, requests)
+		}
+	}
 	summary, err := e.scopeSummary(ctx, session)
 	if err != nil {
 		return Outcome{}, err
@@ -41,6 +58,33 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 		ProcessedSeq: processed,
 		EngineState:  cloneEngineState(session.EngineState),
 		Summary:      "answered from the deterministic scope summary",
+	}, nil
+}
+
+// forwardRequestsDeterministically is the no-model lead's safety net: it puts every
+// open request in front of the owner instead of leaving it in the lead's inbox.
+func (e *Engine) forwardRequestsDeterministically(ctx context.Context, session *store.QualityAgentSessionMessage, _ int32, pending []*store.QualityAgentTranscriptMessage, requests []*store.QualityAgentRequestMessage) (Outcome, error) {
+	var builder strings.Builder
+	_, _ = builder.WriteString("The quality agent cannot reason right now (no model is configured). These targets need a decision:\n")
+	for index, request := range requests {
+		if index >= 5 {
+			break
+		}
+		fmt.Fprintf(&builder, "\n%d. %s: %s", index+1, request.TargetGUID, truncateRunes(request.Question, 300))
+	}
+	if _, err := e.createOwnerAsk(ctx, session, builder.String(), requests, nil); err != nil {
+		return Outcome{}, err
+	}
+	processed := session.ProcessedSeq
+	for _, message := range pending {
+		if message.Seq > processed {
+			processed = message.Seq
+		}
+	}
+	return Outcome{
+		ProcessedSeq: processed,
+		EngineState:  cloneEngineState(session.EngineState),
+		Summary:      fmt.Sprintf("forwarded %d request(s) to the owner without a model", len(requests)),
 	}, nil
 }
 

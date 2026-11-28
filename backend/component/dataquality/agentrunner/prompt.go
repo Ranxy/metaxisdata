@@ -98,7 +98,7 @@ func conversationPrompt() *agent.Prompt {
 // the only prompt section that authorizes adoption, so it must exist even when
 // adoption is unavailable: a model must never infer an ability from a stale
 // transcript.
-func adoptionPolicySection(agent *store.QualityAgentMessage) string {
+func adoptionPolicySection(agent *store.QualityAgentMessage, spec *Spec) string {
 	if !dataquality.AgentAdoptionReady(agent) {
 		return strings.Join([]string{
 			"Adoption:",
@@ -122,6 +122,12 @@ func adoptionPolicySection(agent *store.QualityAgentMessage) string {
 	if agent.AdoptionAllowCritical {
 		critical = "allowed"
 	}
+	ownerRequested := "- You may adopt pending check drafts only when the owner explicitly asks you in the current wake. The only tool for it is adopt_pending_drafts."
+	ownerRequestedDetail := "- Without draft ids the call applies the configuration above. With draft ids it accepts exactly those drafts as the owner's decision, even when their type or confidence would not satisfy automatic adoption."
+	if spec == nil || spec.Name != conversationProduct.Name {
+		ownerRequested = "- Owner-requested adoption is handled by the lead; you do not hold an adoption tool and must never claim to have adopted a draft on request."
+		ownerRequestedDetail = "- Only automatic adoption runs here, under the configuration above; a draft outside it waits for a person."
+	}
 	return strings.Join([]string{
 		"Adoption:",
 		"- Configuration: mode " + mode + "; eligible check types: " + adoptionRuleTypeList(agent.AdoptionRuleTypes) +
@@ -130,8 +136,8 @@ func adoptionPolicySection(agent *store.QualityAgentMessage) string {
 		// Stated as configuration, not as advice: a wake that keeps drafting outside
 		// the gate learns the consequence only by watching an adoption be skipped.
 		"- Automatic adoption considers only those check types and that confidence floor; a draft outside them waits for a person in the review queue.",
-		"- You may adopt pending check drafts only when the owner explicitly asks you in the current wake. The only tool for it is adopt_pending_drafts.",
-		"- Without draft ids the call applies the configuration above. With draft ids it accepts exactly those drafts as the owner's decision, even when their type or confidence would not satisfy automatic adoption.",
+		ownerRequested,
+		ownerRequestedDetail,
 		"- Automatic adoption also runs after a wake that queued drafts, when the configuration allows it. Checks created that way are yours, not a person's. Never say a person approved or published them.",
 		"- You cannot publish a contract, edit a check, reject a draft or change settings.",
 	}, "\n")
@@ -279,6 +285,10 @@ func wakePrompt(
 	}
 	work := participationBlock(participation) + openCaseBlock(cases)
 	switch {
+	case asks > 0:
+		return fmt.Sprintf(
+			"[wake %d] A person asked something above. Answer it using the tools, then stop when the wake is done.%s Target: %s. Objective: %s.",
+			wake, work, target, objective)
 	case agents > 0:
 		return fmt.Sprintf(
 			"[wake %d] The lead sent you an instruction above. Act on it first. If you cannot act within your authority, reply with send_lead_message and say why. If it references a request or case, answer that request explicitly.%s Target: %s. Objective: %s.",

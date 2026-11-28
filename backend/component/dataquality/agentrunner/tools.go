@@ -58,7 +58,7 @@ func handlesTool(name string) bool {
 		"get_table_context", "draft_checks",
 		"get_scope_summary", "list_scope_targets", "list_pending_proposals",
 		"list_subagents", "get_subagent", "send_subagent_message", "list_requests",
-		"answer_request", "forward_request", "reply_owner", "ask_owner",
+		"answer_request", "forward_request", "reply_owner", "ask_owner", "list_open_cases",
 		"adopt_pending_drafts":
 		return true
 	default:
@@ -98,13 +98,63 @@ func (e *Engine) executeTool(
 	case "ask_owner":
 		return e.askOwner(ctx, session, arguments, control)
 	case "get_target_summary":
+		if isLeadSession(session) {
+			target, err := e.leadTargetSession(ctx, session, arguments)
+			if err != nil {
+				return "", err
+			}
+			return tools.GetTargetSummary(ctx, target)
+		}
 		return tools.GetTargetSummary(ctx, agentSession)
 	case "list_recent_executions":
+		if isLeadSession(session) {
+			target, err := e.leadTargetSession(ctx, session, arguments)
+			if err != nil {
+				return "", err
+			}
+			return tools.ListRecentExecutions(ctx, target)
+		}
 		return tools.ListRecentExecutions(ctx, agentSession)
 	case "inspect_check":
+		if isLeadSession(session) {
+			target, err := e.leadTargetSession(ctx, session, arguments)
+			if err != nil {
+				return "", err
+			}
+			return tools.InspectCheck(ctx, target, arguments)
+		}
 		return tools.InspectCheck(ctx, agentSession, arguments)
+	case "get_memory":
+		if isLeadSession(session) {
+			target, err := e.leadTargetSession(ctx, session, arguments)
+			if err != nil {
+				return "", err
+			}
+			return tools.GetMemory(ctx, target)
+		}
+		return tools.GetMemory(ctx, agentSession)
+	case "list_open_cases":
+		return e.listOpenCases(ctx, session, arguments)
 	case "control_check":
-		return tools.ControlCheck(ctx, agentSession, arguments)
+		result, err := tools.ControlCheck(ctx, agentSession, arguments)
+		if err != nil {
+			return "", err
+		}
+		var input struct {
+			Case   string `json:"case"`
+			Action string `json:"action"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &input)
+		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+			Kind:           store.QualityAgentRequestKindDecision,
+			CaseResourceID: input.Case,
+			Title:          "A paused check needs a decision",
+			Question:       "The check was paused because it could not produce a verdict; decide whether to resume, archive or replace it.",
+			DedupeKey:      fmt.Sprintf("target:%s:case:%s:control", session.TargetGUID, input.Case),
+		}); reqErr != nil {
+			return "", reqErr
+		}
+		return result, nil
 	case "run_check":
 		return tools.RunCheck(ctx, agentSession, arguments)
 	case "repair_check":
@@ -122,7 +172,7 @@ func (e *Engine) executeTool(
 		}
 		_ = json.Unmarshal([]byte(arguments), &input)
 		question := fmt.Sprintf("propose %s = %s: %s", input.Field, input.Value, input.Rationale)
-		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindProposal,
 			CaseResourceID: input.Case,
 			Title:          "A check change needs approval",
@@ -144,7 +194,7 @@ func (e *Engine) executeTool(
 			Reason string `json:"reason"`
 		}
 		_ = json.Unmarshal([]byte(arguments), &input)
-		if reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
+		if _, reqErr := e.raiseRequest(ctx, session, store.QualityAgentRequestMessage{
 			Kind:           store.QualityAgentRequestKindDecision,
 			CaseResourceID: input.Case,
 			Title:          "A work item needs a decision",
@@ -154,8 +204,6 @@ func (e *Engine) executeTool(
 			return "", reqErr
 		}
 		return result, nil
-	case "get_memory":
-		return tools.GetMemory(ctx, agentSession)
 	case "record_asset_fact":
 		return tools.RecordAssetFact(ctx, agentSession, arguments)
 	case "get_table_context":
@@ -268,6 +316,76 @@ func (e *Engine) executeAdoptPendingDrafts(
 	}
 	control.adoptionUsed = true
 	return marshalJSON(report)
+}
+
+// leadTargetSession resolves a lead's target argument into the tool package's
+// session shape. A live subagent supplies the target type; an unadmitted target is
+// still readable with an unspecified type because the evidence reads key on GUID.
+func (e *Engine) leadTargetSession(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (quality.AgentSession, error) {
+	var input struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return quality.AgentSession{}, errors.Wrap(err, "invalid target argument")
+	}
+	target := strings.TrimSpace(input.Target)
+	if target == "" {
+		return quality.AgentSession{}, errors.New("a target is required")
+	}
+	targetType := storepb.MetaType(0)
+	if subagent, err := e.store.GetQualityAgentSubagentByAddress(ctx, session.AgentID, target); err != nil {
+		return quality.AgentSession{}, err
+	} else if subagent != nil {
+		target = subagent.TargetGUID
+		targetType = storepb.MetaType(subagent.TargetType)
+	}
+	return quality.AgentSession{
+		WorkspaceID:      session.WorkspaceID,
+		AgentID:          session.AgentID,
+		TargetGUID:       target,
+		TargetType:       targetType,
+		ResourceID:       session.ResourceID,
+		AgentPrincipalID: session.AgentPrincipalID,
+	}, nil
+}
+
+// listOpenCases is the lead's target-scoped work-item read.
+func (e *Engine) listOpenCases(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (string, error) {
+	if !isLeadSession(session) {
+		if session.TargetGUID == "" {
+			return "", errors.New("a target is required")
+		}
+		cases, err := e.store.ListOpenQualityAgentCasesByTarget(ctx, session.AgentID, session.TargetGUID, 10)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(map[string]any{"cases": cases})
+	}
+	var input struct {
+		Target string `json:"target"`
+		Limit  int    `json:"limit"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid list_open_cases arguments")
+	}
+	target := strings.TrimSpace(input.Target)
+	if target == "" {
+		return "", errors.New("a target is required")
+	}
+	if subagent, err := e.store.GetQualityAgentSubagentByAddress(ctx, session.AgentID, target); err != nil {
+		return "", err
+	} else if subagent != nil {
+		target = subagent.TargetGUID
+	}
+	limit := input.Limit
+	if limit <= 0 || limit > 20 {
+		limit = 10
+	}
+	cases, err := e.store.ListOpenQualityAgentCasesByTarget(ctx, session.AgentID, target, limit)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{"target": target, "cases": cases})
 }
 
 // agentSessionOf maps the stored session onto the shared tool package's view.

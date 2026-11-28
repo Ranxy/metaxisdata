@@ -222,3 +222,131 @@ func scanQualityAgentAsk(scanner interface{ Scan(dest ...any) error }) (*Quality
 	}
 	return &message, nil
 }
+
+// CreateQualityAgentAskAtomic writes the owner-visible message, the ask and the
+// request forwards in one transaction. A failure leaves no orphan message or ask.
+func (s *Store) CreateQualityAgentAskAtomic(ctx context.Context, ask *QualityAgentAskMessage, lead *QualityAgentSessionMessage, message *QualityAgentTranscriptMessage, requests []*QualityAgentRequestMessage, at time.Time) (*QualityAgentAskMessage, error) {
+	if ask == nil || lead == nil || message == nil {
+		return nil, common.Errorf(common.Invalid, "an ask needs a lead and a message")
+	}
+	if ask.AgentID <= 0 || ask.WorkspaceID == "" {
+		return nil, common.Errorf(common.Invalid, "an ask needs an agent and a workspace")
+	}
+	if ask.Kind == 0 {
+		ask.Kind = QualityAgentAskKindQuestion
+	}
+	if ask.Status == 0 {
+		ask.Status = QualityAgentAskStatusOpen
+	}
+	if ask.ResourceID == "" {
+		resourceID, err := common.RandomString(12)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to generate the ask id")
+		}
+		ask.ResourceID = resourceID
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	ask.CreatedAt = at
+	ask.UpdatedAt = at
+	ask.ConversationSessionID = &lead.ID
+
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the ask transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	message.SessionID = lead.ID
+	message.WorkspaceID = lead.WorkspaceID
+	createdMessage, err := s.appendQualityAgentTranscriptTx(ctx, tx, message)
+	if err != nil {
+		return nil, err
+	}
+	ask.MessageSeq = createdMessage.Seq
+	created, err := scanQualityAgentAsk(tx.QueryRowContext(ctx, `
+		INSERT INTO quality_agent_ask
+			(resource_id, workspace_id, agent_id, conversation_session_id, kind, message_seq,
+			 title, question, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING `+qualityAgentAskColumns,
+		ask.ResourceID, ask.WorkspaceID, ask.AgentID, ask.ConversationSessionID,
+		int16(ask.Kind), ask.MessageSeq, ask.Title, ask.Question, int16(ask.Status),
+		ask.CreatedAt, ask.UpdatedAt))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create the quality agent ask")
+	}
+	for _, request := range requests {
+		result, updateErr := tx.ExecContext(ctx, `
+			UPDATE quality_agent_request
+			SET status = $2, ask_id = $3, forwarded_at = COALESCE(forwarded_at, $4), updated_at = $4
+			WHERE resource_id = $1 AND status IN ($5, $6)`,
+			request.ResourceID, int16(QualityAgentRequestStatusForwarded), ask.ID, at.UTC(),
+			int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+		if updateErr != nil {
+			return nil, errors.Wrap(updateErr, "failed to forward a quality agent request")
+		}
+		if affected, rowsErr := result.RowsAffected(); rowsErr != nil {
+			return nil, errors.Wrap(rowsErr, "failed to count the forwarded request")
+		} else if affected == 0 {
+			return nil, common.Errorf(common.Conflict, "request %s moved on before it could be forwarded", request.ResourceID)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the ask")
+	}
+	return created, nil
+}
+
+// ResolveQualityAgentAskIfDrained closes an ask once no active request points at it.
+func (s *Store) ResolveQualityAgentAskIfDrained(ctx context.Context, askID int64, at time.Time) (bool, error) {
+	if askID <= 0 {
+		return false, nil
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_ask
+		SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE id = $1 AND status IN ($4, $5)
+		  AND NOT EXISTS (
+			SELECT 1 FROM quality_agent_request
+			WHERE ask_id = $1 AND status IN ($6, $7)
+		  )`,
+		askID, int16(QualityAgentAskStatusResolved), at.UTC(),
+		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to resolve the drained ask")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the drained asks")
+	}
+	return affected > 0, nil
+}
+
+// ResolveDrainedQualityAgentAsks closes every ask of an agent whose requests are all
+// closed. Case transitions and answers call it after changing request state.
+func (s *Store) ResolveDrainedQualityAgentAsks(ctx context.Context, agentID int64, at time.Time) (int64, error) {
+	if agentID <= 0 {
+		return 0, nil
+	}
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_ask a
+		SET status = $2, resolved_at = $3, updated_at = $3
+		WHERE a.agent_id = $1 AND a.status IN ($4, $5)
+		  AND NOT EXISTS (
+			SELECT 1 FROM quality_agent_request r
+			WHERE r.ask_id = a.id AND r.status IN ($6, $7)
+		  )`,
+		agentID, int16(QualityAgentAskStatusResolved), at.UTC(),
+		int16(QualityAgentAskStatusOpen), int16(QualityAgentAskStatusAnswered),
+		int16(QualityAgentRequestStatusOpen), int16(QualityAgentRequestStatusForwarded))
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to resolve drained asks")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count drained asks")
+	}
+	return affected, nil
+}

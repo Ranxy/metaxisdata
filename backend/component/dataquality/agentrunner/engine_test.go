@@ -39,6 +39,8 @@ type fakeStore struct {
 	lead          *store.QualityAgentSessionMessage
 	subagents     map[string]*store.QualityAgentSessionMessage
 	sessionsByID  map[int64]*store.QualityAgentSessionMessage
+	requests      []*store.QualityAgentRequestMessage
+	enrollment    *store.QualityAgentEnrollmentMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -243,8 +245,8 @@ func (*fakeStore) GetQualityAgentRequestByResourceID(context.Context, string) (*
 	return nil, nil
 }
 
-func (*fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
-	return nil, nil
+func (f *fakeStore) ListQualityAgentRequests(context.Context, int64, []store.QualityAgentRequestStatus, string, int) ([]*store.QualityAgentRequestMessage, error) {
+	return f.requests, nil
 }
 
 func (*fakeStore) UpdateQualityAgentRequestStatus(_ context.Context, _ string, _, to store.QualityAgentRequestStatus, _ *int64, _ string, _ *int32, _ time.Time) (*store.QualityAgentRequestMessage, bool, error) {
@@ -257,6 +259,34 @@ func (*fakeStore) ResolveQualityAgentRequestsForCase(context.Context, int64, str
 
 func (*fakeStore) CreateQualityAgentAsk(_ context.Context, message *store.QualityAgentAskMessage) (*store.QualityAgentAskMessage, error) {
 	return message, nil
+}
+
+func (f *fakeStore) RaiseQualityAgentRequest(_ context.Context, message *store.QualityAgentRequestMessage, lead *store.QualityAgentSessionMessage, notice *store.QualityAgentTranscriptMessage) (*store.QualityAgentRequestMessage, bool, error) {
+	notice.SessionID = lead.ID
+	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), notice); err != nil {
+		return nil, false, err
+	}
+	return message, true, nil
+}
+
+func (*fakeStore) AnswerQualityAgentRequestAtomic(_ context.Context, _ string, _ store.QualityAgentRequestStatus, _ string, _ *store.QualityAgentSessionMessage, _ *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentRequestMessage, *store.QualityAgentTranscriptMessage, bool, error) {
+	return &store.QualityAgentRequestMessage{}, &store.QualityAgentTranscriptMessage{}, true, nil
+}
+
+func (f *fakeStore) CreateQualityAgentAskAtomic(_ context.Context, ask *store.QualityAgentAskMessage, lead *store.QualityAgentSessionMessage, message *store.QualityAgentTranscriptMessage, _ []*store.QualityAgentRequestMessage, _ time.Time) (*store.QualityAgentAskMessage, error) {
+	message.SessionID = lead.ID
+	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), message); err != nil {
+		return nil, err
+	}
+	return ask, nil
+}
+
+func (*fakeStore) ResolveQualityAgentAskIfDrained(context.Context, int64, time.Time) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, int64, string) (*store.QualityAgentEnrollmentMessage, error) {
+	return f.enrollment, nil
 }
 
 func (*fakeStore) GetQualityAgentAskByResourceID(context.Context, string) (*store.QualityAgentAskMessage, error) {

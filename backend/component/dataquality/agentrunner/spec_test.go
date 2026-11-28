@@ -64,8 +64,8 @@ func TestSpecsDifferOnlyInDeclaration(t *testing.T) {
 	require.Equal(t, monitorTools, triageTools, "the target products share one tool set; only their prompt and turn budget differ")
 	require.Contains(t, monitorTools, "get_table_context")
 	require.Contains(t, monitorTools, "draft_checks")
-	require.Contains(t, monitorTools, "adopt_pending_drafts")
-	require.Contains(t, triageTools, "adopt_pending_drafts")
+	require.NotContains(t, monitorTools, "adopt_pending_drafts", "owner-requested adoption belongs to the lead")
+	require.NotContains(t, triageTools, "adopt_pending_drafts", "owner-requested adoption belongs to the lead")
 
 	conversationTools := toolSpecNames(toolsFor(conversationProduct, all))
 	require.Contains(t, conversationTools, "list_pending_proposals")
@@ -143,7 +143,7 @@ func TestCapabilityMatrix(t *testing.T) {
 				require.Equal(t, has(agentcapability.Suggest), strings.Contains(prompt, "Maintaining coverage:"))
 				require.Equal(t, has(agentcapability.Patrol), strings.Contains(prompt, "Monitoring:"))
 			}
-			require.Equal(t, has(agentcapability.Adopt), exposed("adopt_pending_drafts"))
+			require.Equal(t, has(agentcapability.Adopt) && spec.Name == conversationProduct.Name, exposed("adopt_pending_drafts"))
 			require.Equal(t, has(agentcapability.Adopt), strings.Contains(prompt, "Adoption authority:"))
 			require.Contains(t, prompt, "Adoption:")
 			require.Contains(t, prompt, "Language:")

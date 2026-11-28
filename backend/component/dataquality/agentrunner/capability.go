@@ -93,7 +93,7 @@ func promptFor(spec *Spec, sessionAgent *store.QualityAgentMessage) *agent.Promp
 		}
 		sections = append(sections, profile.Prompt(spec)...)
 	}
-	sections = append(sections, agent.PromptSection{Name: "adoption-policy", Text: adoptionPolicySection(sessionAgent)})
+	sections = append(sections, agent.PromptSection{Name: "adoption-policy", Text: adoptionPolicySection(sessionAgent, spec)})
 	return agent.NewPrompt(sections...)
 }
 
@@ -175,15 +175,26 @@ func suggestProfile() capabilityProfile {
 func adoptProfile() capabilityProfile {
 	return capabilityProfile{
 		ID: agentcapability.Adopt,
-		Prompt: func(_ *Spec) []agent.PromptSection {
+		Prompt: func(spec *Spec) []agent.PromptSection {
+			if spec.Name != conversationProduct.Name {
+				return []agent.PromptSection{{Name: "capability-adopt", Text: strings.Join([]string{
+					"Adoption authority:",
+					"- You hold the adopt capability. The Adoption section below is the current policy and the only place that authorizes automatic adoption.",
+					"- You do not hold a tool for owner-requested adoption; the lead handles that. Report a draft that needs a person instead.",
+					"- Never claim a person approved or published a check that you created through automatic adoption.",
+				}, "\n")}}
+			}
 			return []agent.PromptSection{{Name: "capability-adopt", Text: strings.Join([]string{
 				"Adoption authority:",
 				"- You hold the adopt capability. The Adoption section below is the current policy and the only place that authorizes adoption.",
 				"- The tool adopt_pending_drafts exists only for an owner's explicit request in the current wake. Do not call it on a scheduled or event wake.",
-				"- Never claim a person approved or published a check that you created through adoption.",
+				"- Never claim a person approved or published a check you created through adoption.",
 			}, "\n")}}
 		},
-		Tools: func(_ *Spec) []toolSpec {
+		Tools: func(spec *Spec) []toolSpec {
+			if spec.Name != conversationProduct.Name {
+				return nil
+			}
 			return []toolSpec{adoptPendingDraftsSpec()}
 		},
 	}

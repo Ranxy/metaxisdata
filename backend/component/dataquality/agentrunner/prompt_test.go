@@ -16,7 +16,7 @@ func TestAdoptionPolicySectionRendersTheConfiguredGate(t *testing.T) {
 	t.Parallel()
 
 	agent := capabilityTestAgent(agentcapability.Suggest, agentcapability.Adopt)
-	section := adoptionPolicySection(agent)
+	section := adoptionPolicySection(agent, conversationProduct)
 	require.Contains(t, section, "mode ACTIVE")
 	require.Contains(t, section, "eligible check types: NULL_PERCENT")
 	require.Contains(t, section, "minimum model confidence: 0.70")
@@ -29,7 +29,7 @@ func TestAdoptionPolicySectionRendersTheConfiguredGate(t *testing.T) {
 	agent.AdoptionConfidenceThreshold = 0
 	agent.AdoptionMaxPerDay = 0
 	agent.AdoptionAllowCritical = true
-	section = adoptionPolicySection(agent)
+	section = adoptionPolicySection(agent, conversationProduct)
 	require.Contains(t, section, "the default low-risk check types")
 	require.Contains(t, section, "minimum model confidence: 0.70")
 	require.Contains(t, section, "daily ceiling: 10")
@@ -37,7 +37,7 @@ func TestAdoptionPolicySectionRendersTheConfiguredGate(t *testing.T) {
 
 	// An agent that cannot adopt is told so instead of being shown a policy it
 	// cannot use.
-	require.Contains(t, adoptionPolicySection(capabilityTestAgent(agentcapability.Suggest)), "Adoption is unavailable")
+	require.Contains(t, adoptionPolicySection(capabilityTestAgent(agentcapability.Suggest), conversationProduct), "Adoption is unavailable")
 }
 
 // A monitoring wake must be told what a blocker is not. It once read "escalate a blocker instead of
