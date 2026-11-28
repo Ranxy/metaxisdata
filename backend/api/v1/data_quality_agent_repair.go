@@ -161,7 +161,7 @@ func (s *DataQualityService) agentCaseForRepair(ctx context.Context, agentPrinci
 // the refusal has to say what that reference is missing rather than only that it is unknown.
 func caseNotFoundError(resourceID string) error {
 	return connect.NewError(connect.CodeNotFound, errors.Errorf(
-		"case %q not found: these verbs act on a work item (qualityAgentCases/<id>), and a check or an execution is not one. A check that produced a FAIL has no work item because the issue ledger already reported it to the owner; record what you concluded and leave it there", resourceID))
+		"case %q not found: these verbs act on a work item (qualityAgentCases/<id>), and a check or an execution is not one. A check that produced a FAIL has no work item because the issue ledger already reported it to the owner; read list_issues and report that issue id, or record what you concluded and leave it there", resourceID))
 }
 
 // agentPolicy resolves how far the agent may go on one target.

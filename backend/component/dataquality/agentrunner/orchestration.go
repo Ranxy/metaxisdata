@@ -1183,10 +1183,22 @@ func caseReferenceProblem(value string) error {
 	for _, kind := range []string{"qualityRules", "qualityExecutions", "qualityIssues"} {
 		if trimmed == kind || strings.HasPrefix(trimmed, kind+"/") || strings.Contains(trimmed, "/"+kind+"/") {
 			return common.Errorf(common.Invalid,
-				"%s is not a work item: these verbs act on qualityAgentCases/<id>. A check that produced a FAIL has no work item because the issue ledger already reports it; read list_issues and report the issue id instead", kind)
+				"%q is not a work item: these verbs act on qualityAgentCases/<id>. A check that produced a FAIL has no work item because the issue ledger already reports it; read list_issues and report the issue id instead", trimmed)
 		}
 	}
 	return nil
+}
+
+// rejectCaseReference is the run/repair dispatch guard. Those verbs parse more of the
+// arguments themselves, so the dispatch only needs the one field the refusal is about.
+func rejectCaseReference(toolName, arguments string) error {
+	var input struct {
+		Case string `json:"case"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return errors.Wrapf(err, "invalid %s arguments", toolName)
+	}
+	return caseReferenceProblem(input.Case)
 }
 
 var questionKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)

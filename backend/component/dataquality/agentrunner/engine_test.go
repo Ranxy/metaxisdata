@@ -27,34 +27,37 @@ import (
 
 // fakeStore is the in-memory slice of the store the engine tests need.
 type fakeStore struct {
-	messages             []*store.QualityAgentTranscriptMessage
-	memories             []*store.QualityMemoryMessage
-	executions           map[int64]*store.QualityExecutionMessage
-	memoryInputs         []*store.CreateQualityMemoryInput
-	nextSeq              int64
-	systemUpdates        int
-	contextUsage         []*storepb.QualityAgentSessionContextUsage
-	agent                *store.QualityAgentMessage
-	openCases            []*store.QualityAgentCaseMessage
-	rules                []*store.QualityRuleMessage
-	issues               []*store.QualityIssueMessage
-	lastIssueFind        *store.FindQualityIssueMessage
-	contract             *store.QualityContractMessage
-	participation        *store.QualityAgentParticipationLevels
-	actionable           bool
-	lead                 *store.QualityAgentSessionMessage
-	subagents            map[string]*store.QualityAgentSessionMessage
-	sessionsByID         map[int64]*store.QualityAgentSessionMessage
-	requests             []*store.QualityAgentRequestMessage
-	requestStatusUpdates []store.QualityAgentRequestStatus
-	enrollment           *store.QualityAgentEnrollmentMessage
-	lastSessionFind      *store.FindQualityAgentSessionMessage
-	sessions             []*store.QualityAgentSessionMessage
-	requestByID          map[string]*store.QualityAgentRequestMessage
-	answerFrom           store.QualityAgentRequestStatus
-	asks                 []*store.QualityAgentAskMessage
-	requestsByAsk        map[int64][]*store.QualityAgentRequestMessage
-	activeRequests       map[string]*store.QualityAgentRequestMessage
+	messages                []*store.QualityAgentTranscriptMessage
+	memories                []*store.QualityMemoryMessage
+	executions              map[int64]*store.QualityExecutionMessage
+	memoryInputs            []*store.CreateQualityMemoryInput
+	nextSeq                 int64
+	systemUpdates           int
+	contextUsage            []*storepb.QualityAgentSessionContextUsage
+	agent                   *store.QualityAgentMessage
+	openCases               []*store.QualityAgentCaseMessage
+	rules                   []*store.QualityRuleMessage
+	issues                  []*store.QualityIssueMessage
+	lastIssueFind           *store.FindQualityIssueMessage
+	lastEnrollmentWorkspace string
+	lastEnrollmentAgent     int64
+	lastEnrollmentTarget    string
+	contract                *store.QualityContractMessage
+	participation           *store.QualityAgentParticipationLevels
+	actionable              bool
+	lead                    *store.QualityAgentSessionMessage
+	subagents               map[string]*store.QualityAgentSessionMessage
+	sessionsByID            map[int64]*store.QualityAgentSessionMessage
+	requests                []*store.QualityAgentRequestMessage
+	requestStatusUpdates    []store.QualityAgentRequestStatus
+	enrollment              *store.QualityAgentEnrollmentMessage
+	lastSessionFind         *store.FindQualityAgentSessionMessage
+	sessions                []*store.QualityAgentSessionMessage
+	requestByID             map[string]*store.QualityAgentRequestMessage
+	answerFrom              store.QualityAgentRequestStatus
+	asks                    []*store.QualityAgentAskMessage
+	requestsByAsk           map[int64][]*store.QualityAgentRequestMessage
+	activeRequests          map[string]*store.QualityAgentRequestMessage
 }
 
 func newFakeStore() *fakeStore {
@@ -91,7 +94,28 @@ func (*fakeStore) GetUserByID(context.Context, int) (*store.UserMessage, error) 
 }
 
 func (f *fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
-	return f.rules, nil
+	var rules []*store.QualityRuleMessage
+	for _, rule := range f.rules {
+		if rule == nil || rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED {
+			continue
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
+}
+
+func (f *fakeStore) ListQualityRulesByIDs(_ context.Context, ids []int64) ([]*store.QualityRuleMessage, error) {
+	wanted := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	var rules []*store.QualityRuleMessage
+	for _, rule := range f.rules {
+		if rule != nil && wanted[rule.ID] {
+			rules = append(rules, rule)
+		}
+	}
+	return rules, nil
 }
 
 func (f *fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
@@ -373,7 +397,10 @@ func (*fakeStore) ResolveQualityAgentAskIfDrained(context.Context, int64, time.T
 	return false, nil
 }
 
-func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, int64, string) (*store.QualityAgentEnrollmentMessage, error) {
+func (f *fakeStore) GetQualityAgentEnrollmentByTarget(_ context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error) {
+	f.lastEnrollmentWorkspace = workspaceID
+	f.lastEnrollmentAgent = agentID
+	f.lastEnrollmentTarget = targetGUID
 	return f.enrollment, nil
 }
 

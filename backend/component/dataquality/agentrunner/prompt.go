@@ -46,12 +46,12 @@ func qualityPrompt() *agent.Prompt {
 		"  failed, a check cannot run, a proposal needs a person, a task the lead assigned is",
 		"  done, or your target changed in a way the lead must know. Routine all-good wakes",
 		"  belong in cases and reports, not in the lead's inbox.",
-		"- A failing check is a finding, not a work item. A FAIL or WARN is a conclusion",
-		"  about the data and lives in the issue ledger: read it with list_issues and report",
-		"  the issue id. A case exists only when a check cannot conclude (a refused bound, an",
-		"  unsupported column, a moved structure), and the server opens it. You cannot create",
-		"  a case and neither can the owner: never ask for one or tell someone to create one",
-		"  in the UI.",
+		"- A failing check is a finding, not a work item. A FAIL is a conclusion about the",
+		"  data and lives in the issue ledger: read it with list_issues and report the issue",
+		"  id. A WARN keeps an existing FAIL issue alive but opens none. A case exists only",
+		"  when a check cannot conclude (for example a refused bound, an unsupported column,",
+		"  a moved structure), and the server opens it. You cannot create a case and neither",
+		"  can the owner: never ask for one or tell someone to create one in the UI.",
 		"- An empty target is a fact, not a case: NOT_EVALUATED with no rows opens no work",
 		"  item and cannot be paused. control_check is only for a check whose own definition",
 		"  cannot run.",
@@ -111,10 +111,11 @@ func conversationPrompt() *agent.Prompt {
 		"  names, case states or check outcomes.",
 		"- A failing check is a finding, not a work item: its record is an issue in the",
 		"  problem ledger, not a case. Read the target's issues with list_issues before you",
-		"  say a defect is untracked, and give the owner the issue id. A case is opened only",
-		"  by the server when a check cannot conclude; you cannot create one and neither can",
-		"  the owner. Never tell the owner to create a case in the UI or to register an issue",
-		"  by hand — issues are opened automatically.",
+		"  say a defect is untracked, and give the owner the issue id. A WARN alone opens no",
+		"  issue; it only keeps a FAIL issue alive. A case is opened only by the server when",
+		"  a check cannot conclude; you cannot create one and neither can the owner. Never",
+		"  tell the owner to create a case in the UI or to register an issue by hand — issues",
+		"  are opened automatically.",
 		"- Offer the owner only an action the product has. If a request needs a capability",
 		"  nobody holds, say so and name the real alternative instead of inventing a UI step.",
 		"- If the owner names a target ambiguously, ask which one or show the matching",
@@ -498,7 +499,7 @@ func participationBlock(participation agentpolicy.Participation) string {
 	case agentpolicy.ParticipationObserve:
 		sentence = "you may read evidence, run a check, record facts, propose a change and escalate; you may not change a check or stop it."
 	case agentpolicy.ParticipationRepair:
-		sentence = "you may fix what makes a check unable to run, pause one that cannot conclude, run a check, propose and escalate; changing what a check accepts needs a tune-level delegation, so propose it instead."
+		sentence = "you may fix what makes a check unable to run, pause one whose own definition cannot run, run a check, propose and escalate; changing what a check accepts needs a tune-level delegation, so propose it instead."
 	case agentpolicy.ParticipationTune:
 		sentence = "you may also change what a check accepts, but every such change is replayed against the recent executions and refused when it would turn a failing run into a pass."
 	default:

@@ -41,4 +41,5 @@ func TestCaseNotFoundExplainsTheIdSpace(t *testing.T) {
 	require.Contains(t, err.Error(), "qualityAgentCases/<id>")
 	require.Contains(t, err.Error(), "a check or an execution is not one")
 	require.Contains(t, err.Error(), "issue ledger already reported it")
+	require.Contains(t, err.Error(), "read list_issues")
 }
