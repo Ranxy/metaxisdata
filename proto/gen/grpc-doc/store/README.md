@@ -884,7 +884,7 @@ QualityAgentAskQuestion is one decision an ask puts to the owner.
 | detail | [string](#string) |  |  |
 | options | [QualityAgentAskQuestionOption](#metaxisdata-store-QualityAgentAskQuestionOption) | repeated |  |
 | multi_select | [bool](#bool) |  |  |
-| requests | [string](#string) | repeated | Request resource names this question decides. Empty means the ask&#39;s request set. |
+| requests | [string](#string) | repeated | Request resource names this question decides. The engine fills the ask&#39;s request set for a single-question ask; empty is the legacy synthesized question, which covers every active request at answer time. |
 
 
 
