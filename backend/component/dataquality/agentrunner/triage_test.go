@@ -137,3 +137,25 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		AllowedRuleTypes: []string{"ROW_COUNT", "ROW_COUNT_CHANGE"},
 	}, nil
 }
+
+// withdraw_draft is the author's exit from the review queue. The wake must pass the
+// agent principal and the draft the model named to the application layer; the tool
+// body and the spec already keep the arguments, and this proves the dispatch branch.
+func TestWithdrawDraftToolReachesTheApplicationLayer(t *testing.T) {
+	t.Parallel()
+
+	var gotPrincipal int32
+	var gotDraft, gotReason string
+	engine := NewEngine(newFakeStore())
+	engine.withdraw = func(_ context.Context, principalID int32, draftResourceID, reason string) (quality.WithdrawOutcome, error) {
+		gotPrincipal, gotDraft, gotReason = principalID, draftResourceID, reason
+		return quality.WithdrawOutcome{Draft: "qualitySuggestions/s1", Reason: reason, State: "WITHDRAWN"}, nil
+	}
+	result, err := engine.executeTool(context.Background(), testSession(), nil, "withdraw_draft",
+		`{"draft":"qualitySuggestions/s1","reason":"the target is emptied nightly"}`, &wakeControl{})
+	require.NoError(t, err)
+	require.Equal(t, int32(7), gotPrincipal)
+	require.Equal(t, "qualitySuggestions/s1", gotDraft)
+	require.Equal(t, "the target is emptied nightly", gotReason)
+	require.Contains(t, result, `"state":"WITHDRAWN"`)
+}
