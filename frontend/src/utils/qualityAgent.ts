@@ -133,17 +133,6 @@ export function qualityAgentAskStatusKey(
   }
 }
 
-/**
- * Whether the ask is still the owner's to answer or see. An ANSWERED ask is
- * waiting for the lead to route the answer and still belongs in "Needs you".
- */
-export function qualityAgentAskIsActive(ask: QualityAgentAsk): boolean {
-  return (
-    ask.status === QualityAgentAskStatus.OPEN ||
-    ask.status === QualityAgentAskStatus.ANSWERED
-  );
-}
-
 /** Whether the ask is the pending-draft approval that can reuse the adoption path. */
 export function qualityAgentAskIsApproval(ask: QualityAgentAsk): boolean {
   return (

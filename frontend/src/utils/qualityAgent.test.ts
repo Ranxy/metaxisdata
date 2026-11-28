@@ -8,7 +8,6 @@ import {
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
-  qualityAgentAskIsActive,
   qualityAgentAskIsApproval,
   qualityAgentAskKindKey,
   qualityAgentAskStatusKey,
@@ -140,24 +139,6 @@ describe("quality agent ask helpers", () => {
     expect(qualityAgentAskStatusKey(QualityAgentAskStatus.UNSPECIFIED)).toBe(
       "qualityAgent.askStatusUnspecified"
     );
-  });
-
-  it("keeps open and answered asks in Needs you", () => {
-    expect(
-      qualityAgentAskIsActive(
-        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.OPEN)
-      )
-    ).toBe(true);
-    expect(
-      qualityAgentAskIsActive(
-        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.ANSWERED)
-      )
-    ).toBe(true);
-    expect(
-      qualityAgentAskIsActive(
-        ask(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.RESOLVED)
-      )
-    ).toBe(false);
   });
 
   it("only an open approval ask reuses the adoption path", () => {
