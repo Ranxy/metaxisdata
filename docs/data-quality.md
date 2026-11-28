@@ -596,22 +596,22 @@ explicit decision — bypassing the allow-list, confidence and critical-asset sw
 ceiling or rule validation. The daily ceiling therefore bounds what the agent adopts on its own or through that conversation
 tool; a person's approval is recorded under its own origin but never spends it.
 - **Can object to its own drafts.** A draft the agent distrusts — a check it expects to report structural false positives, a column
-  that is usually empty — is flagged with its reason, and a flagged draft is never adopted automatically: it waits for a person, who
-  reads the objection in the review queue beside the draft. Flagging is a doubt, not a refusal: you can still approve the draft.
-- **Runs on a write budget.** Each agent has two daily ceilings beside its runtime budgets: how many writes to checks it may make
-  per day across its scope, and how many times it may run one check per day. Leave them at zero for the server defaults (ten writes,
-  three runs per check). At a ceiling the agent does not stall: proposing a change, recording a fact and escalating still work, and
-  the budgets reset the next day. Every write it does make is recorded — which check, which field, which revision, which failure
-  class — so "what has it changed" and "how much has it changed this week" are answerable without reading transcripts.
+  that is usually empty — is flagged with its reason, and a flagged draft waits for a person; the objection shows in the review queue.
+- **Runs on a write budget.** Each agent has two daily ceilings: writes to checks per day across its scope, and runs of one check
+  per day. Leave them at zero for the server defaults (ten writes, three runs per check). At a ceiling the agent does not stall:
+  proposing a change, recording a fact and escalating still work, and the budgets reset the next day. Every write is recorded —
+  which check, which field, which revision, which class — so "what has it changed" and "how much this week" never require a transcript.
 - **Tells you about a check once.** A check that runs without concluding is a **work item** the agent keeps across wakes, not a
-  message it reads again every run; the daily "no verdict" event only arrives when no work item already carries that check.
+  message it reads again every run; the daily "no verdict" event only arrives when no work item already carries that check. A `FAIL`
+  or `WARN` is a finding in the problem ledger, not a work item: the agent reads it with `list_issues` and reports the issue id. An
+  empty target is a fact and cannot be paused; a case is opened only by the server when a check cannot conclude, so no one can create
+  one by hand.
 - **Escalates one question, not a whole target.** When the agent cannot settle a work item it hands that item to you — the case
-  becomes escalated, you get an ask with its reason — and keeps working on everything else. A target's session only stops on
-  something about the runtime itself (a spent budget, a transient server error, a concurrency limit), which clears on its own.
+  becomes escalated and you get an ask — and keeps working on everything else. A session stops only on the runtime itself.
 - **Keeps a readable record.** The agent's home has an **Activity** list of every write it made — which check, which field, from
-  which revision to which, the failure class it acted on and when — newest first, and each work item has a **History** dialog with
-  just its own writes. An execution the write planned is one click away. This is the same record the daily write budget counts, so
-  "what did it change" and "how much is left" never disagree.
+  which revision to which, the failure class and when — newest first, and each work item has a **History** dialog with just its own
+  writes. An execution the write planned is one click away. This is the record the daily write budget counts, so "what did it change"
+  and "how much is left" never disagree.
 - **Can be held back, check by check.** Each row in the checks list has a lock: locking a check tells the agent it may read the
   check and propose changes but never write it, and unlocking hands it back. Pinning a single field (for example only
   `range.min`) is the same metadata, set through the API. A lock is recorded in the audit log, changes no definition, and is the
@@ -620,7 +620,7 @@ tool; a person's approval is recorded under its own origin but never spends it.
 configured guardrails, or accepting the drafts the owner names — bounded by its database scope and the daily ceiling, always
 through the normal check path with rule validation and the audit ledger. The agent page's **Approve pending drafts** is the
 person's own decision: it turns the agent's queued drafts into checks without the guardrails or the ceiling, but with rule
-validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only; the agent's route to a definition it may not change is `propose_revision`, which asks the owner for one value and escalates the work item. The one exception is an agent delegated at **tune** level on that target: it may change a threshold or a bound itself, but only when re-judging the check's recent runs under the new value leaves every failing run failing — a change that would turn a red run green is refused and has to be proposed. Two things it may do without a person: a check that cannot run at all may be paused — the case is escalated, and a person still decides whether to resume, archive or replace it — and one kind of failure it may repair outright: a check that reports its target's structure changed gets its saved column snapshot aligned with what the registry says now, its fingerprint updated with it and the run that proves the repair planned immediately, so the work item closes on a real verdict instead of waiting for the next scheduled slot. That repair writes a value the registry owns, never a threshold or a bound. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
+validation, the audit ledger and the person's attribution. Publishing a contract, editing a check's definition, archiving or resuming a check, rejecting a draft and changing settings remain human-only; the agent's route to a definition it may not change is `propose_revision`, which asks the owner for one value and escalates the work item. The one exception is an agent delegated at **tune** level on that target: it may change a threshold or a bound itself, but only when re-judging the check's recent runs under the new value leaves every failing run failing — a change that would turn a red run green is refused and has to be proposed. Two things it may do without a person: a check whose own definition cannot run (an unsupported column, a refused bound, a moved structure) may be paused — the case is escalated, and a person still decides whether to resume, archive or replace it — and one kind of failure it may repair outright: a check that reports its target's structure changed gets its saved column snapshot aligned with what the registry says now, its fingerprint updated with it and the run that proves the repair planned immediately, so the work item closes on a real verdict instead of waiting for the next scheduled slot. That repair writes a value the registry owns, never a threshold or a bound. Its other writes are proposals and asset facts inside its own runtime, an adopted check is owned by
 the agent's owner (or by the approver when there is none), and MCP stays read-only.
 
 ### Budgets, blocks and work sessions
