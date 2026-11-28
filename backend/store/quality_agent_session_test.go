@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"reflect"
 	"testing"
@@ -136,7 +137,7 @@ func sessionScanValues(engineState, contextUsage []byte) []any {
 		int32(42), int16(1), "", "", int32(4), int32(9), "summary text", int64(11),
 		int64(12), engineState, (*time.Time)(nil), (*time.Time)(nil), int32(0),
 		time.Unix(1000, 0).UTC(), time.Unix(2000, 0).UTC(), (*time.Time)(nil),
-		int16(1), int16(1), contextUsage, (*time.Time)(nil),
+		int16(1), int16(2), sql.NullInt64{}, "", sql.NullTime{}, contextUsage, (*time.Time)(nil),
 	}
 }
 
@@ -190,7 +191,8 @@ func messageScanValues(toolCalls []byte) []any {
 		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT),
 		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL),
 		"the answer", "the reasoning", toolCalls, "call-1", "get_target_summary", "", int32(120),
-		"", false, "wake:2:turn:1", time.Unix(4000, 0).UTC(),
+		"", false, "wake:2:turn:1", sql.NullInt64{}, "", int16(1), int16(1), "",
+		time.Unix(4000, 0).UTC(),
 	}
 }
 

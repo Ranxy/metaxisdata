@@ -106,6 +106,8 @@ type QualityAgentMessage struct {
 	MaxConcurrentSessions       int32
 	MaxNewSessionsPerHour       int32
 	MaxActiveSessions           int32
+	MaxTriageSessions           int32
+	MaxNewTriageSessionsPerHour int32
 
 	// Participation is the delegation default for this agent; every database and target
 	// inherits it unless a narrower row says otherwise.
@@ -128,7 +130,8 @@ const qualityAgentColumns = `id, resource_id, principal_id, display_name, descri
 	adoption_rule_types, adoption_confidence_threshold, adoption_allow_critical,
 	adoption_max_per_day, conversation_messages_per_hour, tokens_per_hour,
 	wakes_per_hour, max_concurrent_sessions, max_new_sessions_per_hour,
-	max_active_sessions, participation, repair_max_per_day, run_max_per_rule_per_day,
+	max_active_sessions, max_triage_sessions, max_new_triage_sessions_per_hour,
+	participation, repair_max_per_day, run_max_per_rule_per_day,
 	created_by, created_at, updated_at`
 
 // CreateQualityAgent creates the agent principal and its row with the default
@@ -287,11 +290,13 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 			max_concurrent_sessions = $16,
 			max_new_sessions_per_hour = $17,
 			max_active_sessions = $18,
-			language = $19,
-			provider_profile = $20,
-			provider_model = $21,
-			repair_max_per_day = $22,
-			run_max_per_rule_per_day = $23,
+			max_triage_sessions = $19,
+			max_new_triage_sessions_per_hour = $20,
+			language = $21,
+			provider_profile = $22,
+			provider_model = $23,
+			repair_max_per_day = $24,
+			run_max_per_rule_per_day = $25,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING `+qualityAgentColumns,
@@ -301,7 +306,8 @@ func (s *Store) UpdateQualityAgentConfig(ctx context.Context, message *QualityAg
 		message.AdoptionConfidenceThreshold, message.AdoptionAllowCritical,
 		message.AdoptionMaxPerDay, message.ConversationMessagesPerHour,
 		message.TokensPerHour, message.WakesPerHour, message.MaxConcurrentSessions,
-		message.MaxNewSessionsPerHour, message.MaxActiveSessions, message.Language,
+		message.MaxNewSessionsPerHour, message.MaxActiveSessions,
+		message.MaxTriageSessions, message.MaxNewTriageSessionsPerHour, message.Language,
 		message.ProviderProfile, message.ProviderModel, message.RepairMaxPerDay,
 		message.RunMaxPerRulePerDay))
 	if err != nil {
@@ -493,7 +499,8 @@ func scanQualityAgent(scanner interface{ Scan(dest ...any) error }) (*QualityAge
 		&message.AdoptionConfidenceThreshold, &message.AdoptionAllowCritical,
 		&message.AdoptionMaxPerDay, &message.ConversationMessagesPerHour,
 		&message.TokensPerHour, &message.WakesPerHour, &message.MaxConcurrentSessions,
-		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions, &participation,
+		&message.MaxNewSessionsPerHour, &message.MaxActiveSessions,
+		&message.MaxTriageSessions, &message.MaxNewTriageSessionsPerHour, &participation,
 		&message.RepairMaxPerDay, &message.RunMaxPerRulePerDay, &createdBy,
 		&message.CreatedAt, &message.UpdatedAt,
 	); err != nil {

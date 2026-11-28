@@ -419,7 +419,7 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 	var conversationID int64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT id FROM quality_agent_session
-		WHERE agent_id = $1 AND kind = 2 AND archived_at IS NULL LIMIT 1`,
+		WHERE agent_id = $1 AND role = 1 AND archived_at IS NULL LIMIT 1`,
 		attention.AgentID).Scan(&conversationID); err == nil {
 		role := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER
 		body := content

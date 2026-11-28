@@ -14836,6 +14836,24 @@ components:
                     format: enum
                 contextUsage:
                     $ref: '#/components/schemas/QualityAgentSessionContextUsage'
+                role:
+                    enum:
+                        - QUALITY_AGENT_SESSION_ROLE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_ROLE_LEAD
+                        - QUALITY_AGENT_SESSION_ROLE_SUBAGENT
+                    type: string
+                    description: LEAD or SUBAGENT. Replaces the old kind column.
+                    format: enum
+                parentSessionId:
+                    type: string
+                    description: The lead's session id for a SUBAGENT; zero for LEAD.
+                subagentName:
+                    type: string
+                    description: Model-facing unique name of a SUBAGENT; empty for LEAD.
+                lastReviewedAt:
+                    type: string
+                    description: The last deterministic review that found nothing actionable.
+                    format: date-time
             description: |-
                 QualityAgentSession is one target's durable agent conversation and wake schedule.
                  "Running" is expressed by lease_until, never by state.
