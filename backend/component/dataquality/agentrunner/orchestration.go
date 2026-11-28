@@ -470,6 +470,119 @@ func askResourceName(ask *store.QualityAgentAskMessage) string {
 	return common.FormatWorkspace(ask.WorkspaceID) + "/" + askName(ask.ResourceID)
 }
 
+// listAsks shows the lead the questions it has already put to the owner. It is how
+// a later wake finds a stale question to withdraw after compaction, when the earlier
+// ask result is no longer in context.
+func (e *Engine) listAsks(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (string, error) {
+	var input struct {
+		Status string `json:"status"`
+		Limit  int    `json:"limit"`
+	}
+	if strings.TrimSpace(arguments) != "" {
+		if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+			return "", errors.Wrap(err, "invalid list_asks arguments")
+		}
+	}
+	statuses, err := listedAskStatuses(input.Status)
+	if err != nil {
+		return "", err
+	}
+	asks, err := e.store.ListQualityAgentAsks(ctx, session.AgentID, statuses, input.Limit)
+	if err != nil {
+		return "", err
+	}
+	rows := make([]map[string]any, 0, len(asks))
+	for _, ask := range asks {
+		rows = append(rows, map[string]any{
+			"ask":         askResourceName(ask),
+			"kind":        askKindName(ask.Kind),
+			"status":      askStatusName(ask.Status),
+			"title":       truncateRunes(ask.Title, 200),
+			"question":    truncateRunes(ask.Question, 300),
+			"message_seq": ask.MessageSeq,
+			"questions":   askQuestionsView(ask),
+		})
+	}
+	return marshalJSON(map[string]any{"asks": rows, "count": len(rows)})
+}
+
+// listedAskStatuses maps the model-facing status filter to store statuses. CLOSED
+// means every terminal state; ALL includes the live ones.
+func listedAskStatuses(value string) ([]store.QualityAgentAskStatus, error) {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "", "OPEN":
+		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusOpen}, nil
+	case "ANSWERED":
+		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusAnswered}, nil
+	case "CANCELLED":
+		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusCancelled}, nil
+	case "CLOSED":
+		return []store.QualityAgentAskStatus{
+			store.QualityAgentAskStatusResolved,
+			store.QualityAgentAskStatusDismissed,
+			store.QualityAgentAskStatusCancelled,
+		}, nil
+	case "ALL":
+		return nil, nil
+	default:
+		return nil, common.Errorf(common.Invalid, "unknown ask status %q", value)
+	}
+}
+
+func askKindName(kind store.QualityAgentAskKind) string {
+	switch kind {
+	case store.QualityAgentAskKindQuestion:
+		return "QUESTION"
+	case store.QualityAgentAskKindAnomaly:
+		return "ANOMALY"
+	case store.QualityAgentAskKindApproval:
+		return "APPROVAL"
+	default:
+		return "UNSPECIFIED"
+	}
+}
+
+func askStatusName(status store.QualityAgentAskStatus) string {
+	switch status {
+	case store.QualityAgentAskStatusOpen:
+		return "OPEN"
+	case store.QualityAgentAskStatusAnswered:
+		return "ANSWERED"
+	case store.QualityAgentAskStatusResolved:
+		return "RESOLVED"
+	case store.QualityAgentAskStatusDismissed:
+		return "DISMISSED"
+	case store.QualityAgentAskStatusCancelled:
+		return "CANCELLED"
+	default:
+		return "UNSPECIFIED"
+	}
+}
+
+// askQuestionsView renders one ask's questions compactly. Requests stay attached so
+// the lead can tell which decisions a withdrawal would release.
+func askQuestionsView(ask *store.QualityAgentAskMessage) []map[string]any {
+	questions := dataquality.QuestionsOf(ask)
+	view := make([]map[string]any, 0, len(questions))
+	for _, question := range questions {
+		if question == nil {
+			continue
+		}
+		item := map[string]any{
+			"id":       question.Id,
+			"question": truncateRunes(question.Question, 300),
+		}
+		if question.Header != "" {
+			item["header"] = question.Header
+		}
+		if len(question.Requests) > 0 {
+			item["requests"] = question.Requests
+		}
+		view = append(view, item)
+	}
+	return view
+}
+
 // requestOptionsView renders a subagent's offered choices for list_requests.
 func requestOptionsView(options []*storepb.QualityAgentAskQuestionOption) []map[string]string {
 	view := make([]map[string]string, 0, len(options))
