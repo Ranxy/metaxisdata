@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
 import {
   type QualityAgentAsk,
@@ -9,6 +9,13 @@ import {
   QualityAgentAskStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import QualityAgentAskCard from "./QualityAgentAskCard.vue";
+
+vi.mock("@/components/common/AsyncMarkdown", () => ({
+  AsyncMarkdown: {
+    props: ["content"],
+    template: `<div class="markdown">{{ content }}</div>`,
+  },
+}));
 
 function askFixture(
   kind = QualityAgentAskKind.QUESTION,
@@ -95,5 +102,20 @@ describe("QualityAgentAskCard", () => {
     );
     expect(wrapper.find("textarea").exists()).toBe(false);
     expect(wrapper.text()).toContain("routing your reply");
+  });
+
+  it("clamps a long question and expands it on request", async () => {
+    const long = askFixture();
+    long.question = "A very long question. ".repeat(40);
+    const wrapper = await mountCard(long);
+    expect(wrapper.find(".max-h-40").exists()).toBe(true);
+
+    const toggle = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Show the full question"));
+    expect(toggle).toBeDefined();
+    await toggle?.trigger("click");
+    expect(wrapper.find(".max-h-40").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Show less");
   });
 });
