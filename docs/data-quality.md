@@ -441,8 +441,8 @@ The **Suggestions** page is the review center. Suggestions arrive from three pla
 
 - **Quality agents.** An active agent's triage pass drafts checks for uncovered targets in its database scope, and an agent with *Adopt*
 can accept low-risk drafts on its owner's behalf under its guardrails (see [Quality agents](#quality-agents)). Agent drafts are
-ordinary proposals; an automatic adoption is recorded on the agent. The agent may retract its own pending draft as *Withdrawn*,
-which is not a rejection.
+ordinary proposals; an automatic adoption is recorded on the agent. The agent may retract its own pending draft as *Withdrawn*:
+not a decision (no decider is recorded, and the same proposal may be offered again).
 - **Recommend checks** on a table's Data Quality tab: profile the
 columns first, then derive checks and starting thresholds. It uses no model, so it works with model analysis off, and it is the only
 pass that proposes an observed threshold. Re-running it refreshes its pending drafts.
@@ -474,13 +474,13 @@ The queue keeps **one pending proposal per proposal identity**: one per column f
 covers for a check draft. Running *Suggest labels* or *Recommend checks* again therefore never adds a second copy: a pending check draft
 is **refreshed** in place, and a column with a pending label proposal is skipped before the model is called. A generation pass also
 reconciles proposals with reality: a column that already has a label is left out and its pending proposal closes as *Superseded*; a
-draft already covered by a saved check is not queued and its pending copy closes as *Superseded*; proposals you already decided are not
-proposed again unless you *Regenerate*. A pending proposal belongs to the pass that produced it — a label pass will not put its fixed
-defaults back over a recommendation's observed ones. Accepting or rejecting acts on exactly that one proposal: accepting a label writes
-it and it is not suggested again while it exists; rejecting keeps it out until you regenerate. *Superseded* is not a decision. Creating
-a check from a draft is idempotent: two simultaneous submissions create one check and the other is told the draft was claimed; if the
-check write fails, the draft returns to *Pending*. Decided suggestions stay visible under *All statuses* with who decided them and their
-note. Nothing is enabled or executed without a person creating the check, and the model never sees raw sample rows.
+draft already covered by a saved check is not queued and its pending copy closes as *Superseded*; decided proposals are not proposed
+again unless you *Regenerate*. A pending proposal belongs to its pass: a label pass will not put defaults back over a recommendation's
+observed ones. Accepting or rejecting acts on that proposal: accepting a label writes it and it is not suggested again while it exists;
+rejecting keeps it out until you regenerate. *Superseded* is not a decision. Creating a check from a draft is idempotent: two
+simultaneous submissions create one check and the other is told the draft was claimed; if the check write fails, the draft returns to
+*Pending*. Decided suggestions stay visible under *All statuses* with their decider and note; a withdrawn one with the agent's reason
+and no decider. Nothing is enabled or executed without a person creating the check; the model never sees raw sample rows.
 
 ## Quality agents
 
@@ -667,8 +667,8 @@ talks to it, reads its reports and answers its asks.
 
 ## Retention
 
-Executions are kept 90 days, resolved issues 90 days, column profiles and the model result cache 7 days, decided or superseded
-suggestions 90 days, and captured raw LLM request/response debug entries 7 days; the maintenance runner prunes them. Checks, open issues
+Executions are kept 90 days, resolved issues 90 days, column profiles and the model result cache 7 days, decided, superseded or
+withdrawn suggestions 90 days, and raw LLM debug entries 7 days; the maintenance runner prunes them. Checks, open issues
 and accepted labels are not pruned. Agent conversation transcripts (`quality_agent_message`), per-agent reports and ask rows are
 **not pruned** in this release, so a workspace with many monitored targets accumulates rows.
 

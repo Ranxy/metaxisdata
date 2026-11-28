@@ -25077,14 +25077,16 @@ their first attempt and for manual batches. </p></td>
                   <td>decided_by</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Who decided it. Format: users/{user}. Empty while pending. </p></td>
+                  <td><p>Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+suggestion, which no reviewer decided; a withdrawal&#39;s reason is in
+decision_note. </p></td>
                 </tr>
               
                 <tr>
                   <td>decide_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>When the reviewer decided it, or when the proposing agent withdrew it. </p></td>
                 </tr>
               
                 <tr>

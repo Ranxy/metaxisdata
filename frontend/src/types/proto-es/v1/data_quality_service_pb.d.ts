@@ -2622,13 +2622,17 @@ export declare type QualitySuggestion = Message<"metaxisdata.v1.QualitySuggestio
   createTime?: Timestamp;
 
   /**
-   * Who decided it. Format: users/{user}. Empty while pending.
+   * Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+   * suggestion, which no reviewer decided; a withdrawal's reason is in
+   * decision_note.
    *
    * @generated from field: string decided_by = 11;
    */
   decidedBy: string;
 
   /**
+   * When the reviewer decided it, or when the proposing agent withdrew it.
+   *
    * @generated from field: google.protobuf.Timestamp decide_time = 12;
    */
   decideTime?: Timestamp;

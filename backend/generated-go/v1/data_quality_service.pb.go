@@ -7831,8 +7831,11 @@ type QualitySuggestion struct {
 	Model         string                 `protobuf:"bytes,8,opt,name=model,proto3" json:"model,omitempty"`
 	PromptVersion string                 `protobuf:"bytes,9,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
 	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// Who decided it. Format: users/{user}. Empty while pending.
-	DecidedBy    string                 `protobuf:"bytes,11,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
+	// Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+	// suggestion, which no reviewer decided; a withdrawal's reason is in
+	// decision_note.
+	DecidedBy string `protobuf:"bytes,11,opt,name=decided_by,json=decidedBy,proto3" json:"decided_by,omitempty"`
+	// When the reviewer decided it, or when the proposing agent withdrew it.
 	DecideTime   *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=decide_time,json=decideTime,proto3" json:"decide_time,omitempty"`
 	DecisionNote string                 `protobuf:"bytes,13,opt,name=decision_note,json=decisionNote,proto3" json:"decision_note,omitempty"`
 	// When a later generation pass refreshed this pending proposal's payload.

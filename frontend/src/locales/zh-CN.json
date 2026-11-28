@@ -1517,7 +1517,7 @@
       "supersededByServer": "已由系统关闭",
       "title": "建议队列",
       "viewAllStatuses": "查看全部状态",
-      "withdrawnByAgent": "已由代理撤回",
+      "withdrawnByAgent": "已由质量 Agent 撤回",
       "workbench": {}
     },
     "tags": "标签",

@@ -2079,9 +2079,12 @@ message QualitySuggestion {
 
   google.protobuf.Timestamp create_time = 10;
 
-  // Who decided it. Format: users/{user}. Empty while pending.
+  // Who decided it. Format: users/{user}. Empty while pending and on a WITHDRAWN
+  // suggestion, which no reviewer decided; a withdrawal's reason is in
+  // decision_note.
   string decided_by = 11 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
 
+  // When the reviewer decided it, or when the proposing agent withdrew it.
   google.protobuf.Timestamp decide_time = 12;
 
   string decision_note = 13;
