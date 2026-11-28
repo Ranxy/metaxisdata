@@ -180,6 +180,7 @@ describe("QualityAgentPage", () => {
         QualityAgentAskStatus.ANSWERED,
         QualityAgentAskStatus.RESOLVED,
         QualityAgentAskStatus.DISMISSED,
+        QualityAgentAskStatus.CANCELLED,
       ],
       pageSize: 20,
     });

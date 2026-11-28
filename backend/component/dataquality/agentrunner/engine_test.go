@@ -370,7 +370,12 @@ func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, i
 	return f.enrollment, nil
 }
 
-func (*fakeStore) GetQualityAgentAskByResourceID(context.Context, string) (*store.QualityAgentAskMessage, error) {
+func (f *fakeStore) GetQualityAgentAskByResourceID(_ context.Context, resourceID string) (*store.QualityAgentAskMessage, error) {
+	for _, ask := range f.asks {
+		if ask.ResourceID == resourceID {
+			return ask, nil
+		}
+	}
 	return nil, nil
 }
 
@@ -398,6 +403,34 @@ func (f *fakeStore) ListQualityAgentRequestsByAskIDs(context.Context, []int64) (
 	return f.requestsByAsk, nil
 }
 
+func (f *fakeStore) CancelQualityAgentAskAtomic(_ context.Context, resourceID string, message *store.QualityAgentTranscriptMessage, _ time.Time) (*store.QualityAgentAskMessage, *store.QualityAgentTranscriptMessage, int64, error) {
+	var found *store.QualityAgentAskMessage
+	for _, ask := range f.asks {
+		if ask.ResourceID == resourceID && ask.Status == store.QualityAgentAskStatusOpen {
+			found = ask
+			break
+		}
+	}
+	if found == nil {
+		return nil, nil, 0, common.Errorf(common.Conflict, "the ask is no longer open")
+	}
+	found.Status = store.QualityAgentAskStatusCancelled
+	if found.ConversationSessionID != nil {
+		message.SessionID = *found.ConversationSessionID
+	}
+	if _, err := f.AppendQualityAgentTranscriptMessage(context.Background(), message); err != nil {
+		return nil, nil, 0, err
+	}
+	var released int64
+	for _, request := range f.requests {
+		if request.AskID != nil && *request.AskID == found.ID && request.Status == store.QualityAgentRequestStatusForwarded {
+			request.Status = store.QualityAgentRequestStatusOpen
+			request.AskID = nil
+			released++
+		}
+	}
+	return found, message, released, nil
+}
 func (*fakeStore) ResolveQualityAgentAsk(context.Context, string, store.QualityAgentAskStatus, time.Time) (bool, error) {
 	return false, nil
 }

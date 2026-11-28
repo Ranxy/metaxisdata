@@ -215,6 +215,53 @@ func TestAskOwnerBatchNamesDisjointRequestSubsets(t *testing.T) {
 	require.Equal(t, []string{"workspaces/ws/qualityAgentRequests/r2"}, questions[1].Requests)
 }
 
+func TestCancelAskReleasesItsForwardedRequests(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, subagent := orchestrationStore()
+	ask := &store.QualityAgentAskMessage{
+		ID: 21, ResourceID: "a1", WorkspaceID: "ws", AgentID: 7,
+		Kind: store.QualityAgentAskKindQuestion, Status: store.QualityAgentAskStatusOpen,
+		ConversationSessionID: &lead.ID, Question: "Keep the check?",
+		Questions: []*storepb.QualityAgentAskQuestion{{Id: "q1", Question: "Keep the check?"}},
+	}
+	request := &store.QualityAgentRequestMessage{
+		ID: 22, ResourceID: "r1", WorkspaceID: "ws", AgentID: 7,
+		Status: store.QualityAgentRequestStatusForwarded, Question: "Keep the check?",
+		OriginSessionID: &subagent.ID, AskID: &ask.ID,
+	}
+	stores.asks = []*store.QualityAgentAskMessage{ask}
+	stores.requests = []*store.QualityAgentRequestMessage{request}
+	engine := NewEngine(stores)
+	result, err := engine.cancelAsk(context.Background(), lead,
+		`{"ask":"qualityAgentAsks/a1","message":"This question no longer applies."}`, nil)
+	require.NoError(t, err)
+	require.Contains(t, result, `"released_requests":1`)
+	require.Equal(t, store.QualityAgentAskStatusCancelled, ask.Status)
+	require.Equal(t, store.QualityAgentRequestStatusOpen, request.Status)
+	require.Nil(t, request.AskID)
+	require.Len(t, stores.messages, 1)
+	require.Equal(t, "This question no longer applies.", stores.messages[0].Content)
+	require.Equal(t, storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER, stores.messages[0].Audience)
+}
+
+func TestCancelAskRefusesAnApprovalAsk(t *testing.T) {
+	t.Parallel()
+
+	stores, lead, _ := orchestrationStore()
+	ask := &store.QualityAgentAskMessage{
+		ID: 21, ResourceID: "a1", WorkspaceID: "ws", AgentID: 7,
+		Kind: store.QualityAgentAskKindApproval, Status: store.QualityAgentAskStatusOpen,
+		ConversationSessionID: &lead.ID,
+	}
+	stores.asks = []*store.QualityAgentAskMessage{ask}
+	engine := NewEngine(stores)
+	_, err := engine.cancelAsk(context.Background(), lead,
+		`{"ask":"a1","message":"withdraw"}`, nil)
+	require.ErrorContains(t, err, "adoption queue")
+	require.Equal(t, store.QualityAgentAskStatusOpen, ask.Status)
+}
+
 func TestAskOwnerBatchRejectsOverlappingRequests(t *testing.T) {
 	t.Parallel()
 

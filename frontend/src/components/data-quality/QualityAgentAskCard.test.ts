@@ -331,6 +331,16 @@ describe("QualityAgentAskCard", () => {
     expect(wrapper.text().match(/Covers orders · 1 request/g)).toHaveLength(2);
   });
 
+  it("shows an agent-withdrawn ask as cancelled", async () => {
+    const wrapper = await mountCard(
+      askFixture(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.CANCELLED),
+      false
+    );
+    expect(wrapper.text()).toContain("Cancelled");
+    expect(wrapper.text()).toContain("The agent withdrew this question.");
+    expect(wrapper.text()).not.toContain("Answer delivered to the target");
+  });
+
   it("does not claim an answer for a resolved approval with no recorded answer", async () => {
     const wrapper = await mountCard(
       askFixture(QualityAgentAskKind.APPROVAL, QualityAgentAskStatus.RESOLVED),

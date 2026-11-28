@@ -295,6 +295,8 @@ func qualityAgentAskStatuses(status v1pb.QualityAgentAskStatus) ([]store.Quality
 		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusResolved}, nil
 	case v1pb.QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_DISMISSED:
 		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusDismissed}, nil
+	case v1pb.QualityAgentAskStatus_QUALITY_AGENT_ASK_STATUS_CANCELLED:
+		return []store.QualityAgentAskStatus{store.QualityAgentAskStatusCancelled}, nil
 	default:
 		return nil, connectErrorInvalid("unknown ask status %d", status)
 	}

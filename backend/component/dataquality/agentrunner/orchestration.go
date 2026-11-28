@@ -24,6 +24,8 @@ const (
 	maxAgentMessageBytes = 8 << 10
 	// maxListedSubagents bounds one list_subagents page.
 	maxListedSubagents = 50
+	// maxCancelAskMessageBytes bounds the owner-facing notice on a withdrawn ask.
+	maxCancelAskMessageBytes = 2 << 10
 )
 
 // resolveSubagent resolves a model-facing address to one live subagent of the
@@ -574,6 +576,63 @@ func (input askRequestInput) storeQuestions() ([]*storepb.QualityAgentAskQuestio
 	return questions, ids, nil
 }
 
+// cancelAsk withdraws an open question the lead no longer needs answered. Its
+// forwarded requests return to OPEN, so the lead can answer them or put them in a new
+// ask; the owner sees the lead's notice instead of a card that silently vanished.
+func (e *Engine) cancelAsk(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string, control *wakeControl) (string, error) {
+	var input struct {
+		Ask     string `json:"ask"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &input); err != nil {
+		return "", errors.Wrap(err, "invalid cancel_ask arguments")
+	}
+	ask, err := e.askByAddress(ctx, session, input.Ask)
+	if err != nil {
+		return "", err
+	}
+	if ask.Status != store.QualityAgentAskStatusOpen {
+		return "", common.Errorf(common.Conflict, "ask %q is no longer open", askName(ask.ResourceID))
+	}
+	switch ask.Kind {
+	case store.QualityAgentAskKindQuestion, store.QualityAgentAskKindAnomaly:
+	case store.QualityAgentAskKindApproval:
+		return "", common.Errorf(common.Invalid, "approval asks are managed by the adoption queue")
+	default:
+		return "", common.Errorf(common.Invalid, "ask %q cannot be withdrawn", askName(ask.ResourceID))
+	}
+	notice := strings.TrimSpace(input.Message)
+	if notice == "" {
+		return "", errors.New("a cancellation needs a message for the owner")
+	}
+	if len(notice) > maxCancelAskMessageBytes {
+		return "", common.Errorf(common.Invalid, "the cancellation message is too long (max %d bytes)", maxCancelAskMessageBytes)
+	}
+	if control != nil {
+		control.ownerFacing = true
+		control.ownerMessageWritten = true
+	}
+	_, _, released, err := e.store.CancelQualityAgentAskAtomic(ctx, ask.ResourceID, &store.QualityAgentTranscriptMessage{
+		Wake:           session.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:        notice,
+		SenderName:     "lead",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_NOTICE,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		Reference:      askName(ask.ResourceID),
+		IdempotencyKey: fmt.Sprintf("cancel-ask:%s", ask.ResourceID),
+	}, e.now())
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"ask":               askName(ask.ResourceID),
+		"status":            "CANCELLED",
+		"released_requests": released,
+	})
+}
+
 func (e *Engine) answerRequest(ctx context.Context, session *store.QualityAgentSessionMessage, arguments string) (string, error) {
 	var input struct {
 		Request  string   `json:"request"`
@@ -886,6 +945,33 @@ func (e *Engine) openRequest(ctx context.Context, session *store.QualityAgentSes
 		return nil, common.Errorf(common.Conflict, "request %q is no longer open", name)
 	}
 	return request, nil
+}
+
+// askByAddress resolves a model-facing ask name and proves it belongs to the caller's
+// agent. It accepts a bare id, a qualityAgentAsks/<id> name or a full workspace name.
+func (e *Engine) askByAddress(ctx context.Context, session *store.QualityAgentSessionMessage, name string) (*store.QualityAgentAskMessage, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil, errors.New("an ask name is required")
+	}
+	resourceID := trimmed
+	if index := strings.LastIndex(trimmed, "qualityAgentAsks/"); index >= 0 {
+		resourceID = trimmed[index+len("qualityAgentAsks/"):]
+	}
+	if resourceID == "" || strings.Contains(resourceID, "/") {
+		return nil, common.Errorf(common.Invalid, "invalid ask name %q", name)
+	}
+	ask, err := e.store.GetQualityAgentAskByResourceID(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if ask == nil {
+		return nil, common.Errorf(common.NotFound, "ask %q not found", name)
+	}
+	if ask.AgentID != session.AgentID {
+		return nil, common.Errorf(common.NotAuthorized, "ask %q belongs to another agent", name)
+	}
+	return ask, nil
 }
 
 // requestByAddress resolves a request name and proves it belongs to the caller's agent.

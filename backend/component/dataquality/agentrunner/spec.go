@@ -494,6 +494,15 @@ func conversationToolSpecs() []toolSpec {
 			meta:        internalMeta(),
 		},
 		{
+			name:        "cancel_ask",
+			description: "Withdraw an open question to the owner when a later answer makes it obsolete. The requests behind it return to you so you can answer them or put them in a new ask. Only question and anomaly asks can be withdrawn; approval asks belong to the adoption queue.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"ask":     map[string]any{"type": "string", "description": "the ask resource name or id, from list_requests or your earlier ask result"},
+				"message": map[string]any{"type": "string", "description": "what to tell the owner about the withdrawal; write it in the owner's language"},
+			}, "required": []string{"ask", "message"}},
+			meta: internalMeta(),
+		},
+		{
 			name:        "reply_owner",
 			description: "Tell the owner something on a wake that was not an owner question (a follow-up or a result). Do not use it for routine chatter.",
 			parameters: map[string]any{"type": "object", "properties": map[string]any{

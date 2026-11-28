@@ -128,6 +128,8 @@ export function qualityAgentAskStatusKey(
       return "qualityAgent.askStatusResolved";
     case QualityAgentAskStatus.DISMISSED:
       return "qualityAgent.askStatusDismissed";
+    case QualityAgentAskStatus.CANCELLED:
+      return "qualityAgent.askStatusCancelled";
     default:
       return "qualityAgent.askStatusUnspecified";
   }

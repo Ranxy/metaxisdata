@@ -767,7 +767,8 @@ const historyAsks = computed(() =>
     (ask) =>
       ask.status === QualityAgentAskStatus.ANSWERED ||
       ask.status === QualityAgentAskStatus.RESOLVED ||
-      ask.status === QualityAgentAskStatus.DISMISSED
+      ask.status === QualityAgentAskStatus.DISMISSED ||
+      ask.status === QualityAgentAskStatus.CANCELLED
   )
 );
 const needsYouCount = computed(() => openAsks.value.length);
@@ -885,6 +886,7 @@ const chatUnread = computed(() =>
   pinned.value ? 0 : countMessagesAfterSeq(messages.value, seenSeq.value)
 );
 let pollTimer: number | undefined;
+let asksPollTimer: number | undefined;
 
 // Following the newest reply means the owner has seen everything loaded.
 watch(
@@ -1039,6 +1041,7 @@ async function loadAsks() {
           QualityAgentAskStatus.ANSWERED,
           QualityAgentAskStatus.RESOLVED,
           QualityAgentAskStatus.DISMISSED,
+          QualityAgentAskStatus.CANCELLED,
         ],
         pageSize: 20,
       }),
@@ -1067,6 +1070,7 @@ async function loadMoreAsks() {
         QualityAgentAskStatus.ANSWERED,
         QualityAgentAskStatus.RESOLVED,
         QualityAgentAskStatus.DISMISSED,
+        QualityAgentAskStatus.CANCELLED,
       ],
       pageSize: 20,
       pageToken: asksNextToken.value,
@@ -1340,6 +1344,24 @@ function clearPoll() {
   }
 }
 
+/** The lead can withdraw or add asks without an owner action; refresh the rail so
+ * a stale card cannot be answered after it has already been withdrawn. */
+function startAsksPoll() {
+  clearAsksPoll();
+  asksPollTimer = window.setInterval(() => {
+    if (!document.hidden) {
+      void loadAsks();
+    }
+  }, 15000);
+}
+
+function clearAsksPoll() {
+  if (asksPollTimer !== undefined) {
+    window.clearInterval(asksPollTimer);
+    asksPollTimer = undefined;
+  }
+}
+
 async function toggleAdoption() {
   if (!agent.value) {
     return;
@@ -1428,8 +1450,12 @@ onMounted(async () => {
       loadCases(),
       loadSessions(),
     ]);
+    startAsksPoll();
   }
 });
 
-onBeforeUnmount(clearPoll);
+onBeforeUnmount(() => {
+  clearPoll();
+  clearAsksPoll();
+});
 </script>

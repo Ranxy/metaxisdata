@@ -1964,7 +1964,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_ask_dedupe
 CREATE INDEX IF NOT EXISTS idx_quality_agent_ask_target
     ON quality_agent_ask(agent_id, target_guid);
 COMMENT ON TABLE quality_agent_ask IS 'One owner-facing question from the lead; it can cover several subagent requests';
-COMMENT ON COLUMN quality_agent_ask.status IS '1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED';
+COMMENT ON COLUMN quality_agent_ask.status IS '1 OPEN, 2 ANSWERED, 3 RESOLVED, 4 DISMISSED, 5 CANCELLED';
 COMMENT ON COLUMN quality_agent_ask.questions IS 'Stored as QualityAgentAskQuestionList (proto/store/store/data_quality.proto); empty on a legacy ask';
 COMMENT ON COLUMN quality_agent_ask.answers IS 'Stored as QualityAgentAskAnswerList (proto/store/store/data_quality.proto); empty until the owner answers';
 
