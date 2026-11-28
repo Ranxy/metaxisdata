@@ -51,7 +51,10 @@ func qualityPrompt() *agent.Prompt {
 		"- A QUESTION needs a stable question_key: reuse the same key only when retrying the",
 		"  same question, give a different decision a different key (for example timeout or",
 		"  pause-check), and never invent a random id. A question about one case may omit it",
-		"  when the case id alone identifies the decision.",
+		"  when the case id alone identifies the decision. When the decision is a choice,",
+		"  include the concrete options and say which you recommend.",
+		"- An answer from the lead names the request it answers; act on that request and do",
+		"  not treat a message without a request id as an answer.",
 	}
 	return agent.NewPrompt(
 		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
@@ -82,6 +85,13 @@ func conversationPrompt() *agent.Prompt {
 		"- When a wake answers the owner's question, the final message is the answer.",
 		"  On any other wake, use reply_owner to tell the owner something; otherwise your",
 		"  text stays internal. Use ask_owner only when a person must decide.",
+		"- One ask is one decision. When the answer is a choice, offer options; put the",
+		"  recommended one first and append (Recommended) to its label. The owner may always",
+		"  type something else.",
+		"- An owner answer names its ask and questions and is delivered to the requests",
+		"  behind it. Never infer which question a message answers from its order, and do not",
+		"  call answer_request for a request the answer already settled. A message without an",
+		"  ask link answers nothing.",
 		"- Answer the owner from tool results and request records. Never invent counts,",
 		"  names, case states or check outcomes.",
 		"- If the owner names a target ambiguously, ask which one or show the matching",
@@ -252,8 +262,8 @@ func wakePrompt(
 		switch {
 		case asks > 0:
 			return fmt.Sprintf(
-				"[wake %d] The owner asked something above. Answer it from evidence. If you need a subagent's detail, send it a question and tell the owner you are checking; do not guess. If the answer requires a person's decision, ask the owner a concrete question instead of a vague status. %s%s%s",
-				wake, adoptionRequestHint(agent), pendingBlock, participationBlock(participation))
+				"[wake %d] The owner sent %d message(s) above. A message that names an ask is that ask's answer and has already been delivered to the requests behind it; a message without an ask link answers nothing. Never infer which question a message answers from its order. Do not call answer_request for the delivered requests. Reply to the owner only if the answer needs a response. %s%s%s%s",
+				wake, asks, adoptionRequestHint(agent), pendingOwnerAnswerBlock(pending, 5), pendingBlock, participationBlock(participation))
 		case agents > 0:
 			return fmt.Sprintf(
 				"[wake %d] %d subagent message(s)/request(s) arrived above. Triage them: answer what policy and evidence already decide; forward only what a person must decide; never message the owner when nothing needs them.%s",
@@ -296,7 +306,7 @@ func wakePrompt(
 			wake, work, target, objective)
 	case agents > 0:
 		return fmt.Sprintf(
-			"[wake %d] The lead sent you an instruction above. Act on it first. If you cannot act within your authority, reply with send_lead_message and say why. If it references a request or case, answer that request explicitly.%s Target: %s. Objective: %s.",
+			"[wake %d] The lead sent you a message above. An answer names the request it answers; act on it against that request. Otherwise it is an instruction: act on it first. If you cannot act within your authority, reply with send_lead_message and say why.%s Target: %s. Objective: %s.",
 			wake, work, target, objective)
 	case events > 0:
 		return fmt.Sprintf(
@@ -307,6 +317,64 @@ func wakePrompt(
 			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record a fact only if you learned something a later wake could not rediscover, or do nothing and stop.%s Target: %s. Objective: %s.",
 			wake, work, target, objective)
 	}
+}
+
+// pendingOwnerAnswerBlock renders the owner messages in the lead's wake. An answer
+// carries its ask and questions in the envelope, so the model reads the pairing instead
+// of inferring it from message order.
+func pendingOwnerAnswerBlock(pending []*store.QualityAgentTranscriptMessage, limit int) string {
+	var builder strings.Builder
+	shown := 0
+	for _, message := range pending {
+		if message.Origin != storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK || shown >= limit {
+			continue
+		}
+		shown++
+		switch message.Intent {
+		case storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER:
+			envelope, ok := dataquality.ParseAnswerEnvelope(message.Content)
+			if !ok {
+				fmt.Fprintf(&builder, "\n- an answer to %s (unreadable envelope): %s", message.ReplyTo, truncateRunes(message.Content, 300))
+				continue
+			}
+			fmt.Fprintf(&builder, "\n- ask %s", envelope.Ask)
+			for _, question := range envelope.Questions {
+				fmt.Fprintf(&builder, "\n  question %s: %s", question.ID, truncateRunes(question.Question, 200))
+				if len(question.Options) > 0 {
+					labels := make([]string, 0, len(question.Options))
+					for _, option := range question.Options {
+						labels = append(labels, option.Label)
+					}
+					fmt.Fprintf(&builder, " (options: %s)", strings.Join(labels, ", "))
+				}
+			}
+			for _, answer := range envelope.Answers {
+				fmt.Fprintf(&builder, "\n  answer %s: %s", answer.ID, answerValue(answer))
+			}
+			if len(envelope.Requests) > 0 {
+				fmt.Fprintf(&builder, "\n  delivered to: %s", strings.Join(envelope.Requests, ", "))
+			}
+		case storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS:
+			fmt.Fprintf(&builder, "\n- the owner dismissed %s", message.ReplyTo)
+		default:
+			fmt.Fprintf(&builder, "\n- the owner sent a message that answers no ask: %s", truncateRunes(message.Content, 300))
+		}
+	}
+	if builder.Len() == 0 {
+		return ""
+	}
+	return "\n\nOwner messages:" + builder.String()
+}
+
+func answerValue(answer dataquality.AnswerItem) string {
+	values := append([]string(nil), answer.Selected...)
+	if strings.TrimSpace(answer.Custom) != "" {
+		values = append(values, answer.Custom)
+	}
+	if len(values) == 0 {
+		return "skipped"
+	}
+	return strings.Join(values, ", ")
 }
 
 // pendingAgentMessagesBlock renders a bounded list of agent-to-agent messages.
@@ -325,6 +393,12 @@ func pendingAgentMessagesBlock(pending []*store.QualityAgentTranscriptMessage, l
 		sender := message.SenderName
 		if sender == "" {
 			sender = "runtime"
+		}
+		if message.Intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER {
+			if envelope, ok := dataquality.ParseRequestAnswerEnvelope(message.Content); ok {
+				fmt.Fprintf(&builder, "\n%d. %s [ANSWER] %s: %s", shown, sender, envelope.Request, truncateRunes(envelope.Text, 300))
+				continue
+			}
 		}
 		fmt.Fprintf(&builder, "\n%d. %s [%s] %s", shown, sender, message.Intent.String(), truncateRunes(message.Content, 300))
 	}

@@ -373,22 +373,6 @@ func (f *httpAgentFixture) getHTTPRequest(t *testing.T, resourceID string) *stor
 	return request
 }
 
-func (f *httpAgentFixture) waitForRequestStatus(t *testing.T, resourceID string, status store.QualityAgentRequestStatus) *store.QualityAgentRequestMessage {
-	t.Helper()
-
-	var request *store.QualityAgentRequestMessage
-	require.Eventually(t, func() bool {
-		candidate, err := f.env.Store.GetQualityAgentRequestByResourceID(f.ctx, resourceID)
-		if err != nil || candidate == nil || candidate.Status != status {
-			return false
-		}
-		request = candidate
-		return true
-	}, 90*time.Second, 250*time.Millisecond,
-		"request %s never reached status %d: %s\nstate:\n%s", resourceID, status, f.env.ServerLogs(), f.diagnostics())
-	return request
-}
-
 func (f *httpAgentFixture) waitForAskStatus(t *testing.T, resourceID string, status store.QualityAgentAskStatus) {
 	t.Helper()
 
@@ -401,9 +385,9 @@ func (f *httpAgentFixture) waitForAskStatus(t *testing.T, resourceID string, sta
 
 // TestQualityAgentHTTPServerOwnerLoop is the HTTP wire test: a real runner wakes a
 // real target and lead through an OpenAI-compatible fake provider, the owner answers
-// through the public API, the ask becomes ANSWERED, and the request's delivery back to
-// the subagent runs through the same atomic store method the lead's tool uses. The
-// lead-model answer path itself is covered against the real store in the engine suite.
+// through the public API, and the answer is delivered to the request and its subagent
+// in one transaction. The lead model's own answer_request path is covered against the
+// real store in the engine suite.
 func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	f := newHTTPAgentFixture(t)
 	session := f.waitForTargetSession(t)
@@ -417,42 +401,24 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	askName := common.FormatWorkspace(f.workspaceID) + "/qualityAgentAsks/" + ask.ResourceID
 
 	_, err := f.dataQuality.SendQualityAgentMessage(f.ctx, withToken(f.ownerToken, &v1pb.SendQualityAgentMessageRequest{
-		Name:        f.agentName,
-		MessageBody: "Yes, raise it to five minutes.",
-		ReplyTo:     askName,
+		Name:    f.agentName,
+		ReplyTo: askName,
+		Answers: []*v1pb.QualityAgentAnswer{{
+			Id:     "q1",
+			Custom: "Yes, raise it to five minutes.",
+		}},
 	}))
 	require.NoError(t, err)
-	f.waitForAskStatus(t, ask.ResourceID, store.QualityAgentAskStatusAnswered)
-	require.Equal(t, store.QualityAgentRequestStatusForwarded, f.getHTTPRequest(t, request.ResourceID).Status,
-		"the owner's reply answers the ask; the lead still owns the request")
+	f.waitForAskStatus(t, ask.ResourceID, store.QualityAgentAskStatusResolved)
+	answered := f.getHTTPRequest(t, request.ResourceID)
+	require.Equal(t, store.QualityAgentRequestStatusAnswered, answered.Status,
+		"the answer is delivered directly to the request")
+	require.Contains(t, answered.Resolution, "raise it to five minutes")
 
-	// The lead's model answer path is covered against the real store in the engine
-	// suite. Here the HTTP test ends the wire after the owner reply proves the ask
-	// transition, then delivers the answer through the same atomic store method the
-	// lead's tool calls, so the subagent transcript and ask drainage are still real.
+	// The subagent receives the answer as an internal lead message carrying the
+	// request-scoped envelope; no second store call or model turn is involved.
 	storedSession, err := f.env.Store.GetQualityAgentSession(f.ctx, resourceIDFromName(session.GetName()))
 	require.NoError(t, err)
-	answer := &store.QualityAgentTranscriptMessage{
-		SessionID:      storedSession.ID,
-		WorkspaceID:    f.workspaceID,
-		Wake:           storedSession.WakeCount + 1,
-		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
-		Content:        "Agent lead sent a message:\n[answer] raise it to five minutes",
-		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
-		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
-		IdempotencyKey: "it-http-answer",
-	}
-	_, _, applied, err := f.env.Store.AnswerQualityAgentRequestAtomic(f.ctx, request.ResourceID,
-		store.QualityAgentRequestStatusForwarded, "raise it to five minutes", storedSession, answer, time.Now().UTC())
-	require.NoError(t, err)
-	require.True(t, applied)
-	answered := f.waitForRequestStatus(t, request.ResourceID, store.QualityAgentRequestStatusAnswered)
-	require.Contains(t, answered.Resolution, "raise it to five minutes")
-	f.waitForAskStatus(t, ask.ResourceID, store.QualityAgentAskStatusResolved)
-
-	// The subagent receives the answer as an INTERNAL lead message, and the owner's
-	// front office never exposes the tool-call machinery.
 	require.Eventually(t, func() bool {
 		messages, err := f.env.Store.ListQualityAgentTranscriptMessages(f.ctx, &store.FindQualityAgentTranscriptMessage{
 			SessionID: storedSession.ID, Limit: 100,
@@ -467,7 +433,7 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 			}
 		}
 		return false
-	}, 60*time.Second, 250*time.Millisecond, "the subagent never received the lead's answer")
+	}, 60*time.Second, 250*time.Millisecond, "the subagent never received the owner's answer")
 
 	conversation, err := f.dataQuality.ListQualityAgentConversationMessages(f.ctx, withToken(f.ownerToken,
 		&v1pb.ListQualityAgentConversationMessagesRequest{Parent: f.agentName, PageSize: 100}))
@@ -476,7 +442,7 @@ func TestQualityAgentHTTPServerOwnerLoop(t *testing.T) {
 	for _, message := range conversation.Msg.GetQualityAgentConversationMessages() {
 		require.Empty(t, message.GetToolCalls(), "the owner conversation never exposes raw tool calls")
 		if message.GetRole() == v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
-			message.GetContent() == "Yes, raise it to five minutes." {
+			message.GetReplyTo() != "" && strings.Contains(message.GetContent(), "raise it to five minutes") {
 			ownerAnswer = true
 		}
 	}

@@ -4,11 +4,14 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityAgent,
   QualityAgentAskKind,
   QualityAgentAskSchema,
   QualityAgentAskStatus,
+  QualityAgentQuestionOptionSchema,
+  QualityAgentQuestionSchema,
   QualityAgentSchema,
   QualityAgentSessionMode,
   QualityAgentSessionRole,
@@ -16,6 +19,7 @@ import {
   QualityAgentSessionState,
   QualityTargetSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import QualityAgentPage from "./QualityAgentPage.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   listQualityAgentConversationMessages: vi.fn(),
   listQualityAgentReports: vi.fn(),
   listQualityAgentAsksPage: vi.fn(),
+  sendQualityAgentMessage: vi.fn(),
   listQualityAgentCases: vi.fn(),
   listQualityAgentSessionsPage: vi.fn(),
   listQualityAgentCaseActions: vi.fn(),
@@ -42,10 +47,13 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
     mocks.listQualityAgentConversationMessages,
   listQualityAgentReports: mocks.listQualityAgentReports,
   listQualityAgentAsksPage: mocks.listQualityAgentAsksPage,
+  sendQualityAgentMessage: mocks.sendQualityAgentMessage,
   listQualityAgentCases: mocks.listQualityAgentCases,
   listQualityAgentSessionsPage: mocks.listQualityAgentSessionsPage,
   listQualityAgentCaseActions: mocks.listQualityAgentCaseActions,
 }));
+
+let pinia = createPinia();
 
 const Dummy = { template: "<div />" };
 const AGENT = "workspaces/ws/qualityAgents/agent-1";
@@ -54,6 +62,7 @@ function agentFixture(): QualityAgent {
   return create(QualityAgentSchema, {
     name: AGENT,
     displayName: "Quality agent",
+    owner: "users/owner",
     state: 2,
     databases: ["instances/inst/databases/db"],
     capabilities: ["suggest", "patrol"],
@@ -109,7 +118,7 @@ async function mountPage() {
   await router.push("/data-quality/agents/ws/agent-1");
   await router.isReady();
   const wrapper = mount(QualityAgentPage, {
-    global: { plugins: [router, i18n, createPinia()] },
+    global: { plugins: [router, i18n, pinia] },
   });
   await flushPromises();
   return wrapper;
@@ -117,7 +126,9 @@ async function mountPage() {
 
 describe("QualityAgentPage", () => {
   beforeEach(() => {
-    setActivePinia(createPinia());
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().user = create(UserSchema, { name: "users/owner" });
     i18n.global.locale.value = "en-US";
     for (const mock of Object.values(mocks)) {
       mock.mockReset();
@@ -132,6 +143,7 @@ describe("QualityAgentPage", () => {
       nextPageToken: "",
     });
     mocks.listQualityAgentCases.mockResolvedValue([]);
+    mocks.sendQualityAgentMessage.mockResolvedValue({});
     mocks.listQualityAgentSessionsPage.mockResolvedValue({
       sessions: [sessionFixture()],
       nextPageToken: "",
@@ -164,6 +176,48 @@ describe("QualityAgentPage", () => {
     expect(answered).toBeDefined();
     await answered?.trigger("click");
     expect(wrapper.text()).toContain("The sparse batch is expected?");
+    wrapper.unmount();
+  });
+
+  it("answers the ask whose option was clicked", async () => {
+    const ask = create(QualityAgentAskSchema, {
+      name: "workspaces/ws/qualityAgentAsks/a-open",
+      kind: QualityAgentAskKind.QUESTION,
+      status: QualityAgentAskStatus.OPEN,
+      title: "A decision is needed",
+      question: "Keep the check?",
+      questions: [
+        create(QualityAgentQuestionSchema, {
+          id: "q1",
+          question: "Keep the check?",
+          options: [
+            create(QualityAgentQuestionOptionSchema, { label: "Keep it" }),
+            create(QualityAgentQuestionOptionSchema, { label: "Pause it" }),
+          ],
+        }),
+      ],
+    });
+    mocks.listQualityAgentAsksPage.mockResolvedValue({
+      asks: [ask],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage();
+    const keep = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Keep it"));
+    await keep?.trigger("click");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send answer");
+    await send?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.sendQualityAgentMessage).toHaveBeenCalledTimes(1);
+    const [, body, options] = mocks.sendQualityAgentMessage.mock.calls[0];
+    expect(body).toBe("");
+    expect(options.replyTo).toBe(ask.name);
+    expect(options.answers[0].id).toBe("q1");
+    expect(options.answers[0].selected).toEqual(["Keep it"]);
     wrapper.unmount();
   });
 

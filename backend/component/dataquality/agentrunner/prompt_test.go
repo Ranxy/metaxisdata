@@ -5,7 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentcapability"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -130,4 +132,71 @@ func TestOpenRequestBlockMarksQuestionsWithoutACase(t *testing.T) {
 	block := openRequestBlock(requests)
 	require.Contains(t, block, "question_key=timeout (no case)")
 	require.Contains(t, block, "no question_key (no case; omit question_key and the case, keep the wording)")
+}
+
+// An owner answer must reach the model with its ask and question ids. The old wake
+// saw only the sentence and guessed from message order when two asks were open.
+func TestPendingOwnerAnswerBlockNamesTheAskAndQuestion(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Question:    "Keep the check?",
+		Questions: []*storepb.QualityAgentAskQuestion{{
+			Id:       "q1",
+			Question: "Keep the check?",
+			Options:  []*storepb.QualityAgentAskQuestionOption{{Label: "Keep it"}},
+		}},
+	}
+	content, err := dataquality.BuildAnswerEnvelope(ask, []*storepb.QualityAgentAskAnswer{
+		{Id: "q1", Selected: []string{"Keep it"}},
+	}, []string{"workspaces/ws/qualityAgentRequests/r1"})
+	require.NoError(t, err)
+
+	block := pendingOwnerAnswerBlock([]*store.QualityAgentTranscriptMessage{{
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Intent:  storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		ReplyTo: "workspaces/ws/qualityAgentAsks/a1",
+		Content: content,
+	}}, 5)
+	require.Contains(t, block, "ask workspaces/ws/qualityAgentAsks/a1")
+	require.Contains(t, block, "question q1")
+	require.Contains(t, block, "Keep it")
+	require.Contains(t, block, "delivered to: workspaces/ws/qualityAgentRequests/r1")
+}
+
+// A subagent's answer must name the request it settles; otherwise two open questions
+// are indistinguishable in its inbox.
+func TestPendingAgentMessagesBlockRendersTheRequestAnswer(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{
+		ResourceID:  "a1",
+		WorkspaceID: "ws",
+		Question:    "Keep the check?",
+		Questions: []*storepb.QualityAgentAskQuestion{{
+			Id:       "q1",
+			Question: "Keep the check?",
+			Options:  []*storepb.QualityAgentAskQuestionOption{{Label: "Keep it"}},
+		}},
+	}
+	request := &store.QualityAgentRequestMessage{
+		ResourceID:  "r1",
+		WorkspaceID: "ws",
+		Question:    "Keep the check?",
+	}
+	content, _, err := dataquality.BuildRequestAnswerEnvelope(ask, request, []*storepb.QualityAgentAskAnswer{
+		{Id: "q1", Selected: []string{"Keep it"}},
+	})
+	require.NoError(t, err)
+
+	block := pendingAgentMessagesBlock([]*store.QualityAgentTranscriptMessage{{
+		Origin:     storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Intent:     storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		SenderName: "lead",
+		Content:    content,
+	}}, 5)
+	require.Contains(t, block, "workspaces/ws/qualityAgentRequests/r1")
+	require.Contains(t, block, "Keep it")
 }

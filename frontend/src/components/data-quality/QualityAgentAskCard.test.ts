@@ -3,10 +3,13 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
 import {
+  QualityAgentAnswerSchema,
   type QualityAgentAsk,
   QualityAgentAskKind,
   QualityAgentAskSchema,
   QualityAgentAskStatus,
+  QualityAgentQuestionOptionSchema,
+  QualityAgentQuestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import QualityAgentAskCard from "./QualityAgentAskCard.vue";
 
@@ -53,7 +56,16 @@ describe("QualityAgentAskCard", () => {
     const buttons = wrapper.findAll("button");
     await buttons[buttons.length - 1]?.trigger("click");
     expect(wrapper.emitted("reply")).toEqual([
-      [ask, "Keep it; the sparse batch is expected."],
+      [
+        ask,
+        [
+          create(QualityAgentAnswerSchema, {
+            id: "q1",
+            selected: [],
+            custom: "Keep it; the sparse batch is expected.",
+          }),
+        ],
+      ],
     ]);
     expect((textarea.element as HTMLTextAreaElement).value).toBe("");
   });
@@ -101,7 +113,108 @@ describe("QualityAgentAskCard", () => {
       askFixture(QualityAgentAskKind.QUESTION, QualityAgentAskStatus.ANSWERED)
     );
     expect(wrapper.find("textarea").exists()).toBe(false);
-    expect(wrapper.text()).toContain("routing your reply");
+    expect(wrapper.text()).toContain("Answer delivered to the target");
+  });
+
+  it("sends the selected option for a choice question", async () => {
+    const ask = askFixture();
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "q1",
+        question: "Keep the check?",
+        options: [
+          create(QualityAgentQuestionOptionSchema, { label: "Keep it" }),
+          create(QualityAgentQuestionOptionSchema, { label: "Pause it" }),
+        ],
+      }),
+    ];
+    const wrapper = await mountCard(ask);
+    const keep = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Keep it"));
+    expect(keep).toBeDefined();
+    await keep?.trigger("click");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send answer");
+    await send?.trigger("click");
+    expect(wrapper.emitted("reply")).toEqual([
+      [
+        ask,
+        [
+          create(QualityAgentAnswerSchema, {
+            id: "q1",
+            selected: ["Keep it"],
+            custom: "",
+          }),
+        ],
+      ],
+    ]);
+  });
+
+  it("lets a single-select custom answer replace the choice", async () => {
+    const ask = askFixture();
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "q1",
+        question: "Keep the check?",
+        options: [
+          create(QualityAgentQuestionOptionSchema, { label: "Keep it" }),
+        ],
+      }),
+    ];
+    const wrapper = await mountCard(ask);
+    const keep = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Keep it"));
+    await keep?.trigger("click");
+    const textarea = wrapper.find("textarea");
+    await textarea.setValue("Keep it but raise the timeout");
+    const send = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text() === "Send answer");
+    await send?.trigger("click");
+    expect(wrapper.emitted("reply")).toEqual([
+      [
+        ask,
+        [
+          create(QualityAgentAnswerSchema, {
+            id: "q1",
+            selected: [],
+            custom: "Keep it but raise the timeout",
+          }),
+        ],
+      ],
+    ]);
+  });
+
+  it("shows the recorded selection on an answered card", async () => {
+    const ask = askFixture(
+      QualityAgentAskKind.QUESTION,
+      QualityAgentAskStatus.ANSWERED
+    );
+    ask.questions = [
+      create(QualityAgentQuestionSchema, {
+        id: "q1",
+        question: "Keep the check?",
+        options: [
+          create(QualityAgentQuestionOptionSchema, { label: "Keep it" }),
+          create(QualityAgentQuestionOptionSchema, { label: "Pause it" }),
+        ],
+      }),
+    ];
+    ask.answers = [
+      create(QualityAgentAnswerSchema, {
+        id: "q1",
+        selected: ["Keep it"],
+      }),
+    ];
+    const wrapper = await mountCard(ask, false);
+    const keep = wrapper
+      .findAll("button")
+      .find((candidate) => candidate.text().includes("Keep it"));
+    expect(keep?.classes()).toContain("border-primary");
+    expect(wrapper.text()).toContain("Keep it");
   });
 
   it("clamps a long question and expands it on request", async () => {

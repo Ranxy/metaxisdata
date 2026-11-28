@@ -43,7 +43,7 @@ func TestScanQualityAgentAsk(t *testing.T) {
 	values := []any{
 		int64(1), "ask", "ws", int64(3), sql.NullInt64{Int64: conversation, Valid: true},
 		int16(QualityAgentAskKindQuestion), int64(12), "title", "question",
-		"inst;db;;t", int16(storepb.MetaType_TABLE), "proposal:t",
+		[]byte("{}"), []byte("{}"), "inst;db;;t", int16(storepb.MetaType_TABLE), "proposal:t",
 		int16(QualityAgentAskStatusOpen), sql.NullInt32{}, sql.NullTime{}, int64(0),
 		sql.NullTime{}, now, now,
 	}

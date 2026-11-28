@@ -18,31 +18,139 @@
     <p class="mt-2 font-medium">
       {{ ask.title || t(qualityAgentAskKindKey(ask.kind)) }}
     </p>
-    <div class="mt-1.5">
-      <div
-        class="relative"
-        :class="isLong && !expanded ? 'max-h-40 overflow-hidden' : ''"
+
+    <div class="mt-1.5 space-y-3">
+      <section
+        v-for="question in questions"
+        :key="question.id"
+        class="space-y-1.5"
       >
-        <AsyncMarkdown
-          mode="chat"
-          :content="ask.question"
-          :final="true"
-        />
+        <p
+          v-if="question.header"
+          class="text-xs font-medium text-muted-foreground"
+        >
+          {{ question.header }}
+        </p>
         <div
-          v-if="isLong && !expanded"
-          class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
-        />
-      </div>
-      <Button
-        v-if="isLong"
-        variant="link"
-        size="xs"
-        class="mt-1 h-auto p-0 text-xs"
-        @click="expanded = !expanded"
-      >
-        {{ expanded ? t("qualityAgent.askShowLess") : t("qualityAgent.askShowFull") }}
-      </Button>
+          class="relative"
+          :class="isLong(question) && !expanded[question.id] ? 'max-h-40 overflow-hidden' : ''"
+        >
+          <AsyncMarkdown
+            mode="chat"
+            :content="question.question"
+            :final="true"
+          />
+          <div
+            v-if="isLong(question) && !expanded[question.id]"
+            class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
+          />
+        </div>
+        <Button
+          v-if="isLong(question)"
+          variant="link"
+          size="xs"
+          class="mt-1 h-auto p-0 text-xs"
+          @click="expanded[question.id] = !expanded[question.id]"
+        >
+          {{ expanded[question.id] ? t("qualityAgent.askShowLess") : t("qualityAgent.askShowFull") }}
+        </Button>
+        <p
+          v-if="question.detail"
+          class="whitespace-pre-wrap text-xs text-muted-foreground"
+        >
+          {{ question.detail }}
+        </p>
+
+        <div
+          v-if="question.options.length > 0"
+          class="space-y-1.5"
+        >
+          <p class="text-xs text-muted-foreground">
+            {{ question.multiSelect ? t("qualityAgent.answerChooseAny") : t("qualityAgent.answerChooseOne") }}
+          </p>
+          <div class="flex flex-col gap-1.5">
+            <button
+              v-for="option in question.options"
+              :key="option.label"
+              type="button"
+              class="rounded-md border px-3 py-2 text-left transition-colors"
+              :class="optionClass(question, option.label)"
+              :aria-pressed="isSelected(question, option.label)"
+              :disabled="!canReply || !isOpen || busy"
+              @click="toggleOption(question, option.label)"
+            >
+              <span class="block text-sm">{{ option.label }}</span>
+              <span
+                v-if="option.description"
+                class="mt-0.5 block text-xs text-muted-foreground"
+              >
+                {{ option.description }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="isOpen && canReply"
+          class="space-y-1"
+        >
+          <textarea
+            v-model="custom[question.id]"
+            rows="2"
+            class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            :placeholder="question.options.length > 0 ? t('qualityAgent.answerOtherPlaceholder') : t('qualityAgent.askReplyPlaceholder')"
+            :disabled="busy"
+            @input="onCustomInput(question)"
+            @keydown.enter.exact.prevent="onEnter"
+          />
+        </div>
+        <p
+          v-else-if="isOpen"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("qualityAgent.asksReadOnly") }}
+        </p>
+        <div
+          v-else-if="ask.status !== QualityAgentAskStatus.DISMISSED && ask.answers.length > 0"
+          class="rounded-md bg-muted/40 px-3 py-2"
+        >
+          <p class="text-xs text-muted-foreground">
+            {{ t("qualityAgent.answerLabel") }}
+          </p>
+          <p
+            v-if="answerValues(question).length === 0"
+            class="text-sm text-muted-foreground"
+          >
+            {{ t("qualityAgent.answerSkipped") }}
+          </p>
+          <div
+            v-else
+            class="flex flex-wrap gap-1.5"
+          >
+            <Badge
+              v-for="value in answerValues(question)"
+              :key="value"
+              variant="secondary"
+            >
+              {{ value }}
+            </Badge>
+          </div>
+        </div>
+        <p
+          v-else-if="ask.status === QualityAgentAskStatus.DISMISSED"
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("qualityAgent.askDismissed") }}
+        </p>
+        <p
+          v-else
+          class="text-xs text-muted-foreground"
+        >
+          {{ t("qualityAgent.answerDelivered") }}
+        </p>
+      </section>
     </div>
+
     <div
       v-if="ask.targets.length > 0 || ask.requestCount > 0"
       class="mt-2 flex flex-wrap items-center gap-1"
@@ -86,14 +194,12 @@
       v-if="canReply && isOpen"
       class="mt-3 space-y-2 border-t pt-3"
     >
-      <textarea
-        v-model="reply"
-        rows="2"
-        class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        :placeholder="t('qualityAgent.askReplyPlaceholder')"
-        :disabled="busy"
-        @keydown.enter.exact.prevent="onEnter"
-      />
+      <p
+        v-if="!canSend"
+        class="text-xs text-muted-foreground"
+      >
+        {{ t("qualityAgent.answerRequired") }}
+      </p>
       <div class="flex justify-end gap-2">
         <Button
           variant="ghost"
@@ -105,31 +211,30 @@
         </Button>
         <Button
           size="sm"
-          :disabled="busy || reply.trim() === ''"
+          :disabled="busy || !canSend"
           @click="send"
         >
           {{ busy ? t("qualityAgent.sending") : t("qualityAgent.askReply") }}
         </Button>
       </div>
     </div>
-    <p
-      v-else-if="ask.status === QualityAgentAskStatus.ANSWERED"
-      class="mt-2 border-t pt-2 text-xs text-muted-foreground"
-    >
-      {{ t("qualityAgent.askAwaitingLead") }}
-    </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { create } from "@bufbuild/protobuf";
+import { computed, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  type QualityAgentAnswer,
+  QualityAgentAnswerSchema,
   type QualityAgentAsk,
   QualityAgentAskStatus,
+  type QualityAgentQuestion,
+  QualityAgentQuestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import {
@@ -146,25 +251,111 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  reply: [ask: QualityAgentAsk, text: string];
+  reply: [ask: QualityAgentAsk, answers: QualityAgentAnswer[]];
   dismiss: [ask: QualityAgentAsk];
   approve: [ask: QualityAgentAsk];
 }>();
 
 const { t, locale } = useI18n();
-const reply = ref("");
-const expanded = ref(false);
+const selected = reactive<Record<string, string[]>>({});
+const custom = reactive<Record<string, string>>({});
+const expanded = reactive<Record<string, boolean>>({});
 
 const isOpen = computed(() => props.ask.status === QualityAgentAskStatus.OPEN);
 
-// A question is prose, often a screenful of Markdown. It stays clamped so the
-// answer box is reachable without scrolling the whole question first; the
-// length test is a heuristic because the Markdown renderer is async and
-// measuring it would make the first paint jump.
-const isLong = computed(() => {
-  const question = props.ask.question;
-  return question.length > 180 || question.split("\n").length > 6;
+// A legacy ask has only the text question; present it as one free-text item so
+// the card, the answer payload and the server all speak the same shape.
+const questions = computed<QualityAgentQuestion[]>(() => {
+  if (props.ask.questions.length > 0) {
+    return props.ask.questions;
+  }
+  return [
+    create(QualityAgentQuestionSchema, {
+      id: "q1",
+      question: props.ask.question,
+    }),
+  ];
 });
+
+function isSelected(question: QualityAgentQuestion, label: string): boolean {
+  if (!isOpen.value) {
+    return (answerFor(question)?.selected ?? []).includes(label);
+  }
+  return (selected[question.id] ?? []).includes(label);
+}
+
+function toggleOption(question: QualityAgentQuestion, label: string) {
+  const current = selected[question.id] ?? [];
+  if (question.multiSelect) {
+    selected[question.id] = current.includes(label)
+      ? current.filter((value) => value !== label)
+      : [...current, label];
+    return;
+  }
+  selected[question.id] = current.includes(label) ? [] : [label];
+  // A single-select custom answer replaces the choice; clear it so the card and
+  // the server agree on which one the owner meant.
+  custom[question.id] = "";
+}
+
+function onCustomInput(question: QualityAgentQuestion) {
+  if (!question.multiSelect && (custom[question.id] ?? "").trim() !== "") {
+    selected[question.id] = [];
+  }
+}
+
+function answerComplete(question: QualityAgentQuestion): boolean {
+  return (
+    (selected[question.id]?.length ?? 0) > 0 ||
+    (custom[question.id] ?? "").trim() !== ""
+  );
+}
+
+const canSend = computed(
+  () => isOpen.value && questions.value.every(answerComplete)
+);
+
+watch(
+  questions,
+  (list) => {
+    for (const question of list) {
+      selected[question.id] ??= [];
+      custom[question.id] ??= "";
+    }
+  },
+  { immediate: true }
+);
+
+function optionClass(question: QualityAgentQuestion, label: string): string {
+  return isSelected(question, label)
+    ? "border-primary bg-primary/10"
+    : "border-input hover:bg-muted/60";
+}
+
+// A question is prose, often a screenful of Markdown. The clamp keeps the answer
+// controls reachable; the length test is a heuristic because the Markdown renderer
+// is async and measuring it would make the first paint jump.
+function isLong(question: QualityAgentQuestion): boolean {
+  return (
+    question.question.length > 180 || question.question.split("\n").length > 6
+  );
+}
+
+function answerFor(question: QualityAgentQuestion) {
+  return props.ask.answers.find((answer) => answer.id === question.id);
+}
+
+function answerValues(question: QualityAgentQuestion): string[] {
+  const answer = answerFor(question);
+  if (!answer) {
+    return [];
+  }
+  const values = [...answer.selected];
+  if (answer.custom.trim() !== "") {
+    values.push(answer.custom);
+  }
+  return values;
+}
 
 function onEnter(event: KeyboardEvent) {
   // An IME uses Enter to confirm a candidate; sending then would submit half a word.
@@ -175,11 +366,25 @@ function onEnter(event: KeyboardEvent) {
 }
 
 function send() {
-  const text = reply.value.trim();
-  if (text === "" || props.busy) {
+  if (!canSend.value || props.busy) {
     return;
   }
-  emit("reply", props.ask, text);
-  reply.value = "";
+  const answers = questions.value.map((question) => {
+    const text = (custom[question.id] ?? "").trim();
+    const picks =
+      text !== "" && !question.multiSelect
+        ? []
+        : [...(selected[question.id] ?? [])];
+    return create(QualityAgentAnswerSchema, {
+      id: question.id,
+      selected: picks,
+      custom: text,
+    });
+  });
+  emit("reply", props.ask, answers);
+  for (const question of questions.value) {
+    custom[question.id] = "";
+    selected[question.id] = [];
+  }
 }
 </script>

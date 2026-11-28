@@ -7512,8 +7512,10 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
   name: string;
 
   /**
-   * The owner's message. The field name is deliberately not `content`: the audit
-   * redaction list matches field names and this body must not enter the ledger.
+   * The owner's prose: a free-form message, or the custom text of an answer that
+   * does not use the structured answers field. Empty for a structured answer. The
+   * field name is deliberately not `content`: the audit redaction list matches field
+   * names and this body must not enter the ledger.
    *
    * @generated from field: string message_body = 2;
    */
@@ -7529,7 +7531,7 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
   /**
    * The ask this message answers, when it is a reply to a question. Format:
    * workspaces/{workspace}/qualityAgentAsks/{quality_agent_ask}. When set, the ask
-   * is marked answered and the lead routes the answer.
+   * is answered atomically and the answer is delivered to the requests behind it.
    *
    * @generated from field: string reply_to = 4;
    */
@@ -7542,6 +7544,15 @@ export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.Sen
    * @generated from field: metaxisdata.v1.QualityAgentMessageIntent intent = 5;
    */
   intent: QualityAgentMessageIntent;
+
+  /**
+   * The structured answer to reply_to. When empty and the ask has one question,
+   * message_body is taken as that question's custom answer. When the ask offers
+   * options or has several questions, this field is required.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentAnswer answers = 6;
+   */
+  answers: QualityAgentAnswer[];
 };
 
 /**
@@ -7908,6 +7919,123 @@ export declare type QualityAgentRequest = Message<"metaxisdata.v1.QualityAgentRe
 export declare const QualityAgentRequestSchema: GenMessage<QualityAgentRequest>;
 
 /**
+ * QualityAgentQuestionOption is one selectable answer offered to the owner. The
+ * label is both the user-facing text and the model-facing answer value, so an
+ * option is data the answer can name, not presentation the server has to parse.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentQuestionOption
+ */
+export declare type QualityAgentQuestionOption = Message<"metaxisdata.v1.QualityAgentQuestionOption"> & {
+  /**
+   * @generated from field: string label = 1;
+   */
+  label: string;
+
+  /**
+   * Optional supporting text rendered beside the label. Never enters the answer.
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentQuestionOption.
+ * Use `create(QualityAgentQuestionOptionSchema)` to create a new message.
+ */
+export declare const QualityAgentQuestionOptionSchema: GenMessage<QualityAgentQuestionOption>;
+
+/**
+ * QualityAgentQuestion is one decision in an ask. The id is stable within the ask
+ * and is echoed by the answer, so several questions in one ask stay routable.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentQuestion
+ */
+export declare type QualityAgentQuestion = Message<"metaxisdata.v1.QualityAgentQuestion"> & {
+  /**
+   * Stable within the ask; echoed by QualityAgentAnswer.id.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * Optional short heading, such as "Confirm" or "Choose Mode".
+   *
+   * @generated from field: string header = 2;
+   */
+  header: string;
+
+  /**
+   * @generated from field: string question = 3;
+   */
+  question: string;
+
+  /**
+   * Supporting detail rendered with the question but kept out of option labels.
+   *
+   * @generated from field: string detail = 4;
+   */
+  detail: string;
+
+  /**
+   * Choices a UI can render as buttons. Empty means a free-text answer.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentQuestionOption options = 5;
+   */
+  options: QualityAgentQuestionOption[];
+
+  /**
+   * Whether more than one option may be selected. Defaults to single-select.
+   *
+   * @generated from field: bool multi_select = 6;
+   */
+  multiSelect: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentQuestion.
+ * Use `create(QualityAgentQuestionSchema)` to create a new message.
+ */
+export declare const QualityAgentQuestionSchema: GenMessage<QualityAgentQuestion>;
+
+/**
+ * QualityAgentAnswer is the owner's answer to one QualityAgentQuestion. Selected
+ * holds option labels; custom replaces a single choice and supplements a
+ * multi-select answer. Empty selected and empty custom is an explicit skip.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAnswer
+ */
+export declare type QualityAgentAnswer = Message<"metaxisdata.v1.QualityAgentAnswer"> & {
+  /**
+   * The answered QualityAgentQuestion.id.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * Selected option labels; each must be one of the question's offered labels.
+   *
+   * @generated from field: repeated string selected = 2;
+   */
+  selected: string[];
+
+  /**
+   * Free-form answer.
+   *
+   * @generated from field: string custom = 3;
+   */
+  custom: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAnswer.
+ * Use `create(QualityAgentAnswerSchema)` to create a new message.
+ */
+export declare const QualityAgentAnswerSchema: GenMessage<QualityAgentAnswer>;
+
+/**
  * QualityAgentAsk is one owner-facing question from the lead. It can cover several
  * requests through their ask link.
  *
@@ -8010,6 +8138,20 @@ export declare type QualityAgentAsk = Message<"metaxisdata.v1.QualityAgentAsk"> 
    * @generated from field: int32 request_count = 16;
    */
   requestCount: number;
+
+  /**
+   * The structured questions. A legacy ask has none and falls back to question.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentQuestion questions = 17;
+   */
+  questions: QualityAgentQuestion[];
+
+  /**
+   * The owner's structured answers; empty until the ask is answered.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentAnswer answers = 18;
+   */
+  answers: QualityAgentAnswer[];
 };
 
 /**
@@ -8124,6 +8266,14 @@ export declare type ListQualityAgentAsksRequest = Message<"metaxisdata.v1.ListQu
    * @generated from field: string page_token = 4;
    */
   pageToken: string;
+
+  /**
+   * When non-empty, lists these statuses instead of status. It lets the owner
+   * conversation read one history page covering answered, resolved and dismissed.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityAgentAskStatus statuses = 5;
+   */
+  statuses: QualityAgentAskStatus[];
 };
 
 /**

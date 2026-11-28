@@ -99,7 +99,6 @@ type Store interface {
 	ResolveQualityAgentAskIfDrained(ctx context.Context, askID int64, at time.Time) (bool, error)
 	GetQualityAgentAskByResourceID(ctx context.Context, resourceID string) (*store.QualityAgentAskMessage, error)
 	ListQualityAgentAsks(ctx context.Context, agentID int64, statuses []store.QualityAgentAskStatus, limit int) ([]*store.QualityAgentAskMessage, error)
-	MarkQualityAgentAskAnswered(ctx context.Context, resourceID string, answeredBy int32, answerSeq int64, at time.Time) (*store.QualityAgentAskMessage, bool, error)
 	ResolveQualityAgentAsk(ctx context.Context, resourceID string, status store.QualityAgentAskStatus, at time.Time) (bool, error)
 }
 

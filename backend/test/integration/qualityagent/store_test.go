@@ -358,3 +358,83 @@ type requestCreation struct {
 	request *store.QualityAgentRequestMessage
 	created bool
 }
+
+// One owner answer must settle the ask and every active request behind it in one
+// transaction, and a second answer must be refused instead of delivered twice.
+func TestQualityAgentAskAnswerIsAtomicAndDelivered(t *testing.T) {
+	t.Parallel()
+
+	f := newDraftAgent(t)
+	request, _ := f.create(t, raiseOptions{dedupeKey: "it-answer-ask-r", question: "Keep the check?"})
+	askMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Content:        "Keep the check?",
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		IdempotencyKey: "it-answer-ask-question",
+	}
+	ask := &store.QualityAgentAskMessage{
+		WorkspaceID: f.env.workspaceID, AgentID: f.agent.ID, Kind: store.QualityAgentAskKindQuestion,
+		Title: "A decision", Question: "Keep the check?",
+		Questions: []*storepb.QualityAgentAskQuestion{{
+			Id:       "q1",
+			Question: "Keep the check?",
+			Options: []*storepb.QualityAgentAskQuestionOption{
+				{Label: "Keep it"},
+				{Label: "Pause it"},
+			},
+		}},
+		TargetGUID: f.targetGUID, TargetType: storepb.MetaType_TABLE, DedupeKey: "it-answer-ask",
+	}
+	created, isNew, err := f.env.store.CreateQualityAgentAskDeduped(f.ctx, ask, f.lead, askMessage,
+		[]*store.QualityAgentRequestMessage{request}, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, isNew)
+
+	answers := []*storepb.QualityAgentAskAnswer{{Id: "q1", Selected: []string{"Keep it"}}}
+	leadMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.lead.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
+		Content:        `{"kind":"answer_to_ask","ask":"` + created.ResourceID + `"}`,
+		ReplyTo:        "workspaces/" + f.env.workspaceID + "/qualityAgentAsks/" + created.ResourceID,
+		IdempotencyKey: "it-answer-ask-lead",
+	}
+	deliveryMessage := &store.QualityAgentTranscriptMessage{
+		Wake:           f.session.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_ANSWER,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		Content:        `{"kind":"answer_to_request","request":"` + request.ResourceID + `"}`,
+		ReplyTo:        "workspaces/" + f.env.workspaceID + "/qualityAgentRequests/" + request.ResourceID,
+		IdempotencyKey: "it-answer-ask-sub",
+	}
+	answeredBy := int32(f.agent.PrincipalID)
+	updated, delivered, answered, err := f.env.store.AnswerQualityAgentAskAtomic(f.ctx, created.ResourceID,
+		answers, answeredBy, leadMessage,
+		[]*store.QualityAgentRequestDelivery{{
+			Request: request, Subagent: f.session, Message: deliveryMessage, Resolution: "Keep it",
+		}}, time.Now().UTC())
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.NotNil(t, delivered)
+	require.Len(t, answered, 1)
+	require.Equal(t, store.QualityAgentRequestStatusAnswered, f.getRequest(t, request.ResourceID).Status)
+
+	stored, err := f.env.store.GetQualityAgentAskByResourceID(f.ctx, created.ResourceID)
+	require.NoError(t, err)
+	require.Equal(t, store.QualityAgentAskStatusResolved, stored.Status, "the only request is settled")
+	require.Len(t, stored.Answers, 1)
+	require.Equal(t, []string{"Keep it"}, stored.Answers[0].Selected)
+	require.Equal(t, "Keep it", f.getRequest(t, request.ResourceID).Resolution)
+
+	second := *leadMessage
+	second.IdempotencyKey = "it-answer-ask-lead-2"
+	_, _, _, err = f.env.store.AnswerQualityAgentAskAtomic(f.ctx, created.ResourceID,
+		answers, answeredBy, &second, nil, time.Now().UTC())
+	require.Error(t, err, "a closed ask refuses a second answer")
+}
