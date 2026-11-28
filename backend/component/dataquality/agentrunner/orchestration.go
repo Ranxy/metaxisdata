@@ -438,13 +438,8 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 	}
 	rows := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
-		ask := ""
-		if request.AskID != nil {
-			ask = askResourceName(asksByID[*request.AskID])
-		}
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"request":      requestName(request.ResourceID),
-			"ask":          ask,
 			"target":       request.TargetGUID,
 			"kind":         int(request.Kind),
 			"status":       int(request.Status),
@@ -453,7 +448,13 @@ func (e *Engine) listRequests(ctx context.Context, session *store.QualityAgentSe
 			"case":         request.CaseResourceID,
 			"options":      requestOptionsView(request.Options),
 			"multi_select": request.MultiSelect,
-		})
+		}
+		if request.AskID != nil {
+			if ask := askResourceName(asksByID[*request.AskID]); ask != "" {
+				row["ask"] = ask
+			}
+		}
+		rows = append(rows, row)
 	}
 	return marshalJSON(map[string]any{"requests": rows, "count": len(rows)})
 }

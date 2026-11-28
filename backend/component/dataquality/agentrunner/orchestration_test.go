@@ -148,6 +148,7 @@ func TestSendLeadMessageStoresTheOfferedOptions(t *testing.T) {
 	require.Contains(t, listed, `"options"`)
 	require.Contains(t, listed, "Keep it")
 	require.Contains(t, listed, `"multi_select":true`)
+	require.NotContains(t, listed, `"ask"`, "an open request is not yet in an ask")
 }
 
 func TestForwardRequestCopiesTheSingleRequestsOptions(t *testing.T) {
