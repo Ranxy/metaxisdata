@@ -406,6 +406,13 @@ func pendingAgentMessagesBlock(pending []*store.QualityAgentTranscriptMessage, l
 				continue
 			}
 		}
+		if message.Intent == storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS {
+			if envelope, ok := dataquality.ParseRequestDismissedEnvelope(message.Content); ok {
+				fmt.Fprintf(&builder, "\n%d. %s [DISMISSED] %s: %s; do not wait for an answer.",
+					shown, sender, envelope.Request, envelope.Text)
+				continue
+			}
+		}
 		fmt.Fprintf(&builder, "\n%d. %s [%s] %s", shown, sender, message.Intent.String(), truncateRunes(message.Content, 300))
 	}
 	if builder.Len() == 0 {

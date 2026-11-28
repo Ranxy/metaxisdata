@@ -136,6 +136,21 @@ func TestQuestionsOfSynthesizesOneForALegacyAsk(t *testing.T) {
 	require.Equal(t, "Legacy question?", questions[0].Question)
 }
 
+func TestBuildRequestDismissedEnvelopeNamesTheRequest(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{ResourceID: "a1", WorkspaceID: "ws", Question: "Keep the check?"}
+	request := &store.QualityAgentRequestMessage{ResourceID: "r1", WorkspaceID: "ws", Question: "Keep the check?"}
+	content, err := BuildRequestDismissedEnvelope(ask, request)
+	require.NoError(t, err)
+
+	envelope, ok := ParseRequestDismissedEnvelope(content)
+	require.True(t, ok)
+	require.Equal(t, "workspaces/ws/qualityAgentAsks/a1", envelope.Ask)
+	require.Equal(t, "workspaces/ws/qualityAgentRequests/r1", envelope.Request)
+	require.Contains(t, envelope.Text, "dismissed")
+}
+
 func TestBuildRequestAnswerEnvelopeNamesTheRequest(t *testing.T) {
 	t.Parallel()
 

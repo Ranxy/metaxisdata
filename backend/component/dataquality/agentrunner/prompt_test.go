@@ -170,6 +170,26 @@ func TestPendingOwnerAnswerBlockNamesTheAskAndQuestion(t *testing.T) {
 
 // A subagent's answer must name the request it settles; otherwise two open questions
 // are indistinguishable in its inbox.
+// A dismissed request is closed without an answer; the subagent must see that as a
+// dismissal, not as an unreadable instruction that leaves it waiting.
+func TestPendingAgentMessagesBlockRendersTheRequestDismissal(t *testing.T) {
+	t.Parallel()
+
+	ask := &store.QualityAgentAskMessage{ResourceID: "a1", WorkspaceID: "ws", Question: "Keep the check?"}
+	request := &store.QualityAgentRequestMessage{ResourceID: "r1", WorkspaceID: "ws", Question: "Keep the check?"}
+	content, err := dataquality.BuildRequestDismissedEnvelope(ask, request)
+	require.NoError(t, err)
+
+	block := pendingAgentMessagesBlock([]*store.QualityAgentTranscriptMessage{{
+		Origin:     storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Intent:     storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		SenderName: "lead",
+		Content:    content,
+	}}, 5)
+	require.Contains(t, block, "[DISMISSED] workspaces/ws/qualityAgentRequests/r1")
+	require.Contains(t, block, "do not wait for an answer")
+}
+
 func TestPendingAgentMessagesBlockRendersTheRequestAnswer(t *testing.T) {
 	t.Parallel()
 

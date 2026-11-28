@@ -347,6 +347,35 @@ func BuildRequestAnswerEnvelope(ask *store.QualityAgentAskMessage, request *stor
 	return string(encoded), envelope.Text, nil
 }
 
+// RequestDismissedEnvelope is the model-facing notice delivered to a subagent when
+// the owner dismisses the ask holding its request. It is not an answer: the request
+// closes with no resolution.
+type RequestDismissedEnvelope struct {
+	Kind    string `json:"kind"`
+	Ask     string `json:"ask"`
+	Request string `json:"request"`
+	Text    string `json:"text"`
+}
+
+// BuildRequestDismissedEnvelope renders the notice for the subagent whose request the
+// owner dismissed. The request id is still the pairing key.
+func BuildRequestDismissedEnvelope(ask *store.QualityAgentAskMessage, request *store.QualityAgentRequestMessage) (string, error) {
+	if ask == nil || request == nil {
+		return "", common.Errorf(common.Invalid, "a request dismissal needs an ask and a request")
+	}
+	envelope := RequestDismissedEnvelope{
+		Kind:    "request_dismissed",
+		Ask:     AskName(ask),
+		Request: RequestName(request),
+		Text:    "the owner dismissed this question without an answer",
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return "", common.Errorf(common.Internal, "failed to encode the request dismissal: %v", err)
+	}
+	return string(encoded), nil
+}
+
 // BuildDecisionAnswerEnvelope is the envelope for a decision the lead made itself
 // rather than relaying an owner answer. The request id is still the pairing key, so
 // the subagent can tell which question this answers.
@@ -488,6 +517,19 @@ func ParseRequestAnswerEnvelope(content string) (*RequestAnswerEnvelope, bool) {
 		return nil, false
 	}
 	if envelope.Kind != "answer_to_request" || envelope.Request == "" {
+		return nil, false
+	}
+	return &envelope, true
+}
+
+// ParseRequestDismissedEnvelope reads the notice delivered to a subagent. The
+// request id is the pairing key; an unreadable message is not a dismissal.
+func ParseRequestDismissedEnvelope(content string) (*RequestDismissedEnvelope, bool) {
+	var envelope RequestDismissedEnvelope
+	if err := json.Unmarshal([]byte(content), &envelope); err != nil {
+		return nil, false
+	}
+	if envelope.Kind != "request_dismissed" || envelope.Request == "" {
 		return nil, false
 	}
 	return &envelope, true

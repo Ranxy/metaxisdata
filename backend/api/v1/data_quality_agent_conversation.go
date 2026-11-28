@@ -328,8 +328,58 @@ func storepbRequestAnswerMessage(subagent *store.QualityAgentSessionMessage, req
 	}
 }
 
-// dismissQualityAgentAsk closes one open ask without pretending it was answered.
+// storepbRequestDismissedMessage tells a subagent its request was dismissed. It is a
+// notice, not an answer: the request is already closed and nothing will resolve it.
+func storepbRequestDismissedMessage(subagent *store.QualityAgentSessionMessage, request *store.QualityAgentRequestMessage, content string) *store.QualityAgentTranscriptMessage {
+	return &store.QualityAgentTranscriptMessage{
+		SessionID:      subagent.ID,
+		WorkspaceID:    subagent.WorkspaceID,
+		Wake:           subagent.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_AGENT,
+		Content:        content,
+		SenderName:     "lead",
+		Intent:         storepb.QualityAgentMessageIntent_QUALITY_AGENT_MESSAGE_INTENT_DISMISS,
+		Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_INTERNAL,
+		ReplyTo:        dataquality.RequestName(request),
+		IdempotencyKey: fmt.Sprintf("ask-dismissed:%s", request.ResourceID),
+	}
+}
+
+// dismissQualityAgentAsk closes one open ask without pretending it was answered. The
+// owner's message, the ask/request states and the subagent notices share one
+// transaction, so a dismissal can never tell only half the story.
 func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspaceID string, agent *store.QualityAgentMessage, ask *store.QualityAgentAskMessage, content, key string, limit int) (*connect.Response[v1pb.QualityAgentSessionMessage], error) {
+	requestsByAsk, err := s.store.ListQualityAgentRequestsByAskIDs(ctx, []int64{ask.ID})
+	if err != nil {
+		return nil, err
+	}
+	notices := make([]*store.QualityAgentRequestDelivery, 0, len(requestsByAsk[ask.ID]))
+	for _, request := range requestsByAsk[ask.ID] {
+		if request.Status != store.QualityAgentRequestStatusOpen &&
+			request.Status != store.QualityAgentRequestStatusForwarded {
+			continue
+		}
+		requestEnvelope, buildErr := dataquality.BuildRequestDismissedEnvelope(ask, request)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		var subagent *store.QualityAgentSessionMessage
+		if request.OriginSessionID != nil {
+			subagent, buildErr = s.store.GetQualityAgentSessionByID(ctx, *request.OriginSessionID)
+			if buildErr != nil {
+				return nil, buildErr
+			}
+			if subagent != nil && subagent.ArchivedAt != nil {
+				subagent = nil
+			}
+		}
+		notice := &store.QualityAgentRequestDelivery{Request: request, Subagent: subagent}
+		if subagent != nil {
+			notice.Message = storepbRequestDismissedMessage(subagent, request, requestEnvelope)
+		}
+		notices = append(notices, notice)
+	}
 	var conversation *store.QualityAgentSessionMessage
 	var message *store.QualityAgentTranscriptMessage
 	lockErr := s.store.WithQualityAgentAdvisoryLock(ctx, fmt.Sprintf("dqchat:%d", agent.ID), func() error {
@@ -345,9 +395,12 @@ func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspa
 		if err != nil {
 			return err
 		}
-		message, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
-			SessionID:      conversation.ID,
-			WorkspaceID:    workspaceID,
+		for _, notice := range notices {
+			if notice != nil && notice.Message != nil {
+				notice.Message.SenderSessionID = &conversation.ID
+			}
+		}
+		leadMessage := &store.QualityAgentTranscriptMessage{
 			Wake:           conversation.WakeCount + 1,
 			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
@@ -356,18 +409,8 @@ func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspa
 			Audience:       storepb.QualityAgentMessageAudience_QUALITY_AGENT_MESSAGE_AUDIENCE_OWNER,
 			ReplyTo:        dataquality.AskName(ask),
 			IdempotencyKey: key,
-		})
-		if err != nil {
-			return err
 		}
-		applied, dismissErr := s.store.DismissQualityAgentAsk(ctx, ask.ID, time.Now().UTC())
-		if dismissErr != nil {
-			return dismissErr
-		}
-		if !applied {
-			return common.Errorf(common.Conflict, "the question is no longer open")
-		}
-		_, err = s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC())
+		_, message, _, err = s.store.DismissQualityAgentAskAtomic(ctx, ask.ResourceID, leadMessage, notices, time.Now().UTC())
 		return err
 	})
 	if lockErr != nil {
@@ -375,11 +418,15 @@ func (s *DataQualityService) dismissQualityAgentAsk(ctx context.Context, workspa
 			return nil, connect.NewError(connect.CodeAborted,
 				errors.New("another message is being sent; retry"))
 		}
-		if common.ErrorCode(lockErr) == common.Conflict {
+		switch common.ErrorCode(lockErr) {
+		case common.Conflict:
 			return nil, connect.NewError(connect.CodeFailedPrecondition, lockErr)
+		case common.NotFound:
+			return nil, connect.NewError(connect.CodeNotFound, lockErr)
 		}
 		return nil, lockErr
 	}
+	_, _ = s.store.AdvanceQualityAgentSessionWake(ctx, conversation.ResourceID, time.Now().UTC())
 	return connect.NewResponse(convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message)), nil
 }
 
